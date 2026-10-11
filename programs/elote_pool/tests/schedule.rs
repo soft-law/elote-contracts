@@ -3,7 +3,9 @@
 mod common;
 
 use common::*;
-use elote_pool::events::{LateInterestCollected, LineInCollection, LineOpened, LineRepaid, LineScheduled};
+use elote_pool::events::{
+    LateInterestCollected, LineInCollection, LineOpened, LineRepaid, LineScheduled, LineWrittenOff,
+};
 use elote_pool::state::{LineStatus, Schedule, ScheduleParams};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -397,4 +399,122 @@ fn late_interest_on_the_maximum_installments_stays_within_the_compute_budget() {
     assert_eq!(find_event::<LateInterestCollected>(&meta).unwrap().amount, a.late_due);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     assert!(meta.compute_units_consumed < 100_000, "repay used {} CU", meta.compute_units_consumed);
+}
+
+// -----------------------------------------------------------------------------------------------
+// Write-off policy
+// -----------------------------------------------------------------------------------------------
+
+#[test]
+fn write_off_in_collection_only_after_the_oldest_missed_due_date_plus_grace() {
+    let mut env = Env::new();
+    let grace: u32 = 15 * 24 * 3600;
+    let k = pool_with(&mut env, 10 * UNIT, grace);
+    let admin = env.admin.insecure_clone();
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
+    let nav0 = env.nav(&k);
+
+    // An active scheduled line before its term is not written off, even with missed installments.
+    env.warp(t0 + 3 * MONTH);
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.expect_err(ix, &admin, &[], E_TERM_NOT_ENDED);
+
+    // In collection, the oldest missed installment fell due at t0 + MONTH: grace runs to + 15 days.
+    // Three months of arrears are already past it, so the admin may write off now.
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.send(ix, &b, &[]);
+    let ix = env.write_off_ix(&k, line_id, &b.pubkey());
+    env.expect_err(ix, &b, &[], E_UNAUTHORIZED);
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    let meta = env.send(ix, &admin, &[]);
+    let ev: LineWrittenOff = find_event(&meta).expect("LineWrittenOff");
+    assert_eq!((ev.line_id, ev.loss, ev.nav_after), (line_id, 6 * UNIT, nav0 - 6 * UNIT));
+    assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
+    assert_eq!(env.pool(&k).written_off, 6 * UNIT);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), UNIT);
+    env.expect_err(ix, &b, &[], E_LINE_STATUS);
+}
+
+#[test]
+fn write_off_in_collection_waits_for_the_grace_of_the_oldest_missed_installment() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let admin = env.admin.insecure_clone();
+    // One-installment-at-a-time policy so collection can start at the first missed due date.
+    let mut p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    p.schedule.as_mut().unwrap().max_missed = 1;
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
+    env.warp(t0 + MONTH);
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.send(ix, &b, &[]);
+
+    // Pool grace is zero: rejected at the due second, accepted one second after.
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    env.warp(t0 + MONTH + 1);
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.send(ix, &admin, &[]);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
+}
+
+#[test]
+fn a_cured_line_in_collection_is_not_written_off_until_it_misses_again() {
+    let mut env = Env::new();
+    let grace: u32 = 10 * 24 * 3600;
+    let k = pool_with(&mut env, 10 * UNIT, grace);
+    let admin = env.admin.insecure_clone();
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
+    env.warp(t0 + 3 * MONTH);
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.send(ix, &b, &[]);
+
+    // The borrower pays all arrears and late interest: nothing is missed.
+    let a = env.arrears(&k, line_id);
+    env.repay(&k, line_id, &b, a.overdue + a.late_due);
+    assert_eq!(env.arrears(&k, line_id).missed, 0);
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+
+    // The fourth installment falls due at t0 + 4 months and is missed: grace runs 10 more days.
+    env.warp(t0 + 4 * MONTH + i64::from(grace));
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    env.warp(t0 + 4 * MONTH + i64::from(grace) + 1);
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.send(ix, &admin, &[]);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
+}
+
+#[test]
+fn write_off_after_the_term_waits_for_the_pool_grace() {
+    let mut env = Env::new();
+    let grace: u32 = 7 * 24 * 3600;
+    let k = pool_with(&mut env, 10 * UNIT, grace);
+    let admin = env.admin.insecure_clone();
+    let b = env.borrower(&k);
+
+    // A single-maturity line in a pool with grace.
+    let p1 = env.line_params(4 * UNIT, 1_000);
+    let v1 = open(&mut env, &k, &b, &p1);
+    env.draw(&k, v1, &b);
+    // A scheduled line that never reaches collection (max_missed 6 of 6).
+    let mut p2 = env.scheduled_params(UNIT, 1_000, 6, 10_000);
+    p2.schedule.as_mut().unwrap().max_missed = 6;
+    p2.term_end = p1.term_end.max(p2.term_end);
+    let v2 = open(&mut env, &k, &b, &p2);
+    env.draw(&k, v2, &b);
+
+    for (line_id, term_end) in [(v1, p1.term_end), (v2, p2.term_end)] {
+        env.warp(term_end + i64::from(grace));
+        let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+        env.expect_err(ix, &admin, &[], E_TERM_NOT_ENDED);
+        env.warp(term_end + i64::from(grace) + 1);
+        let ix = env.write_off_ix(&k, line_id, &b.pubkey());
+        env.expect_err(ix, &b, &[], E_UNAUTHORIZED);
+        let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+        env.send(ix, &admin, &[]);
+        assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
+    }
 }

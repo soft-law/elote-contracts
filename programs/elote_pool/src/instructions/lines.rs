@@ -471,12 +471,33 @@ pub struct WriteOff<'info> {
     pub vault: Box<Account<'info, TokenAccount>>,
 }
 
-/// Recognises the unpaid principal of an overdue line as a loss. Not blocked by the pause.
+/// Recognises the unpaid principal of an overdue line as a loss. Admin only; not blocked by the
+/// pause. Allowed when
+///
+/// - the line is `Active` and `now > term_end + grace` (else `TermNotEnded`), or
+/// - the line is `InCollection` and either a missed installment is still unpaid and
+///   `now > first_missed_due + grace`, or `now > term_end + grace` (else `WriteOffTooEarly`).
+///
+/// `grace` is the pool's grace period; with zero grace a single-maturity line behaves as before.
 pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
+    let pool = &ctx.accounts.pool;
+    let line = &ctx.accounts.line;
+    let grace = i64::from(pool.grace_period_seconds());
+    let after_term = now > line.term_end.checked_add(grace).ok_or(PoolError::Overflow)?;
+    match line.status {
+        LineStatus::Active => require!(after_term, PoolError::TermNotEnded),
+        LineStatus::InCollection => {
+            let after_missed = match line_arrears(line, pool, now)?.first_missed_due {
+                Some(due) => now > due.checked_add(grace).ok_or(PoolError::Overflow)?,
+                None => false, // cured: nothing is missed
+            };
+            require!(after_missed || after_term, PoolError::WriteOffTooEarly);
+        }
+        _ => return err!(PoolError::LineStatus),
+    }
+
     let line = &mut ctx.accounts.line;
-    require!(line.status == LineStatus::Active, PoolError::LineStatus);
-    require!(now > line.term_end, PoolError::TermNotEnded);
 
     let loss = line.principal.checked_sub(line.principal_repaid).ok_or(PoolError::Overflow)?;
     let pool = &mut ctx.accounts.pool;

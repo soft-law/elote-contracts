@@ -40,4 +40,6 @@ pub enum PoolError {
     NotEnoughMissed,
     #[msg("The repayment must cover the late interest due")]
     LateInterestUnpaid,
+    #[msg("A line in collection is written off only after its oldest missed due date plus grace, or after the term plus grace")]
+    WriteOffTooEarly,
 }

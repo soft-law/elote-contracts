@@ -50,6 +50,7 @@ pub const E_SCHEDULE_ENDS_AFTER_TERM: u32 = ERR_BASE + 14; // PoolError::Schedul
 pub const E_NOT_SCHEDULED: u32 = ERR_BASE + 15; // PoolError::NotScheduled
 pub const E_NOT_ENOUGH_MISSED: u32 = ERR_BASE + 16; // PoolError::NotEnoughMissed
 pub const E_LATE_INTEREST_UNPAID: u32 = ERR_BASE + 17; // PoolError::LateInterestUnpaid
+pub const E_WRITE_OFF_TOO_EARLY: u32 = ERR_BASE + 18; // PoolError::WriteOffTooEarly
 
 /// SPL Token's `TokenError::InsufficientFunds`, surfaced as custom error 1 by a failed CPI.
 pub const SPL_TOKEN_INSUFFICIENT_FUNDS: u32 = 1;

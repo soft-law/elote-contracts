@@ -77,7 +77,8 @@ pub mod elote_pool {
         instructions::lines::mark_in_collection(ctx)
     }
 
-    /// Recognises the unpaid principal of an active line past its term as a loss.
+    /// Recognises the unpaid principal of a line as a loss. Admin only: after the term plus the
+    /// pool's grace, or, for a line in collection, after its oldest missed due date plus grace.
     pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
         instructions::lines::write_off(ctx)
     }
