@@ -1,11 +1,17 @@
 // End-to-end demo of the elote_pool program: two investors deposit, a credit line is approved,
 // drawn and repaid (principal by the borrower, interest by a sponsor), and the value of every
-// share rises with the collected interest.
+// share rises with the collected interest. With --schedule, a second line is repaid in six
+// installments: one is missed and the next repayment collects late interest first.
 //
 //   npx tsx scripts/demo-pool.ts --cluster local|devnet [--agreement-hash <64 hex>] [--sponsor]
+//                                [--schedule [--interval-seconds <n>]] [--grace-seconds <n>]
 //
-// --agreement-hash  hash of the signed credit agreement recorded on the line (placeholder if absent)
-// --sponsor         the sponsor co-signs the opening and is named on the line
+// --agreement-hash    hash of the signed credit agreement recorded on the line (placeholder if absent)
+// --sponsor           the sponsor co-signs the opening and is named on the line
+// --schedule          also open a 6-installment line, miss one installment and repay it with late interest
+// --interval-seconds  seconds between installments (default: one month, 2,592,000; 20 on local, a
+//                     compressed "demo month", since a validator's clock cannot be moved forward)
+// --grace-seconds     the pool's grace period (default 0; 5 with --schedule on local)
 //
 // Keys live in .demo-keys/ (generated on first run, ignored by git) unless a path is given in
 // ELOTE_ADMIN_KEYPAIR, ELOTE_INVESTOR_A_KEYPAIR, ELOTE_INVESTOR_B_KEYPAIR, ELOTE_BORROWER_KEYPAIR or
@@ -59,6 +65,9 @@ import {
   getOpenLineInstructionAsync,
   getRedeemInstructionAsync,
   getRepayInstructionAsync,
+  decodeSchedule,
+  lineArrears,
+  poolGracePeriodSeconds,
 } from "../clients/js/src/index.ts";
 
 const DISCLAIMER = "Demo on Solana devnet with test assets. Not an offer of securities.";
@@ -75,6 +84,14 @@ function arg(name: string): string | undefined {
 const cluster = arg("cluster") ?? "local";
 if (cluster !== "local" && cluster !== "devnet") throw new Error("--cluster must be local or devnet");
 const withSponsor = process.argv.includes("--sponsor");
+const withSchedule = process.argv.includes("--schedule");
+const MONTH_SECONDS = 30n * 86_400n;
+const intervalSeconds = BigInt(arg("interval-seconds") ?? (cluster === "local" ? "20" : MONTH_SECONDS.toString()));
+const graceSeconds = Number(arg("grace-seconds") ?? (withSchedule && cluster === "local" ? "5" : "0"));
+if (intervalSeconds <= 0n) throw new Error("--interval-seconds must be positive");
+if (!Number.isInteger(graceSeconds) || graceSeconds < 0 || graceSeconds > 0xffffffff) {
+  throw new Error("--grace-seconds must fit in a u32");
+}
 const rpcUrl = process.env.ELOTE_RPC ?? (cluster === "devnet" ? "https://api.devnet.solana.com" : "http://127.0.0.1:8899");
 const rpc = createSolanaRpc(rpcUrl);
 
@@ -229,9 +246,17 @@ const DEAD_SHARES = 1_000n;
 
 console.log("\nCreating the pool");
 await send("init_pool", admin, [
-  await getInitPoolInstructionAsync({ admin, assetMint: assetMint.address, pool, shareMint, vault, deadShares }),
+  await getInitPoolInstructionAsync({
+    admin,
+    assetMint: assetMint.address,
+    pool,
+    shareMint,
+    vault,
+    deadShares,
+    gracePeriodSeconds: graceSeconds,
+  }),
 ]);
-console.log(`  pool ${pool}\n  share token ${shareMint}\n  vault ${vault}`);
+console.log(`  pool ${pool}\n  share token ${shareMint}\n  vault ${vault}\n  grace period ${graceSeconds} s`);
 
 console.log(`\nIssuing ${ASSET} to the investors and the sponsor`);
 const issue: Instruction[] = [];
@@ -298,6 +323,7 @@ await send("open_line", admin, [
     termEnd,
     agreementHash: hash,
     sponsorArg: withSponsor ? sponsor.address : null,
+    schedule: null,
   }),
 ]);
 const borrowerAsset = await ataOf(borrower.address, assetMint.address);
@@ -347,4 +373,81 @@ console.log(row("line drawn", drawn));
 console.log(row("line repaid", repaid));
 console.log(row("after A redeems 4,000", after));
 console.log(`\nInvestor A received ${fmt(received)} tMXN (devnet test token, no value) for 4,000 shares (value per share ${fmt(before.perShare)} -> ${fmt(repaid.perShare)}).`);
+
+if (withSchedule) await scheduleDemo();
 console.log(`\n${DISCLAIMER}`);
+
+// -- installments ---------------------------------------------------------------------------------
+
+/** The cluster's `Clock::unix_timestamp`: what the program reads as `now`. */
+async function chainNow(): Promise<bigint> {
+  const clock = "SysvarC1ock11111111111111111111111111111111" as Address;
+  const { value } = await rpc.getAccountInfo(clock, { encoding: "base64", commitment: "confirmed" }).send();
+  const data = Buffer.from(value!.data[0], "base64");
+  return data.readBigInt64LE(32); // slot, epoch_start_timestamp, epoch, leader_schedule_epoch, unix_timestamp
+}
+
+async function scheduleDemo() {
+  const installments = 6;
+  const principal = 600n * UNIT;
+  const label = intervalSeconds === MONTH_SECONDS ? "monthly" : `every ${intervalSeconds} s (a compressed demo month)`;
+  console.log(`\nInstallment line: 600 ${ASSET} at 12%, ${installments} installments ${label}, late interest 100% a year, collection after 3 missed`);
+  const { lineCount: id } = (await fetchPool(rpc, pool, { commitment: "confirmed" })).data;
+  const [sLine] = await findLinePda({ pool, lineId: id });
+  // Due dates count from the draw; leave two minutes for it.
+  const sTermEnd = (await chainNow()) + BigInt(installments) * intervalSeconds + 120n;
+  await send("open_line with a schedule", admin, [
+    await getOpenLineInstructionAsync({
+      admin,
+      borrower,
+      pool,
+      line: sLine,
+      lineId: id,
+      principal,
+      rateBps: 1_200,
+      termEnd: sTermEnd,
+      agreementHash: hash,
+      sponsorArg: null,
+      schedule: { intervalSeconds, installments, lateBps: 10_000, maxMissed: 3 },
+    }),
+  ]);
+  await send("draw: 600 tMXN (devnet test token, no value) to the borrower", borrower, [
+    await getDrawInstructionAsync({ borrower, pool, line: sLine, vault, borrowerAssetAccount: borrowerAsset }),
+  ]);
+
+  const grace = poolGracePeriodSeconds((await fetchPool(rpc, pool, { commitment: "confirmed" })).data.reserved);
+  const read = async () => {
+    const l = (await fetchCreditLine(rpc, sLine, { commitment: "confirmed" })).data;
+    const s = decodeSchedule(l)!;
+    const now = await chainNow();
+    return { l, s, now, a: lineArrears(l, s, grace, now) };
+  };
+  let { l, s } = await read();
+  const installment = (l.principal + l.interestDue) / BigInt(installments);
+  console.log(`  installment ${fmt(installment)}; first due at ${l.drawnAt + intervalSeconds} (draw ${l.drawnAt} + interval)`);
+
+  // Let the first installment go unpaid past its due date and the grace period.
+  const target = l.drawnAt + intervalSeconds + grace + 10n;
+  if (target - (await chainNow()) > 600n) {
+    console.log(`  the first installment falls due in ${intervalSeconds} s: run with --interval-seconds 20 on a local validator to see arrears`);
+    return;
+  }
+  console.log(`  waiting until ${target} (due + ${grace} s grace + 10 s) without paying`);
+  while ((await chainNow()) < target) await sleep(2_000);
+  let a;
+  ({ l, s, a } = await read());
+  console.log(`  missed installments ${a.missed}; overdue ${fmt(a.overdue)}; late interest so far ${fmt(a.lateDue)}`);
+
+  // The next repayment: the overdue installment plus the second one. Late interest grows every
+  // second, so the payment includes a margin; the program takes late interest first, then interest,
+  // then principal, and never more than is due.
+  const amount = a.overdue + installment + 2n * a.lateDue + 1_000n;
+  const lateBefore = s.lateCollected;
+  await send("repay: overdue installment, its late interest and the next installment", borrower, [
+    await getRepayInstructionAsync({ payer: borrower, pool, line: sLine, vault, payerAssetAccount: borrowerAsset, amount }),
+  ]);
+  ({ l, s, a } = await read());
+  console.log(`  late interest collected ${fmt(s.lateCollected - lateBefore)}; missed installments now ${a.missed}`);
+  console.log(`  repaid: interest ${fmt(l.interestRepaid)}, principal ${fmt(l.principalRepaid)} (late interest first, then interest, then principal)`);
+  console.log(`  line status ${LineStatus[l.status]}; with 3 missed installments anyone could call mark_in_collection`);
+}

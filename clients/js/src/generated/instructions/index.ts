@@ -9,6 +9,7 @@
 export * from "./deposit";
 export * from "./draw";
 export * from "./initPool";
+export * from "./markInCollection";
 export * from "./openLine";
 export * from "./redeem";
 export * from "./repay";

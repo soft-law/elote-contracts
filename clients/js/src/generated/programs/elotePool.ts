@@ -46,6 +46,7 @@ import {
   getDepositInstructionAsync,
   getDrawInstructionAsync,
   getInitPoolInstructionAsync,
+  getMarkInCollectionInstructionAsync,
   getOpenLineInstructionAsync,
   getRedeemInstructionAsync,
   getRepayInstructionAsync,
@@ -54,6 +55,7 @@ import {
   parseDepositInstruction,
   parseDrawInstruction,
   parseInitPoolInstruction,
+  parseMarkInCollectionInstruction,
   parseOpenLineInstruction,
   parseRedeemInstruction,
   parseRepayInstruction,
@@ -62,10 +64,12 @@ import {
   type DepositAsyncInput,
   type DrawAsyncInput,
   type InitPoolAsyncInput,
+  type MarkInCollectionAsyncInput,
   type OpenLineAsyncInput,
   type ParsedDepositInstruction,
   type ParsedDrawInstruction,
   type ParsedInitPoolInstruction,
+  type ParsedMarkInCollectionInstruction,
   type ParsedOpenLineInstruction,
   type ParsedRedeemInstruction,
   type ParsedRepayInstruction,
@@ -126,10 +130,14 @@ export function identifyElotePoolAccount(
 
 export enum ElotePoolEvent {
   Deposited,
+  LateInterestCollected,
   LineDrawn,
+  LineInCollection,
   LineOpened,
   LineRepaid,
+  LineScheduled,
   LineWrittenOff,
+  PoolConfigured,
   PoolInitialized,
   PoolPaused,
   Redeemed,
@@ -154,12 +162,34 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([222, 62, 200, 36, 83, 150, 231, 151]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LateInterestCollected;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([100, 242, 180, 4, 119, 91, 185, 148]),
       ),
       0,
     )
   ) {
     return ElotePoolEvent.LineDrawn;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([223, 69, 211, 21, 48, 207, 3, 75]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LineInCollection;
   }
   if (
     containsBytes(
@@ -187,12 +217,34 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([235, 180, 143, 112, 60, 193, 27, 134]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LineScheduled;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([78, 147, 223, 35, 76, 99, 164, 168]),
       ),
       0,
     )
   ) {
     return ElotePoolEvent.LineWrittenOff;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([110, 51, 15, 167, 103, 41, 48, 66]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.PoolConfigured;
   }
   if (
     containsBytes(
@@ -236,6 +288,7 @@ export enum ElotePoolInstruction {
   Deposit,
   Draw,
   InitPool,
+  MarkInCollection,
   OpenLine,
   Redeem,
   Repay,
@@ -279,6 +332,17 @@ export function identifyElotePoolInstruction(
     )
   ) {
     return ElotePoolInstruction.InitPool;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([188, 166, 200, 229, 218, 155, 109, 156]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.MarkInCollection;
   }
   if (
     containsBytes(
@@ -354,6 +418,9 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.InitPool;
     } & ParsedInitPoolInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.MarkInCollection;
+    } & ParsedMarkInCollectionInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.OpenLine;
     } & ParsedOpenLineInstruction<TProgram>)
   | ({
@@ -393,6 +460,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.InitPool,
         ...parseInitPoolInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.MarkInCollection: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.MarkInCollection,
+        ...parseMarkInCollectionInstruction(instruction),
       };
     }
     case ElotePoolInstruction.OpenLine: {
@@ -467,6 +541,10 @@ export type ElotePoolPluginInstructions = {
     input: InitPoolAsyncInput,
   ) => ReturnType<typeof getInitPoolInstructionAsync> &
     SelfPlanAndSendFunctions;
+  markInCollection: (
+    input: MarkInCollectionAsyncInput,
+  ) => ReturnType<typeof getMarkInCollectionInstructionAsync> &
+    SelfPlanAndSendFunctions;
   openLine: (
     input: OpenLineAsyncInput,
   ) => ReturnType<typeof getOpenLineInstructionAsync> &
@@ -524,6 +602,11 @@ export function elotePoolProgram() {
             addSelfPlanAndSendFunctions(
               client,
               getInitPoolInstructionAsync(input),
+            ),
+          markInCollection: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getMarkInCollectionInstructionAsync(input),
             ),
           openLine: (input) =>
             addSelfPlanAndSendFunctions(

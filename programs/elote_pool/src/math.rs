@@ -275,7 +275,7 @@ mod tests {
         assert_eq!(installments_covered(1_000_003, 1_000_003, 6), Some(6));
     }
 
-    // -- late interest: ported from the old `penalty` cases, annualized ------------------------
+    // -- late interest: ported from the old late-payment cases, annualized ---------------------
 
     const YEAR: u64 = SECONDS_PER_YEAR;
 

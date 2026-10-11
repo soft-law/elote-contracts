@@ -68,6 +68,17 @@ export type Pool = {
   writtenOff: bigint;
   lineCount: bigint;
   paused: boolean;
+  /**
+   * Pool parameters packed into spare bytes, so the account layout does not change:
+   *
+   * | bytes   | field                  | type     | meaning                                   |
+   * |---------|------------------------|----------|-------------------------------------------|
+   * | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
+   * | 4..32   | unused                 | zero     |                                           |
+   *
+   * Read and written only through [`Pool::grace_period_seconds`] and
+   * [`Pool::set_grace_period_seconds`].
+   */
   reserved: ReadonlyUint8Array;
   bump: number;
 };
@@ -90,6 +101,17 @@ export type PoolArgs = {
   writtenOff: number | bigint;
   lineCount: number | bigint;
   paused: boolean;
+  /**
+   * Pool parameters packed into spare bytes, so the account layout does not change:
+   *
+   * | bytes   | field                  | type     | meaning                                   |
+   * |---------|------------------------|----------|-------------------------------------------|
+   * | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
+   * | 4..32   | unused                 | zero     |                                           |
+   *
+   * Read and written only through [`Pool::grace_period_seconds`] and
+   * [`Pool::set_grace_period_seconds`].
+   */
   reserved: ReadonlyUint8Array;
   bump: number;
 };

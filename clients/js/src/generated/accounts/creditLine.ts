@@ -83,6 +83,21 @@ export type CreditLine = {
   openedAt: bigint;
   drawnAt: bigint;
   closedAt: bigint;
+  /**
+   * Zero on a version-1 line (single maturity). On a version-2 line, the installment schedule,
+   * read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:
+   *
+   * | bytes  | field              | type    | meaning                                         |
+   * |--------|--------------------|---------|-------------------------------------------------|
+   * | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates, from `drawn_at`      |
+   * | 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |
+   * | 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |
+   * | 12     | `max_missed`       | u8      | missed installments that allow collection       |
+   * | 13     | `flags`            | u8      | reserved, zero                                  |
+   * | 14..22 | `late_collected`   | u64 LE  | late interest collected so far                  |
+   * | 22..30 | `late_paid_until`  | i64 LE  | late interest is settled up to this time        |
+   * | 30..32 | unused             | zero    |                                                 |
+   */
   reserved: ReadonlyUint8Array;
   bump: number;
 };
@@ -108,6 +123,21 @@ export type CreditLineArgs = {
   openedAt: number | bigint;
   drawnAt: number | bigint;
   closedAt: number | bigint;
+  /**
+   * Zero on a version-1 line (single maturity). On a version-2 line, the installment schedule,
+   * read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:
+   *
+   * | bytes  | field              | type    | meaning                                         |
+   * |--------|--------------------|---------|-------------------------------------------------|
+   * | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates, from `drawn_at`      |
+   * | 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |
+   * | 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |
+   * | 12     | `max_missed`       | u8      | missed installments that allow collection       |
+   * | 13     | `flags`            | u8      | reserved, zero                                  |
+   * | 14..22 | `late_collected`   | u64 LE  | late interest collected so far                  |
+   * | 22..30 | `late_paid_until`  | i64 LE  | late interest is settled up to this time        |
+   * | 30..32 | unused             | zero    |                                                 |
+   */
   reserved: ReadonlyUint8Array;
   bump: number;
 };

@@ -40,18 +40,36 @@ export const ELOTE_POOL_ERROR__WRONG_ACCOUNT = 0x177a; // 6010
 export const ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED = 0x177b; // 6011
 /** TermEnded: The term has ended */
 export const ELOTE_POOL_ERROR__TERM_ENDED = 0x177c; // 6012
+/** InvalidSchedule: The installment schedule is not valid */
+export const ELOTE_POOL_ERROR__INVALID_SCHEDULE = 0x177d; // 6013
+/** ScheduleEndsAfterTerm: The last installment would fall due after the term */
+export const ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM = 0x177e; // 6014
+/** NotScheduled: The line has no installment schedule */
+export const ELOTE_POOL_ERROR__NOT_SCHEDULED = 0x177f; // 6015
+/** NotEnoughMissed: Fewer installments missed than the line allows before collection */
+export const ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED = 0x1780; // 6016
+/** LateInterestUnpaid: The repayment must cover the late interest due */
+export const ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID = 0x1781; // 6017
+/** WriteOffTooEarly: A line in collection is written off only after its oldest missed due date plus grace, or after the term plus grace */
+export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x1782; // 6018
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
+  | typeof ELOTE_POOL_ERROR__INVALID_SCHEDULE
+  | typeof ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID
   | typeof ELOTE_POOL_ERROR__LINE_STATUS
+  | typeof ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED
+  | typeof ELOTE_POOL_ERROR__NOT_SCHEDULED
   | typeof ELOTE_POOL_ERROR__OVERFLOW
   | typeof ELOTE_POOL_ERROR__PAUSED
+  | typeof ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM
   | typeof ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED
   | typeof ELOTE_POOL_ERROR__SPONSOR_REQUIRED
   | typeof ELOTE_POOL_ERROR__TERM_ENDED
   | typeof ELOTE_POOL_ERROR__TERM_NOT_ENDED
   | typeof ELOTE_POOL_ERROR__UNAUTHORIZED
+  | typeof ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY
   | typeof ELOTE_POOL_ERROR__WRONG_ACCOUNT
   | typeof ELOTE_POOL_ERROR__WRONG_AMOUNT
   | typeof ELOTE_POOL_ERROR__ZERO_SHARES;
@@ -61,14 +79,20 @@ if (process.env["NODE_ENV"] !== "production") {
   elotePoolErrorMessages = {
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
+    [ELOTE_POOL_ERROR__INVALID_SCHEDULE]: `The installment schedule is not valid`,
+    [ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID]: `The repayment must cover the late interest due`,
     [ELOTE_POOL_ERROR__LINE_STATUS]: `The line is not in the required status`,
+    [ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED]: `Fewer installments missed than the line allows before collection`,
+    [ELOTE_POOL_ERROR__NOT_SCHEDULED]: `The line has no installment schedule`,
     [ELOTE_POOL_ERROR__OVERFLOW]: `Arithmetic overflow`,
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,
+    [ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM]: `The last installment would fall due after the term`,
     [ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED]: `The result is below the minimum the caller accepts`,
     [ELOTE_POOL_ERROR__SPONSOR_REQUIRED]: `The sponsor named on this line must sign`,
     [ELOTE_POOL_ERROR__TERM_ENDED]: `The term has ended`,
     [ELOTE_POOL_ERROR__TERM_NOT_ENDED]: `The term has not ended`,
     [ELOTE_POOL_ERROR__UNAUTHORIZED]: `Only the pool admin may do this`,
+    [ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY]: `A line in collection is written off only after its oldest missed due date plus grace, or after the term plus grace`,
     [ELOTE_POOL_ERROR__WRONG_ACCOUNT]: `Wrong mint or token account`,
     [ELOTE_POOL_ERROR__WRONG_AMOUNT]: `Amount is zero or exceeds what is due`,
     [ELOTE_POOL_ERROR__ZERO_SHARES]: `The deposit would mint zero shares`,

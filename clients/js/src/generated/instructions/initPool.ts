@@ -15,6 +15,8 @@ import {
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
+  getU32Decoder,
+  getU32Encoder,
   getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
@@ -113,13 +115,19 @@ export type InitPoolInstruction<
     ]
   >;
 
-export type InitPoolInstructionData = { discriminator: ReadonlyUint8Array };
+export type InitPoolInstructionData = {
+  discriminator: ReadonlyUint8Array;
+  gracePeriodSeconds: number;
+};
 
-export type InitPoolInstructionDataArgs = {};
+export type InitPoolInstructionDataArgs = { gracePeriodSeconds: number };
 
 export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["gracePeriodSeconds", getU32Encoder()],
+    ]),
     (value) => ({ ...value, discriminator: INIT_POOL_DISCRIMINATOR }),
   );
 }
@@ -127,6 +135,7 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
 export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["gracePeriodSeconds", getU32Decoder()],
   ]);
 }
 
@@ -167,6 +176,7 @@ export type InitPoolAsyncInput<
   systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
 };
 
 export async function getInitPoolInstructionAsync<
@@ -292,6 +302,9 @@ export async function getInitPoolInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.pool.value) {
     accounts.pool.value = await findPoolPda(
@@ -373,7 +386,9 @@ export async function getInitPoolInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getInitPoolInstructionDataEncoder().encode({}),
+    data: getInitPoolInstructionDataEncoder().encode(
+      args as InitPoolInstructionDataArgs,
+    ),
     programAddress,
   } as InitPoolInstruction<
     TProgramAddress,
@@ -447,6 +462,7 @@ export type InitPoolInput<
   systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
 };
 
 export function getInitPoolInstruction<
@@ -570,6 +586,9 @@ export function getInitPoolInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
@@ -597,7 +616,9 @@ export function getInitPoolInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getInitPoolInstructionDataEncoder().encode({}),
+    data: getInitPoolInstructionDataEncoder().encode(
+      args as InitPoolInstructionDataArgs,
+    ),
     programAddress,
   } as InitPoolInstruction<
     TProgramAddress,

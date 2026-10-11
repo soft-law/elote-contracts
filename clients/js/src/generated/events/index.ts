@@ -7,10 +7,14 @@
  */
 
 export * from "./deposited";
+export * from "./lateInterestCollected";
 export * from "./lineDrawn";
+export * from "./lineInCollection";
 export * from "./lineOpened";
 export * from "./lineRepaid";
+export * from "./lineScheduled";
 export * from "./lineWrittenOff";
+export * from "./poolConfigured";
 export * from "./poolInitialized";
 export * from "./poolPaused";
 export * from "./redeemed";

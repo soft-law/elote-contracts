@@ -20,6 +20,7 @@ export enum LineStatus {
   Active,
   Repaid,
   WrittenOff,
+  InCollection,
 }
 
 export type LineStatusArgs = LineStatus;

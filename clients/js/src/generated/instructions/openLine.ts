@@ -58,6 +58,12 @@ import {
 } from "@solana/program-client-core";
 import { findLinePda } from "../pdas";
 import { ELOTE_POOL_PROGRAM_ADDRESS } from "../programs";
+import {
+  getScheduleParamsDecoder,
+  getScheduleParamsEncoder,
+  type ScheduleParams,
+  type ScheduleParamsArgs,
+} from "../types";
 
 export const OPEN_LINE_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
   99, 104, 130, 198, 128, 34, 27, 208,
@@ -123,6 +129,7 @@ export type OpenLineInstructionData = {
   termEnd: bigint;
   agreementHash: ReadonlyUint8Array;
   sponsor: Option<Address>;
+  schedule: Option<ScheduleParams>;
 };
 
 export type OpenLineInstructionDataArgs = {
@@ -132,6 +139,7 @@ export type OpenLineInstructionDataArgs = {
   termEnd: number | bigint;
   agreementHash: ReadonlyUint8Array;
   sponsor: OptionOrNullable<Address>;
+  schedule: OptionOrNullable<ScheduleParamsArgs>;
 };
 
 export function getOpenLineInstructionDataEncoder(): Encoder<OpenLineInstructionDataArgs> {
@@ -144,6 +152,7 @@ export function getOpenLineInstructionDataEncoder(): Encoder<OpenLineInstruction
       ["termEnd", getI64Encoder()],
       ["agreementHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["sponsor", getOptionEncoder(getAddressEncoder())],
+      ["schedule", getOptionEncoder(getScheduleParamsEncoder())],
     ]),
     (value) => ({ ...value, discriminator: OPEN_LINE_DISCRIMINATOR }),
   );
@@ -158,6 +167,7 @@ export function getOpenLineInstructionDataDecoder(): Decoder<OpenLineInstruction
     ["termEnd", getI64Decoder()],
     ["agreementHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["sponsor", getOptionDecoder(getAddressDecoder())],
+    ["schedule", getOptionDecoder(getScheduleParamsDecoder())],
   ]);
 }
 
@@ -198,6 +208,7 @@ export type OpenLineAsyncInput<
   termEnd: OpenLineInstructionDataArgs["termEnd"];
   agreementHash: OpenLineInstructionDataArgs["agreementHash"];
   sponsorArg: OpenLineInstructionDataArgs["sponsor"];
+  schedule: OpenLineInstructionDataArgs["schedule"];
 };
 
 export async function getOpenLineInstructionAsync<
@@ -411,6 +422,7 @@ export type OpenLineInput<
   termEnd: OpenLineInstructionDataArgs["termEnd"];
   agreementHash: OpenLineInstructionDataArgs["agreementHash"];
   sponsorArg: OpenLineInstructionDataArgs["sponsor"];
+  schedule: OpenLineInstructionDataArgs["schedule"];
 };
 
 export function getOpenLineInstruction<
