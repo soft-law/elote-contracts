@@ -15,6 +15,7 @@ pub mod math;
 pub mod state;
 
 use instructions::*;
+use state::ScheduleParams;
 
 declare_id!("BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM");
 
@@ -41,7 +42,8 @@ pub mod elote_pool {
     }
 
     /// Approves credit line `line_id` (the next in sequence) for `borrower`; a named sponsor
-    /// co-signs. Moves no money.
+    /// co-signs. With `schedule`, the line is repaid in installments (version 2); without it, at a
+    /// single maturity (version 1). Moves no money.
     #[allow(clippy::too_many_arguments)]
     pub fn open_line(
         ctx: Context<OpenLine>,
@@ -51,8 +53,9 @@ pub mod elote_pool {
         term_end: i64,
         agreement_hash: [u8; 32],
         sponsor: Option<Pubkey>,
+        schedule: Option<ScheduleParams>,
     ) -> Result<()> {
-        instructions::lines::open_line(ctx, line_id, principal, rate_bps, term_end, agreement_hash, sponsor)
+        instructions::lines::open_line(ctx, line_id, principal, rate_bps, term_end, agreement_hash, sponsor, schedule)
     }
 
     /// Pays the whole principal of an approved line from the vault to the borrower, before the

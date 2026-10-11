@@ -45,6 +45,8 @@ pub const E_FIRST_DEPOSIT_TOO_SMALL: u32 = ERR_BASE + 9; // PoolError::FirstDepo
 pub const E_WRONG_ACCOUNT: u32 = ERR_BASE + 10; // PoolError::WrongAccount
 pub const E_SLIPPAGE_EXCEEDED: u32 = ERR_BASE + 11; // PoolError::SlippageExceeded
 pub const E_TERM_ENDED: u32 = ERR_BASE + 12; // PoolError::TermEnded
+pub const E_INVALID_SCHEDULE: u32 = ERR_BASE + 13; // PoolError::InvalidSchedule
+pub const E_SCHEDULE_ENDS_AFTER_TERM: u32 = ERR_BASE + 14; // PoolError::ScheduleEndsAfterTerm
 
 /// SPL Token's `TokenError::InsufficientFunds`, surfaced as custom error 1 by a failed CPI.
 pub const SPL_TOKEN_INSUFFICIENT_FUNDS: u32 = 1;
@@ -54,6 +56,9 @@ pub const DEAD_SHARES: u64 = 1_000;
 
 /// One whole test-token unit: the asset mint has 6 decimals.
 pub const UNIT: u64 = 1_000_000;
+
+/// The installment interval the schedule tests use: 30 days.
+pub const MONTH: i64 = 30 * 24 * 3600;
 
 // -----------------------------------------------------------------------------------------------
 // PDAs: the seed layouts of `state::seeds`.
@@ -122,6 +127,7 @@ pub struct LineParams {
     pub term_end: i64,
     pub agreement_hash: [u8; 32],
     pub sponsor: Option<Pubkey>,
+    pub schedule: Option<elote_pool::state::ScheduleParams>,
 }
 
 pub struct Env {
@@ -505,6 +511,7 @@ impl Env {
                 term_end: p.term_end,
                 agreement_hash: p.agreement_hash,
                 sponsor: p.sponsor,
+                schedule: p.schedule,
             }
             .data(),
         }
@@ -518,6 +525,26 @@ impl Env {
             term_end: self.now() + 30 * 24 * 3600,
             agreement_hash: AGREEMENT_HASH,
             sponsor: None,
+            schedule: None,
+        }
+    }
+
+    /// Terms of a scheduled line: `installments` monthly installments (30 days), a term that ends
+    /// exactly at the last due date if the line is drawn now, and the demo policy of three missed
+    /// installments before collection.
+    pub fn scheduled_params(&self, principal: u64, rate_bps: u16, installments: u16, late_bps: u16) -> LineParams {
+        LineParams {
+            principal,
+            rate_bps,
+            term_end: self.now() + i64::from(installments) * MONTH,
+            agreement_hash: AGREEMENT_HASH,
+            sponsor: None,
+            schedule: Some(elote_pool::state::ScheduleParams {
+                interval_seconds: MONTH,
+                installments,
+                late_bps,
+                max_missed: 3,
+            }),
         }
     }
 

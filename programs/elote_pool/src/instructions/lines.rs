@@ -8,10 +8,13 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::errors::PoolError;
-use crate::events::{LineDrawn, LineOpened, LineRepaid, LineWrittenOff};
+use crate::events::{LineDrawn, LineOpened, LineRepaid, LineScheduled, LineWrittenOff};
 use crate::math;
 use crate::pool_signer;
-use crate::state::{seeds, CreditLine, LineStatus, Pool, BPS, LINE_VERSION};
+use crate::state::{
+    seeds, CreditLine, LineStatus, Pool, Schedule, ScheduleParams, BPS, LINE_VERSION, LINE_VERSION_SCHEDULED,
+    MAX_INSTALLMENTS,
+};
 
 // -----------------------------------------------------------------------------------------------
 // open_line
@@ -49,6 +52,7 @@ pub struct OpenLine<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn open_line(
     ctx: Context<OpenLine>,
     line_id: u64,
@@ -57,6 +61,7 @@ pub fn open_line(
     term_end: i64,
     agreement_hash: [u8; 32],
     sponsor: Option<Pubkey>,
+    schedule: Option<ScheduleParams>,
 ) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &mut ctx.accounts.pool;
@@ -71,9 +76,12 @@ pub fn open_line(
         require!(signed, PoolError::SponsorRequired);
     }
     let interest_due = math::interest_due(principal, rate_bps).ok_or(PoolError::Overflow)?;
+    if let Some(s) = schedule {
+        validate_schedule(&s, principal, interest_due, now, term_end)?;
+    }
 
     let line = &mut ctx.accounts.line;
-    line.version = LINE_VERSION;
+    line.version = if schedule.is_some() { LINE_VERSION_SCHEDULED } else { LINE_VERSION };
     line.pool = pool.key();
     line.line_id = line_id;
     line.borrower = ctx.accounts.borrower.key();
@@ -90,6 +98,16 @@ pub fn open_line(
     line.drawn_at = 0;
     line.closed_at = 0;
     line.reserved = [0; 32];
+    if let Some(s) = schedule {
+        line.set_schedule(&Schedule {
+            interval_seconds: s.interval_seconds,
+            installments: s.installments,
+            late_bps: s.late_bps,
+            max_missed: s.max_missed,
+            flags: 0,
+            late_collected: 0,
+        });
+    }
     line.bump = ctx.bumps.line;
 
     pool.line_count = pool.line_count.checked_add(1).ok_or(PoolError::Overflow)?;
@@ -105,7 +123,39 @@ pub fn open_line(
         interest_due,
         term_end,
     });
+    if let Some(s) = schedule {
+        emit_cpi!(LineScheduled {
+            pool: pool.key(),
+            line_id,
+            interval_seconds: s.interval_seconds,
+            installments: s.installments,
+            late_bps: s.late_bps,
+            max_missed: s.max_missed,
+        });
+    }
     Ok(())
+}
+
+/// Checks the schedule against the line's terms: at least one and at most `MAX_INSTALLMENTS`
+/// installments of at least one unit each, a positive interval, `late_bps <= BPS`,
+/// `1 <= max_missed <= installments`, and the last due date no later than `term_end` if the line
+/// were drawn now (`draw` checks it again at the actual draw).
+fn validate_schedule(s: &ScheduleParams, principal: u64, interest_due: u64, now: i64, term_end: i64) -> Result<()> {
+    require!(s.installments >= 1 && s.installments <= MAX_INSTALLMENTS, PoolError::InvalidSchedule);
+    require!(s.interval_seconds > 0, PoolError::InvalidSchedule);
+    require!(u64::from(s.late_bps) <= BPS, PoolError::InvalidSchedule);
+    require!(s.max_missed >= 1 && u16::from(s.max_missed) <= s.installments, PoolError::InvalidSchedule);
+    let total = principal.checked_add(interest_due).ok_or(PoolError::Overflow)?;
+    require!(total >= u64::from(s.installments), PoolError::InvalidSchedule);
+    let last_due = schedule_end(now, s.interval_seconds, s.installments)?;
+    require!(last_due <= term_end, PoolError::ScheduleEndsAfterTerm);
+    Ok(())
+}
+
+/// The last due date of a schedule drawn at `start`: `start + installments * interval`.
+fn schedule_end(start: i64, interval_seconds: i64, installments: u16) -> Result<i64> {
+    let span = interval_seconds.checked_mul(i64::from(installments)).ok_or(PoolError::Overflow)?;
+    Ok(start.checked_add(span).ok_or(PoolError::Overflow)?)
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -153,6 +203,11 @@ pub fn draw(ctx: Context<Draw>) -> Result<()> {
     require!(line.status == LineStatus::Approved, PoolError::LineStatus);
     let now = Clock::get()?.unix_timestamp;
     require!(now <= line.term_end, PoolError::TermEnded);
+    // Due dates count from the draw: the last one must still fall within the term.
+    if let Some(s) = line.schedule() {
+        let last_due = schedule_end(now, s.interval_seconds, s.installments)?;
+        require!(last_due <= line.term_end, PoolError::ScheduleEndsAfterTerm);
+    }
     let amount = line.principal;
     require!(amount <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
 

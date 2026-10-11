@@ -30,4 +30,8 @@ pub enum PoolError {
     SlippageExceeded,
     #[msg("The term has ended")]
     TermEnded,
+    #[msg("The installment schedule is not valid")]
+    InvalidSchedule,
+    #[msg("The last installment would fall due after the term")]
+    ScheduleEndsAfterTerm,
 }

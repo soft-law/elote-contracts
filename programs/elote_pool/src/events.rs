@@ -50,6 +50,17 @@ pub struct LineOpened {
     pub term_end: i64,
 }
 
+/// Emitted by `open_line` after `LineOpened` when the line has an installment schedule.
+#[event]
+pub struct LineScheduled {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub interval_seconds: i64,
+    pub installments: u16,
+    pub late_bps: u16,
+    pub max_missed: u8,
+}
+
 #[event]
 pub struct LineDrawn {
     pub pool: Pubkey,
