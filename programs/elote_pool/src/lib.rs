@@ -22,9 +22,10 @@ declare_id!("BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM");
 pub mod elote_pool {
     use super::*;
 
-    /// Creates the pool, its share token mint and its vault for `asset_mint`.
-    pub fn init_pool(ctx: Context<InitPool>) -> Result<()> {
-        instructions::pool::init_pool(ctx)
+    /// Creates the pool, its share token mint and its vault for `asset_mint`, with the grace
+    /// period (seconds) that applies to every line of the pool.
+    pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32) -> Result<()> {
+        instructions::pool::init_pool(ctx, grace_period_seconds)
     }
 
     /// Deposits `assets` into the vault and receives shares at the current NAV, at least

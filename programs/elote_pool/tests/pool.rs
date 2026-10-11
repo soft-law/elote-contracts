@@ -4,7 +4,7 @@ mod common;
 
 use anchor_lang::AccountDeserialize;
 use common::*;
-use elote_pool::events::{PoolInitialized, PoolPaused};
+use elote_pool::events::{PoolConfigured, PoolInitialized, PoolPaused};
 use solana_signer::Signer;
 
 /// Value of one whole share in asset units, at `nav` and `supply`, rounded down.
@@ -289,4 +289,29 @@ fn redeem_rounds_down_and_honours_min_assets_out() {
     assert_eq!(ev.supply_after, 10 * UNIT - 333_333);
     // 7 * 1.04 = 7.28 rounds down to 7.
     assert_eq!(env.redeem(&k, &a, 7).assets, 7);
+}
+
+#[test]
+fn init_pool_records_the_grace_period() {
+    let mut env = Env::new();
+    let grace: u32 = 5 * 24 * 3600;
+    let (k, meta) = env.setup_pool_with_grace(grace);
+
+    let pool = env.pool(&k);
+    assert_eq!(pool.version, 1, "pools stay at version 1");
+    assert_eq!(pool.grace_period_seconds(), grace);
+    assert_eq!(&pool.reserved[0..4], &grace.to_le_bytes(), "bytes 0..4 of reserved, little endian");
+    assert_eq!(&pool.reserved[4..], &[0u8; 28], "the rest of reserved stays zero");
+
+    let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
+    assert_eq!(ev.pool, k.pool);
+    let ev: PoolConfigured = find_event(&meta).expect("PoolConfigured");
+    assert_eq!((ev.pool, ev.grace_period_seconds), (k.pool, grace));
+
+    // The default pool of the other tests has no grace.
+    let (k0, meta0) = env.setup_pool();
+    assert_eq!(env.pool(&k0).grace_period_seconds(), 0);
+    assert_eq!(env.pool(&k0).reserved, [0u8; 32]);
+    let ev: PoolConfigured = find_event(&meta0).expect("PoolConfigured");
+    assert_eq!(ev.grace_period_seconds, 0);
 }

@@ -10,6 +10,13 @@ pub struct PoolInitialized {
     pub admin: Pubkey,
 }
 
+/// Emitted by `init_pool` after `PoolInitialized`: the pool parameters fixed at launch.
+#[event]
+pub struct PoolConfigured {
+    pub pool: Pubkey,
+    pub grace_period_seconds: u32,
+}
+
 #[event]
 pub struct Deposited {
     pub pool: Pubkey,

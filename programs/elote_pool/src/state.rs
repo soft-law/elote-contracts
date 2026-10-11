@@ -45,8 +45,31 @@ pub struct Pool {
     pub written_off: u64,
     pub line_count: u64,
     pub paused: bool,
+    /// Pool parameters packed into spare bytes, so the account layout does not change:
+    ///
+    /// | bytes   | field                  | type     | meaning                                   |
+    /// |---------|------------------------|----------|-------------------------------------------|
+    /// | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
+    /// | 4..32   | unused                 | zero     |                                           |
+    ///
+    /// Read and written only through [`Pool::grace_period_seconds`] and
+    /// [`Pool::set_grace_period_seconds`].
     pub reserved: [u8; 32],
     pub bump: u8,
+}
+
+impl Pool {
+    /// Seconds after a due date (or after the term) before late interest accrues and before a
+    /// write-off is allowed. Fixed at `init_pool`.
+    pub fn grace_period_seconds(&self) -> u32 {
+        let mut b = [0u8; 4];
+        b.copy_from_slice(&self.reserved[0..4]);
+        u32::from_le_bytes(b)
+    }
+
+    pub fn set_grace_period_seconds(&mut self, seconds: u32) {
+        self.reserved[0..4].copy_from_slice(&seconds.to_le_bytes());
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]

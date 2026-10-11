@@ -311,6 +311,10 @@ impl Env {
     // -- pool instructions ---------------------------------------------------------------------
 
     pub fn init_pool_ix(&self, admin: &Pubkey, asset_mint: &Pubkey) -> Instruction {
+        self.init_pool_ix_with_grace(admin, asset_mint, 0)
+    }
+
+    pub fn init_pool_ix_with_grace(&self, admin: &Pubkey, asset_mint: &Pubkey, grace_period_seconds: u32) -> Instruction {
         let k = PoolKeys::new(admin, asset_mint);
         let (event_authority, program) = event_metas();
         Instruction {
@@ -328,15 +332,20 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::InitPool {}.data(),
+            data: elote_pool::instruction::InitPool { grace_period_seconds }.data(),
         }
     }
 
     /// Creates a 6-decimal test asset mint (authority = admin) and a pool for it.
     pub fn setup_pool(&mut self) -> (PoolKeys, TransactionMetadata) {
+        self.setup_pool_with_grace(0)
+    }
+
+    /// As `setup_pool`, with a pool grace period of `grace_period_seconds`.
+    pub fn setup_pool_with_grace(&mut self, grace_period_seconds: u32) -> (PoolKeys, TransactionMetadata) {
         let admin = self.admin.insecure_clone();
         let asset_mint = self.create_mint(&admin.pubkey(), 6);
-        let ix = self.init_pool_ix(&admin.pubkey(), &asset_mint);
+        let ix = self.init_pool_ix_with_grace(&admin.pubkey(), &asset_mint, grace_period_seconds);
         let meta = self.send(ix, &admin, &[]);
         (PoolKeys::new(&admin.pubkey(), &asset_mint), meta)
     }

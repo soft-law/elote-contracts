@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
 
 use crate::errors::PoolError;
-use crate::events::{Deposited, PoolInitialized, PoolPaused, Redeemed};
+use crate::events::{Deposited, PoolConfigured, PoolInitialized, PoolPaused, Redeemed};
 use crate::math;
 use crate::state::{seeds, Pool, DEAD_SHARES, MIN_FIRST_DEPOSIT, POOL_VERSION};
 
@@ -78,7 +78,8 @@ pub struct InitPool<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn init_pool(ctx: Context<InitPool>) -> Result<()> {
+/// `grace_period_seconds` is fixed for the life of the pool (zero means no grace).
+pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     pool.version = POOL_VERSION;
     pool.admin = ctx.accounts.admin.key();
@@ -92,6 +93,7 @@ pub fn init_pool(ctx: Context<InitPool>) -> Result<()> {
     pool.line_count = 0;
     pool.paused = false;
     pool.reserved = [0; 32];
+    pool.set_grace_period_seconds(grace_period_seconds);
     pool.bump = ctx.bumps.pool;
 
     emit_cpi!(PoolInitialized {
@@ -100,6 +102,7 @@ pub fn init_pool(ctx: Context<InitPool>) -> Result<()> {
         share_mint: pool.share_mint,
         admin: pool.admin,
     });
+    emit_cpi!(PoolConfigured { pool: pool.key(), grace_period_seconds });
     Ok(())
 }
 
