@@ -28,6 +28,9 @@ pub const LINE_VERSION: u8 = 1;
 pub const LINE_VERSION_SCHEDULED: u8 = 2;
 /// Upper bound on the installments of one line, so the arrears computation is bounded.
 pub const MAX_INSTALLMENTS: u16 = 120;
+/// The fewest missed installments a schedule may set before collection: the owner's policy is
+/// three months of arrears.
+pub const MIN_MAX_MISSED: u8 = 3;
 /// The year that annualizes `late_bps`: 365 days.
 pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
 

@@ -143,6 +143,10 @@ pub struct ScheduleTerms {
     pub grace: u32,
     /// Late interest is settled up to this time (zero: never).
     pub late_paid_until: i64,
+    /// The line's principal: late interest collected over the life of the line never exceeds it.
+    pub principal: u64,
+    /// Late interest collected so far.
+    pub late_collected: u64,
 }
 
 /// Arrears of a scheduled line that has repaid `paid` (principal plus interest) by `now`.
@@ -152,7 +156,9 @@ pub struct ScheduleTerms {
 /// and never beyond its own amount. The sum is divided once:
 ///
 /// `late_due = Σ part_k * min(now - start_k, cap) * late_bps / (10_000 * SECONDS_PER_YEAR)`,
-/// capped at `overdue`.
+/// capped at `overdue` for this settlement and at `principal - late_collected` over the life of the
+/// line. The per-part cap applies to one settlement: after a repayment the watermark moves and the
+/// same unpaid part can accrue again, which is what the lifetime cap bounds.
 pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
     let due = installments_due(now, t.drawn_at, t.interval, t.installments);
     let covered = installments_covered(paid, t.total, t.installments)?;
@@ -178,7 +184,8 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
         }
         overdue = overdue.checked_add(part)?;
     }
-    let late_due = late_from_weighted(weighted, t.late_bps, overdue)?;
+    let lifetime_left = t.principal.checked_sub(t.late_collected)?;
+    let late_due = late_from_weighted(weighted, t.late_bps, overdue)?.min(lifetime_left);
     Some(Arrears { due, covered, missed, overdue, late_due, first_missed_due })
 }
 
@@ -318,7 +325,17 @@ mod tests {
     // -- arrears -------------------------------------------------------------------------------
 
     fn terms(total: u64, n: u16, late_bps: u16, grace: u32) -> ScheduleTerms {
-        ScheduleTerms { total, drawn_at: 1_000, interval: 100, installments: n, late_bps, grace, late_paid_until: 0 }
+        ScheduleTerms {
+            total,
+            drawn_at: 1_000,
+            interval: 100,
+            installments: n,
+            late_bps,
+            grace,
+            late_paid_until: 0,
+            principal: total,
+            late_collected: 0,
+        }
     }
 
     #[test]
@@ -364,6 +381,19 @@ mod tests {
         let t = terms(600, 6, 10_000, 0);
         let a = arrears(&t, 0, 1_000 + 600 + 50 * YEAR as i64).unwrap();
         assert_eq!((a.overdue, a.late_due), (600, 600));
+    }
+
+    #[test]
+    fn arrears_late_interest_never_exceeds_the_principal_over_the_life_of_the_line() {
+        let mut t = terms(600, 6, 10_000, 0);
+        t.principal = 500;
+        t.late_collected = 450;
+        let a = arrears(&t, 0, 1_000 + 600 + 50 * YEAR as i64).unwrap();
+        assert_eq!(a.late_due, 50);
+        t.late_collected = 500;
+        assert_eq!(arrears(&t, 0, 1_000 + 600 + 50 * YEAR as i64).unwrap().late_due, 0);
+        t.late_collected = 501;
+        assert_eq!(arrears(&t, 0, 1_700).map(|a| a.late_due), None, "an impossible state is refused");
     }
 
     #[test]

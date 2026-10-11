@@ -163,13 +163,13 @@ fn repay_rejects_overpay_and_wrong_status() {
     env.expect_err(ix, &borrower, &[], E_WRONG_AMOUNT);
     assert_eq!(env.token_balance(&k.vault), vault_before, "an overpayment never reaches the vault");
 
-    // Paused: no repayment either.
+    // Paused: a borrower can still repay.
     env.set_paused(&k, true);
-    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), UNIT);
-    env.expect_err(ix, &borrower, &[], E_PAUSED);
+    let ev = env.repay(&k, line_id, &borrower, UNIT);
+    assert_eq!((ev.principal_part, ev.remaining), (UNIT, 3_400_000));
     env.set_paused(&k, false);
 
-    env.repay(&k, line_id, &borrower, 4_400_000);
+    env.repay(&k, line_id, &borrower, 3_400_000);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 1);
     env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
     assert_eq!(env.token_balance(&ata(&borrower.pubkey(), &k.asset_mint)), 1_600_000);

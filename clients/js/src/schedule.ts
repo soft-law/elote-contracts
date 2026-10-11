@@ -96,9 +96,10 @@ export function lineArrears(
     if (now > start) weighted += part * min(now - start, lateCap);
     overdue += part;
   }
+  // Capped at the overdue amount for this settlement and at the principal over the line's life.
   const lateDue = min(
-    overdue,
-    (weighted * BigInt(s.lateBps)) / (BPS * SECONDS_PER_YEAR)
+    min(overdue, (weighted * BigInt(s.lateBps)) / (BPS * SECONDS_PER_YEAR)),
+    line.principal - s.lateCollected
   );
   return {
     due: Number(due),

@@ -677,6 +677,8 @@ impl Env {
             late_bps: s.late_bps,
             grace: self.pool(k).grace_period_seconds(),
             late_paid_until: s.late_paid_until,
+            principal: line.principal,
+            late_collected: s.late_collected,
         };
         elote_pool::math::arrears(&terms, line.principal_repaid + line.interest_repaid, self.now()).expect("arrears")
     }

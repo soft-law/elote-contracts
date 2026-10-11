@@ -30,8 +30,8 @@ script. Nothing here holds or moves real money.
   period, and a line with three missed installments goes to collection.
 - **Optional sponsor.** A public support program can be named on a line; it must co-sign the opening and
   may pay the interest. It never touches the pool's money otherwise.
-- **Pause.** The admin can pause deposits, redemptions, openings, draws and repayments. Writing off
-  an overdue line and unpausing are never blocked.
+- **Pause.** The admin can pause deposits, redemptions, openings and draws. Repayments, moving a line
+  to collection, writing off an overdue line and unpausing are never blocked.
 
 ## What it is not
 
@@ -55,12 +55,14 @@ Known behaviour of the share accounting, by design for this demo:
 1. The pool admin is part of the pool's creation seed and cannot be rotated, so a compromised admin can open a line to its own wallet and draw the liquidity (roadmap: a roles account with a two-step handover and per-line limits).
 2. Interest counts only when it is repaid, so a deposit placed right before a known repayment captures that interest and can be redeemed right after.
 3. An overdue line stays at full value until an admin writes it off. The program only allows the write-off after collection plus grace, or after the term plus grace; recording it is still the admin's act.
-4. The pause blocks deposit, redeem, draw, repay and `mark_in_collection` but not write-off, so the operator procedure is to pause and then write off, and a hostile admin could misuse that sequence (roadmap: repay allowed while paused). Missed installments keep counting while the pool is paused.
+4. The pause blocks deposit, redeem, opening and draw only. Repayments are never paused, so a borrower can always pay and cure; `mark_in_collection` (which only records facts) and the admin's write-off also run while paused. The operator procedure for a write-off is still to pause deposits and redemptions first, so nobody redeems at the pre-loss value.
 5. Any SPL asset mint is accepted, including mints with a freeze authority.
 6. The program's upgrade authority is a single key (roadmap: a Squads multisig).
 
 7. Late interest is collected only when a repayment arrives; it is never accrued in the NAV, and unpaid late interest is not part of a write-off.
-8. A repayment of a scheduled line must cover the late interest due at that second. Late interest grows every second, so clients add a margin; the program takes only what is due and leaves the rest in the payer's account.
+8. Collection does not accelerate the balance: the installments keep their due dates and the `flags` byte stays unused, reserved for that later.
+9. A line can stay `Approved` forever if the borrower never draws; there is no cancel instruction yet (roadmap).
+10. A repayment of a scheduled line must cover the late interest due at that second. Late interest grows every second, so clients add a margin; the program takes only what is due and leaves the rest in the payer's account.
 
 **Roadmap:** sponsor escrow and interest accounting, SPL collateral, and disputes as a separate program.
 
@@ -100,10 +102,10 @@ A version-1 line (single maturity) has all 32 bytes at zero.
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, schedule)` | admin, borrower, sponsor if named | approves the next line; moves no money; `schedule` (optional) makes it an installment line |
 | `draw` | borrower | the whole principal goes from the vault to the borrower, before the term ends (and, for an installment line, early enough for the last installment to fall due within the term) |
-| `repay(amount)` | anyone | single maturity: principal first, then interest. Installments: late interest, then interest, then principal, never more than is due. The line closes when nothing remains |
-| `mark_in_collection` | anyone | moves an installment line with `max_missed` or more missed installments to `InCollection` |
+| `repay(amount)` | anyone | single maturity: principal first, then interest. Installments: late interest, then interest, then principal, never more than is due. The line closes when nothing remains. Never paused |
+| `mark_in_collection` | anyone | moves an installment line to `InCollection` once `max_missed` installments are missed and the grace period of the last of them has run. Never paused |
 | `write_off` | admin | after the term plus grace, or for a line in collection after its oldest missed due date plus grace, the unpaid principal is recognised as a loss |
-| `set_paused(paused)` | admin | pause switch |
+| `set_paused(paused)` | admin | pause switch for deposits, redemptions, openings and draws |
 
 Error codes start at 6000 in the order of `PoolError` in `programs/elote_pool/src/errors.rs`.
 
@@ -115,20 +117,31 @@ Without it the line is a single-maturity line (version 1) and nothing below appl
 - **Schedule.** Installment `k` falls due at `drawn_at + k * interval_seconds`. Each installment is
   `(principal + interest_due) / installments`, rounded down; the last one carries the remainder, so they
   add up exactly. Limits: 1 to 120 installments, a positive interval, `late_bps <= 10_000`,
-  `1 <= max_missed <= installments`, at least one unit per installment, and the last due date no later
+  `3 <= max_missed <= installments` (the owner's policy is three months of arrears before collection), at least one unit per installment, and the last due date no later
   than `term_end` (checked at opening and again at the draw).
 - **Missed installments** are computed, never stored: installments fallen due minus installments fully
   covered by the principal and interest repaid. At its due second an installment already counts as due.
   The pool's grace period does not change the count.
-- **Late interest** accrues on each overdue part from its due date plus the pool's grace period, linear
-  per second at `late_bps` a year (365 days), never more than the part itself:
-  `Σ part * min(seconds, cap) * late_bps / (10_000 * 31_536_000)`, rounded down, in `u128`. Each
-  repayment settles it in full and records `late_paid_until`, so no period is charged twice. It goes to
-  the vault and raises the NAV like interest; it is counted in the line's `late_collected`, not in the
-  pool's `interest_collected`.
+- **Late interest** accrues on each overdue part from its due date plus the pool's grace period (or
+  from the last repayment, whichever is later), linear per second at `late_bps` a year (365 days):
+  `Σ part * min(seconds, cap) * late_bps / (10_000 * 31_536_000)`, rounded down, in `u128`, where
+  `cap = ceil(10_000 * 31_536_000 / late_bps)` seconds. Two caps apply:
+  - **per settlement:** within one repayment, each overdue part accrues at most its own amount. Each
+    repayment settles the late interest in full and records `late_paid_until`, so no period is charged
+    twice; but a part that stays unpaid accrues again after the next repayment, so over several
+    repayments the late interest on one part can exceed that part.
+  - **over the life of the line:** late interest collected never exceeds the line's principal
+    (`late_due <= principal - late_collected`). A borrower who pays only late interest reaches this cap
+    and from then on every payment goes to interest and principal.
+
+  Late interest goes to the vault and raises the NAV like interest; it is counted in the line's
+  `late_collected`, not in the pool's `interest_collected`.
 - **Repayment order** on an installment line: late interest, then interest, then principal.
-- **Collection.** Once `max_missed` installments are missed (the demo policy is three, three months of
-  arrears), anyone may call `mark_in_collection`, which moves the line to `InCollection`. Repayments are
+- **Collection.** Once `max_missed` installments are missed (at least three, three months of arrears)
+  and the grace period of the last of them has run (`now > drawn_at + (covered + max_missed) * interval
+  + grace`, with `covered` installments paid), anyone may call `mark_in_collection`, which moves the line
+  to `InCollection`. Collection does not accelerate the balance: the remaining installments keep their
+  due dates. Repayments are
   still accepted there; a full repayment moves it to `Repaid`. A payment that cures the arrears leaves the
   status as it is, but then nothing is missed and the write-off below is not allowed.
 - **Write-off policy.** After the third month in arrears the line goes to out-of-court collection and the

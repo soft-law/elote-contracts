@@ -1,7 +1,8 @@
 //! Credit lines approved from the pool: open, draw, repay, collection and write off.
 //!
 //! A line moves `Approved -> Active -> Repaid | WrittenOff`, and a scheduled line can also move
-//! `Active -> InCollection -> Repaid | WrittenOff`. On a single-maturity line (version 1)
+//! `Active -> InCollection -> Repaid | WrittenOff`. The pause blocks openings and draws (and,
+//! in `pool.rs`, deposits and redemptions); repayments and `mark_in_collection` always run. On a single-maturity line (version 1)
 //! repayments go to principal first, then to the fixed interest. On a scheduled line (version 2)
 //! they go to late interest, then interest, then principal. Collected interest and late interest
 //! raise the NAV; a written-off principal lowers it once.
@@ -17,7 +18,7 @@ use crate::math::{self, Arrears, ScheduleTerms};
 use crate::pool_signer;
 use crate::state::{
     seeds, CreditLine, LineStatus, Pool, Schedule, ScheduleParams, BPS, LINE_VERSION, LINE_VERSION_SCHEDULED,
-    MAX_INSTALLMENTS,
+    MAX_INSTALLMENTS, MIN_MAX_MISSED,
 };
 
 // -----------------------------------------------------------------------------------------------
@@ -143,13 +144,13 @@ pub fn open_line(
 
 /// Checks the schedule against the line's terms: at least one and at most `MAX_INSTALLMENTS`
 /// installments of at least one unit each, a positive interval, `late_bps <= BPS`,
-/// `1 <= max_missed <= installments`, and the last due date no later than `term_end` if the line
+/// `MIN_MAX_MISSED <= max_missed <= installments`, and the last due date no later than `term_end` if the line
 /// were drawn now (`draw` checks it again at the actual draw).
 fn validate_schedule(s: &ScheduleParams, principal: u64, interest_due: u64, now: i64, term_end: i64) -> Result<()> {
     require!(s.installments >= 1 && s.installments <= MAX_INSTALLMENTS, PoolError::InvalidSchedule);
     require!(s.interval_seconds > 0, PoolError::InvalidSchedule);
     require!(u64::from(s.late_bps) <= BPS, PoolError::InvalidSchedule);
-    require!(s.max_missed >= 1 && u16::from(s.max_missed) <= s.installments, PoolError::InvalidSchedule);
+    require!(s.max_missed >= MIN_MAX_MISSED && u16::from(s.max_missed) <= s.installments, PoolError::InvalidSchedule);
     let total = principal.checked_add(interest_due).ok_or(PoolError::Overflow)?;
     require!(total >= u64::from(s.installments), PoolError::InvalidSchedule);
     let last_due = schedule_end(now, s.interval_seconds, s.installments)?;
@@ -287,11 +288,12 @@ pub struct Repay<'info> {
 /// Version 2: `amount` must cover the late interest due; the repayment settles the late interest,
 /// then interest, then principal, and takes at most what is due: the payer's account is debited
 /// only that, never `amount` when it is larger. Accepted in `Active` and `InCollection`.
+///
+/// Never blocked by the pause: a borrower can always pay.
 pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
-    require!(!pool.paused, PoolError::Paused);
     let schedule = line.schedule();
     let accepted = match schedule {
         Some(_) => matches!(line.status, LineStatus::Active | LineStatus::InCollection),
@@ -391,6 +393,8 @@ fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
         late_bps: s.late_bps,
         grace: pool.grace_period_seconds(),
         late_paid_until: s.late_paid_until,
+        principal: line.principal,
+        late_collected: s.late_collected,
     };
     let paid = line.principal_repaid.checked_add(line.interest_repaid).ok_or(PoolError::Overflow)?;
     Ok(math::arrears(&terms, paid, now).ok_or(PoolError::Overflow)?)
@@ -418,17 +422,26 @@ pub struct MarkInCollection<'info> {
     pub line: Account<'info, CreditLine>,
 }
 
-/// Anyone may move an active scheduled line with at least `max_missed` missed installments to
-/// `InCollection`. Blocked while the pool is paused, since the borrower cannot repay then.
+/// Anyone may move an active scheduled line to `InCollection` once `max_missed` installments are
+/// missed and the grace period of the last of them has run: with `covered` installments paid,
+/// `now > drawn_at + (covered + max_missed) * interval + grace`. It only records facts, so it is
+/// not blocked by the pause (repayments are not either).
 pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
-    require!(!pool.paused, PoolError::Paused);
     let s = line.schedule().ok_or(PoolError::NotScheduled)?;
     require!(line.status == LineStatus::Active, PoolError::LineStatus);
     let a = line_arrears(line, pool, now)?;
-    require!(a.missed >= u16::from(s.max_missed), PoolError::NotEnoughMissed);
+    let k = a.covered.checked_add(u16::from(s.max_missed)).ok_or(PoolError::Overflow)?;
+    require!(k <= s.installments, PoolError::NotEnoughMissed);
+    let grace_end = s
+        .interval_seconds
+        .checked_mul(i64::from(k))
+        .and_then(|span| line.drawn_at.checked_add(span))
+        .and_then(|due| due.checked_add(i64::from(pool.grace_period_seconds())))
+        .ok_or(PoolError::Overflow)?;
+    require!(now > grace_end, PoolError::NotEnoughMissed);
 
     let remaining = line
         .principal

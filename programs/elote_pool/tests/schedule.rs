@@ -94,6 +94,7 @@ fn open_rejects_invalid_schedules() {
         ("negative interval", with(&|s| s.interval_seconds = -MONTH), E_INVALID_SCHEDULE),
         ("late rate above 100%", with(&|s| s.late_bps = 10_001), E_INVALID_SCHEDULE),
         ("zero max missed", with(&|s| s.max_missed = 0), E_INVALID_SCHEDULE),
+        ("max missed below the three-month policy", with(&|s| s.max_missed = 2), E_INVALID_SCHEDULE),
         ("max missed above installments", with(&|s| s.max_missed = 7), E_INVALID_SCHEDULE),
         ("one second past the term", with(&|s| s.interval_seconds = MONTH + 1), E_SCHEDULE_ENDS_AFTER_TERM),
         ("span overflow", with(&|s| s.interval_seconds = i64::MAX), E_OVERFLOW),
@@ -114,13 +115,13 @@ fn open_rejects_invalid_schedules() {
     env.expect_err(ix, &admin, &[&borrower], E_INVALID_SCHEDULE);
     assert_eq!(env.pool(&k).line_count, 0);
 
-    // The edges are accepted: one installment, max_missed == installments, 100% late rate,
-    // last due date exactly at the term.
+    // The edges are accepted: three installments with max_missed == installments, 100% late
+    // rate, last due date exactly at the term.
     let p = with(&|s| {
-        s.installments = 1;
-        s.max_missed = 1;
+        s.installments = 3;
+        s.max_missed = 3;
         s.late_bps = 10_000;
-        s.interval_seconds = 6 * MONTH;
+        s.interval_seconds = 2 * MONTH;
     });
     open(&mut env, &k, &borrower, &p);
     let p = with(&|s| s.max_missed = 6);
@@ -256,27 +257,27 @@ fn late_interest_accrues_after_grace_and_is_collected_first() {
 fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
-    let mut p = env.scheduled_params(UNIT, 1_000, 1, 10_000);
-    p.schedule.as_mut().unwrap().max_missed = 1;
+    let p = env.scheduled_params(UNIT, 1_000, 3, 10_000);
     let total = 1_100_000;
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 5 * UNIT);
 
-    // Twenty years late at 100% a year: the late interest stops at the overdue amount.
-    env.warp(t0 + MONTH + 20 * elote_pool::state::SECONDS_PER_YEAR as i64);
+    // Twenty years late at 100% a year: each part stops at its own amount (1.1 overdue in all),
+    // and the lifetime cap holds late interest to the principal, 1.0.
+    env.warp(t0 + 3 * MONTH + 20 * elote_pool::state::SECONDS_PER_YEAR as i64);
     let a = env.arrears(&k, line_id);
-    assert_eq!((a.overdue, a.late_due), (total, total));
+    assert_eq!((a.overdue, a.late_due), (total, UNIT));
 
     // Paying far more than is due debits only what is due.
     let before = borrower_balance(&env, &k, &b);
     let ix = env.repay_ix(&k, line_id, &b.pubkey(), 6 * UNIT);
     let meta = env.send(ix, &b, &[]);
-    assert_eq!(find_event::<LateInterestCollected>(&meta).unwrap().amount, total);
+    assert_eq!(find_event::<LateInterestCollected>(&meta).unwrap().amount, UNIT);
     let ev: LineRepaid = find_event(&meta).unwrap();
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (100_000, UNIT, 0));
-    assert_eq!(before - borrower_balance(&env, &k, &b), 2 * total);
+    assert_eq!(before - borrower_balance(&env, &k, &b), UNIT + total);
     let line = env.line(&k, line_id);
     assert_eq!(line.status, LineStatus::Repaid);
-    assert_eq!(line.schedule().unwrap().late_collected, total);
+    assert_eq!(line.schedule().unwrap().late_collected, UNIT);
 }
 
 #[test]
@@ -316,17 +317,18 @@ fn mark_in_collection_after_three_missed_installments() {
     assert_eq!(env.arrears(&k, line_id).missed, 2);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.expect_err(ix, &keeper, &[], E_NOT_ENOUGH_MISSED);
-
-    // Not while the pool is paused: the borrower could not repay.
+    // At the third due date it is missed, but collection waits until that second has passed.
     env.warp(t0 + 3 * MONTH);
+    assert_eq!(env.arrears(&k, line_id).missed, 3);
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.expect_err(ix, &keeper, &[], E_NOT_ENOUGH_MISSED);
+
+    // Anyone may call it after that, also while the pool is paused: it only records facts.
+    env.warp(t0 + 3 * MONTH + 1);
     env.set_paused(&k, true);
     let ix = env.mark_in_collection_ix(&k, line_id);
-    env.expect_err(ix, &keeper, &[], E_PAUSED);
-    env.set_paused(&k, false);
-
-    // Anyone may call it once three are missed.
-    let ix = env.mark_in_collection_ix(&k, line_id);
     let meta = env.send(ix, &keeper, &[]);
+    env.set_paused(&k, false);
     let ev: LineInCollection = find_event(&meta).expect("LineInCollection");
     assert_eq!((ev.pool, ev.line_id, ev.missed, ev.remaining), (k.pool, line_id, 3, 6_720_000));
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
@@ -420,8 +422,9 @@ fn write_off_in_collection_only_after_the_oldest_missed_due_date_plus_grace() {
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.expect_err(ix, &admin, &[], E_TERM_NOT_ENDED);
 
-    // In collection, the oldest missed installment fell due at t0 + MONTH: grace runs to + 15 days.
-    // Three months of arrears are already past it, so the admin may write off now.
+    // Collection once the third missed installment's grace has run. The oldest missed installment
+    // fell due at t0 + MONTH, so its grace has run too and the admin may write off now.
+    env.warp(t0 + 3 * MONTH + i64::from(grace) + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
     let ix = env.write_off_ix(&k, line_id, &b.pubkey());
@@ -437,22 +440,27 @@ fn write_off_in_collection_only_after_the_oldest_missed_due_date_plus_grace() {
 }
 
 #[test]
-fn write_off_in_collection_waits_for_the_grace_of_the_oldest_missed_installment() {
+fn collection_waits_for_the_grace_of_the_third_missed_installment() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let grace: u32 = 10 * 24 * 3600;
+    let k = pool_with(&mut env, 10 * UNIT, grace);
     let admin = env.admin.insecure_clone();
-    // One-installment-at-a-time policy so collection can start at the first missed due date.
-    let mut p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
-    p.schedule.as_mut().unwrap().max_missed = 1;
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
+
+    // One installment paid: the next three fall due at t0 + 2, 3 and 4 months.
     env.warp(t0 + MONTH);
+    env.repay(&k, line_id, &b, 1_120_000);
+    env.warp(t0 + 4 * MONTH + i64::from(grace));
+    assert_eq!(env.arrears(&k, line_id).missed, 3);
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.expect_err(ix, &b, &[], E_NOT_ENOUGH_MISSED);
+    env.warp(t0 + 4 * MONTH + i64::from(grace) + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
 
-    // Pool grace is zero: rejected at the due second, accepted one second after.
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
-    env.warp(t0 + MONTH + 1);
+    // The oldest missed installment (t0 + 2 months) is past its grace: the write-off is allowed.
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.send(ix, &admin, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
@@ -466,7 +474,7 @@ fn a_cured_line_in_collection_is_not_written_off_until_it_misses_again() {
     let admin = env.admin.insecure_clone();
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
-    env.warp(t0 + 3 * MONTH);
+    env.warp(t0 + 3 * MONTH + i64::from(grace) + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
 
@@ -517,4 +525,78 @@ fn write_off_after_the_term_waits_for_the_pool_grace() {
         env.send(ix, &admin, &[]);
         assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
     }
+}
+
+#[test]
+fn late_interest_over_the_life_of_a_line_never_exceeds_its_principal() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    // 1.0 at 10%: 1.1 in three installments; 50% a year late interest.
+    let p = env.scheduled_params(UNIT, 1_000, 3, 5_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, 3 * UNIT);
+    env.warp(t0 + 3 * MONTH);
+
+    // The borrower pays only the late interest, once a year: the arrears never shrink, the
+    // watermark moves, and each settlement charges up to the overdue amount again.
+    let year = elote_pool::state::SECONDS_PER_YEAR as i64;
+    let mut settlements = 0;
+    loop {
+        env.warp(env.now() + year);
+        let a = env.arrears(&k, line_id);
+        if a.late_due == 0 {
+            break;
+        }
+        let ev = env.repay(&k, line_id, &b, a.late_due);
+        assert_eq!((ev.interest_part, ev.principal_part), (0, 0), "only late interest");
+        settlements += 1;
+        assert!(env.line(&k, line_id).schedule().unwrap().late_collected <= UNIT);
+    }
+    // About 0.55 a year on 1.1 overdue: the first year is collected in full, the second only up
+    // to the principal (1.0 in all), and nothing after that.
+    assert_eq!(settlements, 2);
+    assert_eq!(env.line(&k, line_id).schedule().unwrap().late_collected, UNIT);
+    assert_eq!(env.arrears(&k, line_id).missed, 3);
+
+    // From then on a payment goes to interest and principal.
+    let ev = env.repay(&k, line_id, &b, 1);
+    assert_eq!(ev.interest_part, 1);
+}
+
+#[test]
+fn late_interest_caps_each_overdue_part_separately() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let year = elote_pool::state::SECONDS_PER_YEAR as i64;
+    let part: u64 = 3 * UNIT;
+    // 9.0 at 0% in three installments every two years; 33.33% a year late interest.
+    let mut p = env.scheduled_params(3 * part, 0, 3, 3_333);
+    p.schedule.as_mut().unwrap().interval_seconds = 2 * year;
+    p.term_end = env.now() + 6 * year;
+    let pool_cash = 20 * UNIT;
+    let a = env.investor(&k, pool_cash);
+    env.deposit(&k, &a, pool_cash);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, 3 * UNIT);
+
+    // 5.5 years in: part 1 is 3.5 years overdue, part 2 1.5 years. At 33.33% the per-part cap is
+    // reached after ceil(10_000 * YEAR / 3_333) seconds, about 3.0003 years: part 1 is capped at
+    // its own amount, part 2 is not.
+    env.warp(t0 + 5 * year + year / 2);
+    let got = env.arrears(&k, line_id);
+    assert_eq!((got.missed, got.overdue), (2, 2 * part));
+    let y = year as u128;
+    let cap = (10_000 * y).div_ceil(3_333);
+    let s1 = (3 * y + y / 2).min(cap);
+    let s2 = y + y / 2;
+    let expected = ((part as u128 * (s1 + s2)) * 3_333 / (10_000 * y)) as u64;
+    assert_eq!(got.late_due, expected);
+    // Distinguishable: without the per-part cap it would be larger, and the overall caps
+    // (overdue 6.0, lifetime 9.0) do not bind.
+    let uncapped = ((part as u128 * (3 * y + y / 2 + s2)) * 3_333 / (10_000 * y)) as u64;
+    assert!(expected < uncapped && uncapped < 2 * part);
+    let part1_alone = (part as u128 * s1 * 3_333 / (10_000 * y)) as u64;
+    assert!(part1_alone >= part - 1 && part1_alone <= part, "part 1 is at its own cap");
+
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), expected);
+    let meta = env.send(ix, &b, &[]);
+    assert_eq!(find_event::<LateInterestCollected>(&meta).unwrap().amount, expected);
 }

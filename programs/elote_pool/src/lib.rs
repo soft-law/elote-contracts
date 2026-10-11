@@ -71,8 +71,8 @@ pub mod elote_pool {
         instructions::lines::repay(ctx, amount)
     }
 
-    /// Moves a scheduled line with at least `max_missed` missed installments to collection.
-    /// Anyone may call it.
+    /// Moves a scheduled line to collection once `max_missed` installments are missed and the
+    /// grace period of the last of them has run. Anyone may call it, also while paused.
     pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
         instructions::lines::mark_in_collection(ctx)
     }
@@ -83,7 +83,8 @@ pub mod elote_pool {
         instructions::lines::write_off(ctx)
     }
 
-    /// Pauses or resumes deposits, redemptions, openings, draws and repayments.
+    /// Pauses or resumes deposits, redemptions, openings and draws. Repayments, collection and
+    /// write-offs are never paused.
     pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
         instructions::pool::set_paused(ctx, paused)
     }

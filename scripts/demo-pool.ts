@@ -449,5 +449,5 @@ async function scheduleDemo() {
   ({ l, s, a } = await read());
   console.log(`  late interest collected ${fmt(s.lateCollected - lateBefore)}; missed installments now ${a.missed}`);
   console.log(`  repaid: interest ${fmt(l.interestRepaid)}, principal ${fmt(l.principalRepaid)} (late interest first, then interest, then principal)`);
-  console.log(`  line status ${LineStatus[l.status]}; with 3 missed installments anyone could call mark_in_collection`);
+  console.log(`  line status ${LineStatus[l.status]}; once 3 installments are missed and the grace period of the third has run, anyone may call mark_in_collection`);
 }
