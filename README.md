@@ -45,6 +45,17 @@ Known behaviour of the share accounting, by design for this demo:
 - **After a total loss** (NAV 0 with shares still outstanding) deposits fail: the share price is
   undefined and the pool cannot be refilled.
 
+## Known limitations (devnet demo)
+
+1. The pool admin is part of the pool's creation seed and cannot be rotated, so a compromised admin can open a line to its own wallet and draw the liquidity (roadmap: a roles account with a two-step handover and per-line limits).
+2. Interest counts only when it is repaid, so a deposit placed right before a known repayment captures that interest and can be redeemed right after.
+3. An overdue line stays at full value until the admin writes it off, and there is no deadline for doing so (roadmap: write-off open to anyone after a grace period).
+4. The pause blocks deposit, redeem, draw and repay but not write-off, so the operator procedure is to pause and then write off, and a hostile admin could misuse that sequence (roadmap: repay allowed while paused).
+5. Any SPL asset mint is accepted, including mints with a freeze authority.
+6. The program's upgrade authority is a single key (roadmap: a Squads multisig).
+
+**Roadmap:** installments and arrears, sponsor escrow and interest accounting, SPL collateral, and disputes as a separate program.
+
 ## Accounts
 
 | Account | Address | Holds |
