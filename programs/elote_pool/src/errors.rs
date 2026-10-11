@@ -34,4 +34,10 @@ pub enum PoolError {
     InvalidSchedule,
     #[msg("The last installment would fall due after the term")]
     ScheduleEndsAfterTerm,
+    #[msg("The line has no installment schedule")]
+    NotScheduled,
+    #[msg("Fewer installments missed than the line allows before collection")]
+    NotEnoughMissed,
+    #[msg("The repayment must cover the late interest due")]
+    LateInterestUnpaid,
 }

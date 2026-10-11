@@ -64,9 +64,17 @@ pub mod elote_pool {
         instructions::lines::draw(ctx)
     }
 
-    /// Repays `amount` of an active line, principal first, then interest. Anyone may pay.
+    /// Repays up to `amount` of a drawn line. Anyone may pay. A single-maturity line takes
+    /// principal first, then interest; a scheduled line takes late interest (which `amount` must
+    /// cover), then interest, then principal, and never more than is due.
     pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
         instructions::lines::repay(ctx, amount)
+    }
+
+    /// Moves a scheduled line with at least `max_missed` missed installments to collection.
+    /// Anyone may call it.
+    pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
+        instructions::lines::mark_in_collection(ctx)
     }
 
     /// Recognises the unpaid principal of an active line past its term as a loss.

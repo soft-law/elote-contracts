@@ -80,6 +80,25 @@ pub struct LineRepaid {
     pub nav_after: u64,
 }
 
+/// Late interest collected by a repayment of a scheduled line; it stays in the pool and raises
+/// the NAV like interest. Emitted before the `LineRepaid` of the same repayment.
+#[event]
+pub struct LateInterestCollected {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub amount: u64,
+}
+
+/// A scheduled line moved to collection. `remaining` is the principal and interest still due,
+/// without late interest.
+#[event]
+pub struct LineInCollection {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub missed: u16,
+    pub remaining: u64,
+}
+
 #[event]
 pub struct LineWrittenOff {
     pub pool: Pubkey,

@@ -28,6 +28,8 @@ pub const LINE_VERSION: u8 = 1;
 pub const LINE_VERSION_SCHEDULED: u8 = 2;
 /// Upper bound on the installments of one line, so the arrears computation is bounded.
 pub const MAX_INSTALLMENTS: u16 = 120;
+/// The year that annualizes `late_bps`: 365 days.
+pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
 
 #[account]
 #[derive(InitSpace)]
@@ -82,6 +84,10 @@ pub enum LineStatus {
     Active,
     Repaid,
     WrittenOff,
+    /// A scheduled line with `max_missed` or more missed installments, in out-of-court
+    /// collection. Repayments are still accepted; it leaves this state only when repaid in full
+    /// or written off.
+    InCollection,
 }
 
 #[account]
@@ -118,7 +124,8 @@ pub struct CreditLine {
     /// | 12     | `max_missed`       | u8      | missed installments that allow collection       |
     /// | 13     | `flags`            | u8      | reserved, zero                                  |
     /// | 14..22 | `late_collected`   | u64 LE  | late interest collected so far                  |
-    /// | 22..32 | unused             | zero    |                                                 |
+    /// | 22..30 | `late_paid_until`  | i64 LE  | late interest is settled up to this time        |
+    /// | 30..32 | unused             | zero    |                                                 |
     pub reserved: [u8; 32],
     pub bump: u8,
 }
@@ -145,6 +152,9 @@ pub struct Schedule {
     pub max_missed: u8,
     pub flags: u8,
     pub late_collected: u64,
+    /// Every repayment settles the late interest accrued until its own time; late interest
+    /// accrues again only after this watermark. Zero until the first repayment.
+    pub late_paid_until: i64,
 }
 
 impl Schedule {
@@ -160,7 +170,9 @@ impl Schedule {
         let late_bps = u16::from_le_bytes(u16b);
         u64b.copy_from_slice(&r[14..22]);
         let late_collected = u64::from_le_bytes(u64b);
-        Self { interval_seconds, installments, late_bps, max_missed: r[12], flags: r[13], late_collected }
+        i64b.copy_from_slice(&r[22..30]);
+        let late_paid_until = i64::from_le_bytes(i64b);
+        Self { interval_seconds, installments, late_bps, max_missed: r[12], flags: r[13], late_collected, late_paid_until }
     }
 
     pub fn pack(&self, r: &mut [u8; 32]) {
@@ -170,6 +182,7 @@ impl Schedule {
         r[12] = self.max_missed;
         r[13] = self.flags;
         r[14..22].copy_from_slice(&self.late_collected.to_le_bytes());
+        r[22..30].copy_from_slice(&self.late_paid_until.to_le_bytes());
     }
 }
 

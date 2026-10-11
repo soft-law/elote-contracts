@@ -47,6 +47,9 @@ pub const E_SLIPPAGE_EXCEEDED: u32 = ERR_BASE + 11; // PoolError::SlippageExceed
 pub const E_TERM_ENDED: u32 = ERR_BASE + 12; // PoolError::TermEnded
 pub const E_INVALID_SCHEDULE: u32 = ERR_BASE + 13; // PoolError::InvalidSchedule
 pub const E_SCHEDULE_ENDS_AFTER_TERM: u32 = ERR_BASE + 14; // PoolError::ScheduleEndsAfterTerm
+pub const E_NOT_SCHEDULED: u32 = ERR_BASE + 15; // PoolError::NotScheduled
+pub const E_NOT_ENOUGH_MISSED: u32 = ERR_BASE + 16; // PoolError::NotEnoughMissed
+pub const E_LATE_INTEREST_UNPAID: u32 = ERR_BASE + 17; // PoolError::LateInterestUnpaid
 
 /// SPL Token's `TokenError::InsufficientFunds`, surfaced as custom error 1 by a failed CPI.
 pub const SPL_TOKEN_INSUFFICIENT_FUNDS: u32 = 1;
@@ -644,6 +647,37 @@ impl Env {
             .to_account_metas(None),
             data: elote_pool::instruction::WriteOff {}.data(),
         }
+    }
+
+    pub fn mark_in_collection_ix(&self, k: &PoolKeys, line_id: u64) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::MarkInCollection {
+                pool: k.pool,
+                line: line_pda(&k.pool, line_id).0,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::MarkInCollection {}.data(),
+        }
+    }
+
+    /// The arrears of a scheduled line at the SVM's current time, as the program computes them.
+    pub fn arrears(&self, k: &PoolKeys, line_id: u64) -> elote_pool::math::Arrears {
+        let line = self.line(k, line_id);
+        let s = line.schedule().expect("scheduled line");
+        let terms = elote_pool::math::ScheduleTerms {
+            total: line.principal + line.interest_due,
+            drawn_at: line.drawn_at,
+            interval: s.interval_seconds,
+            installments: s.installments,
+            late_bps: s.late_bps,
+            grace: self.pool(k).grace_period_seconds(),
+            late_paid_until: s.late_paid_until,
+        };
+        elote_pool::math::arrears(&terms, line.principal_repaid + line.interest_repaid, self.now()).expect("arrears")
     }
 
     pub fn line(&self, k: &PoolKeys, line_id: u64) -> elote_pool::state::CreditLine {
