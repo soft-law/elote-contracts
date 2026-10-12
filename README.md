@@ -10,6 +10,10 @@ is worth more. A recognised loss lowers the value of every share once.
 The demo asset is **tMXN (devnet test token, no value)**: a plain SPL token created by the demo
 script. Nothing here holds or moves real money.
 
+Documentation for investors, borrowers and developers (how the pool works, credit lines, the app,
+the agreements server, program reference and addresses) is in [`docs-site/`](docs-site/README.md),
+a static Starlight site: `cd docs-site && bun install && bun run dev`.
+
 ## What it is
 
 - **Shares that appreciate.** Accounting follows ERC-4626:
