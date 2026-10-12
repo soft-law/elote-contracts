@@ -240,6 +240,21 @@ address, the terms, the signature and an explorer link; program errors are shown
 `scripts/key-to-base58.ts <keypair.json>` prints the base58 form of a keypair file's secret bytes,
 the format a wallet's private key import accepts. The output is a secret: use it for devnet demo keys only.
 
+`scripts/token-metadata.ts` gives an existing test token a name, symbol and icon in wallets by creating
+its Metaplex Token Metadata account (`createMetadataAccountV3`, mutable, no creators, no collection):
+`npx tsx scripts/token-metadata.ts --cluster devnet|local --mint <address> --authority-keypair <path>`,
+with `--update-authority` (the demo admin of `.demo-keys/admin.json` if present, else the signer),
+`--uri` (https://elote.baby/token/tmxn.json, served from `web/public/token/`), `--name` ("tMXN test token")
+and `--symbol` (tMXN). The token's mint authority signs and pays; `ELOTE_TOKEN_AUTHORITY_KEYPAIR` can
+hold the keypair path instead of the flag. Only addresses, the signature and explorer links are printed.
+
+The script refuses if the metadata account already exists (change it with `updateMetadataAccountV2`,
+signed by the update authority), if the key is not the token's mint authority, or if the URI does not
+answer 200 with JSON whose name and symbol match (`--skip-uri-check` before the web deploy). `--dry-run`
+prints the instruction's accounts and sends nothing; without a keypair it uses a placeholder signer. On a
+local validator, load the Token Metadata program first with
+`--clone-upgradeable-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s --url https://api.devnet.solana.com`.
+
 ## Deployment order
 
 1. `NO_DNA=1 anchor build`; tests green; `npm run check:client` clean.
