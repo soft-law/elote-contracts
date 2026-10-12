@@ -222,6 +222,20 @@ solana-test-validator --reset \
   --mint "$(solana-keygen pubkey .demo-keys/admin.json)"
 ```
 
+`scripts/open-line.ts` opens one approved line on an existing pool for a borrower whose keypair file
+is held locally, so the borrower's draw and repayments can be rehearsed in the app:
+`npx tsx scripts/open-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path> --principal <tMXN>`,
+with `--rate-bps` (1200), `--term-days` (90), `--sponsor-keypair` and `--agreement-hash` (the demo's
+placeholder if absent). `--installments <n> --interval-days <n>` open a scheduled line (version 2),
+with `--late-rate-bps` (10000) and `--max-missed` (3, the program's minimum, so at least three
+installments); due dates count from the draw, so `--term-days` must exceed installments times
+interval. The admin (`ELOTE_ADMIN_KEYPAIR` or `.demo-keys/admin.json`) and the borrower sign the
+same transaction. The script checks the pool's admin and pause state, then prints the line id and
+address, the terms, the signature and an explorer link; program errors are shown by code and name.
+
+`scripts/key-to-base58.ts <keypair.json>` prints the base58 form of a keypair file's secret bytes,
+the format a wallet's private key import accepts. The output is a secret: use it for devnet demo keys only.
+
 ## Deployment order
 
 1. `NO_DNA=1 anchor build`; tests green; `npm run check:client` clean.
