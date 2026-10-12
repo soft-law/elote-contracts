@@ -293,20 +293,38 @@ cd scripts/meteora && npm ci && npm run typecheck && npm test
 | 8 | `status.ts` | nobody | curve progress, migration, vault totals and claimable amounts, treasury shares, value per share |
 
 Every script takes `--cluster devnet|local` and refuses mainnet (by name, and by the RPC's genesis
-hash), `--dry-run` (simulates without signature checks, prints the accounts and compute units, sends
-nothing; `--as <address>` stands in for a missing key file), `--keypair <path>` (else
+hash). **Without `--send` every script only simulates**: it prints the values and the accounts, the
+compute units, the addresses `--send` would create, and ends with `Dry run: rerun with --send`
+(`--dry-run` is still accepted and changes nothing). Simulation skips signature checks, so
+`--as <address>` can stand in for a missing key file. Keys come from `--keypair <path>`, else
 `ELOTE_ADMIN_KEYPAIR`, `ELOTE_TREASURY_KEYPAIR` or `ELOTE_BUYER_KEYPAIR`, else `.demo-keys/admin.json`,
-`treasury.json` or `investor-a.json`) and `--help`. Keys are never printed: only addresses,
-signatures, explorer links and a last `RESULT key=value` line. Every step that writes reads the chain
-first and skips what is done, so a rerun after an error is safe. The addresses each step creates go
-to `.demo-keys/meteora-devnet.json` (addresses only) and the next step reads them from there; flags
-override. The keypairs of the accounts the scripts create (vault base, config, tELOTE token) are kept
-in `.demo-keys/` too.
+`treasury.json` or `investor-a.json`; `--help` prints the usage. Keys are never printed: only
+addresses, signatures, explorer links and a last `RESULT key=value` line. Every step that writes reads
+the chain first and skips what is done, so a rerun after an error is safe. If a confirmation times
+out, the script looks the signature up before sending again; swaps and the deposit never resend: they
+print the signature and stop ("check the signature, rerun if absent"). The addresses each step creates
+go to `.demo-keys/meteora-<cluster>.json` (addresses only) and the next step reads them from there;
+flags override. The keypairs of the accounts the scripts create (vault base, config, tELOTE token) are
+kept as `.demo-keys/meteora-<cluster>-*.json`, written on the first dry run so that the dry run shows
+the same addresses `--send` creates; they hold no authority once the accounts exist.
+
+`dbc-config.ts` checks the fee claimer before building: it must be a Dynamic Fee Sharing PDA vault for
+the quote token with the treasury at 8000 and the admin at 2000 (a config's fee claimer cannot be
+changed). On devnet the quote token is tMXN and the leftover receiver is the admin
+`Hj5pkVVYa3Qb4qtKr56mMEY69JXWSMXuxtzd4nChdTF4`; any change to the R1 values prints a
+`*** OVERRIDE differs from R1` line.
+
+Where to run: `.demo-keys/` is resolved from the repository the scripts are in. Run them from the main
+checkout after this branch is merged (the devnet keys live in
+`/Users/wario/Documents/softlaw/elote-pool/.demo-keys`), or set `ELOTE_KEY_DIR` to that folder.
 
 Before sitting 1: the web deploy serves `https://elote.baby/token/telote.json`; `.demo-keys/admin.json`
 is the devnet admin `Hj5pkVVYa3Qb4qtKr56mMEY69JXWSMXuxtzd4nChdTF4` with some SOL;
 `.demo-keys/investor-a.json` holds about 2,100 tMXN and some SOL. The first two commands create the
 treasury key and give it 0.2 SOL (`solana-keygen` refuses to overwrite an existing file).
+
+For every step: run the first line, read what it prints, and only then run the second line with
+`--send`.
 
 Sitting 1, setup (about 30 minutes):
 
@@ -316,15 +334,26 @@ solana-keygen new --no-bip39-passphrase -s -o ../../.demo-keys/treasury.json
 solana transfer -u devnet -k ../../.demo-keys/admin.json --allow-unfunded-recipient \
   "$(solana-keygen pubkey ../../.demo-keys/treasury.json)" 0.2
 npx tsx dbc-config.ts --cluster devnet --print-only
-#   migration threshold   2014035137 base units = 2,014.035137 tMXN
-#   supply                3,500 tokens (pre and post migration)
-npx tsx fee-vault.ts --cluster devnet --dry-run && npx tsx fee-vault.ts --cluster devnet
+#   migration threshold    2014035137 base units = 2,014.035137 tMXN
+#   (R1 preset, no overrides)
+
+npx tsx fee-vault.ts --cluster devnet
+#   Users:     treasury <treasury> 8000, admin Hj5p... 2000
+#   Vault PDA: <fee vault PDA> (the address --send creates)
+npx tsx fee-vault.ts --cluster devnet --send
 #   RESULT vault=<fee vault PDA>
-npx tsx dbc-config.ts --cluster devnet --dry-run && npx tsx dbc-config.ts --cluster devnet
-#   Fee claimer:       <fee vault PDA> (fee vault)
+
+npx tsx dbc-config.ts --cluster devnet
+#   Fee vault checked:  <fee vault PDA> is a Dynamic Fee Sharing PDA vault for 5RyA..., treasury 8000 / admin 2000
+#   Config:             <config> (the address --send creates)
+npx tsx dbc-config.ts --cluster devnet --send
 #   RESULT config=<config> threshold=2014035137
-npx tsx dbc-pool.ts --cluster devnet --dry-run && npx tsx dbc-pool.ts --cluster devnet
+
+npx tsx dbc-pool.ts --cluster devnet
+#   quote token 5RyA...; fee claimer <fee vault PDA>; threshold 2014035137
+npx tsx dbc-pool.ts --cluster devnet --send
 #   RESULT baseMint=<tELOTE token> pool=<DBC pool>
+
 npx tsx status.ts --cluster devnet
 #   progress          0 / 2,014.035137 tMXN (0.00%)
 ```
@@ -334,28 +363,43 @@ last buy stops at the threshold and leaves the rest with the buyer:
 
 ```sh
 cd scripts/meteora
-npx tsx dbc-swap.ts --cluster devnet --amount 500   # Progress after: 495 / 2,014.035137 tMXN (24.57% of the threshold)
-npx tsx dbc-swap.ts --cluster devnet --amount 500   # about 49%
-npx tsx dbc-swap.ts --cluster devnet --amount 500   # about 74%
-npx tsx dbc-swap.ts --cluster devnet --amount 600   # Threshold reached: the curve is complete. Next: dbc-migrate.ts.
-npx tsx dbc-migrate.ts --cluster devnet --dry-run && npx tsx dbc-migrate.ts --cluster devnet
-#   a. locker: not needed (the config has no locked vesting)
-#   b. migrate to DAMM v2 (migrationDammV2)
+npx tsx dbc-swap.ts --cluster devnet --amount 500           # Quote: spend 500 of 500 tMXN for about 492.01 tELOTE
+npx tsx dbc-swap.ts --cluster devnet --amount 500 --send    # Progress after: 495 / 2,014.035137 tMXN (24.57% of the threshold)
+npx tsx dbc-swap.ts --cluster devnet --amount 500
+npx tsx dbc-swap.ts --cluster devnet --amount 500 --send    # about 49%
+npx tsx dbc-swap.ts --cluster devnet --amount 500
+npx tsx dbc-swap.ts --cluster devnet --amount 500 --send    # about 74%
+npx tsx dbc-swap.ts --cluster devnet --amount 600
+npx tsx dbc-swap.ts --cluster devnet --amount 600 --send    # Threshold reached: the curve is complete. Next: dbc-migrate.ts.
+
+npx tsx dbc-migrate.ts --cluster devnet
+#   DBC pool authority FhVo...: <SOL> SOL   (it pays the DAMM v2 pool's rent and is refunded)
+#   b. migrate to DAMM v2 (migrationDammV2) (simulated)   err null
+npx tsx dbc-migrate.ts --cluster devnet --send
 #   RESULT dammPool=<DAMM v2 pool> position=<partner position, owned by the vault>
+
 npx tsx fund-vault.ts --cluster devnet
+npx tsx fund-vault.ts --cluster devnet --send
 #   a. fund from the DBC partner trading fees      vault +16.3 tMXN (about)
 #   b. fund from the DBC partner migration fee     vault +402.807027 tMXN
 #   Vault funded in total: about 419 tMXN
-npx tsx treasury-deposit.ts --cluster devnet --dry-run && npx tsx treasury-deposit.ts --cluster devnet
-#   1. claim the treasury's share (claimUserFee2)  received about 335 tMXN
+
+npx tsx treasury-deposit.ts --cluster devnet
+#   1. claim: about 335 tMXN claimable; 2. deposit: about <shares> shares, at least <10 bps less>
+npx tsx treasury-deposit.ts --cluster devnet --send
 #   Shares received: <shares>   Value per share: <before> -> <after> tMXN
+
 npx tsx status.ts --cluster devnet
 ```
+
+If the claim landed but the deposit did not (for example a stopped confirmation), the rerun has
+nothing to claim; it prints the treasury's tMXN balance and the `--amount <balance>` to pass to deposit it.
 
 `fund-vault.ts` can run again later: after trades on the DAMM v2 pool it moves the position's fees.
 The admin claims its 20% with the same Dynamic Fee Sharing `claimUserFee2` (not scripted here).
 
-`test/e2e-local.sh` runs the whole sequence twice on a local validator with throwaway keys (`npm run
+`test/e2e-local.sh` runs the whole sequence on a local validator with throwaway keys: the writers once
+without `--send` (the dry run must show the addresses `--send` then creates) and twice with it (`npm run
 test:e2e`). The validator clones the devnet programs (DBC, DAMM v2, Dynamic Fee Sharing, Token
 Metadata and `elote_pool`) and the DAMM v2 config of the Customizable migration fee option
 (`A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck`), funds the DBC pool authority (on devnet it already
