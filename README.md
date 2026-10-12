@@ -271,6 +271,16 @@ Buyers do not fund loans. The liquidity of the migrated market is not assured. 2
 the trading fees go to the fee vault and do not come back to buyers. tELOTE and tMXN are devnet test
 tokens with no value.
 
+Live on devnet (2026-10-12): config `4o1BnhCfXANHucdsS8iEhqkX2hG9XH4VLXQfDArMo9Xk`, DBC pool
+`Gs1rHiCU97DoCBJDKoAKFo13AGk2pi6F6Q21ZKeY3L8N`, tELOTE `DYtABv8u8WxK9eyQAjn76xTzdMucfbxqHu1NL5P1QLsG`,
+fee vault `AKnMbcf34KBAiHxuH1RzZMP9J75bBrGKwYE8Cod95dmK`, DAMM v2 pool
+`AsadgCTb6yADLVGDeBXFJy5JrW5Z7JJCvu4ttwjoVgmL` with the vault's position
+`9xYP6TWZq215GXvDk5dt4qFpE8ZFJFq3btbFHdeTZhWx` permanently locked. The curve took in 2,014.035138 tMXN
+over four buys, the vault received 419.082059 tMXN (trading fees, migration fee, surplus), and the
+treasury claimed 335.265647 tMXN and deposited it into the elote pool for 319.909968 shares (deposit
+`3318Ry8UyWZup1oYC529qS9nfFYyaXUS5KNdXYZFyCasxpnt8ku9LgB4qkRxi7j3ZiqH7PN22EpJPaEUgVv9Yfy5`). The app
+reads all of it at https://elote.baby/app/launch.
+
 The scripts live in `scripts/meteora/`, a package of their own on `@solana/web3.js` 1.99 and the
 Meteora SDKs (`@meteora-ag/dynamic-bonding-curve-sdk` 1.5.13, `@meteora-ag/dynamic-fee-sharing-sdk`
 1.1.0, `@meteora-ag/cp-amm-sdk` 1.5.1). The rest of the repo stays on `@solana/kit`; the elote deposit
