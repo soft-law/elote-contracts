@@ -9,5 +9,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["clients/js/src", "scripts"]
+  "include": ["clients/js/src", "scripts"],
+  "exclude": ["node_modules", "scripts/meteora"]
 }
