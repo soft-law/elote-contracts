@@ -56,9 +56,9 @@ Known behaviour of the share accounting, by design for this demo:
 
 ## Known limitations (devnet demo)
 
-1. The pool admin is part of the pool's creation seed and cannot be rotated, so a compromised admin can open a line to its own wallet and draw the liquidity (roadmap: a roles account with a two-step handover and per-line limits).
+1. The pool admin is a single key and part of the pool's creation seed, so it cannot be rotated. The admin can open a credit line to any address, including its own, for the whole vault, with no cap or delay, so a compromised admin can draw the liquidity. Before any real deployment the admin must be a multisig from `init_pool` onwards (roadmap: a roles account with a two-step handover and per-line limits).
 2. Interest counts only when it is repaid, so a deposit placed right before a known repayment captures that interest and can be redeemed right after.
-3. An overdue line stays at full value until an admin writes it off. The program only allows the write-off after collection plus grace, or after the term plus grace; recording it is still the admin's act.
+3. An overdue line stays at full value until an admin writes it off. The program only allows the write-off after collection plus grace, or after the term plus grace; recording it is still the admin's act. Until then, redemptions price the defaulted principal at par.
 4. The pause blocks deposit, redeem, opening and draw only. Repayments are never paused, so a borrower can always pay and cure; `mark_in_collection` (which only records facts) and the admin's write-off also run while paused. The operator procedure for a write-off is still to pause deposits and redemptions first, so nobody redeems at the pre-loss value.
 5. Any SPL asset mint is accepted, including mints with a freeze authority.
 6. The program's upgrade authority is a single key (roadmap: a Squads multisig).
@@ -67,6 +67,11 @@ Known behaviour of the share accounting, by design for this demo:
 8. Collection does not accelerate the balance: the installments keep their due dates and the `flags` byte stays unused, reserved for that later.
 9. A line can stay `Approved` forever if the borrower never draws; there is no cancel instruction yet (roadmap).
 10. A repayment of a scheduled line must cover the late interest due at that second. Late interest grows every second, so clients add a margin; the program takes only what is due and leaves the rest in the payer's account.
+
+11. Devnet only. Every figure on elote.baby is in tMXN, a test token with no value; the pool and token addresses come from the Vercel environment at build time.
+12. Anchors recorded through the agreements API are reported by the party; the server does not re-verify them on chain, and the evidence package lists them with `checked: false`.
+13. Agreement documents are stored and served in clear to anyone who holds the agreement id. The `encrypted` option of `draft_credit_agreement` only adds a review finding; it does not encrypt anything.
+14. The test token faucet and the agreements API host are not deployed for the demo; test tokens are handed out by the team.
 
 **Roadmap:** sponsor escrow and interest accounting, SPL collateral, and disputes as a separate program.
 
