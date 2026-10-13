@@ -1,57 +1,43 @@
 # elote.baby
 
-**Bringing Mexican loans to Solana.** Small, real-world loans for the population of Rosarito, Baja
-California, Mexico, built with the local municipality's entrepreneur program in view (early
-conversations; no agreement signed yet). Signed legal contracts become programmable loan contracts
-on Solana that carry out the repayment terms, and depositors share the interest that borrowers repay.
+**Mexican loans on Solana.** Small, real-world loans for the people of Rosarito, Baja California,
+Mexico. Signed legal contracts become programmable loan contracts on Solana that carry out the
+repayment terms, and depositors share the interest that borrowers repay.
+
+We are in early conversations with the municipality's entrepreneur program; no agreement is signed yet.
 
 > Demo on Solana devnet with test assets. Not an offer of securities.
 
 ## Colosseum submission
 
-| | |
+| Item | Link |
 |---|---|
 | Project page | https://colosseum.com/arena/projects/softlaw |
-| Pitch video (2 min) | https://www.youtube.com/watch?v=79Ykf7YxAUg |
-| Product demo (2 min) | https://www.youtube.com/watch?v=2smgpnL7Eq4&t=4s |
-| Live landing | https://elote.baby |
-| Live app (Solana devnet) | https://elote.baby/app |
+| Pitch | https://www.youtube.com/watch?v=79Ykf7YxAUg |
+| Demo | https://www.youtube.com/watch?v=2smgpnL7Eq4&t=4s |
+| Landing | https://elote.baby |
+| App (Solana devnet) | https://elote.baby/app |
 | Team | Softlaw SA de CV: Wario (founder, legal engineer), Gabriel (chief legal officer), Johan (CTO) |
 
-## How to review in five minutes
+## Review in five minutes
 
-1. **Open https://elote.baby.** The landing explains the flow: a borrower signs a programmable loan
-   contract with their own wallet, its hash opens a credit line on Solana, and the program carries
-   out draws, repayments and write-offs by those terms. The "First pool soon" section shows how a
-   Meteora launch funds the pool.
-2. **Open https://elote.baby/app/pool.** This is the live pool on Solana devnet, read from chain:
-   value per share, pool value, liquidity, interest collected, and the credit lines (two lines,
-   both repaid). Every figure links to Solana Explorer.
-3. **Connect a Solana wallet on devnet** (Phantom works) and open **Invest**. You see your balances
-   of tMXN, a test token with no value, and the deposit and redeem forms with a quoted floor. Test
-   tokens for this demo are handed out by the team: write to gm@soft.law with your address.
-4. **Open Borrow.** A wallet with a credit line sees it here, with the agreement hash, the draw
-   button and the repayment form.
-5. **Open https://elote.baby/app/launch.** The Meteora preset: a demo token sold on a bonding curve,
-   graduated to a DAMM v2 pool; its fees went to a vault and the treasury deposited its share into
-   the credit pool. Every account links to Solana Explorer.
+1. Open https://elote.baby and read how a signed contract opens a credit line.
+2. Open https://elote.baby/app/pool: the live pool on devnet, two lines repaid, every figure linked to Solana Explorer.
+3. Connect a devnet wallet and open Invest: balances, deposit and redeem with a quoted floor.
+4. Open Borrow: a wallet with a credit line sees the agreement hash, the draw and the repayment form.
+5. Open https://elote.baby/app/launch: the Meteora bonding curve that funded the pool, graduated to DAMM v2.
 
-Everything on chain is on **Solana devnet** with **tMXN, a test token with no value**. Nothing
-holds or moves real money.
+Everything runs on Solana devnet with tMXN, a test token with no value. Test tokens for this demo
+are handed out by the team: write to gm@soft.law with your address.
 
-## What was built during the hackathon
+## Built during the hackathon
 
-- `elote_pool`, a new Anchor program: deposits, redemptions, credit lines with a fixed rate,
-  installments, arrears and late interest, an optional sponsor, write-offs and pause.
-- The web app (`web/`): landing and the pool app (Pool, Invest, Borrow, Launch) on devnet with
-  Wallet Standard wallets.
-- The Meteora credit preset (`scripts/meteora/`): bonding curve launch, graduation to DAMM v2, fee
-  vault, treasury claim and deposit into the pool, all live on devnet.
-- The agreements server (`mcp/`): credit agreement template with deterministic checks, signatures
-  by wallet, evidence export.
+- `elote_pool`: Anchor program for deposits, credit lines, repayments, write-offs.
+- `web/`: landing and the pool app (Pool, Invest, Borrow, Launch).
+- `scripts/meteora/`: bonding curve launch, graduation, fee vault, treasury deposit.
+- `mcp/`: credit agreement template, deterministic checks, wallet signatures, evidence export.
 
-See [Known limitations](#known-limitations-devnet-demo) before judging the security model: the
-demo runs with a single admin key and a sponsor stand-in.
+Known limitations: [see below](#known-limitations-devnet-demo).
 
 ## For engineers: the `elote_pool` program
 
