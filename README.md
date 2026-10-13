@@ -1,6 +1,59 @@
-# elote_pool
+# elote.baby
+
+**Bringing Mexican loans to Solana.** Small, real-world loans for the population of Rosarito, Baja
+California, Mexico, built with the local municipality's entrepreneur program in view (early
+conversations; no agreement signed yet). Signed legal contracts become programmable loan contracts
+on Solana that carry out the repayment terms, and depositors share the interest that borrowers repay.
 
 > Demo on Solana devnet with test assets. Not an offer of securities.
+
+## Colosseum submission
+
+| | |
+|---|---|
+| Project page | https://colosseum.com/arena/projects/softlaw |
+| Pitch video (2 min) | https://www.youtube.com/watch?v=79Ykf7YxAUg |
+| Product demo (2 min) | https://www.youtube.com/watch?v=2smgpnL7Eq4&t=4s |
+| Live landing | https://elote.baby |
+| Live app (Solana devnet) | https://elote.baby/app |
+| Team | Softlaw SA de CV: Wario (founder, legal engineer), Gabriel (chief legal officer), Johan (CTO) |
+
+## How to review in five minutes
+
+1. **Open https://elote.baby.** The landing explains the flow: a borrower signs a programmable loan
+   contract with their own wallet, its hash opens a credit line on Solana, and the program carries
+   out draws, repayments and write-offs by those terms. The "First pool soon" section shows how a
+   Meteora launch funds the pool.
+2. **Open https://elote.baby/app/pool.** This is the live pool on Solana devnet, read from chain:
+   value per share, pool value, liquidity, interest collected, and the credit lines (two lines,
+   both repaid). Every figure links to Solana Explorer.
+3. **Connect a Solana wallet on devnet** (Phantom works) and open **Invest**. You see your balances
+   of tMXN, a test token with no value, and the deposit and redeem forms with a quoted floor. Test
+   tokens for this demo are handed out by the team: write to gm@soft.law with your address.
+4. **Open Borrow.** A wallet with a credit line sees it here, with the agreement hash, the draw
+   button and the repayment form.
+5. **Open https://elote.baby/app/launch.** The Meteora preset: a demo token sold on a bonding curve,
+   graduated to a DAMM v2 pool; its fees went to a vault and the treasury deposited its share into
+   the credit pool. Every account links to Solana Explorer.
+
+Everything on chain is on **Solana devnet** with **tMXN, a test token with no value**. Nothing
+holds or moves real money.
+
+## What was built during the hackathon
+
+- `elote_pool`, a new Anchor program: deposits, redemptions, credit lines with a fixed rate,
+  installments, arrears and late interest, an optional sponsor, write-offs and pause.
+- The web app (`web/`): landing and the pool app (Pool, Invest, Borrow, Launch) on devnet with
+  Wallet Standard wallets.
+- The Meteora credit preset (`scripts/meteora/`): bonding curve launch, graduation to DAMM v2, fee
+  vault, treasury claim and deposit into the pool, all live on devnet.
+- The agreements server (`mcp/`): credit agreement template with deterministic checks, signatures
+  by wallet, evidence export.
+
+See [Known limitations](#known-limitations-devnet-demo) before judging the security model: the
+demo runs with a single admin key and a sponsor stand-in.
+
+## For engineers: the `elote_pool` program
 
 `elote_pool` is a Solana program (Anchor 1.1.2) for a liquidity pool with a share token.
 Investors deposit the pool asset and receive shares. The pool admin approves credit lines for
