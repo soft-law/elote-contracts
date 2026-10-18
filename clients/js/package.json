@@ -1,18 +1,31 @@
 {
-  "name": "@elote/pool-client",
+  "name": "@softlaw/elote-pool-client",
   "version": "0.1.0",
   "description": "TypeScript client for the elote_pool Solana program, generated with Codama on @solana/kit",
-  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/soft-law/elote-contracts",
+    "directory": "clients/js"
+  },
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "files": [
+    "dist",
     "src"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
@@ -20,5 +33,8 @@
   },
   "dependencies": {
     "@solana/program-client-core": "^8.3.0"
+  },
+  "devDependencies": {
+    "tsup": "^8"
   }
 }

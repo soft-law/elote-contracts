@@ -24,10 +24,12 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - run: npm ci && npm --prefix clients/js ci
       - name: Generated client matches the committed IDL
         run: npm run check:client
       - run: npm run typecheck
+      - name: Client bundle builds
+        run: npm run build:client
       - name: Reject whitespace errors
         run: git diff --check
 

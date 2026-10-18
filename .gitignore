@@ -1,6 +1,8 @@
 target/
 node_modules/
 clients/js/node_modules/
+clients/js/dist/
+*.tgz
 .anchor/
 test-ledger/
 .demo-keys/
