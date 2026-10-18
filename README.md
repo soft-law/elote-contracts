@@ -1,45 +1,20 @@
-<p align="center"><img src="web/public/corn-mark.png" width="120" alt="elote.baby"></p>
+# elote-contracts
 
-# elote.baby
-
-**Mexican loans on Solana.** Small, real-world loans for the people of Rosarito, Baja California,
-Mexico. Signed legal contracts become programmable loan contracts on Solana that carry out the
-repayment terms, and depositors share the interest that borrowers repay.
-
-We are in early conversations with the municipality's entrepreneur program; no agreement is signed yet.
+**Mexican loans on Solana.** The `elote_pool` program behind [elote.baby](https://elote.baby):
+signed legal contracts become programmable loan contracts on Solana that carry out the repayment
+terms, and depositors share the interest that borrowers repay.
 
 > Demo on Solana devnet with test assets. Not an offer of securities.
 
-## Colosseum submission
+This is the production repository for the program, its TypeScript client
+(`@softlaw/elote-pool-client`, in [`clients/js`](clients/js)) and the demo scripts. The app lives in
+`soft-law/elote-web`, the documentation in `soft-law/elote-docs`, and the agreements server in
+`soft-law/softlaw-backend`.
 
-| Item | Link |
-|---|---|
-| Project page | https://colosseum.com/arena/projects/softlaw |
-| Pitch | https://www.youtube.com/watch?v=79Ykf7YxAUg |
-| Demo | https://www.youtube.com/watch?v=2smgpnL7Eq4&t=4s |
-| Landing | https://elote.baby |
-| App (Solana devnet) | https://elote.baby/app |
-| Team | Softlaw SA de CV: Wario (founder, legal engineer), Gabriel (chief legal officer), Johan (CTO) |
+Hackathon snapshot: https://github.com/soft-law/elote-baby/tree/colosseum-2026 (program, app,
+agreements server and the Meteora launch as submitted).
 
-## Review in five minutes
-
-1. Open https://elote.baby and read how a signed contract opens a credit line.
-2. Open https://elote.baby/app/pool: the live pool on devnet, two lines repaid, every figure linked to Solana Explorer.
-3. Connect a devnet wallet and open Invest: balances, deposit and redeem with a quoted floor.
-4. Open Borrow: a wallet with a credit line sees the agreement hash, the draw and the repayment form.
-5. Open https://elote.baby/app/launch: the Meteora bonding curve that funded the pool, graduated to DAMM v2.
-
-Everything runs on Solana devnet with tMXN, a test token with no value. Test tokens for this demo
-are handed out by the team: write to gm@soft.law with your address.
-
-## Built during the hackathon
-
-- `elote_pool`: Anchor program for deposits, credit lines, repayments, write-offs.
-- `web/`: landing and the pool app (Pool, Invest, Borrow, Launch).
-- `scripts/meteora/`: bonding curve launch, graduation, fee vault, treasury deposit.
-- `mcp/`: credit agreement template, deterministic checks, wallet signatures, evidence export.
-
-## For engineers: the `elote_pool` program
+## The `elote_pool` program
 
 `elote_pool` is a Solana program (Anchor 1.1.2) for a liquidity pool with a share token.
 Investors deposit the pool asset and receive shares. The pool admin approves credit lines for
@@ -50,8 +25,7 @@ The demo asset is **tMXN (devnet test token, no value)**: a plain SPL token crea
 script. Nothing here holds or moves real money.
 
 Documentation for investors, borrowers and developers (how the pool works, credit lines, the app,
-the agreements server, program reference and addresses) is in [`docs-site/`](docs-site/README.md),
-a static Starlight site: `cd docs-site && bun install && bun run dev`.
+the agreements server, program reference and addresses) lives in `soft-law/elote-docs`.
 
 ## What it is
 
@@ -250,7 +224,7 @@ the format a wallet's private key import accepts. The output is a secret: use it
 its Metaplex Token Metadata account (`createMetadataAccountV3`, mutable, no creators, no collection):
 `npx tsx scripts/token-metadata.ts --cluster devnet|local --mint <address> --authority-keypair <path>`,
 with `--update-authority` (the demo admin of `.demo-keys/admin.json` if present, else the signer),
-`--uri` (https://elote.baby/token/tmxn.json, served from `web/public/token/`), `--name` ("tMXN test token")
+`--uri` (https://elote.baby/token/tmxn.json, served by the `elote-web` deploy), `--name` ("tMXN test token")
 and `--symbol` (tMXN). The token's mint authority signs and pays; `ELOTE_TOKEN_AUTHORITY_KEYPAIR` can
 hold the keypair path instead of the flag. Only addresses, the signature and explorer links are printed.
 
@@ -260,176 +234,3 @@ answer 200 with JSON whose name and symbol match (`--skip-uri-check` before the 
 prints the instruction's accounts and sends nothing; without a keypair it uses a placeholder signer. On a
 local validator, load the Token Metadata program first with
 `--clone-upgradeable-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s --url https://api.devnet.solana.com`.
-
-## Meteora: elote credit preset
-
-A devnet rehearsal of a community launch that sends part of what it raises to a treasury invested in
-the credit pool. The test token tELOTE ("Elote Community (devnet test)") is sold on a Meteora Dynamic
-Bonding Curve (DBC) priced in tMXN, from 1.00 to 1.05 tMXN per token, 3,500 tokens. When the curve has
-taken in 2,014.035137 tMXN it graduates to a Meteora DAMM v2 pool, where the partner's liquidity is
-permanently locked. The partner is a Dynamic Fee Sharing vault (a PDA) shared by the treasury (80%)
-and the admin (20%). It receives the curve's trading fees (1%, less Meteora's share), the 20%
-migration fee and the DAMM v2 position fees. The treasury claims its share and deposits it into the
-elote pool for shares, like any other investor.
-
-What this is not: tELOTE is not a pool share, earns no interest and gives no right to repayments.
-Buyers do not fund loans. The liquidity of the migrated market is not assured. 20% of the raise and
-the trading fees go to the fee vault and do not come back to buyers. tELOTE and tMXN are devnet test
-tokens with no value.
-
-Live on devnet (2026-10-12): config `4o1BnhCfXANHucdsS8iEhqkX2hG9XH4VLXQfDArMo9Xk`, DBC pool
-`Gs1rHiCU97DoCBJDKoAKFo13AGk2pi6F6Q21ZKeY3L8N`, tELOTE `DYtABv8u8WxK9eyQAjn76xTzdMucfbxqHu1NL5P1QLsG`,
-fee vault `AKnMbcf34KBAiHxuH1RzZMP9J75bBrGKwYE8Cod95dmK`, DAMM v2 pool
-`AsadgCTb6yADLVGDeBXFJy5JrW5Z7JJCvu4ttwjoVgmL` with the vault's position
-`9xYP6TWZq215GXvDk5dt4qFpE8ZFJFq3btbFHdeTZhWx` permanently locked. The curve took in 2,014.035138 tMXN
-over four buys, the vault received 419.082059 tMXN (trading fees, migration fee, surplus), and the
-treasury claimed 335.265647 tMXN and deposited it into the elote pool for 319.909968 shares (deposit
-`3318Ry8UyWZup1oYC529qS9nfFYyaXUS5KNdXYZFyCasxpnt8ku9LgB4qkRxi7j3ZiqH7PN22EpJPaEUgVv9Yfy5`). The app
-reads all of it at https://elote.baby/app/launch.
-
-The scripts live in `scripts/meteora/`, a package of their own on `@solana/web3.js` 1.99 and the
-Meteora SDKs (`@meteora-ag/dynamic-bonding-curve-sdk` 1.5.13, `@meteora-ag/dynamic-fee-sharing-sdk`
-1.1.0, `@meteora-ag/cp-amm-sdk` 1.5.1). The rest of the repo stays on `@solana/kit`; the elote deposit
-uses the Codama client in `clients/js`, so install both:
-
-```sh
-npm ci                                   # repo root, for the elote client
-cd scripts/meteora && npm ci && npm run typecheck && npm test
-```
-
-| Step | Script | Signs | Does |
-|---|---|---|---|
-| 1 | `fee-vault.ts` | admin | creates the fee vault for tMXN, treasury 8000 and admin 2000 |
-| 2 | `dbc-config.ts` | admin | prints the curve, creates the DBC config (fee claimer = vault, leftover to the admin) |
-| 3 | `dbc-pool.ts` | treasury | creates the tELOTE pool (creator = treasury, URI https://elote.baby/token/telote.json) |
-| 4 | `dbc-swap.ts` | buyer | buys (`--amount <tMXN>`) or sells (`--sell <tELOTE>`), prints progress toward the threshold; after graduation it trades on DAMM v2 |
-| 5 | `dbc-migrate.ts` | any payer | graduates the curve to DAMM v2 (no locker: the config has no locked vesting) |
-| 6 | `fund-vault.ts` | treasury or admin | moves trading fees, migration fee, surplus and DAMM v2 position fees into the vault |
-| 7 | `treasury-deposit.ts` | treasury | claims the treasury's share, deposits it into the elote pool with `min_shares_out` 10 bps below the quote |
-| 8 | `status.ts` | nobody | curve progress, migration, vault totals and claimable amounts, treasury shares, value per share |
-
-Every script takes `--cluster devnet|local` and refuses mainnet (by name, and by the RPC's genesis
-hash). **Without `--send` every script only simulates**: it prints the values and the accounts, the
-compute units, the addresses `--send` would create, and ends with `Dry run: rerun with --send`
-(`--dry-run` is still accepted and changes nothing). Simulation skips signature checks, so
-`--as <address>` can stand in for a missing key file. Keys come from `--keypair <path>`, else
-`ELOTE_ADMIN_KEYPAIR`, `ELOTE_TREASURY_KEYPAIR` or `ELOTE_BUYER_KEYPAIR`, else `.demo-keys/admin.json`,
-`treasury.json` or `investor-a.json`; `--help` prints the usage. Keys are never printed: only
-addresses, signatures, explorer links and a last `RESULT key=value` line. Every step that writes reads
-the chain first and skips what is done, so a rerun after an error is safe. If a confirmation times
-out, the script looks the signature up before sending again; swaps and the deposit never resend: they
-print the signature and stop ("check the signature, rerun if absent"). The addresses each step creates
-go to `.demo-keys/meteora-<cluster>.json` (addresses only) and the next step reads them from there;
-flags override. The keypairs of the accounts the scripts create (vault base, config, tELOTE token) are
-kept as `.demo-keys/meteora-<cluster>-*.json`, written on the first dry run so that the dry run shows
-the same addresses `--send` creates; they hold no authority once the accounts exist.
-
-`dbc-config.ts` checks the fee claimer before building: it must be a Dynamic Fee Sharing PDA vault for
-the quote token with the treasury at 8000 and the admin at 2000 (a config's fee claimer cannot be
-changed). On devnet the quote token is tMXN and the leftover receiver is the admin
-`Hj5pkVVYa3Qb4qtKr56mMEY69JXWSMXuxtzd4nChdTF4`; any change to the R1 values prints a
-`*** OVERRIDE differs from R1` line.
-
-Where to run: `.demo-keys/` is resolved from the repository the scripts are in. Run them from the main
-checkout after this branch is merged (the devnet keys live in
-`/Users/wario/Documents/softlaw/elote-pool/.demo-keys`), or set `ELOTE_KEY_DIR` to that folder.
-
-Before sitting 1: the web deploy serves `https://elote.baby/token/telote.json`; `.demo-keys/admin.json`
-is the devnet admin `Hj5pkVVYa3Qb4qtKr56mMEY69JXWSMXuxtzd4nChdTF4` with some SOL;
-`.demo-keys/investor-a.json` holds about 2,100 tMXN and some SOL. The first two commands create the
-treasury key and give it 0.2 SOL (`solana-keygen` refuses to overwrite an existing file).
-
-For every step: run the first line, read what it prints, and only then run the second line with
-`--send`.
-
-Sitting 1, setup (about 30 minutes):
-
-```sh
-cd scripts/meteora
-solana-keygen new --no-bip39-passphrase -s -o ../../.demo-keys/treasury.json
-solana transfer -u devnet -k ../../.demo-keys/admin.json --allow-unfunded-recipient \
-  "$(solana-keygen pubkey ../../.demo-keys/treasury.json)" 0.2
-npx tsx dbc-config.ts --cluster devnet --print-only
-#   migration threshold    2014035137 base units = 2,014.035137 tMXN
-#   (R1 preset, no overrides)
-
-npx tsx fee-vault.ts --cluster devnet
-#   Users:     treasury <treasury> 8000, admin Hj5p... 2000
-#   Vault PDA: <fee vault PDA> (the address --send creates)
-npx tsx fee-vault.ts --cluster devnet --send
-#   RESULT vault=<fee vault PDA>
-
-npx tsx dbc-config.ts --cluster devnet
-#   Fee vault checked:  <fee vault PDA> is a Dynamic Fee Sharing PDA vault for 5RyA..., treasury 8000 / admin 2000
-#   Config:             <config> (the address --send creates)
-npx tsx dbc-config.ts --cluster devnet --send
-#   RESULT config=<config> threshold=2014035137
-
-npx tsx dbc-pool.ts --cluster devnet
-#   quote token 5RyA...; fee claimer <fee vault PDA>; threshold 2014035137
-npx tsx dbc-pool.ts --cluster devnet --send
-#   RESULT baseMint=<tELOTE token> pool=<DBC pool>
-
-npx tsx status.ts --cluster devnet
-#   progress          0 / 2,014.035137 tMXN (0.00%)
-```
-
-Sitting 2, graduation (about 30 minutes). Each buy of 500 tMXN adds 495 to the curve (1% fee); the
-last buy stops at the threshold and leaves the rest with the buyer:
-
-```sh
-cd scripts/meteora
-npx tsx dbc-swap.ts --cluster devnet --amount 500           # Quote: spend 500 of 500 tMXN for about 492.01 tELOTE
-npx tsx dbc-swap.ts --cluster devnet --amount 500 --send    # Progress after: 495 / 2,014.035137 tMXN (24.57% of the threshold)
-npx tsx dbc-swap.ts --cluster devnet --amount 500
-npx tsx dbc-swap.ts --cluster devnet --amount 500 --send    # about 49%
-npx tsx dbc-swap.ts --cluster devnet --amount 500
-npx tsx dbc-swap.ts --cluster devnet --amount 500 --send    # about 74%
-npx tsx dbc-swap.ts --cluster devnet --amount 600
-npx tsx dbc-swap.ts --cluster devnet --amount 600 --send    # Threshold reached: the curve is complete. Next: dbc-migrate.ts.
-
-npx tsx dbc-migrate.ts --cluster devnet
-#   DBC pool authority FhVo...: <SOL> SOL   (it pays the DAMM v2 pool's rent and is refunded)
-#   b. migrate to DAMM v2 (migrationDammV2) (simulated)   err null
-npx tsx dbc-migrate.ts --cluster devnet --send
-#   RESULT dammPool=<DAMM v2 pool> position=<partner position, owned by the vault>
-
-npx tsx fund-vault.ts --cluster devnet
-npx tsx fund-vault.ts --cluster devnet --send
-#   a. fund from the DBC partner trading fees      vault +16.3 tMXN (about)
-#   b. fund from the DBC partner migration fee     vault +402.807027 tMXN
-#   Vault funded in total: about 419 tMXN
-
-npx tsx treasury-deposit.ts --cluster devnet
-#   1. claim: about 335 tMXN claimable; 2. deposit: about <shares> shares, at least <10 bps less>
-npx tsx treasury-deposit.ts --cluster devnet --send
-#   Shares received: <shares>   Value per share: <before> -> <after> tMXN
-
-npx tsx status.ts --cluster devnet
-```
-
-If the claim landed but the deposit did not (for example a stopped confirmation), the rerun has
-nothing to claim; it prints the treasury's tMXN balance and the `--amount <balance>` to pass to deposit it.
-
-`fund-vault.ts` can run again later: after trades on the DAMM v2 pool it moves the position's fees.
-The admin claims its 20% with the same Dynamic Fee Sharing `claimUserFee2` (not scripted here).
-
-`test/e2e-local.sh` runs the whole sequence on a local validator with throwaway keys: the writers once
-without `--send` (the dry run must show the addresses `--send` then creates) and twice with it (`npm run
-test:e2e`). The validator clones the devnet programs (DBC, DAMM v2, Dynamic Fee Sharing, Token
-Metadata and `elote_pool`) and the DAMM v2 config of the Customizable migration fee option
-(`A8gMrEPJkacWkcb3DGwtJwTe16HktSEfvwtuDh2MCtck`), funds the DBC pool authority (on devnet it already
-holds SOL for the DAMM v2 pool's rent, refunded in the same transaction), creates a local test quote
-token and a local elote pool for it.
-
-## Deployment order
-
-1. `NO_DNA=1 anchor build`; tests green; `npm run check:client` clean.
-2. `anchor deploy --provider.cluster devnet` with a dedicated upgrade key (`ANCHOR_WALLET`).
-3. `anchor idl init -f target/idl/elote_pool.json --provider.cluster devnet BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM`.
-4. Demo script on `--cluster local`, then on `--cluster devnet`.
-5. The web front end reads `Pool` over RPC.
-
-Program and upgrade keypairs are never committed (`target/` is ignored).
-
-> Demo on Solana devnet with test assets. Not an offer of securities.

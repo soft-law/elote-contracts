@@ -10,5 +10,5 @@
     "types": ["node"]
   },
   "include": ["clients/js/src", "scripts"],
-  "exclude": ["node_modules", "scripts/meteora"]
+  "exclude": ["node_modules"]
 }

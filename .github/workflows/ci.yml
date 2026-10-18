@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: Client / typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Generated client matches the committed IDL
+        run: npm run check:client
+      - run: npm run typecheck
+      - name: Reject whitespace errors
+        run: git diff --check
+
+  program:
+    name: Program / build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: metadaoproject/setup-anchor@v3
+        with:
+          anchor-version: 1.1.2
+          solana-cli-version: 3.1.10
+          node-version: 20
+      - name: Build
+        run: NO_DNA=1 anchor build
+      - name: Unit and LiteSVM tests
+        run: cargo test -p elote_pool
