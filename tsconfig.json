@@ -7,8 +7,16 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["clients/js/src", "scripts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "clients/js/src",
+    "clients/js/test",
+    "scripts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

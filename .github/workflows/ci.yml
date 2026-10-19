@@ -34,6 +34,8 @@ jobs:
       - name: Generated client and package manifest match the committed IDL
         run: npm run check:client
       - run: npm run typecheck
+      - name: Client schedule mirror matches the program's test vectors
+        run: npm run test:client
       - name: Client bundle builds
         run: npm run build:client
 

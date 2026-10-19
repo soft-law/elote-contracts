@@ -164,6 +164,7 @@ npm install
 npm run codama                   # copies the IDL to idl/ and regenerates clients/js/src/generated
 npm run check:client             # fails if the committed client differs from idl/elote_pool.json
 npm run typecheck
+npm run test:client              # replays the program's arrears vectors against clients/js/src/schedule.ts
 ```
 
 `anchor build` on a fresh clone writes a new random `target/deploy/elote_pool-keypair.json`. It is
@@ -171,7 +172,15 @@ not the program's key: never run `anchor keys sync` or `anchor deploy` with it, 
 in `declare_id!` and `Anchor.toml` would change. Tests and the local validator use the explicit id.
 
 The integration tests run the compiled program in LiteSVM 0.9.0, which loads SPL Token and the
-Associated Token Account program by default.
+Associated Token Account program by default. `programs/elote_pool/tests/` holds:
+
+| File | What it checks |
+|---|---|
+| `pool.rs`, `lines.rs`, `schedule.rs` | Behaviour of every instruction, happy paths and each error code |
+| `known_limits.rs` | Documentation tests that pin the known design limits (see SECURITY.md); they pass by design and must be inverted when a limit is removed |
+| `compute.rs` | Compute units of `repay`, `mark_in_collection` and `write_off` at 18 and 120 installments stay under 100,000 |
+| `math_props.rs` | Property tests (proptest) over the share accounting and the arrears arithmetic |
+| `vectors.rs` | Evaluates the arrears arithmetic on 413 cases and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
 
 ## Deployments and upgrade authority
 

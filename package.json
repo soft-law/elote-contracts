@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
-    "check:client": "node codama.mjs && git diff --exit-code --stat clients/js/src/generated clients/js/package.json"
+    "check:client": "node codama.mjs && git diff --exit-code --stat clients/js/src/generated clients/js/package.json",
+    "test:client": "tsx --test clients/js/test/*.test.ts"
   },
   "devDependencies": {
     "@codama/nodes-from-anchor": "^1.5.6",
