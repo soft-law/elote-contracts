@@ -29,6 +29,6 @@
     "codama": "^1.11.0",
     "prettier": "^2.6.2",
     "tsx": "^4.23.13",
-    "typescript": "^5.7.3"
+    "typescript": "^7.0.2"
   }
 }
