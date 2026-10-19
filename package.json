@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "@codama/nodes-from-anchor": "^1.5.6",
-    "@codama/renderers-js": "^2.5.0",
+    "@codama/renderers-js": "^2.7.0",
     "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
     "@metaplex-foundation/umi": "^1.6.0",
     "@metaplex-foundation/umi-bundle-defaults": "^1.6.0",
