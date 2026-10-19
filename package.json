@@ -24,7 +24,7 @@
     "@solana-program/system": "^0.15.0",
     "@solana-program/token": "^0.17.0",
     "@solana/kit": "^8.3.0",
-    "@solana/program-client-core": "^8.3.0",
+    "@solana/program-client-core": "^8.5.0",
     "@types/node": "^22.20.5",
     "codama": "^1.11.0",
     "prettier": "^2.6.2",
