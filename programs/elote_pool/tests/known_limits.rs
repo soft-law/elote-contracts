@@ -1,6 +1,6 @@
 //! Documentation tests: each one pins a known design limit of the program as it is deployed
 //! today. They pass against the current code on purpose. None of them is a bug report; every
-//! limit here is listed in the docs roadmap ("Known limits of the demo") and in SECURITY.md.
+//! limit here is listed under "Known risks by design" in SECURITY.md.
 //!
 //! When a limit is removed (two-step origination, roles, accrual, a cancel instruction, a
 //! recovery instruction...), the matching test here must be inverted or deleted in the same
@@ -188,4 +188,34 @@ fn limit_first_deposit_minimum_assumes_six_decimals() {
     let ix = env.deposit_ix(&k, &investor.pubkey(), 999_999); // 9,999.99
     env.expect_err(ix, &investor, &[], E_FIRST_DEPOSIT_TOO_SMALL);
     env.deposit(&k, &investor, 1_000_000); // 10,000.00
+}
+
+/// Late interest is computed at the second the repayment executes. A client that reads
+/// `late_due`, then lands the transaction a little later, is refused with `LateInterestUnpaid`
+/// unless it pads the amount (SECURITY.md: "Late interest timing").
+#[test]
+fn limit_late_interest_is_settled_at_execution_time_so_clients_must_pad() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool_with_grace(0);
+    let investor = env.investor(&k, 10 * UNIT);
+    env.deposit(&k, &investor, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw(&k, line_id, &borrower);
+
+    // One installment missed for a while: late interest is accruing.
+    env.warp(env.now() + MONTH + 1_000);
+    let quoted = env.arrears(&k, line_id).late_due;
+    assert!(quoted > 0);
+    // The transaction lands a minute later: the quote is stale by a few base units.
+    env.warp(env.now() + 60);
+    let due_now = env.arrears(&k, line_id).late_due;
+    assert!(due_now > quoted);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), quoted);
+    env.expect_err(ix, &borrower, &[], E_LATE_INTEREST_UNPAID);
+    // Padded, it settles; the program debits only what is due.
+    let before = env.token_balance(&ata(&borrower.pubkey(), &k.asset_mint));
+    env.repay(&k, line_id, &borrower, due_now + 100_000);
+    assert_eq!(before - env.token_balance(&ata(&borrower.pubkey(), &k.asset_mint)), due_now + 100_000);
 }

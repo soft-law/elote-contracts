@@ -48,10 +48,10 @@ No instruction closes a `Pool` or a `CreditLine` account, and no instruction mov
 
 ## Known risks by design
 
-These are documented limits of the current program, not open vulnerabilities. Each is pinned by a test in `programs/elote_pool/tests/known_limits.rs` and listed with its planned change on the docs site under "Roadmap and limits".
+These are documented limits of the current program, not open vulnerabilities. All but the missing cancel instruction are pinned by a test in `programs/elote_pool/tests/known_limits.rs`; the planned changes are on the docs site under "Roadmap and limits".
 
 - **Step-function NAV.** Interest counts when it is collected and a loss when it is written off, so the share price moves in steps. A deposit placed just before a known repayment captures part of that interest; a redemption between `mark_in_collection` and `write_off` exits at the pre-loss value and leaves the loss to the remaining holders.
-- **No cancel.** An approved line is an irrevocable option for the borrower to draw until the term ends.
+- **No cancel.** There is no instruction to revoke an approved line: it is an option for the borrower to draw until the term ends.
 - **No recovery after write-off.** A written-off line takes no repayment. If every line is written off and the NAV reaches zero while shares exist, `deposit` fails until value is transferred into the vault directly.
 - **Collection can be unreachable.** `mark_in_collection` requires `covered + max_missed <= installments`; on a short schedule a borrower who paid early installments and then stopped can only be written off after the term.
 - **Decimals.** The first-deposit minimum is a fixed 1,000,000 base units, meant as 1.0 of a six-decimal asset.
