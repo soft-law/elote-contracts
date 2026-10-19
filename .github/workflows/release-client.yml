@@ -11,18 +11,20 @@ permissions:
 jobs:
   publish:
     name: Publish @softlaw/elote-pool-client
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
           cache: npm
+      # Trusted publishing (OIDC) needs npm 11.5.1+; Node 22 ships an older npm.
+      - run: npm install -g npm@latest && npm --version
       - run: npm ci && npm --prefix clients/js ci
       - name: Generated client matches the committed IDL
-        run: npm run check:client
+        run: node codama.mjs && git diff --exit-code --stat clients/js/src/generated
       - name: Tag matches the package version
         working-directory: clients/js
         run: |
@@ -36,13 +38,9 @@ jobs:
           NAME="$(node -p "require('./package.json').name")"
           VERSION="$(node -p "require('./package.json').version")"
           if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
-      - name: Build
-        if: steps.published.outputs.exists == 'false'
-        working-directory: clients/js
-        run: npm run build
+      # No token: the package's trusted publisher on npmjs.com names this repository and this
+      # workflow file, and npm attaches provenance automatically. `prepack` builds dist/.
       - name: Publish
         if: steps.published.outputs.exists == 'false'
         working-directory: clients/js
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

@@ -155,7 +155,7 @@ change fields; new information comes as new events.
 
 ## Build and test
 
-Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.1.2, Solana CLI 3.1.x, Node 20.18+.
+Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.1.2, Solana CLI 3.1.x, Node 22.12+.
 
 ```sh
 NO_DNA=1 anchor build            # target/deploy/elote_pool.so and target/idl/elote_pool.json
@@ -168,6 +168,29 @@ npm run typecheck
 
 The integration tests run the compiled program in LiteSVM 0.9.0, which loads SPL Token and the
 Associated Token Account program by default.
+
+## Deployments and upgrade authority
+
+| Cluster | Program id | Upgrade authority |
+|---|---|---|
+| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) |
+| mainnet-beta | not deployed | |
+
+The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
+mainnet deployment the authority moves to a [Squads](https://squads.so) multisig, the IDL is
+published on chain (`anchor idl init`), and the build is verified. The program embeds a
+`security.txt` (see `SECURITY.md`).
+
+Reproduce and compare the on-chain build with [solana-verify](https://github.com/Ellipsis-Labs/solana-verifiable-build):
+
+```sh
+solana-verify build --library-name elote_pool
+solana-verify get-executable-hash target/deploy/elote_pool.so
+solana-verify get-program-hash -u devnet BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM
+```
+
+The two hashes match when the deployed program was built from this commit in the verify
+container. No deployment has been verified yet; the first one that is will be recorded here.
 
 ## Demo
 

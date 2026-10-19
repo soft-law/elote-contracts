@@ -20,13 +20,13 @@ env:
 jobs:
   client:
     name: Client / typecheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci && npm --prefix clients/js ci
       - name: Generated client matches the committed IDL
@@ -39,7 +39,7 @@ jobs:
 
   program:
     name: Program / build and test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4

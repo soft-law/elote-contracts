@@ -19,6 +19,20 @@ use state::ScheduleParams;
 
 declare_id!("BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM");
 
+#[cfg(not(feature = "no-entrypoint"))]
+use solana_security_txt::security_txt;
+
+#[cfg(not(feature = "no-entrypoint"))]
+security_txt! {
+    name: "elote_pool",
+    project_url: "https://elote.baby",
+    contacts: "link:https://github.com/soft-law/elote-contracts/security/advisories/new",
+    policy: "https://github.com/soft-law/elote-contracts/blob/main/SECURITY.md",
+    preferred_languages: "en,es",
+    source_code: "https://github.com/soft-law/elote-contracts",
+    auditors: "None"
+}
+
 #[program]
 pub mod elote_pool {
     use super::*;
