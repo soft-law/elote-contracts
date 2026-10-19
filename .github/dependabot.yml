@@ -6,6 +6,15 @@ updates:
   - package-ecosystem: cargo
     directory: /
     schedule: { interval: weekly }
+    # anchor-lang 1.1.2 pins the Solana 3.x crate line and litesvm 0.9.0 is the one release that
+    # matches it (see programs/elote_pool/Cargo.toml). A new crate line comes with an Anchor bump,
+    # not from a dependency PR.
+    ignore:
+      - dependency-name: "anchor-*"
+      - dependency-name: "solana-*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "litesvm"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
