@@ -204,7 +204,9 @@ export async function getInitPoolInstructionAsync<
     TAccountEventAuthority,
     TAccountProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: {
+    programAddress?: TProgramAddress | { readonly address: TProgramAddress };
+  },
 ): Promise<
   InitPoolInstruction<
     TProgramAddress,
@@ -251,7 +253,12 @@ export async function getInitPoolInstructionAsync<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddressInput =
+    config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddress =
+    typeof programAddressInput === "string"
+      ? programAddressInput
+      : programAddressInput.address;
 
   // Account meta helper.
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -490,7 +497,9 @@ export function getInitPoolInstruction<
     TAccountEventAuthority,
     TAccountProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: {
+    programAddress?: TProgramAddress | { readonly address: TProgramAddress };
+  },
 ): InitPoolInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
@@ -535,7 +544,12 @@ export function getInitPoolInstruction<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddressInput =
+    config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddress =
+    typeof programAddressInput === "string"
+      ? programAddressInput
+      : programAddressInput.address;
 
   // Account meta helper.
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");

@@ -25,6 +25,7 @@ import {
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
+  type HasAddress,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 
@@ -48,8 +49,8 @@ export type DepositedEvent = {
 };
 
 export type DepositedEventArgs = {
-  pool: Address;
-  depositor: Address;
+  pool: Address | HasAddress;
+  depositor: Address | HasAddress;
   assets: number | bigint;
   shares: number | bigint;
   navAfter: number | bigint;

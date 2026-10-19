@@ -27,6 +27,7 @@ import {
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
+  type HasAddress,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 
@@ -47,7 +48,7 @@ export type LineInCollectionEvent = {
 };
 
 export type LineInCollectionEventArgs = {
-  pool: Address;
+  pool: Address | HasAddress;
   lineId: number | bigint;
   missed: number;
   remaining: number | bigint;

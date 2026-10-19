@@ -25,6 +25,7 @@ import {
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
+  type HasAddress,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 
@@ -39,7 +40,10 @@ export function getPoolConfiguredEventDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type PoolConfiguredEvent = { pool: Address; gracePeriodSeconds: number };
 
-export type PoolConfiguredEventArgs = PoolConfiguredEvent;
+export type PoolConfiguredEventArgs = {
+  pool: Address | HasAddress;
+  gracePeriodSeconds: number;
+};
 
 /** Gets the encoder for {@link PoolConfiguredEventArgs} event data. */
 export function getPoolConfiguredEventEncoder(): FixedSizeEncoder<PoolConfiguredEventArgs> {

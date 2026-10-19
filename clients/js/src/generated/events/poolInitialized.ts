@@ -23,6 +23,7 @@ import {
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
+  type HasAddress,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 
@@ -42,7 +43,12 @@ export type PoolInitializedEvent = {
   admin: Address;
 };
 
-export type PoolInitializedEventArgs = PoolInitializedEvent;
+export type PoolInitializedEventArgs = {
+  pool: Address | HasAddress;
+  assetMint: Address | HasAddress;
+  shareMint: Address | HasAddress;
+  admin: Address | HasAddress;
+};
 
 /** Gets the encoder for {@link PoolInitializedEventArgs} event data. */
 export function getPoolInitializedEventEncoder(): FixedSizeEncoder<PoolInitializedEventArgs> {

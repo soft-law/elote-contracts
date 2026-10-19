@@ -194,7 +194,9 @@ export async function getRedeemInstructionAsync<
     TAccountEventAuthority,
     TAccountProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: {
+    programAddress?: TProgramAddress | { readonly address: TProgramAddress };
+  },
 ): Promise<
   RedeemInstruction<
     TProgramAddress,
@@ -237,7 +239,12 @@ export async function getRedeemInstructionAsync<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddressInput =
+    config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddress =
+    typeof programAddressInput === "string"
+      ? programAddressInput
+      : programAddressInput.address;
 
   // Account meta helper.
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -410,7 +417,9 @@ export function getRedeemInstruction<
     TAccountEventAuthority,
     TAccountProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: {
+    programAddress?: TProgramAddress | { readonly address: TProgramAddress };
+  },
 ): RedeemInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
@@ -451,7 +460,12 @@ export function getRedeemInstruction<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddressInput =
+    config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddress =
+    typeof programAddressInput === "string"
+      ? programAddressInput
+      : programAddressInput.address;
 
   // Account meta helper.
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");

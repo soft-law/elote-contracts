@@ -168,7 +168,9 @@ export async function getDrawInstructionAsync<
     TAccountEventAuthority,
     TAccountProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: {
+    programAddress?: TProgramAddress | { readonly address: TProgramAddress };
+  },
 ): Promise<
   DrawInstruction<
     TProgramAddress,
@@ -207,7 +209,12 @@ export async function getDrawInstructionAsync<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddressInput =
+    config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddress =
+    typeof programAddressInput === "string"
+      ? programAddressInput
+      : programAddressInput.address;
 
   // Account meta helper.
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -358,7 +365,9 @@ export function getDrawInstruction<
     TAccountEventAuthority,
     TAccountProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: {
+    programAddress?: TProgramAddress | { readonly address: TProgramAddress };
+  },
 ): DrawInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
@@ -395,7 +404,12 @@ export function getDrawInstruction<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddressInput =
+    config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddress =
+    typeof programAddressInput === "string"
+      ? programAddressInput
+      : programAddressInput.address;
 
   // Account meta helper.
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");

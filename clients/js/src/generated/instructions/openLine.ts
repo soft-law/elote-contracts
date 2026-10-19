@@ -35,6 +35,7 @@ import {
   type Codec,
   type Decoder,
   type Encoder,
+  type HasAddress,
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
@@ -138,7 +139,7 @@ export type OpenLineInstructionDataArgs = {
   rateBps: number;
   termEnd: number | bigint;
   agreementHash: ReadonlyUint8Array;
-  sponsor: OptionOrNullable<Address>;
+  sponsor: OptionOrNullable<Address | HasAddress>;
   schedule: OptionOrNullable<ScheduleParamsArgs>;
 };
 
@@ -232,7 +233,9 @@ export async function getOpenLineInstructionAsync<
     TAccountEventAuthority,
     TAccountProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: {
+    programAddress?: TProgramAddress | { readonly address: TProgramAddress };
+  },
 ): Promise<
   OpenLineInstruction<
     TProgramAddress,
@@ -271,7 +274,12 @@ export async function getOpenLineInstructionAsync<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddressInput =
+    config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddress =
+    typeof programAddressInput === "string"
+      ? programAddressInput
+      : programAddressInput.address;
 
   // Account meta helper.
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -446,7 +454,9 @@ export function getOpenLineInstruction<
     TAccountEventAuthority,
     TAccountProgram
   >,
-  config?: { programAddress?: TProgramAddress },
+  config?: {
+    programAddress?: TProgramAddress | { readonly address: TProgramAddress };
+  },
 ): OpenLineInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
@@ -483,7 +493,12 @@ export function getOpenLineInstruction<
   >
 > {
   // Program address.
-  const programAddress = config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddressInput =
+    config?.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS;
+  const programAddress =
+    typeof programAddressInput === "string"
+      ? programAddressInput
+      : programAddressInput.address;
 
   // Account meta helper.
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");

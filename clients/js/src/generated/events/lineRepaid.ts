@@ -25,6 +25,7 @@ import {
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
+  type HasAddress,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 
@@ -48,9 +49,9 @@ export type LineRepaidEvent = {
 };
 
 export type LineRepaidEventArgs = {
-  pool: Address;
+  pool: Address | HasAddress;
   lineId: number | bigint;
-  payer: Address;
+  payer: Address | HasAddress;
   principalPart: number | bigint;
   interestPart: number | bigint;
   remaining: number | bigint;

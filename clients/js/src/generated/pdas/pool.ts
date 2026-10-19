@@ -11,21 +11,27 @@ import {
   getBytesEncoder,
   getProgramDerivedAddress,
   type Address,
+  type HasAddress,
   type ProgramDerivedAddress,
 } from "@solana/kit";
 
 export type PoolSeeds = {
-  admin: Address;
-  assetMint: Address;
+  admin: Address | HasAddress;
+  assetMint: Address | HasAddress;
 };
 
 export async function findPoolPda(
   seeds: PoolSeeds,
-  config: { programAddress?: Address | undefined } = {},
+  config: { programAddress?: Address | HasAddress | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM" as Address<"BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM">,
+    programAddress:
+      programAddressInput = "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM" as Address<"BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM">,
   } = config;
+  const programAddress =
+    typeof programAddressInput === "string"
+      ? programAddressInput
+      : programAddressInput.address;
   return await getProgramDerivedAddress({
     programAddress,
     seeds: [

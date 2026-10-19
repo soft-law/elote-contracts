@@ -33,6 +33,7 @@ import {
   type Codec,
   type Decoder,
   type Encoder,
+  type HasAddress,
   type Option,
   type OptionOrNullable,
   type ReadonlyUint8Array,
@@ -60,10 +61,10 @@ export type LineOpenedEvent = {
 };
 
 export type LineOpenedEventArgs = {
-  pool: Address;
+  pool: Address | HasAddress;
   lineId: number | bigint;
-  borrower: Address;
-  sponsor: OptionOrNullable<Address>;
+  borrower: Address | HasAddress;
+  sponsor: OptionOrNullable<Address | HasAddress>;
   agreementHash: ReadonlyUint8Array;
   principal: number | bigint;
   rateBps: number;

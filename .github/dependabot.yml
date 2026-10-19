@@ -18,6 +18,15 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
+    # TypeScript stays on the 5.x line the Solana compatibility matrix lists; prettier 3 reformats
+    # the generated client; @types/node follows the engines floor (Node 22), not the newest major.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "prettier"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /clients/js
     schedule: { interval: weekly }

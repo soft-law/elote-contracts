@@ -22,23 +22,30 @@ custom-panic = []
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
 
 [dependencies]
-anchor-lang = { version = "=1.1.2", features = ["event-cpi"] }
+anchor-lang = { version = "=1.2.1", features = ["event-cpi"] }
 solana-security-txt = "1.1.3"
-# `token_2022` and `token_2022_extensions` are enabled only because anchor-spl 1.1.2 references them
+# `solana-v3` is the crate cohort anchor-spl 1.2.1 requires by name once default features are off.
+# `token_2022` and `token_2022_extensions` are enabled only because anchor-spl references them
 # unconditionally (`idl-build` names `token_interface`; the `mint::` init constraint codegen names
 # the extension initialisers). The program itself uses classic SPL Token only.
-anchor-spl = { version = "=1.1.2", default-features = false, features = ["token", "associated_token", "token_2022", "token_2022_extensions"] }
+anchor-spl = { version = "=1.2.1", default-features = false, features = ["solana-v3", "token", "associated_token", "token_2022", "token_2022_extensions"] }
 
 # LiteSVM integration tests (programs/elote_pool/tests/).
 #
-# litesvm 0.9.0 is the only release that lines up with anchor-lang 1.1.2: 0.8.2 pins
-# `solana-sdk-ids ~3.0` while anchor-lang needs `^3.1.0`, and 0.9.1 moved to `solana-hash ^4.0` +
-# `solana-system-interface ^3.0`, which would put a second, incompatible copy of those crates in
-# the test process. 0.9.0's `~3.1` Agave line is also the runtime the workspace targets
-# (solana-cli 3.1.x). The bare `"3"` reqs below let cargo unify on the single 3.x copy that
-# litesvm and anchor-lang already share — `cargo tree -d` must stay free of `solana-*`.
+# anchor-lang 1.2.1 (default `solana-v3` feature) is on the Solana 3.x crate line with
+# `solana-system-interface ^2`. litesvm 0.11.0 is the newest release on that same line: 0.12
+# moves to `solana-system-interface ^3.2`, and 0.17+ are built on the Agave 4.x crates (0.18 also
+# needs Rust 1.97), which would put a second, incompatible copy of the `solana-*` crates in the
+# test process. The bare `"3"` reqs below let cargo unify on the single 3.x copy that litesvm and
+# anchor-lang already share. `cargo tree -d` does list `solana-*` pairs, and each must be one of two
+# benign kinds: a forward-compat shim (a 3.x crate that re-exports its 4.x successor, e.g.
+# solana-instruction 3.5 -> 4.0, solana-pubkey 3 -> 4) or a crate only anchor-lang's own
+# `solana-feature-gate-interface` uses (solana-rent 4.x, solana-system-interface 3.x). Any pair the
+# tests see as two distinct types shows up as a compile error in tests/common/mod.rs. Moving to the
+# 4.x line, and with it SBPF v3 (see the README), goes with anchor-lang's `solana-v4` feature once
+# Anchor's own CI covers `idl-build` under it.
 [dev-dependencies]
-litesvm = "=0.9.0"
+litesvm = "=0.11.0"
 proptest = "1"
 serde_json = "1"
 solana-account = "3"

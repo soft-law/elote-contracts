@@ -31,6 +31,7 @@ import {
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
+  type HasAddress,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 
@@ -53,7 +54,7 @@ export type LineScheduledEvent = {
 };
 
 export type LineScheduledEventArgs = {
-  pool: Address;
+  pool: Address | HasAddress;
   lineId: number | bigint;
   intervalSeconds: number | bigint;
   installments: number;

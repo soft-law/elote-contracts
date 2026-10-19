@@ -155,10 +155,10 @@ change fields; new information comes as new events.
 
 ## Build and test
 
-Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.1.2, Solana CLI 3.1.x, Node 22.12+.
+Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.2.1 (from [otter-sec/anchor](https://github.com/otter-sec/anchor), where Anchor now lives), Solana CLI 4.1.2 (the pairing Anchor 1.2 is tested against), Node 22.12+. `avm install 1.2.1 && avm use 1.2.1` and `agave-install init 4.1.2` set both; CI installs the same versions and checks the Anchor binary's sha256.
 
 ```sh
-NO_DNA=1 anchor build            # target/deploy/elote_pool.so and target/idl/elote_pool.json
+NO_DNA=1 anchor build --ignore-keys --arch v0   # target/deploy/elote_pool.so and target/idl/elote_pool.json
 cargo test -p elote_pool         # unit tests + LiteSVM integration tests against the built .so
 npm install
 npm run codama                   # copies the IDL to idl/ and regenerates clients/js/src/generated
@@ -169,9 +169,14 @@ npm run test:client              # replays the program's arrears vectors against
 
 `anchor build` on a fresh clone writes a new random `target/deploy/elote_pool-keypair.json`. It is
 not the program's key: never run `anchor keys sync` or `anchor deploy` with it, or the program id
-in `declare_id!` and `Anchor.toml` would change. Tests and the local validator use the explicit id.
+in `declare_id!` and `Anchor.toml` would change. Anchor 1.2 refuses to build on that mismatch, hence
+`--ignore-keys`. Tests and the local validator use the explicit id.
 
-The integration tests run the compiled program in LiteSVM 0.9.0, which loads SPL Token and the
+`--arch v0` keeps the SBPF v0 format of the deployed program: Anchor 1.2 defaults to SBPF v3, which
+the Solana 3.x runtime inside LiteSVM 0.11 cannot load. Moving to v3 goes together with
+`anchor-lang`'s `solana-v4` feature and a LiteSVM on the Agave 4.x line.
+
+The integration tests run the compiled program in LiteSVM 0.11.0, which loads SPL Token and the
 Associated Token Account program by default. `programs/elote_pool/tests/` holds:
 
 | File | What it checks |
@@ -189,7 +194,7 @@ Associated Token Account program by default. `programs/elote_pool/tests/` holds:
 | devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) |
 | mainnet-beta | not deployed | |
 
-The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
+The devnet program was built with Anchor 1.1.2 and Solana CLI 3.1.10; the last commit that builds with that pair is tag `pre-audit-2026-10-19`, and `main` (Anchor 1.2.1, Solana 4.1.2) produces a different binary. The next deployment should be made from `main` so the on-chain program and the source line up again. The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
 mainnet deployment the authority moves to a [Squads](https://squads.so) multisig, the IDL is
 published on chain (`anchor idl init`), and the build is verified. The program embeds a
 `security.txt` (see `SECURITY.md`).

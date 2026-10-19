@@ -25,6 +25,7 @@ import {
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
+  type HasAddress,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 
@@ -45,7 +46,7 @@ export type LineWrittenOffEvent = {
 };
 
 export type LineWrittenOffEventArgs = {
-  pool: Address;
+  pool: Address | HasAddress;
   lineId: number | bigint;
   loss: number | bigint;
   navAfter: number | bigint;

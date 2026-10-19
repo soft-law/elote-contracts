@@ -24,6 +24,7 @@ import {
   type ExtendedClient,
   type GetAccountInfoApi,
   type GetMultipleAccountsApi,
+  type HasAddress,
   type Instruction,
   type InstructionWithData,
   type ReadonlyUint8Array,
@@ -533,34 +534,43 @@ export type ElotePoolPluginAccounts = {
 export type ElotePoolPluginInstructions = {
   deposit: (
     input: DepositAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getDepositInstructionAsync> & SelfPlanAndSendFunctions;
   draw: (
     input: DrawAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getDrawInstructionAsync> & SelfPlanAndSendFunctions;
   initPool: (
     input: InitPoolAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getInitPoolInstructionAsync> &
     SelfPlanAndSendFunctions;
   markInCollection: (
     input: MarkInCollectionAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getMarkInCollectionInstructionAsync> &
     SelfPlanAndSendFunctions;
   openLine: (
     input: OpenLineAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getOpenLineInstructionAsync> &
     SelfPlanAndSendFunctions;
   redeem: (
     input: RedeemAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRedeemInstructionAsync> & SelfPlanAndSendFunctions;
   repay: (
     input: MakeOptional<RepayAsyncInput, "payer">,
+    config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRepayInstructionAsync> & SelfPlanAndSendFunctions;
   setPaused: (
     input: SetPausedAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSetPausedInstructionAsync> &
     SelfPlanAndSendFunctions;
   writeOff: (
     input: WriteOffAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getWriteOffInstructionAsync> &
     SelfPlanAndSendFunctions;
 };
@@ -580,7 +590,9 @@ export type ElotePoolPluginRequirements = ClientWithRpc<
   ClientWithTransactionPlanning &
   ClientWithTransactionSending;
 
-export function elotePoolProgram() {
+export function elotePoolProgram(
+  config: { programAddress?: Address | HasAddress } = {},
+) {
   return <T extends ElotePoolPluginRequirements>(
     client: T,
   ): ExtendedClient<T, { elotePool: ElotePoolPlugin }> => {
@@ -591,58 +603,108 @@ export function elotePoolProgram() {
           pool: addSelfFetchFunctions(client, getPoolCodec()),
         },
         instructions: {
-          deposit: (input) =>
+          deposit: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
-              getDepositInstructionAsync(input),
-            ),
-          draw: (input) =>
-            addSelfPlanAndSendFunctions(client, getDrawInstructionAsync(input)),
-          initPool: (input) =>
-            addSelfPlanAndSendFunctions(
-              client,
-              getInitPoolInstructionAsync(input),
-            ),
-          markInCollection: (input) =>
-            addSelfPlanAndSendFunctions(
-              client,
-              getMarkInCollectionInstructionAsync(input),
-            ),
-          openLine: (input) =>
-            addSelfPlanAndSendFunctions(
-              client,
-              getOpenLineInstructionAsync(input),
-            ),
-          redeem: (input) =>
-            addSelfPlanAndSendFunctions(
-              client,
-              getRedeemInstructionAsync(input),
-            ),
-          repay: (input) =>
-            addSelfPlanAndSendFunctions(
-              client,
-              getRepayInstructionAsync({
-                ...input,
-                payer: input.payer ?? client.payer,
+              getDepositInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
               }),
             ),
-          setPaused: (input) =>
+          draw: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
-              getSetPausedInstructionAsync(input),
+              getDrawInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
             ),
-          writeOff: (input) =>
+          initPool: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
-              getWriteOffInstructionAsync(input),
+              getInitPoolInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          markInCollection: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getMarkInCollectionInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          openLine: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getOpenLineInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          redeem: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getRedeemInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          repay: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getRepayInstructionAsync(
+                { ...input, payer: input.payer ?? client.payer },
+                {
+                  programAddress:
+                    instructionConfig?.programAddress ?? config.programAddress,
+                },
+              ),
+            ),
+          setPaused: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetPausedInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          writeOff: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getWriteOffInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
             ),
         },
         pdas: {
-          pool: findPoolPda,
-          shareMint: findShareMintPda,
-          vault: findVaultPda,
-          deadShares: findDeadSharesPda,
-          line: findLinePda,
+          pool: (seeds, pdaConfig) =>
+            findPoolPda(seeds, {
+              programAddress:
+                pdaConfig?.programAddress ?? config.programAddress,
+            }),
+          shareMint: (seeds, pdaConfig) =>
+            findShareMintPda(seeds, {
+              programAddress:
+                pdaConfig?.programAddress ?? config.programAddress,
+            }),
+          vault: (seeds, pdaConfig) =>
+            findVaultPda(seeds, {
+              programAddress:
+                pdaConfig?.programAddress ?? config.programAddress,
+            }),
+          deadShares: (seeds, pdaConfig) =>
+            findDeadSharesPda(seeds, {
+              programAddress:
+                pdaConfig?.programAddress ?? config.programAddress,
+            }),
+          line: (seeds, pdaConfig) =>
+            findLinePda(seeds, {
+              programAddress:
+                pdaConfig?.programAddress ?? config.programAddress,
+            }),
         },
         identifyAccount: identifyElotePoolAccount,
         identifyInstruction: identifyElotePoolInstruction,

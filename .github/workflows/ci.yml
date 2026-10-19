@@ -14,10 +14,11 @@ permissions:
   contents: read
 
 env:
-  SOLANA_VERSION: 3.1.10
-  ANCHOR_VERSION: 1.1.2
-  # sha256 of anchor-1.1.2-x86_64-unknown-linux-gnu from the solana-foundation/anchor release.
-  ANCHOR_SHA256: fdea9979629e9416e5f5e5622ff6c11b8c691d1e559581ece368e903c0c980c1
+  SOLANA_VERSION: 4.1.2
+  ANCHOR_VERSION: 1.2.1
+  # sha256 of anchor-1.2.1-x86_64-unknown-linux-gnu from the otter-sec/anchor release (Anchor moved there
+  # in 2026; solana-foundation/anchor redirects).
+  ANCHOR_SHA256: 5c899379cbd9a843fa4a730a37ba7ab61357571ffc535036a9afa08e5cd0b99b
 
 jobs:
   client:
@@ -26,7 +27,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -59,15 +60,18 @@ jobs:
         run: |
           mkdir -p "$HOME/.local/bin"
           curl -sSfL -o "$HOME/.local/bin/anchor" \
-            "https://github.com/solana-foundation/anchor/releases/download/v${ANCHOR_VERSION}/anchor-${ANCHOR_VERSION}-x86_64-unknown-linux-gnu"
+            "https://github.com/otter-sec/anchor/releases/download/v${ANCHOR_VERSION}/anchor-${ANCHOR_VERSION}-x86_64-unknown-linux-gnu"
           echo "${ANCHOR_SHA256}  $HOME/.local/bin/anchor" | sha256sum -c -
           chmod +x "$HOME/.local/bin/anchor"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
       - name: Toolchain versions
         run: rustc --version && solana --version && anchor --version
+      # --ignore-keys: the build keypair is random on a fresh checkout and is never the program's key.
+      # --arch v0: Anchor 1.2 defaults to SBPF v3, which the Solana 3.x runtime in LiteSVM 0.11
+      # cannot load; v0 is what is deployed on devnet. v3 comes with the move to the 4.x crate line.
       - name: Build
-        run: NO_DNA=1 anchor build
+        run: NO_DNA=1 anchor build --ignore-keys --arch v0
       - name: Committed IDL matches the build
         run: npm run idl:sync && git diff --exit-code --stat idl/
       - name: Unit and LiteSVM tests

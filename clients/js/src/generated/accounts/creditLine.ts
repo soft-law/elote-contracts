@@ -40,6 +40,7 @@ import {
   type Encoder,
   type FetchAccountConfig,
   type FetchAccountsConfig,
+  type HasAddress,
   type MaybeAccount,
   type MaybeEncodedAccount,
   type Option,
@@ -104,11 +105,11 @@ export type CreditLine = {
 
 export type CreditLineArgs = {
   version: number;
-  pool: Address;
+  pool: Address | HasAddress;
   lineId: number | bigint;
-  borrower: Address;
+  borrower: Address | HasAddress;
   /** A public program that co-signed the opening; `None` for a commercial line. */
-  sponsor: OptionOrNullable<Address>;
+  sponsor: OptionOrNullable<Address | HasAddress>;
   /** Hash of the signed credit agreement. */
   agreementHash: ReadonlyUint8Array;
   principal: number | bigint;
@@ -217,7 +218,7 @@ export function decodeCreditLine<TAddress extends string = string>(
 
 export async function fetchCreditLine<TAddress extends string = string>(
   rpc: Parameters<typeof fetchEncodedAccount>[0],
-  address: Address<TAddress>,
+  address: Address<TAddress> | HasAddress<TAddress>,
   config?: FetchAccountConfig,
 ): Promise<Account<CreditLine, TAddress>> {
   const maybeAccount = await fetchMaybeCreditLine(rpc, address, config);
@@ -227,16 +228,20 @@ export async function fetchCreditLine<TAddress extends string = string>(
 
 export async function fetchMaybeCreditLine<TAddress extends string = string>(
   rpc: Parameters<typeof fetchEncodedAccount>[0],
-  address: Address<TAddress>,
+  address: Address<TAddress> | HasAddress<TAddress>,
   config?: FetchAccountConfig,
 ): Promise<MaybeAccount<CreditLine, TAddress>> {
-  const maybeAccount = await fetchEncodedAccount(rpc, address, config);
+  const maybeAccount = await fetchEncodedAccount(
+    rpc,
+    typeof address === "string" ? address : address.address,
+    config,
+  );
   return decodeCreditLine(maybeAccount);
 }
 
 export async function fetchAllCreditLine(
   rpc: Parameters<typeof fetchEncodedAccounts>[0],
-  addresses: Array<Address>,
+  addresses: Array<Address | HasAddress>,
   config?: FetchAccountsConfig,
 ): Promise<Account<CreditLine>[]> {
   const maybeAccounts = await fetchAllMaybeCreditLine(rpc, addresses, config);
@@ -246,9 +251,13 @@ export async function fetchAllCreditLine(
 
 export async function fetchAllMaybeCreditLine(
   rpc: Parameters<typeof fetchEncodedAccounts>[0],
-  addresses: Array<Address>,
+  addresses: Array<Address | HasAddress>,
   config?: FetchAccountsConfig,
 ): Promise<MaybeAccount<CreditLine>[]> {
-  const maybeAccounts = await fetchEncodedAccounts(rpc, addresses, config);
+  const maybeAccounts = await fetchEncodedAccounts(
+    rpc,
+    addresses.map((a) => (typeof a === "string" ? a : a.address)),
+    config,
+  );
   return maybeAccounts.map((maybeAccount) => decodeCreditLine(maybeAccount));
 }
