@@ -28,4 +28,4 @@ codama.update(
   ])
 );
 
-codama.accept(renderVisitor("clients/js", { deleteFolderBeforeRendering: true }));
+codama.accept(renderVisitor("clients/js", { deleteFolderBeforeRendering: true, syncPackageJson: false }));

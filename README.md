@@ -8,8 +8,8 @@ terms, and depositors share the interest that borrowers repay.
 
 This is the production repository for the program, its TypeScript client
 (`@softlaw/elote-pool-client`, in [`clients/js`](clients/js)) and the demo scripts. The app lives in
-`soft-law/elote-web`, the documentation in `soft-law/elote-docs`, and the agreements server in
-`soft-law/softlaw-backend`.
+`soft-law/elote-web` (private), the documentation in `soft-law/elote-docs`, and the agreements server in
+`soft-law/softlaw-backend` (private).
 
 Hackathon snapshot: https://github.com/soft-law/elote-baby/tree/colosseum-2026 (program, app,
 agreements server and the Meteora launch as submitted).
@@ -166,6 +166,10 @@ npm run check:client             # fails if the committed client differs from id
 npm run typecheck
 ```
 
+`anchor build` on a fresh clone writes a new random `target/deploy/elote_pool-keypair.json`. It is
+not the program's key: never run `anchor keys sync` or `anchor deploy` with it, or the program id
+in `declare_id!` and `Anchor.toml` would change. Tests and the local validator use the explicit id.
+
 The integration tests run the compiled program in LiteSVM 0.9.0, which loads SPL Token and the
 Associated Token Account program by default.
 
@@ -191,6 +195,16 @@ solana-verify get-program-hash -u devnet BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DE
 
 The two hashes match when the deployed program was built from this commit in the verify
 container. No deployment has been verified yet; the first one that is will be recorded here.
+
+### Releasing the client
+
+Bump `version` in `clients/js/package.json`, commit on `main`, tag `client-v<version>` and push the
+tag. `release-client.yml` checks the tag is on `main`, regenerates the client against the IDL,
+builds and publishes through npm trusted publishing (OIDC): no token in the repo, provenance
+attached by npm. One-time setup by the package owner: publish the first version by hand from a
+logged-in machine, then on npmjs.com add the trusted publisher (GitHub, `soft-law`,
+`elote-contracts`, `release-client.yml`, environment `npm-publish`) and add required reviewers
+to the `npm-publish` environment in this repository's settings.
 
 ## Demo
 

@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
-    "check:client": "node codama.mjs && git diff --exit-code --stat clients/js/src/generated"
+    "check:client": "node codama.mjs && git diff --exit-code --stat clients/js/src/generated clients/js/package.json"
   },
   "devDependencies": {
     "@codama/nodes-from-anchor": "^1.5.6",
@@ -25,7 +25,7 @@
     "@solana-program/token": "^0.17.0",
     "@solana/kit": "^8.3.0",
     "@solana/program-client-core": "^8.3.0",
-    "@types/node": "^20.0.0",
+    "@types/node": "^22.20.5",
     "codama": "^1.11.0",
     "prettier": "^2.6.2",
     "tsx": "^4.23.13",

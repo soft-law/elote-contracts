@@ -23,10 +23,10 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"
 
 [dependencies]
 anchor-lang = { version = "=1.1.2", features = ["event-cpi"] }
+solana-security-txt = "1.1.3"
 # `token_2022` and `token_2022_extensions` are enabled only because anchor-spl 1.1.2 references them
 # unconditionally (`idl-build` names `token_interface`; the `mint::` init constraint codegen names
 # the extension initialisers). The program itself uses classic SPL Token only.
-solana-security-txt = "1.1.3"
 anchor-spl = { version = "=1.1.2", default-features = false, features = ["token", "associated_token", "token_2022", "token_2022_extensions"] }
 
 # LiteSVM integration tests (programs/elote_pool/tests/).

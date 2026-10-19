@@ -6,25 +6,34 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish:
     name: Publish @softlaw/elote-pool-client
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Protect this environment with required reviewers in the repo settings: a tag push then
+    # waits for approval before the job (and its OIDC token) runs.
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          node-version: 22
+          fetch-depth: 0
+      - name: Tagged commit is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24 # ships npm 11+, which trusted publishing needs
           registry-url: https://registry.npmjs.org
           cache: npm
-      # Trusted publishing (OIDC) needs npm 11.5.1+; Node 22 ships an older npm.
-      - run: npm install -g npm@latest && npm --version
-      - run: npm ci && npm --prefix clients/js ci
-      - name: Generated client matches the committed IDL
-        run: node codama.mjs && git diff --exit-code --stat clients/js/src/generated
+      - run: npm --version
+      # No install scripts: nothing in the dependency tree runs before the publish.
+      - run: npm ci --ignore-scripts && npm --prefix clients/js ci --ignore-scripts
+      - name: Generated client and package manifest match the committed IDL
+        run: npm run check:client
       - name: Tag matches the package version
         working-directory: clients/js
         run: |
