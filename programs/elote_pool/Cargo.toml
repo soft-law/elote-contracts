@@ -45,4 +45,4 @@ solana-keypair = "3"
 solana-pubkey = "3"
 solana-signer = "3"
 solana-transaction = { version = "3", features = ["bincode"] }
-solana-transaction-error = "3"
+solana-transaction-error = "4"
