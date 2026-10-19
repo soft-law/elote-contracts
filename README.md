@@ -194,7 +194,7 @@ Associated Token Account program by default. `programs/elote_pool/tests/` holds:
 | devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) |
 | mainnet-beta | not deployed | |
 
-The devnet program was built with Anchor 1.1.2 and Solana CLI 3.1.10; the last commit that builds with that pair is tag `pre-audit-2026-10-19`, and `main` (Anchor 1.2.1, Solana 4.1.2) produces a different binary. The next deployment should be made from `main` so the on-chain program and the source line up again. The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
+The devnet program was built with Anchor 1.1.2 and Solana CLI 3.1.10, before `security.txt` was added; the last commit on that toolchain is tag `pre-audit-2026-10-19`, and `main` (Anchor 1.2.1, Solana 4.1.2) produces a different binary. No deployment has been verified against any commit yet; the next deployment should be made from `main` so the on-chain program and the source line up. The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
 mainnet deployment the authority moves to a [Squads](https://squads.so) multisig, the IDL is
 published on chain (`anchor idl init`), and the build is verified. The program embeds a
 `security.txt` (see `SECURITY.md`).
