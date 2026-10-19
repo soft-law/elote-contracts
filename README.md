@@ -161,8 +161,8 @@ Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.1.2, Solana CLI 3.1
 NO_DNA=1 anchor build            # target/deploy/elote_pool.so and target/idl/elote_pool.json
 cargo test -p elote_pool         # unit tests + LiteSVM integration tests against the built .so
 npm install
-npm run codama                   # regenerates clients/js/src/generated from the IDL
-npm run check:client             # fails if the committed client differs from the IDL
+npm run codama                   # copies the IDL to idl/ and regenerates clients/js/src/generated
+npm run check:client             # fails if the committed client differs from idl/elote_pool.json
 npm run typecheck
 ```
 

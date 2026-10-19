@@ -1,0 +1,1831 @@
+{
+  "address": "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
+  "metadata": {
+    "name": "elote_pool",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "deposit",
+      "docs": [
+        "Deposits `assets` into the vault and receives shares at the current NAV, at least",
+        "`min_shares_out`. The first deposit locks `DEAD_SHARES` in the pool."
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "depositor",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "dead_shares",
+          "writable": true
+        },
+        {
+          "name": "depositor_asset_account",
+          "writable": true
+        },
+        {
+          "name": "depositor_share_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "assets",
+          "type": "u64"
+        },
+        {
+          "name": "min_shares_out",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "draw",
+      "docs": [
+        "Pays the whole principal of an approved line from the vault to the borrower, before the",
+        "term ends."
+      ],
+      "discriminator": [
+        61,
+        40,
+        62,
+        184,
+        31,
+        176,
+        24,
+        130
+      ],
+      "accounts": [
+        {
+          "name": "borrower",
+          "signer": true,
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "borrower_asset_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_pool",
+      "docs": [
+        "Creates the pool, its share token mint and its vault for `asset_mint`, with the grace",
+        "period (seconds) that applies to every line of the pool."
+      ],
+      "discriminator": [
+        116,
+        233,
+        199,
+        204,
+        115,
+        159,
+        171,
+        36
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "asset_mint"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "admin"
+              },
+              {
+                "kind": "account",
+                "path": "asset_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  97,
+                  114,
+                  101,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "A PDA token account, so nobody can pre-create it and block the pool."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dead_shares",
+          "docs": [
+            "Holds the dead shares of the first deposit; nothing ever moves them."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "grace_period_seconds",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "mark_in_collection",
+      "docs": [
+        "Moves a scheduled line to collection once `max_missed` installments are missed and the",
+        "grace period of the last of them has run. Anyone may call it, also while paused."
+      ],
+      "discriminator": [
+        188,
+        166,
+        200,
+        229,
+        218,
+        155,
+        109,
+        156
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_line",
+      "docs": [
+        "Approves credit line `line_id` (the next in sequence) for `borrower`; a named sponsor",
+        "co-signs. With `schedule`, the line is repaid in installments (version 2); without it, at a",
+        "single maturity (version 1). Moves no money."
+      ],
+      "discriminator": [
+        99,
+        104,
+        130,
+        198,
+        128,
+        34,
+        27,
+        208
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "borrower",
+          "signer": true
+        },
+        {
+          "name": "sponsor",
+          "docs": [
+            "The sponsor named in the arguments; required (and signing) when one is named."
+          ],
+          "signer": true,
+          "optional": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "arg",
+                "path": "line_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "line_id",
+          "type": "u64"
+        },
+        {
+          "name": "principal",
+          "type": "u64"
+        },
+        {
+          "name": "rate_bps",
+          "type": "u16"
+        },
+        {
+          "name": "term_end",
+          "type": "i64"
+        },
+        {
+          "name": "agreement_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "sponsor",
+          "type": {
+            "option": "pubkey"
+          }
+        },
+        {
+          "name": "schedule",
+          "type": {
+            "option": {
+              "defined": {
+                "name": "ScheduleParams"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "redeem",
+      "docs": [
+        "Burns `shares` and receives assets at the current NAV, at least `min_assets_out`, up to",
+        "the vault's liquidity."
+      ],
+      "discriminator": [
+        184,
+        12,
+        86,
+        149,
+        70,
+        196,
+        97,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "holder",
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "holder_share_account",
+          "writable": true
+        },
+        {
+          "name": "holder_asset_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "shares",
+          "type": "u64"
+        },
+        {
+          "name": "min_assets_out",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "repay",
+      "docs": [
+        "Repays up to `amount` of a drawn line. Anyone may pay. A single-maturity line takes",
+        "principal first, then interest; a scheduled line takes late interest (which `amount` must",
+        "cover), then interest, then principal, and never more than is due."
+      ],
+      "discriminator": [
+        234,
+        103,
+        67,
+        82,
+        208,
+        234,
+        219,
+        166
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Anyone may repay: the borrower, a sponsor paying the interest, or a third party."
+          ],
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "payer_asset_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_paused",
+      "docs": [
+        "Pauses or resumes deposits, redemptions, openings and draws. Repayments, collection and",
+        "write-offs are never paused."
+      ],
+      "discriminator": [
+        91,
+        60,
+        125,
+        192,
+        176,
+        225,
+        166,
+        218
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "paused",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "write_off",
+      "docs": [
+        "Recognises the unpaid principal of a line as a loss. Admin only: after the term plus the",
+        "pool's grace, or, for a line in collection, after its oldest missed due date plus grace."
+      ],
+      "discriminator": [
+        42,
+        219,
+        118,
+        129,
+        76,
+        117,
+        45,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Read for the NAV in the event."
+          ]
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "CreditLine",
+      "discriminator": [
+        220,
+        226,
+        205,
+        24,
+        220,
+        151,
+        129,
+        104
+      ]
+    },
+    {
+      "name": "Pool",
+      "discriminator": [
+        241,
+        154,
+        109,
+        4,
+        17,
+        177,
+        109,
+        188
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "Deposited",
+      "discriminator": [
+        111,
+        141,
+        26,
+        45,
+        161,
+        35,
+        100,
+        57
+      ]
+    },
+    {
+      "name": "LateInterestCollected",
+      "discriminator": [
+        222,
+        62,
+        200,
+        36,
+        83,
+        150,
+        231,
+        151
+      ]
+    },
+    {
+      "name": "LineDrawn",
+      "discriminator": [
+        100,
+        242,
+        180,
+        4,
+        119,
+        91,
+        185,
+        148
+      ]
+    },
+    {
+      "name": "LineInCollection",
+      "discriminator": [
+        223,
+        69,
+        211,
+        21,
+        48,
+        207,
+        3,
+        75
+      ]
+    },
+    {
+      "name": "LineOpened",
+      "discriminator": [
+        200,
+        206,
+        237,
+        128,
+        16,
+        167,
+        83,
+        72
+      ]
+    },
+    {
+      "name": "LineRepaid",
+      "discriminator": [
+        127,
+        110,
+        23,
+        12,
+        105,
+        66,
+        127,
+        175
+      ]
+    },
+    {
+      "name": "LineScheduled",
+      "discriminator": [
+        235,
+        180,
+        143,
+        112,
+        60,
+        193,
+        27,
+        134
+      ]
+    },
+    {
+      "name": "LineWrittenOff",
+      "discriminator": [
+        78,
+        147,
+        223,
+        35,
+        76,
+        99,
+        164,
+        168
+      ]
+    },
+    {
+      "name": "PoolConfigured",
+      "discriminator": [
+        110,
+        51,
+        15,
+        167,
+        103,
+        41,
+        48,
+        66
+      ]
+    },
+    {
+      "name": "PoolInitialized",
+      "discriminator": [
+        100,
+        118,
+        173,
+        87,
+        12,
+        198,
+        254,
+        229
+      ]
+    },
+    {
+      "name": "PoolPaused",
+      "discriminator": [
+        228,
+        218,
+        62,
+        53,
+        29,
+        211,
+        159,
+        236
+      ]
+    },
+    {
+      "name": "Redeemed",
+      "discriminator": [
+        14,
+        29,
+        183,
+        71,
+        31,
+        165,
+        107,
+        38
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Paused",
+      "msg": "The pool is paused"
+    },
+    {
+      "code": 6001,
+      "name": "Unauthorized",
+      "msg": "Only the pool admin may do this"
+    },
+    {
+      "code": 6002,
+      "name": "WrongAmount",
+      "msg": "Amount is zero or exceeds what is due"
+    },
+    {
+      "code": 6003,
+      "name": "InsufficientLiquidity",
+      "msg": "Not enough liquidity in the vault"
+    },
+    {
+      "code": 6004,
+      "name": "LineStatus",
+      "msg": "The line is not in the required status"
+    },
+    {
+      "code": 6005,
+      "name": "TermNotEnded",
+      "msg": "The term has not ended"
+    },
+    {
+      "code": 6006,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6007,
+      "name": "SponsorRequired",
+      "msg": "The sponsor named on this line must sign"
+    },
+    {
+      "code": 6008,
+      "name": "ZeroShares",
+      "msg": "The deposit would mint zero shares"
+    },
+    {
+      "code": 6009,
+      "name": "FirstDepositTooSmall",
+      "msg": "First deposit below the minimum"
+    },
+    {
+      "code": 6010,
+      "name": "WrongAccount",
+      "msg": "Wrong mint or token account"
+    },
+    {
+      "code": 6011,
+      "name": "SlippageExceeded",
+      "msg": "The result is below the minimum the caller accepts"
+    },
+    {
+      "code": 6012,
+      "name": "TermEnded",
+      "msg": "The term has ended"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidSchedule",
+      "msg": "The installment schedule is not valid"
+    },
+    {
+      "code": 6014,
+      "name": "ScheduleEndsAfterTerm",
+      "msg": "The last installment would fall due after the term"
+    },
+    {
+      "code": 6015,
+      "name": "NotScheduled",
+      "msg": "The line has no installment schedule"
+    },
+    {
+      "code": 6016,
+      "name": "NotEnoughMissed",
+      "msg": "Fewer installments missed than the line allows before collection"
+    },
+    {
+      "code": 6017,
+      "name": "LateInterestUnpaid",
+      "msg": "The repayment must cover the late interest due"
+    },
+    {
+      "code": 6018,
+      "name": "WriteOffTooEarly",
+      "msg": "A line in collection is written off only after its oldest missed due date plus grace, or after the term plus grace"
+    }
+  ],
+  "types": [
+    {
+      "name": "CreditLine",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "borrower",
+            "type": "pubkey"
+          },
+          {
+            "name": "sponsor",
+            "docs": [
+              "A public program that co-signed the opening; `None` for a commercial line."
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "agreement_hash",
+            "docs": [
+              "Hash of the signed credit agreement."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "principal",
+            "type": "u64"
+          },
+          {
+            "name": "rate_bps",
+            "docs": [
+              "Fixed interest on the principal."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "interest_due",
+            "docs": [
+              "`principal * rate_bps / BPS`, fixed at opening."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "term_end",
+            "type": "i64"
+          },
+          {
+            "name": "principal_repaid",
+            "type": "u64"
+          },
+          {
+            "name": "interest_repaid",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "LineStatus"
+              }
+            }
+          },
+          {
+            "name": "opened_at",
+            "type": "i64"
+          },
+          {
+            "name": "drawn_at",
+            "type": "i64"
+          },
+          {
+            "name": "closed_at",
+            "type": "i64"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Zero on a version-1 line (single maturity). On a version-2 line, the installment schedule,",
+              "read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:",
+              "",
+              "| bytes  | field              | type    | meaning                                         |",
+              "|--------|--------------------|---------|-------------------------------------------------|",
+              "| 0..8   | `interval_seconds` | i64 LE  | seconds between due dates, from `drawn_at`      |",
+              "| 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |",
+              "| 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |",
+              "| 12     | `max_missed`       | u8      | missed installments that allow collection       |",
+              "| 13     | `flags`            | u8      | reserved, zero                                  |",
+              "| 14..22 | `late_collected`   | u64 LE  | late interest collected so far                  |",
+              "| 22..30 | `late_paid_until`  | i64 LE  | late interest is settled up to this time        |",
+              "| 30..32 | unused             | zero    |                                                 |"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Deposited",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "depositor",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "nav_after",
+            "type": "u64"
+          },
+          {
+            "name": "supply_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LateInterestCollected",
+      "docs": [
+        "Late interest collected by a repayment of a scheduled line; it stays in the pool and raises",
+        "the NAV like interest. Emitted before the `LineRepaid` of the same repayment."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineDrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "outstanding_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineInCollection",
+      "docs": [
+        "A scheduled line moved to collection. `remaining` is the principal and interest still due,",
+        "without late interest."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "missed",
+            "type": "u16"
+          },
+          {
+            "name": "remaining",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineOpened",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "borrower",
+            "type": "pubkey"
+          },
+          {
+            "name": "sponsor",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "agreement_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "principal",
+            "type": "u64"
+          },
+          {
+            "name": "rate_bps",
+            "type": "u16"
+          },
+          {
+            "name": "interest_due",
+            "type": "u64"
+          },
+          {
+            "name": "term_end",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineRepaid",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "principal_part",
+            "type": "u64"
+          },
+          {
+            "name": "interest_part",
+            "type": "u64"
+          },
+          {
+            "name": "remaining",
+            "type": "u64"
+          },
+          {
+            "name": "nav_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineScheduled",
+      "docs": [
+        "Emitted by `open_line` after `LineOpened` when the line has an installment schedule."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "interval_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "installments",
+            "type": "u16"
+          },
+          {
+            "name": "late_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_missed",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Approved"
+          },
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Repaid"
+          },
+          {
+            "name": "WrittenOff"
+          },
+          {
+            "name": "InCollection"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineWrittenOff",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "loss",
+            "type": "u64"
+          },
+          {
+            "name": "nav_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "docs": [
+              "PDA token account `[VAULT, pool]` for `asset_mint`, owned by the pool PDA."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "share_mint",
+            "docs": [
+              "The share token mint; its mint authority is the pool PDA."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "dead_shares",
+            "docs": [
+              "PDA share token account `[DEAD, pool]`, owned by the pool PDA; never burned."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "outstanding_principal",
+            "docs": [
+              "Principal drawn and neither repaid nor written off."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "interest_collected",
+            "docs": [
+              "Informative running total."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "written_off",
+            "docs": [
+              "Informative running total."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "line_count",
+            "type": "u64"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Pool parameters packed into spare bytes, so the account layout does not change:",
+              "",
+              "| bytes   | field                  | type     | meaning                                   |",
+              "|---------|------------------------|----------|-------------------------------------------|",
+              "| 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |",
+              "| 4..32   | unused                 | zero     |                                           |",
+              "",
+              "Read and written only through [`Pool::grace_period_seconds`] and",
+              "[`Pool::set_grace_period_seconds`]."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolConfigured",
+      "docs": [
+        "Emitted by `init_pool` after `PoolInitialized`: the pool parameters fixed at launch."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "grace_period_seconds",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "share_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "admin",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolPaused",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redeemed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "assets",
+            "type": "u64"
+          },
+          {
+            "name": "nav_after",
+            "type": "u64"
+          },
+          {
+            "name": "supply_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ScheduleParams",
+      "docs": [
+        "Installment terms requested by `open_line`; fixed for the life of the line."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "interval_seconds",
+            "docs": [
+              "Seconds between due dates; installment `k` is due at `drawn_at + k * interval_seconds`."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "installments",
+            "docs": [
+              "`principal + interest_due` is paid in this many installments."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "late_bps",
+            "docs": [
+              "Annual late interest rate on overdue amounts, in basis points."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_missed",
+            "docs": [
+              "Missed installments after which anyone may move the line to collection."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -6,7 +6,8 @@
   },
   "scripts": {
     "test": "cargo test -p elote_pool",
-    "codama": "node codama.mjs",
+    "idl:sync": "cp target/idl/elote_pool.json idl/elote_pool.json",
+    "codama": "npm run idl:sync && node codama.mjs",
     "build:client": "npm --prefix clients/js run build",
     "demo": "tsx scripts/demo-pool.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",

@@ -13,6 +13,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  SOLANA_VERSION: 3.1.10
+  ANCHOR_VERSION: 1.1.2
+
 jobs:
   client:
     name: Client / typecheck
@@ -26,7 +30,7 @@ jobs:
           cache: npm
       - run: npm ci && npm --prefix clients/js ci
       - name: Generated client matches the committed IDL
-        run: npm run check:client
+        run: node codama.mjs && git diff --exit-code --stat clients/js/src/generated
       - run: npm run typecheck
       - name: Client bundle builds
         run: npm run build:client
@@ -36,15 +40,32 @@ jobs:
   program:
     name: Program / build and test
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - uses: metadaoproject/setup-anchor@v3
+      - uses: Swatinem/rust-cache@v2
+      - name: Cache Solana CLI
+        id: solana-cache
+        uses: actions/cache@v4
         with:
-          anchor-version: 1.1.2
-          solana-cli-version: 3.1.10
-          node-version: 20
+          path: ~/.local/share/solana/install
+          key: solana-${{ runner.os }}-${{ env.SOLANA_VERSION }}
+      - name: Install Solana CLI
+        if: steps.solana-cache.outputs.cache-hit != 'true'
+        run: sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install)"
+      - name: Install Anchor CLI
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL -o "$HOME/.local/bin/anchor" \
+            "https://github.com/coral-xyz/anchor/releases/download/v${ANCHOR_VERSION}/anchor-${ANCHOR_VERSION}-x86_64-unknown-linux-gnu"
+          chmod +x "$HOME/.local/bin/anchor"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Toolchain versions
+        run: rustc --version && solana --version && anchor --version
       - name: Build
         run: NO_DNA=1 anchor build
+      - name: Committed IDL matches the build
+        run: npm run idl:sync && git diff --exit-code --stat idl/
       - name: Unit and LiteSVM tests
         run: cargo test -p elote_pool
