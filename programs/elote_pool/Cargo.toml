@@ -38,7 +38,7 @@ anchor-spl = { version = "=1.1.2", default-features = false, features = ["token"
 # (solana-cli 3.1.x). The bare `"3"` reqs below let cargo unify on the single 3.x copy that
 # litesvm and anchor-lang already share — `cargo tree -d` must stay free of `solana-*`.
 [dev-dependencies]
-litesvm = "=0.9.0"
+litesvm = "=0.11.0"
 solana-account = "3"
 solana-instruction = "3"
 solana-keypair = "3"
