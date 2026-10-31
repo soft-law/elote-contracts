@@ -1236,6 +1236,11 @@
       "code": 6020,
       "name": "LineTooLarge",
       "msg": "The principal exceeds the pool's maximum line, max_line_bps of the NAV"
+    },
+    {
+      "code": 6021,
+      "name": "InvariantBroken",
+      "msg": "A pool invariant does not hold after this instruction; the transaction is refused"
     }
   ],
   "types": [

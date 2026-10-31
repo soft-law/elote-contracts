@@ -214,6 +214,7 @@ pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Resul
 
     ctx.accounts.vault.reload()?;
     ctx.accounts.share_mint.reload()?;
+    ctx.accounts.pool.check(ctx.accounts.vault.amount, Some(ctx.accounts.share_mint.supply))?;
     let nav_after = math::nav(ctx.accounts.vault.amount, ctx.accounts.pool.outstanding_principal)
         .ok_or(PoolError::Overflow)?;
     emit_cpi!(Deposited {
@@ -306,6 +307,7 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
 
     ctx.accounts.vault.reload()?;
     ctx.accounts.share_mint.reload()?;
+    ctx.accounts.pool.check(ctx.accounts.vault.amount, Some(ctx.accounts.share_mint.supply))?;
     let nav_after = math::nav(ctx.accounts.vault.amount, ctx.accounts.pool.outstanding_principal)
         .ok_or(PoolError::Overflow)?;
     emit_cpi!(Redeemed {

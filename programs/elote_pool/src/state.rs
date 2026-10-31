@@ -106,6 +106,22 @@ impl Pool {
             .and_then(|v| u64::try_from(v).ok())
     }
 
+    /// The invariants every money instruction re-checks before it returns (R-25), on balances
+    /// reloaded after the CPIs: `vault + outstanding_principal` fits a `u64` (the NAV exists),
+    /// and, where the share mint is an account of the instruction, its supply is zero (nothing
+    /// deposited yet) or at least `DEAD_SHARES` (the dead account is never burned). A failure
+    /// means state the program considers impossible; the transaction is refused.
+    pub fn check(&self, vault_amount: u64, share_supply: Option<u64>) -> Result<()> {
+        require!(
+            vault_amount.checked_add(self.outstanding_principal).is_some(),
+            crate::errors::PoolError::InvariantBroken
+        );
+        if let Some(supply) = share_supply {
+            require!(supply == 0 || supply >= DEAD_SHARES, crate::errors::PoolError::InvariantBroken);
+        }
+        Ok(())
+    }
+
     pub fn set_grace_period_seconds(&mut self, seconds: u32) {
         self.reserved[0..4].copy_from_slice(&seconds.to_le_bytes());
     }
@@ -227,5 +243,52 @@ impl CreditLine {
 
     pub fn set_schedule(&mut self, s: &Schedule) {
         s.pack(&mut self.reserved);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pool(outstanding_principal: u64) -> Pool {
+        Pool {
+            version: POOL_VERSION,
+            admin: Pubkey::default(),
+            asset_mint: Pubkey::default(),
+            vault: Pubkey::default(),
+            share_mint: Pubkey::default(),
+            dead_shares: Pubkey::default(),
+            outstanding_principal,
+            interest_collected: 0,
+            written_off: 0,
+            line_count: 0,
+            paused: false,
+            reserved: [0; 32],
+            bump: 0,
+        }
+    }
+
+    /// R-25: the invariants every money instruction re-checks before returning.
+    #[test]
+    fn check_accepts_a_consistent_pool_and_refuses_a_broken_one() {
+        let p = pool(5);
+        assert!(p.check(10, None).is_ok(), "the NAV fits");
+        assert!(p.check(10, Some(0)).is_ok(), "nothing deposited yet");
+        assert!(p.check(10, Some(DEAD_SHARES)).is_ok(), "the dead shares alone are a valid floor");
+        assert!(p.check(10, Some(DEAD_SHARES + 1)).is_ok());
+        assert!(p.check(10, Some(DEAD_SHARES - 1)).is_err(), "a supply below the dead shares is impossible");
+        assert!(p.check(10, Some(1)).is_err());
+        assert!(p.check(u64::MAX, None).is_err(), "vault + outstanding overflows");
+        assert!(pool(0).check(u64::MAX, Some(DEAD_SHARES)).is_ok(), "the maximum NAV itself is fine");
+    }
+
+    #[test]
+    fn min_first_deposit_is_one_unit_with_a_dead_shares_floor() {
+        assert_eq!(min_first_deposit(6), Some(1_000_000));
+        assert_eq!(min_first_deposit(9), Some(1_000_000_000));
+        assert_eq!(min_first_deposit(2), Some(1_000_000), "the floor, not 100");
+        assert_eq!(min_first_deposit(0), Some(1_000_000));
+        assert_eq!(min_first_deposit(19), Some(10u64.pow(19)));
+        assert_eq!(min_first_deposit(20), None, "10^20 does not fit a u64");
     }
 }

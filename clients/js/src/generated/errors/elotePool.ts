@@ -57,12 +57,15 @@ export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x1782; // 6018
 export const ELOTE_POOL_ERROR__BORROWER_IS_ADMIN = 0x1783; // 6019
 /** LineTooLarge: The principal exceeds the pool's maximum line, max_line_bps of the NAV */
 export const ELOTE_POOL_ERROR__LINE_TOO_LARGE = 0x1784; // 6020
+/** InvariantBroken: A pool invariant does not hold after this instruction; the transaction is refused */
+export const ELOTE_POOL_ERROR__INVARIANT_BROKEN = 0x1785; // 6021
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_ADMIN
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
   | typeof ELOTE_POOL_ERROR__INVALID_SCHEDULE
+  | typeof ELOTE_POOL_ERROR__INVARIANT_BROKEN
   | typeof ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID
   | typeof ELOTE_POOL_ERROR__LINE_STATUS
   | typeof ELOTE_POOL_ERROR__LINE_TOO_LARGE
@@ -88,6 +91,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
     [ELOTE_POOL_ERROR__INVALID_SCHEDULE]: `The installment schedule is not valid`,
+    [ELOTE_POOL_ERROR__INVARIANT_BROKEN]: `A pool invariant does not hold after this instruction; the transaction is refused`,
     [ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID]: `The repayment must cover the late interest due`,
     [ELOTE_POOL_ERROR__LINE_STATUS]: `The line is not in the required status`,
     [ELOTE_POOL_ERROR__LINE_TOO_LARGE]: `The principal exceeds the pool's maximum line, max_line_bps of the NAV`,

@@ -54,6 +54,7 @@ pub const E_LATE_INTEREST_UNPAID: u32 = ERR_BASE + 17; // PoolError::LateInteres
 pub const E_WRITE_OFF_TOO_EARLY: u32 = ERR_BASE + 18; // PoolError::WriteOffTooEarly
 pub const E_BORROWER_IS_ADMIN: u32 = ERR_BASE + 19; // PoolError::BorrowerIsAdmin
 pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + 20; // PoolError::LineTooLarge
+pub const E_INVARIANT_BROKEN: u32 = ERR_BASE + 21; // PoolError::InvariantBroken
 
 /// `state::BPS`.
 pub const BPS: u16 = 10_000;

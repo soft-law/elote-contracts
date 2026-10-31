@@ -60,6 +60,7 @@ These are documented limits of the current program, not open vulnerabilities. Al
 ## What the program does enforce
 
 - Every account is typed and owner-checked by Anchor; the pool, the vault, the share mint, the dead-share account and every line are PDAs validated by seeds and stored bumps; token accounts are checked against the pool's mints and the signer; CPI targets are the SPL Token program only; after each CPI the balances read for events are reloaded.
+- Every money instruction (`deposit`, `redeem`, `draw`, `repay`, `write_off`) ends with `Pool::check()`: the NAV (`vault + outstanding_principal`) fits a `u64`, and where the share mint is an account (`deposit`, `redeem`) its supply is zero or at least the dead shares. A failure is `InvariantBroken` and the transaction is refused.
 - All arithmetic is checked; products go through `u128`; both share-accounting legs round down in the pool's favour; late interest is capped at the overdue amount per settlement and at the principal over the line's life.
 - The first deposit locks dead shares and must meet a minimum, so a dust deposit cannot set the opening share price and a donation cannot round later deposits to zero.
 - Events are emitted through `emit_cpi!` (self-CPI), not logs, with `nav_after` on every money event.

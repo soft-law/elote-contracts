@@ -247,6 +247,10 @@ pub fn draw(ctx: Context<Draw>) -> Result<()> {
     line.status = LineStatus::Active;
     line.drawn_at = now;
 
+    ctx.accounts.vault.reload()?;
+    ctx.accounts.pool.check(ctx.accounts.vault.amount, None)?;
+    let pool = &ctx.accounts.pool;
+    let line = &ctx.accounts.line;
     emit_cpi!(LineDrawn {
         pool: pool.key(),
         line_id: line.line_id,
@@ -378,6 +382,7 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
     }
 
     ctx.accounts.vault.reload()?;
+    pool.check(ctx.accounts.vault.amount, None)?;
     let nav_after = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
     if late_part > 0 {
         emit_cpi!(LateInterestCollected { pool: pool.key(), line_id: line.line_id, amount: late_part });
@@ -532,6 +537,8 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
     line.status = LineStatus::WrittenOff;
     line.closed_at = now;
 
+    // No CPI in this instruction, so the vault balance read by Anchor is current.
+    pool.check(ctx.accounts.vault.amount, None)?;
     let nav_after = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
     emit_cpi!(LineWrittenOff {
         pool: pool.key(),

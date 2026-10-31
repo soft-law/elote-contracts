@@ -478,10 +478,14 @@ What must hold between instructions, and which code keeps it:
 1. `NAV == vault.amount + outstanding_principal` by definition; `outstanding_principal` only
    changes in `draw`, `repay`, `write_off` and only by the amount that moved or was lost.
 2. `outstanding_principal == Σ (principal - principal_repaid)` over lines in `Active` or
-   `InCollection`. Not checked on chain today (review item DP-1 proposes a per-instruction
-   check).
+   `InCollection`. Not checked on chain (it would need every line account); what is checked
+   at the end of every money instruction is `Pool::check()` (R-25): `vault.amount +
+   outstanding_principal` fits a `u64`, on the balance reloaded after the CPIs, else
+   `InvariantBroken`.
 3. `share_mint.supply >= DEAD_SHARES` once anything was deposited: the dead account's shares are
-   never burned (no instruction takes `dead_shares` as a burn source).
+   never burned (no instruction takes `dead_shares` as a burn source). `Pool::check()` re-checks
+   it (`supply == 0 || supply >= DEAD_SHARES`) in `deposit` and `redeem`, the two instructions
+   that carry the share mint.
 4. Only `draw` and `redeem` move tokens out of the vault, both signed by the pool PDA, both to
    an account whose owner signed the instruction (the borrower of an admin-approved line, the
    holder burning shares).

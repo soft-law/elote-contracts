@@ -46,4 +46,6 @@ pub enum PoolError {
     BorrowerIsAdmin,
     #[msg("The principal exceeds the pool's maximum line, max_line_bps of the NAV")]
     LineTooLarge,
+    #[msg("A pool invariant does not hold after this instruction; the transaction is refused")]
+    InvariantBroken,
 }
