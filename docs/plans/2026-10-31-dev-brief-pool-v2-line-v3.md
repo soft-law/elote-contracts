@@ -253,6 +253,18 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   the coordinator's message of the same day: line v3 fields, attestor on `open_line` and `draw`,
   `first_due_at` anchor, proportional interest to `last_due`, principal-only late interest with
   regenerated vectors, `suspend_draws`, `cancel_line`, one repayment order.
+- **2026-11-01, step 5a accepted** (`d3d0ac5`, local): late interest on the principal share of
+  each overdue part (`part * principal / total`, rounded down; `Arrears.overdue_principal`),
+  `ScheduleTerms.anchor` (one interval before the first due date), `math::tranche_interest`,
+  416 vectors (413 regenerated + 3 hand cases), JS mirror updated; 94 Rust + 7 JS. The line v3
+  program change is written and builds, uncommitted in the developer's worktree (7 files) when
+  that session paused on its usage limit; nobody else touches it. Remaining for step 5: commit B
+  (tests), commit C (`suspend_draws`, `cancel_line`, `LineCancelled`), docs, Codama, scripts,
+  report, push. R-10 closes with the single repayment order. Error codes so far: 6024
+  `AttestorRequired`, 6025 `AvailabilityEnded`, 6026 `TooManyDraws`; events `LineTermsSet`,
+  `LineSponsorRole`, `LineDrawState`.
+- **Pushed 2026-10-31 with Mario's approval:** `poc/kyc-identity-eval` and `hardening/phase-1`;
+  `v2/pool-and-lines` is pushed by the developer after each accepted step (remote at `08006a7`).
 - **Next:** step 5 report, then the step 6 conditions from the legal brief.
 
 ## Points the coordinator still owns
