@@ -41,17 +41,18 @@ sovereign yield, sold next to the credit series, not inside them.
 | What the investor holds | CETES in their own wallet, bought through Elote's app | Series shares; the pool holds MEXe for lending and CETES for the idle part | Series shares over a vault of CETES |
 | Program change | **None.** elote_pool is not involved. | Two assets in one pool, NAV priced from `BondPrice`, swap legs, a KYC PDA for the pool signer | Pool v2 with a Token-2022 asset whose unit appreciates against the peso |
 | Who issues | Etherfuse issues the bond token; Elote distributes | Elote's series, with a yield component from Etherfuse | Elote's series |
-| Identity | Etherfuse personal org, approved; this is exactly where the Sumsub share-token reuse of the identity review pays off | The pool PDA would have to be an Etherfuse KYC user; whether a PDA can be one is **no verificado** | As A, plus the series gate |
+| Identity | Etherfuse's own KYC on the investor's personal org is the gate; Elote runs no KYC of its own for a CETES-only buyer (owner review, decision 2). The Sumsub share token helps only an investor who already passed Elote's KYC for a credit series with Sumsub | The pool PDA would have to be an Etherfuse KYC user; whether a PDA can be one is **no verificado** | As A, plus the series gate |
 | Revenue | Partner fee in bps on each order, settled offline | Yield on idle balance accrues to the series NAV | Spread, if any |
 | Fit | Lightest: no custody by Elote, no new securities issued by Elote, the investor can sell any time at 5 bps | Real but second-order: idle balances in a small series are small, and it depends on pool v2 | None: borrowers want pesos, a loan denominated in an appreciating unit makes no sense, and the series-shelf plan already keeps CETES out as a pool asset (unit mismatch) |
 | Verdict | **Do this first** | Design note after pool v2 | Drop |
 
 ### A in practice
 
-1. The investor's Etherfuse personal organization is created by Elote's backend and approved
-   through KYC. With Sumsub, the share token import (`v2/guides/kyc-sumsub-shared-token`) saves
-   the second document capture; the CURP is sent on the import call. With Didit there is no reuse
-   and the investor goes through Etherfuse's `/idv` launch.
+1. The investor's Etherfuse personal organization is created by Elote's backend and the investor
+   is launched into Etherfuse's `/idv`; that verification is the gate, and Elote runs none of its
+   own for a CETES-only buyer. Only an investor who already passed Elote's credit-series KYC with
+   Sumsub can skip the second capture through the share-token import
+   (`v2/guides/kyc-sumsub-shared-token`, CURP sent on the import call).
 2. Register the investor's CLABE (`registrationInfo` is filled from the verified identity; the
    RFC must match) and their Solana wallet. Read the rails until both directions are `ready`;
    `minAmount` and `maxAmount` appear there when known.

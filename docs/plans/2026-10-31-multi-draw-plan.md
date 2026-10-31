@@ -127,7 +127,7 @@ split would add an account to each of them for no gain at our size.
   once. The agreement template can still say "one disbursement"; the program does not enforce it.
 - **D8. Draw gates are checked before anything is written**, in one helper (Huma
   `Credit.sol:583-607`; avoid Goldfinch's check-after-mutate at `CreditLine.sol:172-173`).
-- **D9. Each tranche carries its document hash.** `draw(amount, annex_hash)` takes the keccak of
+- **D9. Each tranche carries its document hash.** `draw(amount, document_hash)` takes the keccak of
   the signed per-disposición document (the pagaré, per the document set reported on 2026-10-31,
   plus the schedule annex if separate), rejects a zero hash as `open_line` does for the agreement
   (`lines.rs:78`), and emits it in `LineDrawState`. It is not stored: the event is the
@@ -152,14 +152,14 @@ split would add an account to each of them for no gain at our size.
 |---|---|
 | `open_line` | `interest_due = 0`, `drawn = 0`, `draws = 0`, `availability_end = 0`, `version = 3`. The schedule bound (`lines.rs:154-155`) uses the fully-drawn-today interest. `LineOpened.interest_due` keeps its meaning and is therefore 0 (open question 3). |
 | `suspend_draws` (new) | admin only; `availability_end = now` on an `Approved` or `Active` line (D10); emits `LineDrawsSuspended`. |
-| `draw(amount, annex_hash)` | new arguments (D9). Checks in order: not paused; status `Approved` or `Active` (`LineStatus`); `amount > 0` and `amount <= principal - drawn` (`WrongAmount`); `now <= term_end` (`TermEnded`); on the first draw of a scheduled line, `ScheduleEndsAfterTerm` as today; on later draws `now < availability_end` (`AvailabilityEnded`); on a scheduled line `drawn + interest_due >= installments` after the tranche (`InvalidSchedule`, D3b); `draws < MAX_DRAWS` (`TooManyDraws`); `amount <= vault.amount` (`InsufficientLiquidity`). Writes `drawn += amount`, `draws += 1`, `interest_due += interest(amount, rate_bps, term_end - now)`, `pool.outstanding_principal += amount`; first draw also sets `status = Active`, `drawn_at = now`, `availability_end`. Emits `LineDrawn` (as today, `amount` = this tranche) then `LineDrawState { pool, line_id, amount, drawn, available, interest_due, availability_end }`. Huma's draw event lacks the outstanding and the room left (`huma.json:8153-8184`); ours carries both. |
+| `draw(amount, document_hash)` | new arguments (D9). Checks in order: not paused; status `Approved` or `Active` (`LineStatus`); `amount > 0` and `amount <= principal - drawn` (`WrongAmount`); `now <= term_end` (`TermEnded`); on the first draw of a scheduled line, `ScheduleEndsAfterTerm` as today; on later draws `now < availability_end` (`AvailabilityEnded`); on a scheduled line `drawn + interest_due >= installments` after the tranche (`InvalidSchedule`, D3b); `draws < MAX_DRAWS` (`TooManyDraws`); `amount <= vault.amount` (`InsufficientLiquidity`). Writes `drawn += amount`, `draws += 1`, `interest_due += interest(amount, rate_bps, term_end - now)`, `pool.outstanding_principal += amount`; first draw also sets `status = Active`, `drawn_at = now`, `availability_end`. Emits `LineDrawn` (as today, `amount` = this tranche) then `LineDrawState { pool, line_id, amount, drawn, available, interest_due, availability_end }`. Huma's draw event lacks the outstanding and the room left (`huma.json:8153-8184`); ours carries both. |
 | `repay` | `principal_left = drawn - principal_repaid`; everything else as today. |
 | `line_arrears` | `total = drawn + interest_due`; `principal: line.drawn` for the late-interest lifetime cap. |
 | `mark_in_collection` | `remaining` from `drawn`. |
 | `write_off` | `loss = drawn - principal_repaid`. Status arms unchanged (`lines.rs:501-510`); an approved commitment never drawn lapses at `term_end` with nothing to book. |
 
 New errors: `AvailabilityEnded`, `TooManyDraws`. New events: `LineDrawState` (with
-`annex_hash`), `LineDrawsSuspended`. `LineDrawn` is emitted once per tranche, so indexers that
+`document_hash`), `LineDrawsSuspended`. `LineDrawn` is emitted once per tranche, so indexers that
 summed `LineDrawn.amount` keep working.
 
 ### Invariants to add to `ARCHITECTURE.md` §7
@@ -262,5 +262,5 @@ needs its own legal template (crédito en cuenta corriente).
 
 ## Estimate
 
-Program and tests: 2 days. Docs, client regen and scripts: half a day. Lands with pool v2 (one
+Program and tests: 2 days, plus half a day for the late-interest split in `math::arrears` and the regenerated v2 vectors (decision 11). Docs, client regen and scripts: half a day. Lands with pool v2 (one
 breaking batch, one external review before mainnet).
