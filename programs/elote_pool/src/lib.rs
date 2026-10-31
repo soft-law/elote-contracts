@@ -38,9 +38,10 @@ pub mod elote_pool {
     use super::*;
 
     /// Creates the pool, its share token mint and its vault for `asset_mint`, with the grace
-    /// period (seconds) that applies to every line of the pool.
-    pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32) -> Result<()> {
-        instructions::pool::init_pool(ctx, grace_period_seconds)
+    /// period (seconds) that applies to every line of the pool and the largest line `open_line`
+    /// accepts, as a share of the NAV in basis points (`1..=10_000`).
+    pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16) -> Result<()> {
+        instructions::pool::init_pool(ctx, grace_period_seconds, max_line_bps)
     }
 
     /// Deposits `assets` into the vault and receives shares at the current NAV, at least

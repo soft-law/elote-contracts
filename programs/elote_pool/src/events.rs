@@ -17,6 +17,14 @@ pub struct PoolConfigured {
     pub grace_period_seconds: u32,
 }
 
+/// Emitted by `init_pool` after `PoolConfigured` (a new event, since events are append-only):
+/// the concentration cap, the largest line as a share of the NAV in basis points.
+#[event]
+pub struct PoolLineCapSet {
+    pub pool: Pubkey,
+    pub max_line_bps: u16,
+}
+
 #[event]
 pub struct Deposited {
     pub pool: Pubkey,

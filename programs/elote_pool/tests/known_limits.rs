@@ -31,6 +31,29 @@ fn admin_cannot_be_the_borrower_of_its_own_line() {
     assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
 }
 
+/// Inverted 2026-10-31 (decision 20, register P1-1). A line for the whole vault is refused once
+/// the pool carries a concentration cap: with the scripts' default of 1,000 bps, the largest
+/// line is a tenth of the NAV. The harness opens its pools at 10,000 bps, where the cap is
+/// inert, which is why this test sets its own.
+#[test]
+fn a_line_for_the_whole_vault_is_refused_under_the_concentration_cap() {
+    let mut env = Env::new();
+    let admin = env.admin.insecure_clone();
+    let mint = env.create_mint(&admin.pubkey(), 6);
+    let ix = env.init_pool_ix_full(&admin.pubkey(), &mint, 0, 1_000);
+    env.send(ix, &admin, &[]);
+    let k = PoolKeys::new(&admin.pubkey(), &mint);
+    let investor = env.investor(&k, 10 * UNIT);
+    env.deposit(&k, &investor, 10 * UNIT);
+
+    let borrower = env.borrower(&k);
+    let p = env.line_params(10 * UNIT, 0);
+    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &admin, &[&borrower], E_LINE_TOO_LARGE);
+    assert_eq!(env.pool(&k).line_count, 0);
+    assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
+}
+
 /// Interest counts when it is collected, so a deposit placed just before a known repayment
 /// shares in it and can leave right after (roadmap: "Interest counts when repaid").
 #[test]

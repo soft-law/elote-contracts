@@ -20,7 +20,7 @@ See "Deployments and upgrade authority" in the README for the deployed clusters,
 
 | Role | How it is identified | What it can do |
 |---|---|---|
-| Pool admin | `Pool.admin`, a signer fixed at `init_pool` and part of the pool's address; it cannot be changed | `open_line` (approve a credit line of any size to any borrower other than itself), `write_off` (recognise a loss once the line is overdue past the grace), `set_paused` |
+| Pool admin | `Pool.admin`, a signer fixed at `init_pool` and part of the pool's address; it cannot be changed | `open_line` (approve a credit line of up to `max_line_bps` of the NAV to any borrower other than itself, any number of times), `write_off` (recognise a loss once the line is overdue past the grace), `set_paused` |
 | Borrower | `CreditLine.borrower`, a co-signer of `open_line` | `draw` the whole principal of its approved line before the term ends |
 | Sponsor | `CreditLine.sponsor`, an optional co-signer of `open_line` | Nothing after the opening; it is a recorded party, not an authority |
 | Depositor | Any signer holding the pool asset | `deposit` and `redeem` at the current net asset value, subject to the pause and to the vault's liquidity |
@@ -31,7 +31,7 @@ No instruction closes a `Pool` or a `CreditLine` account, and no instruction mov
 
 ## Trust assumptions
 
-- **The pool admin is trusted with the whole vault.** Depositors lend to whoever the admin approves. There is no cap on a line's principal, no exposure limit and no allowlist of borrowers. `open_line` refuses the admin key as the borrower (`BorrowerIsAdmin`), so the one-key path "open a line to self, draw" is closed, but a compromised or dishonest admin can still open a line to any other wallet it controls and draw every token in the vault.
+- **The pool admin is trusted with the whole vault.** Depositors lend to whoever the admin approves. Each line is capped at `max_line_bps` of the NAV at its opening (`LineTooLarge`; 1,000 bps, a tenth, in production pools), and `open_line` refuses the admin key as the borrower (`BorrowerIsAdmin`), so the one-key path "open one line to self, draw the vault" is closed. There is still no exposure limit per borrower across lines and no allowlist of borrowers: a compromised or dishonest admin can open several lines to wallets it controls and drain the vault a tenth at a time.
 - **The upgrade authority is trusted with the program.** Until the authority is a multisig and builds are verified, the deployed program can be replaced by one key.
 - **The pool asset is trusted.** `init_pool` accepts any classic SPL mint. The asset's freeze authority, if any, can freeze the vault; the asset's mint authority can inflate the supply. Token-2022 mints are rejected by the token-program constraint.
 - **Depositors accept first-come-first-served liquidity.** Redemptions are paid from the vault balance only; principal lent out is part of the NAV but is not liquid until it is repaid.

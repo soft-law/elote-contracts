@@ -140,6 +140,7 @@ export enum ElotePoolEvent {
   LineWrittenOff,
   PoolConfigured,
   PoolInitialized,
+  PoolLineCapSet,
   PoolPaused,
   Redeemed,
 }
@@ -257,6 +258,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.PoolInitialized;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([70, 51, 131, 236, 247, 164, 210, 213]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.PoolLineCapSet;
   }
   if (
     containsBytes(

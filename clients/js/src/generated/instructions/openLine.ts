@@ -81,6 +81,7 @@ export type OpenLineInstruction<
   TAccountSponsor extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
+  TAccountVault extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TAccountEventAuthority extends string | AccountMeta<string> = string,
@@ -109,6 +110,9 @@ export type OpenLineInstruction<
       TAccountLine extends string
         ? WritableAccount<TAccountLine>
         : TAccountLine,
+      TAccountVault extends string
+        ? ReadonlyAccount<TAccountVault>
+        : TAccountVault,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -188,6 +192,7 @@ export type OpenLineAsyncInput<
   TAccountSponsor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
@@ -200,6 +205,8 @@ export type OpenLineAsyncInput<
   sponsor?: TAccountSponsor;
   pool: TAccountPool;
   line?: TAccountLine;
+  /** Read for the NAV the concentration cap is measured against. */
+  vault: TAccountVault;
   systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -218,6 +225,7 @@ export async function getOpenLineInstructionAsync<
   TAccountSponsor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
+  TAccountVault extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -229,6 +237,7 @@ export async function getOpenLineInstructionAsync<
     TAccountSponsor,
     TAccountPool,
     TAccountLine,
+    TAccountVault,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -258,6 +267,10 @@ export async function getOpenLineInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountLine,
       InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountVault,
+      InstructionAccountInputAddress<TAccountVault>
     >,
     ResolvedInstructionAccountMeta<
       TAccountSystemProgram,
@@ -299,6 +312,7 @@ export async function getOpenLineInstructionAsync<
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
     systemProgram: {
       value: input.systemProgram ?? null,
       isSigner: false,
@@ -358,6 +372,7 @@ export async function getOpenLineInstructionAsync<
       getAccountMeta("sponsor", accounts.sponsor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
+      getAccountMeta("vault", accounts.vault),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -389,6 +404,10 @@ export async function getOpenLineInstructionAsync<
       InstructionAccountInputAddress<TAccountLine>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountVault,
+      InstructionAccountInputAddress<TAccountVault>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountSystemProgram,
       InstructionAccountInputAddress<TAccountSystemProgram>
     >,
@@ -409,6 +428,7 @@ export type OpenLineInput<
   TAccountSponsor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
@@ -421,6 +441,8 @@ export type OpenLineInput<
   sponsor?: TAccountSponsor;
   pool: TAccountPool;
   line: TAccountLine;
+  /** Read for the NAV the concentration cap is measured against. */
+  vault: TAccountVault;
   systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -439,6 +461,7 @@ export function getOpenLineInstruction<
   TAccountSponsor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
+  TAccountVault extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -450,6 +473,7 @@ export function getOpenLineInstruction<
     TAccountSponsor,
     TAccountPool,
     TAccountLine,
+    TAccountVault,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -478,6 +502,10 @@ export function getOpenLineInstruction<
   ResolvedInstructionAccountMeta<
     TAccountLine,
     InstructionAccountInputAddress<TAccountLine>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountVault,
+    InstructionAccountInputAddress<TAccountVault>
   >,
   ResolvedInstructionAccountMeta<
     TAccountSystemProgram,
@@ -518,6 +546,7 @@ export function getOpenLineInstruction<
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
     systemProgram: {
       value: input.systemProgram ?? null,
       isSigner: false,
@@ -559,6 +588,7 @@ export function getOpenLineInstruction<
       getAccountMeta("sponsor", accounts.sponsor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
+      getAccountMeta("vault", accounts.vault),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -590,6 +620,10 @@ export function getOpenLineInstruction<
       InstructionAccountInputAddress<TAccountLine>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountVault,
+      InstructionAccountInputAddress<TAccountVault>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountSystemProgram,
       InstructionAccountInputAddress<TAccountSystemProgram>
     >,
@@ -616,9 +650,11 @@ export type ParsedOpenLineInstruction<
     sponsor?: TAccountMetas[2] | undefined;
     pool: TAccountMetas[3];
     line: TAccountMetas[4];
-    systemProgram: TAccountMetas[5];
-    eventAuthority: TAccountMetas[6];
-    program: TAccountMetas[7];
+    /** Read for the NAV the concentration cap is measured against. */
+    vault: TAccountMetas[5];
+    systemProgram: TAccountMetas[6];
+    eventAuthority: TAccountMetas[7];
+    program: TAccountMetas[8];
   };
   data: OpenLineInstructionData;
 };
@@ -631,12 +667,12 @@ export function parseOpenLineInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedOpenLineInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 8) {
+  if (instruction.accounts.length < 9) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 8,
+        expectedAccountMetas: 9,
       },
     );
   }
@@ -660,6 +696,7 @@ export function parseOpenLineInstruction<
       sponsor: getNextOptionalAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
+      vault: getNextAccount(),
       systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

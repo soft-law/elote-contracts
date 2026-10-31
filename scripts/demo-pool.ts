@@ -12,6 +12,8 @@
 // --interval-seconds  seconds between installments (default: one month, 2,592,000; 20 on local, a
 //                     compressed "demo month", since a validator's clock cannot be moved forward)
 // --grace-seconds     the pool's grace period (default 0; 5 with --schedule on local)
+// --max-line-bps      largest line as a share of the NAV, in basis points (default 5000 here, so
+//                     the 6,000 line fits the 15,000 of deposits; production pools use 1000)
 //
 // Keys live in .demo-keys/ (generated on first run, ignored by git) unless a path is given in
 // ELOTE_ADMIN_KEYPAIR, ELOTE_INVESTOR_A_KEYPAIR, ELOTE_INVESTOR_B_KEYPAIR, ELOTE_BORROWER_KEYPAIR or
@@ -91,6 +93,13 @@ const graceSeconds = Number(arg("grace-seconds") ?? (withSchedule && cluster ===
 if (intervalSeconds <= 0n) throw new Error("--interval-seconds must be positive");
 if (!Number.isInteger(graceSeconds) || graceSeconds < 0 || graceSeconds > 0xffffffff) {
   throw new Error("--grace-seconds must fit in a u32");
+}
+// The concentration cap: the largest line as a share of the NAV at open_line, in basis points.
+// Production pools use 1,000 (decision 20); the demo's 6,000 tMXN line is 40% of its 15,000 of
+// deposits, so it defaults to 5,000.
+const maxLineBps = Number(arg("max-line-bps") ?? "5000");
+if (!Number.isInteger(maxLineBps) || maxLineBps < 1 || maxLineBps > 10_000) {
+  throw new Error("--max-line-bps must be between 1 and 10000");
 }
 const rpcUrl = process.env.ELOTE_RPC ?? (cluster === "devnet" ? "https://api.devnet.solana.com" : "http://127.0.0.1:8899");
 const rpc = createSolanaRpc(rpcUrl);
@@ -254,9 +263,12 @@ await send("init_pool", admin, [
     vault,
     deadShares,
     gracePeriodSeconds: graceSeconds,
+    maxLineBps,
   }),
 ]);
-console.log(`  pool ${pool}\n  share token ${shareMint}\n  vault ${vault}\n  grace period ${graceSeconds} s`);
+console.log(
+  `  pool ${pool}\n  share token ${shareMint}\n  vault ${vault}\n  grace period ${graceSeconds} s\n  max line ${maxLineBps} bps of the NAV`
+);
 
 console.log(`\nIssuing ${ASSET} to the investors and the sponsor`);
 const issue: Instruction[] = [];
@@ -317,6 +329,7 @@ await send("open_line", admin, [
     ...(withSponsor ? { sponsor } : {}),
     pool,
     line,
+    vault,
     lineId: lineCount,
     principal: 6_000n * UNIT,
     rateBps: 1_200,
@@ -402,6 +415,7 @@ async function scheduleDemo() {
       borrower,
       pool,
       line: sLine,
+      vault,
       lineId: id,
       principal,
       rateBps: 1_200,

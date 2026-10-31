@@ -16,5 +16,6 @@ export * from "./lineScheduled";
 export * from "./lineWrittenOff";
 export * from "./poolConfigured";
 export * from "./poolInitialized";
+export * from "./poolLineCapSet";
 export * from "./poolPaused";
 export * from "./redeemed";

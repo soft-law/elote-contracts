@@ -7,7 +7,9 @@ import {
   LINE_VERSION_SCHEDULED,
   decodeSchedule,
   lineArrears,
+  maxLinePrincipal,
   poolGracePeriodSeconds,
+  poolMaxLineBps,
 } from "../src/schedule";
 
 type Vector = {
@@ -67,7 +69,8 @@ test("lineArrears agrees with math::arrears on every vector", () => {
         missed: a.missed,
         overdue: a.overdue.toString(),
         lateDue: a.lateDue.toString(),
-        firstMissedDue: a.firstMissedDue === null ? null : a.firstMissedDue.toString(),
+        firstMissedDue:
+          a.firstMissedDue === null ? null : a.firstMissedDue.toString(),
       },
       {
         due: v.due,
@@ -92,15 +95,18 @@ test("decodeSchedule reads the packed CreditLine.reserved layout", () => {
   dv.setUint8(13, 0); // flags
   dv.setBigUint64(14, 1_234n, true); // late_collected
   dv.setBigInt64(22, 1_700_000_000n, true); // late_paid_until
-  assert.deepEqual(decodeSchedule({ version: LINE_VERSION_SCHEDULED, reserved }), {
-    intervalSeconds: 2_592_000n,
-    installments: 6,
-    lateBps: 5_000,
-    maxMissed: 3,
-    flags: 0,
-    lateCollected: 1_234n,
-    latePaidUntil: 1_700_000_000n,
-  });
+  assert.deepEqual(
+    decodeSchedule({ version: LINE_VERSION_SCHEDULED, reserved }),
+    {
+      intervalSeconds: 2_592_000n,
+      installments: 6,
+      lateBps: 5_000,
+      maxMissed: 3,
+      flags: 0,
+      lateCollected: 1_234n,
+      latePaidUntil: 1_700_000_000n,
+    }
+  );
   assert.equal(decodeSchedule({ version: 1, reserved }), null);
 });
 
@@ -108,6 +114,21 @@ test("poolGracePeriodSeconds reads Pool.reserved[0..4]", () => {
   const reserved = new Uint8Array(32);
   new DataView(reserved.buffer).setUint32(0, 86_400, true);
   assert.equal(poolGracePeriodSeconds(reserved), 86_400n);
+});
+
+test("poolMaxLineBps reads Pool.reserved[4..6] and maxLinePrincipal applies it to the NAV", () => {
+  const reserved = new Uint8Array(32);
+  const dv = new DataView(reserved.buffer);
+  dv.setUint32(0, 86_400, true);
+  dv.setUint16(4, 1_000, true);
+  assert.equal(poolMaxLineBps(reserved), 1_000);
+  assert.equal(maxLinePrincipal(10_000_000n, 1_000), 1_000_000n);
+  assert.equal(
+    maxLinePrincipal(10_000_001n, 1_000),
+    1_000_000n,
+    "rounded down like the program"
+  );
+  assert.equal(maxLinePrincipal(0n, 10_000), 0n);
 });
 
 test("lateDue is never negative when lateCollected exceeds the principal (R-24)", () => {

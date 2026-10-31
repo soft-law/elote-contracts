@@ -269,6 +269,7 @@ async function main() {
     ...(sponsor ? { sponsor } : {}),
     pool: poolAddress,
     line,
+    vault: pool.vault,
     lineId,
     principal,
     rateBps,

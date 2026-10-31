@@ -44,4 +44,6 @@ pub enum PoolError {
     WriteOffTooEarly,
     #[msg("The pool admin cannot be the borrower")]
     BorrowerIsAdmin,
+    #[msg("The principal exceeds the pool's maximum line, max_line_bps of the NAV")]
+    LineTooLarge,
 }

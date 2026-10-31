@@ -68,10 +68,11 @@ pub struct Pool {
     /// | bytes   | field                  | type     | meaning                                   |
     /// |---------|------------------------|----------|-------------------------------------------|
     /// | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
-    /// | 4..32   | unused                 | zero     |                                           |
+    /// | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
+    /// | 6..32   | unused                 | zero     |                                           |
     ///
-    /// Read and written only through [`Pool::grace_period_seconds`] and
-    /// [`Pool::set_grace_period_seconds`].
+    /// Read and written only through [`Pool::grace_period_seconds`],
+    /// [`Pool::set_grace_period_seconds`], [`Pool::max_line_bps`] and [`Pool::set_max_line_bps`].
     pub reserved: [u8; 32],
     pub bump: u8,
 }
@@ -83,6 +84,26 @@ impl Pool {
         let mut b = [0u8; 4];
         b.copy_from_slice(&self.reserved[0..4]);
         u32::from_le_bytes(b)
+    }
+
+    /// The largest principal `open_line` accepts, as a share of the NAV at the opening, in basis
+    /// points (`1..=BPS`). Fixed at `init_pool`; the cap binds the commitment, not a tranche.
+    pub fn max_line_bps(&self) -> u16 {
+        let mut b = [0u8; 2];
+        b.copy_from_slice(&self.reserved[4..6]);
+        u16::from_le_bytes(b)
+    }
+
+    pub fn set_max_line_bps(&mut self, bps: u16) {
+        self.reserved[4..6].copy_from_slice(&bps.to_le_bytes());
+    }
+
+    /// `nav * max_line_bps / BPS`, rounded down: the largest line the pool opens at this NAV.
+    pub fn max_line_principal(&self, nav: u64) -> Option<u64> {
+        (nav as u128)
+            .checked_mul(self.max_line_bps() as u128)?
+            .checked_div(BPS as u128)
+            .and_then(|v| u64::try_from(v).ok())
     }
 
     pub fn set_grace_period_seconds(&mut self, seconds: u32) {

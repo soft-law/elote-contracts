@@ -53,6 +53,10 @@ pub const E_NOT_ENOUGH_MISSED: u32 = ERR_BASE + 16; // PoolError::NotEnoughMisse
 pub const E_LATE_INTEREST_UNPAID: u32 = ERR_BASE + 17; // PoolError::LateInterestUnpaid
 pub const E_WRITE_OFF_TOO_EARLY: u32 = ERR_BASE + 18; // PoolError::WriteOffTooEarly
 pub const E_BORROWER_IS_ADMIN: u32 = ERR_BASE + 19; // PoolError::BorrowerIsAdmin
+pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + 20; // PoolError::LineTooLarge
+
+/// `state::BPS`.
+pub const BPS: u16 = 10_000;
 
 /// SPL Token's `TokenError::InsufficientFunds`, surfaced as custom error 1 by a failed CPI.
 pub const SPL_TOKEN_INSUFFICIENT_FUNDS: u32 = 1;
@@ -326,7 +330,20 @@ impl Env {
         self.init_pool_ix_with_grace(admin, asset_mint, 0)
     }
 
+    /// A pool with `grace_period_seconds` and no effective concentration cap (`max_line_bps` =
+    /// 10,000, the whole NAV), so the tests that open large lines keep working; the cap has its
+    /// own tests through `init_pool_ix_full`.
     pub fn init_pool_ix_with_grace(&self, admin: &Pubkey, asset_mint: &Pubkey, grace_period_seconds: u32) -> Instruction {
+        self.init_pool_ix_full(admin, asset_mint, grace_period_seconds, BPS)
+    }
+
+    pub fn init_pool_ix_full(
+        &self,
+        admin: &Pubkey,
+        asset_mint: &Pubkey,
+        grace_period_seconds: u32,
+        max_line_bps: u16,
+    ) -> Instruction {
         let k = PoolKeys::new(admin, asset_mint);
         let (event_authority, program) = event_metas();
         Instruction {
@@ -344,7 +361,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::InitPool { grace_period_seconds }.data(),
+            data: elote_pool::instruction::InitPool { grace_period_seconds, max_line_bps }.data(),
         }
     }
 
@@ -505,6 +522,7 @@ impl Env {
                 sponsor: sponsor_account,
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
+                vault: k.vault,
                 system_program: SYSTEM_PROGRAM_ID,
                 event_authority,
                 program,

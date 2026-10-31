@@ -18,6 +18,20 @@ export function poolGracePeriodSeconds(reserved: Bytes): bigint {
   return BigInt(view(reserved).getUint32(0, true));
 }
 
+/** `Pool.reserved[4..6]`: the largest line as a share of the NAV, in basis points (u16 LE). */
+export function poolMaxLineBps(reserved: Bytes): number {
+  return view(reserved).getUint16(4, true);
+}
+
+/**
+ * The largest principal `open_line` accepts at `nav` under `maxLineBps`, rounded down as
+ * `Pool::max_line_principal` does. The app checks this before signing; `LineTooLarge` is the
+ * program's backstop.
+ */
+export function maxLinePrincipal(nav: bigint, maxLineBps: number): bigint {
+  return (nav * BigInt(maxLineBps)) / BPS;
+}
+
 export type Schedule = {
   intervalSeconds: bigint;
   installments: number;

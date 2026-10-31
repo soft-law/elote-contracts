@@ -75,10 +75,11 @@ export type Pool = {
    * | bytes   | field                  | type     | meaning                                   |
    * |---------|------------------------|----------|-------------------------------------------|
    * | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
-   * | 4..32   | unused                 | zero     |                                           |
+   * | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
+   * | 6..32   | unused                 | zero     |                                           |
    *
-   * Read and written only through [`Pool::grace_period_seconds`] and
-   * [`Pool::set_grace_period_seconds`].
+   * Read and written only through [`Pool::grace_period_seconds`],
+   * [`Pool::set_grace_period_seconds`], [`Pool::max_line_bps`] and [`Pool::set_max_line_bps`].
    */
   reserved: ReadonlyUint8Array;
   bump: number;
@@ -108,10 +109,11 @@ export type PoolArgs = {
    * | bytes   | field                  | type     | meaning                                   |
    * |---------|------------------------|----------|-------------------------------------------|
    * | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
-   * | 4..32   | unused                 | zero     |                                           |
+   * | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
+   * | 6..32   | unused                 | zero     |                                           |
    *
-   * Read and written only through [`Pool::grace_period_seconds`] and
-   * [`Pool::set_grace_period_seconds`].
+   * Read and written only through [`Pool::grace_period_seconds`],
+   * [`Pool::set_grace_period_seconds`], [`Pool::max_line_bps`] and [`Pool::set_max_line_bps`].
    */
   reserved: ReadonlyUint8Array;
   bump: number;

@@ -4,9 +4,9 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
 
 use crate::errors::PoolError;
-use crate::events::{Deposited, PoolConfigured, PoolInitialized, PoolPaused, Redeemed};
+use crate::events::{Deposited, PoolConfigured, PoolInitialized, PoolLineCapSet, PoolPaused, Redeemed};
 use crate::math;
-use crate::state::{min_first_deposit, seeds, Pool, DEAD_SHARES, POOL_VERSION};
+use crate::state::{min_first_deposit, seeds, Pool, BPS, DEAD_SHARES, POOL_VERSION};
 
 /// Signs CPIs as the pool PDA.
 #[macro_export]
@@ -78,8 +78,10 @@ pub struct InitPool<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// `grace_period_seconds` is fixed for the life of the pool (zero means no grace).
-pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32) -> Result<()> {
+/// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the life of
+/// the pool.
+pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16) -> Result<()> {
+    require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);
     let pool = &mut ctx.accounts.pool;
     pool.version = POOL_VERSION;
     pool.admin = ctx.accounts.admin.key();
@@ -94,6 +96,7 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32) -> Result<()
     pool.paused = false;
     pool.reserved = [0; 32];
     pool.set_grace_period_seconds(grace_period_seconds);
+    pool.set_max_line_bps(max_line_bps);
     pool.bump = ctx.bumps.pool;
 
     emit_cpi!(PoolInitialized {
@@ -103,6 +106,7 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32) -> Result<()
         admin: pool.admin,
     });
     emit_cpi!(PoolConfigured { pool: pool.key(), grace_period_seconds });
+    emit_cpi!(PoolLineCapSet { pool: pool.key(), max_line_bps });
     Ok(())
 }
 

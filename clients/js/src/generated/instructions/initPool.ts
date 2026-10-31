@@ -15,6 +15,8 @@ import {
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
+  getU16Decoder,
+  getU16Encoder,
   getU32Decoder,
   getU32Encoder,
   getUtf8Encoder,
@@ -118,15 +120,20 @@ export type InitPoolInstruction<
 export type InitPoolInstructionData = {
   discriminator: ReadonlyUint8Array;
   gracePeriodSeconds: number;
+  maxLineBps: number;
 };
 
-export type InitPoolInstructionDataArgs = { gracePeriodSeconds: number };
+export type InitPoolInstructionDataArgs = {
+  gracePeriodSeconds: number;
+  maxLineBps: number;
+};
 
 export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["gracePeriodSeconds", getU32Encoder()],
+      ["maxLineBps", getU16Encoder()],
     ]),
     (value) => ({ ...value, discriminator: INIT_POOL_DISCRIMINATOR }),
   );
@@ -136,6 +143,7 @@ export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolIn
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["gracePeriodSeconds", getU32Decoder()],
+    ["maxLineBps", getU16Decoder()],
   ]);
 }
 
@@ -177,6 +185,7 @@ export type InitPoolAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
+  maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
 };
 
 export async function getInitPoolInstructionAsync<
@@ -470,6 +479,7 @@ export type InitPoolInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
+  maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
 };
 
 export function getInitPoolInstruction<

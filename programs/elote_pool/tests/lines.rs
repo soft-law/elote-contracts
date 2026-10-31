@@ -178,9 +178,13 @@ fn repay_rejects_overpay_and_wrong_status() {
 #[test]
 fn draw_rejects_insufficient_liquidity_and_double_draw() {
     let mut env = Env::new();
-    let (k, a) = pool_with(&mut env, 3 * UNIT);
+    let (k, a) = pool_with(&mut env, 4 * UNIT);
     let borrower = env.borrower(&k);
+    // A line can never exceed the NAV (the cap is at most 100%), so the vault runs short only
+    // when a redemption drains it after the approval.
     let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000);
+    env.redeem(&k, &a, UNIT);
+    assert_eq!(env.token_balance(&k.vault), 3 * UNIT);
 
     let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
     env.expect_err(ix, &borrower, &[], E_INSUFFICIENT_LIQUIDITY);
@@ -327,4 +331,48 @@ fn draw_requires_the_term_not_ended() {
     env.expect_err(ix, &borrower, &[], E_TERM_ENDED);
     assert_eq!(env.line(&k, late).status, LineStatus::Approved);
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT);
+}
+
+/// Decision 20 / D13. `open_line` refuses a principal above `max_line_bps` of the NAV at the
+/// opening (`LineTooLarge`). The NAV counts principal lent out, so drawing one line does not
+/// shrink the room for the next; a pool with nothing deposited opens no line at all.
+#[test]
+fn open_line_refuses_a_principal_above_max_line_bps_of_the_nav() {
+    let mut env = Env::new();
+    let admin = env.admin.insecure_clone();
+    let mint = env.create_mint(&admin.pubkey(), 6);
+    let ix = env.init_pool_ix_full(&admin.pubkey(), &mint, 0, 1_000); // 10% of the NAV per line
+    env.send(ix, &admin, &[]);
+    let k = PoolKeys::new(&admin.pubkey(), &mint);
+
+    // NAV 0: nothing can be opened, however small.
+    let borrower = env.borrower(&k);
+    let p = env.line_params(1, 0);
+    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &admin, &[&borrower], E_LINE_TOO_LARGE);
+
+    // NAV 10.0: the cap is exactly 1.0.
+    let investor = env.investor(&k, 10 * UNIT);
+    env.deposit(&k, &investor, 10 * UNIT);
+    let p = env.line_params(UNIT + 1, 0);
+    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &admin, &[&borrower], E_LINE_TOO_LARGE);
+    assert_eq!(env.pool(&k).line_count, 0);
+    let first = env.open_line(&k, &borrower, UNIT, 0);
+    env.draw(&k, first, &borrower);
+
+    // Drawn principal is still in the NAV (9.0 in the vault + 1.0 outstanding), so a second
+    // line of 1.0 opens; 1.0 + 1 does not.
+    assert_eq!(env.nav(&k), 10 * UNIT);
+    let p = env.line_params(UNIT + 1, 0);
+    let ix = env.open_line_ix(&k, &admin.pubkey(), 1, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &admin, &[&borrower], E_LINE_TOO_LARGE);
+    env.open_line(&k, &borrower, UNIT, 0);
+
+    // A wrong vault account is refused before the cap is measured.
+    let p = env.line_params(UNIT, 0);
+    let mut ix = env.open_line_ix(&k, &admin.pubkey(), 2, &borrower.pubkey(), &p, None);
+    let vault_index = ix.accounts.iter().position(|m| m.pubkey == k.vault).expect("vault meta");
+    ix.accounts[vault_index].pubkey = ata(&investor.pubkey(), &k.asset_mint);
+    env.expect_err(ix, &admin, &[&borrower], E_WRONG_ACCOUNT);
 }

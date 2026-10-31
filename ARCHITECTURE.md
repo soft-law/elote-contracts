@@ -126,13 +126,14 @@ filters.
 | 185 | 8 | `written_off` | informative running total |
 | 193 | 8 | `line_count` | next `line_id` |
 | 201 | 1 | `paused` | |
-| 202 | 32 | `reserved` | bytes 0..4: `grace_period_seconds` (u32 LE); rest zero |
+| 202 | 32 | `reserved` | bytes 0..4: `grace_period_seconds` (u32 LE); bytes 4..6: `max_line_bps` (u16 LE); rest zero |
 | 234 | 1 | `bump` | |
 
-`grace_period_seconds` lives inside `reserved` so the layout did not change when it was added.
-It is read and written only through `Pool::grace_period_seconds()` /
-`set_grace_period_seconds()`, and the JS client mirrors the read in
-`clients/js/src/schedule.ts` (`poolGracePeriodSeconds`).
+`grace_period_seconds` and `max_line_bps` live inside `reserved` so the layout did not change
+when they were added. They are read and written only through `Pool::grace_period_seconds()` /
+`set_grace_period_seconds()` and `Pool::max_line_bps()` / `set_max_line_bps()`
+(`max_line_principal(nav)` applies the cap), and the JS client mirrors the reads in
+`clients/js/src/schedule.ts` (`poolGracePeriodSeconds`, `poolMaxLineBps`, `maxLinePrincipal`).
 
 ### 2.2 `CreditLine` (246 bytes)
 
@@ -256,7 +257,7 @@ handler runs, the checks in the order the handler makes them, what it writes, wh
 makes and which events it emits. Error codes are `PoolError` variants (6000 + index in
 `errors.rs`).
 
-### 5.1 `init_pool(grace_period_seconds: u32)`
+### 5.1 `init_pool(grace_period_seconds: u32, max_line_bps: u16)`
 
 - **Signers:** `admin` (also pays rent).
 - **Constraints:** `pool` is `init` at `["pool", admin, asset_mint]`; `share_mint` is `init` at
@@ -264,11 +265,13 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
   is `init` at `["vault", pool]` for `asset_mint` with `authority = pool`; `dead_shares` is
   `init` at `["dead", pool]` for `share_mint` with `authority = pool`. `asset_mint` must
   deserialise as a classic SPL `Mint`.
-- **Checks:** none beyond the constraints. Any value of `grace_period_seconds` is accepted,
-  including zero. The asset mint is not inspected further (see §9).
-- **Writes:** every `Pool` field; `reserved` zeroed then the grace period packed in.
+- **Checks:** `1 <= max_line_bps <= 10 000` (`WrongAmount`). Any value of
+  `grace_period_seconds` is accepted, including zero. The asset mint is not inspected further
+  (see §9).
+- **Writes:** every `Pool` field; `reserved` zeroed then the grace period and `max_line_bps`
+  packed in.
 - **CPIs:** the four `init`s (system program + token program) done by Anchor.
-- **Events:** `PoolInitialized`, then `PoolConfigured`.
+- **Events:** `PoolInitialized`, then `PoolConfigured`, then `PoolLineCapSet`.
 
 ### 5.2 `deposit(assets: u64, min_shares_out: u64)`
 
@@ -309,10 +312,15 @@ amount; the holder retries with fewer shares.
 - **Signers:** `admin` (pays rent for the line), `borrower`, and `sponsor` when one is named
   in the arguments (`Option<Signer>`).
 - **Constraints:** `pool` has `has_one = admin` (`Unauthorized`); `line` is `init` at
-  `["line", pool, line_id LE]`, so an existing `line_id` fails at account creation.
+  `["line", pool, line_id LE]`, so an existing `line_id` fails at account creation; `vault`
+  is read-only and must be `pool.vault` (`WrongAccount`), for the NAV the cap is measured
+  against.
 - **Checks, in order:** not paused; `line_id == pool.line_count` (`WrongAccount`);
-  `borrower != pool.admin` (`BorrowerIsAdmin`); `principal > 0`; `rate_bps <= 10 000`; `term_end > now`; `agreement_hash != [0; 32]` (all
-  `WrongAmount`); if `sponsor` is `Some(k)`, the `sponsor` account must be present and be `k`
+  `borrower != pool.admin` (`BorrowerIsAdmin`); `principal > 0` (`WrongAmount`);
+  `principal <= (vault.amount + outstanding_principal) * max_line_bps / 10 000`
+  (`LineTooLarge`; the NAV counts principal lent out, and an empty pool opens no line);
+  `rate_bps <= 10 000`; `term_end > now`; `agreement_hash != [0; 32]` (all `WrongAmount`); if
+  `sponsor` is `Some(k)`, the `sponsor` account must be present and be `k`
   (`SponsorRequired`); `interest_due = principal * rate_bps / 10 000` (`Overflow`); if
   `schedule` is `Some`, `validate_schedule`:
   `1 <= installments <= 120`, `interval_seconds > 0`, `late_bps <= 10 000`,
@@ -489,7 +497,7 @@ What must hold between instructions, and which code keeps it:
 
 | role | identified by | can |
 |---|---|---|
-| admin | `Pool.admin`, fixed forever | `open_line` (any size, any borrower other than itself: `BorrowerIsAdmin`), `write_off` (only when overdue past grace), `set_paused` |
+| admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `set_paused` |
 | borrower | `CreditLine.borrower` | `draw` its own approved line before the term |
 | sponsor | `CreditLine.sponsor` | nothing after co-signing the opening |
 | depositor / holder | any signer with the asset or shares | `deposit`, `redeem` |
@@ -506,7 +514,8 @@ The review ids refer to the 2026-10-12 review in theOffice.
 
 | test | behaviour | review |
 |---|---|---|
-| `admin_cannot_be_the_borrower_of_its_own_line` | **inverted 2026-10-31**: `open_line` refuses `borrower == admin` (`BorrowerIsAdmin`). A line for 100% of the vault to another wallet is still possible until the `max_line_bps` cap lands | R-01 delta, P1-1 |
+| `admin_cannot_be_the_borrower_of_its_own_line` | **inverted 2026-10-31**: `open_line` refuses `borrower == admin` (`BorrowerIsAdmin`) | R-01 delta |
+| `a_line_for_the_whole_vault_is_refused_under_the_concentration_cap` | **inverted 2026-10-31**: a line above `max_line_bps` of the NAV fails with `LineTooLarge` (1,000 bps in the test and in production pools; the harness opens its other pools at 10,000 bps, where the cap is inert). The admin can still reach the whole vault through several lines to wallets it controls: the cap bounds one line, not the admin | decision 20, P1-1 |
 | `first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor` | **inverted 2026-10-31**: the minimum is one whole unit of the asset for six or more decimals; below six decimals the floor of 1 000 × `DEAD_SHARES` base units applies, so a two-decimal asset needs 10,000.00 | R-07 delta |
 | `limit_deposit_just_before_a_repayment_shares_the_interest` | interest counts when collected, so a deposit that lands just before a repayment gets the same uplift as one made months earlier | (design) |
 | `limit_redeem_between_collection_and_write_off_exits_at_par` | a line in collection still counts fully in the NAV until the admin writes it off; a holder who redeems in between exits at par and the loss falls on the rest | (design) |

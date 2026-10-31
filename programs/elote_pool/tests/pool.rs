@@ -4,7 +4,7 @@ mod common;
 
 use anchor_lang::AccountDeserialize;
 use common::*;
-use elote_pool::events::{PoolConfigured, PoolInitialized, PoolPaused};
+use elote_pool::events::{PoolConfigured, PoolInitialized, PoolLineCapSet, PoolPaused};
 use solana_signer::Signer;
 
 /// Value of one whole share in asset units, at `nav` and `supply`, rounded down.
@@ -301,7 +301,8 @@ fn init_pool_records_the_grace_period() {
     assert_eq!(pool.version, 1, "pools stay at version 1");
     assert_eq!(pool.grace_period_seconds(), grace);
     assert_eq!(&pool.reserved[0..4], &grace.to_le_bytes(), "bytes 0..4 of reserved, little endian");
-    assert_eq!(&pool.reserved[4..], &[0u8; 28], "the rest of reserved stays zero");
+    assert_eq!(&pool.reserved[4..6], &BPS.to_le_bytes(), "bytes 4..6: the harness default cap of 10,000 bps");
+    assert_eq!(&pool.reserved[6..], &[0u8; 26], "the rest of reserved stays zero");
 
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!(ev.pool, k.pool);
@@ -311,7 +312,32 @@ fn init_pool_records_the_grace_period() {
     // The default pool of the other tests has no grace.
     let (k0, meta0) = env.setup_pool();
     assert_eq!(env.pool(&k0).grace_period_seconds(), 0);
-    assert_eq!(env.pool(&k0).reserved, [0u8; 32]);
+    assert_eq!(&env.pool(&k0).reserved[0..4], &[0u8; 4]);
     let ev: PoolConfigured = find_event(&meta0).expect("PoolConfigured");
     assert_eq!(ev.grace_period_seconds, 0);
+}
+
+/// Decision 20 / D13: `max_line_bps` is fixed at `init_pool`, lives in `reserved[4..6]` and is
+/// announced by `PoolLineCapSet`. Zero and anything above 10,000 bps are refused.
+#[test]
+fn init_pool_records_the_line_cap_and_bounds_it() {
+    let mut env = Env::new();
+    let admin = env.admin.insecure_clone();
+    let mint = env.create_mint(&admin.pubkey(), 6);
+    let ix = env.init_pool_ix_full(&admin.pubkey(), &mint, 0, 1_000);
+    let meta = env.send(ix, &admin, &[]);
+    let k = PoolKeys::new(&admin.pubkey(), &mint);
+
+    let pool = env.pool(&k);
+    assert_eq!(pool.max_line_bps(), 1_000);
+    assert_eq!(&pool.reserved[4..6], &1_000u16.to_le_bytes(), "bytes 4..6 of reserved, little endian");
+    assert_eq!(pool.max_line_principal(10 * UNIT), Some(UNIT));
+    let ev: PoolLineCapSet = find_event(&meta).expect("PoolLineCapSet");
+    assert_eq!((ev.pool, ev.max_line_bps), (k.pool, 1_000));
+
+    for bad in [0u16, BPS + 1, u16::MAX] {
+        let mint = env.create_mint(&admin.pubkey(), 6);
+        let ix = env.init_pool_ix_full(&admin.pubkey(), &mint, 0, bad);
+        env.expect_err(ix, &admin, &[], E_WRONG_AMOUNT);
+    }
 }

@@ -200,7 +200,8 @@
       "name": "init_pool",
       "docs": [
         "Creates the pool, its share token mint and its vault for `asset_mint`, with the grace",
-        "period (seconds) that applies to every line of the pool."
+        "period (seconds) that applies to every line of the pool and the largest line `open_line`",
+        "accepts, as a share of the NAV in basis points (`1..=10_000`)."
       ],
       "discriminator": [
         116,
@@ -337,6 +338,10 @@
         {
           "name": "grace_period_seconds",
           "type": "u32"
+        },
+        {
+          "name": "max_line_bps",
+          "type": "u16"
         }
       ]
     },
@@ -510,6 +515,12 @@
               }
             ]
           }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Read for the NAV the concentration cap is measured against."
+          ]
         },
         {
           "name": "system_program",
@@ -826,8 +837,10 @@
     {
       "name": "write_off",
       "docs": [
-        "Recognises the unpaid principal of a line as a loss. Admin only: after the term plus the",
-        "pool's grace, or, for a line in collection, after its oldest missed due date plus grace."
+        "Recognises the unpaid principal of a line as a loss. Admin only. Allowed on an active line",
+        "once `now > term_end + grace`, and on a line in collection once its oldest missed",
+        "installment is more than `grace` past due (or the term is). It does not wait: the call",
+        "books the loss the moment one of those conditions holds."
       ],
       "discriminator": [
         42,
@@ -1079,6 +1092,19 @@
       ]
     },
     {
+      "name": "PoolLineCapSet",
+      "discriminator": [
+        70,
+        51,
+        131,
+        236,
+        247,
+        164,
+        210,
+        213
+      ]
+    },
+    {
       "name": "PoolPaused",
       "discriminator": [
         228,
@@ -1200,6 +1226,16 @@
       "code": 6018,
       "name": "WriteOffTooEarly",
       "msg": "A line in collection is written off only after its oldest missed due date plus grace, or after the term plus grace"
+    },
+    {
+      "code": 6019,
+      "name": "BorrowerIsAdmin",
+      "msg": "The pool admin cannot be the borrower"
+    },
+    {
+      "code": 6020,
+      "name": "LineTooLarge",
+      "msg": "The principal exceeds the pool's maximum line, max_line_bps of the NAV"
     }
   ],
   "types": [
@@ -1678,10 +1714,11 @@
               "| bytes   | field                  | type     | meaning                                   |",
               "|---------|------------------------|----------|-------------------------------------------|",
               "| 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |",
-              "| 4..32   | unused                 | zero     |                                           |",
+              "| 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |",
+              "| 6..32   | unused                 | zero     |                                           |",
               "",
-              "Read and written only through [`Pool::grace_period_seconds`] and",
-              "[`Pool::set_grace_period_seconds`]."
+              "Read and written only through [`Pool::grace_period_seconds`],",
+              "[`Pool::set_grace_period_seconds`], [`Pool::max_line_bps`] and [`Pool::set_max_line_bps`]."
             ],
             "type": {
               "array": [
@@ -1736,6 +1773,26 @@
           {
             "name": "admin",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolLineCapSet",
+      "docs": [
+        "Emitted by `init_pool` after `PoolConfigured` (a new event, since events are append-only):",
+        "the concentration cap, the largest line as a share of the NAV in basis points."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_line_bps",
+            "type": "u16"
           }
         ]
       }

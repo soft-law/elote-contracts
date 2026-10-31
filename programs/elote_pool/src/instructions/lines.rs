@@ -55,6 +55,10 @@ pub struct OpenLine<'info> {
     )]
     pub line: Account<'info, CreditLine>,
 
+    /// Read for the NAV the concentration cap is measured against.
+    #[account(address = pool.vault @ PoolError::WrongAccount)]
+    pub vault: Box<Account<'info, TokenAccount>>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -75,6 +79,11 @@ pub fn open_line(
     require!(line_id == pool.line_count, PoolError::WrongAccount);
     require!(ctx.accounts.borrower.key() != pool.admin, PoolError::BorrowerIsAdmin);
     require!(principal > 0, PoolError::WrongAmount);
+    // Concentration cap (decision 20): the commitment is at most `max_line_bps` of the NAV at
+    // this moment, principal lent out included. An empty pool opens no line.
+    let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
+    let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
+    require!(principal <= cap, PoolError::LineTooLarge);
     require!(u64::from(rate_bps) <= BPS, PoolError::WrongAmount);
     require!(term_end > now, PoolError::WrongAmount);
     require!(agreement_hash != [0u8; 32], PoolError::WrongAmount);

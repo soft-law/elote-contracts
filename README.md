@@ -65,7 +65,9 @@ Both accounts keep 32 `reserved` bytes; new parameters live there so the layouts
 
 | Account | Bytes of `reserved` | Field |
 |---|---|---|
-| `Pool` | 0..4 | `grace_period_seconds`, u32 LE (zero: no grace); 4..32 zero |
+| `Pool` | 0..4 | `grace_period_seconds`, u32 LE (zero: no grace) |
+| | 4..6 | `max_line_bps`, u16 LE: the largest line as a share of the NAV at `open_line`, 1 to 10,000 |
+| | 6..32 | zero |
 | `CreditLine` v2 | 0..8 | `interval_seconds`, i64 LE |
 | | 8..10 | `installments`, u16 LE |
 | | 10..12 | `late_bps`, u16 LE, annual |
@@ -81,10 +83,10 @@ A version-1 line (single maturity) has all 32 bytes at zero.
 
 | Instruction | Signers | Effect |
 |---|---|---|
-| `init_pool(grace_period_seconds)` | admin | creates the pool, its share token, its vault and its dead-shares account; the grace period is fixed for the life of the pool |
+| `init_pool(grace_period_seconds, max_line_bps)` | admin | creates the pool, its share token, its vault and its dead-shares account; the grace period and the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) are fixed for the life of the pool |
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit is at least 1.0 and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
-| `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, schedule)` | admin, borrower, sponsor if named | approves the next line; moves no money; `schedule` (optional) makes it an installment line |
+| `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, schedule)` | admin, borrower, sponsor if named | approves the next line; moves no money; the borrower is not the admin and `principal <= NAV * max_line_bps / 10_000` (reads the vault); `schedule` (optional) makes it an installment line |
 | `draw` | borrower | the whole principal goes from the vault to the borrower, before the term ends (and, for an installment line, early enough for the last installment to fall due within the term) |
 | `repay(amount)` | anyone | single maturity: principal first, then interest. Installments: late interest, then interest, then principal, never more than is due. The line closes when nothing remains. Never paused |
 | `mark_in_collection` | anyone | moves an installment line to `InCollection` once `max_missed` installments are missed and the grace period of the last of them has run. Never paused |
@@ -143,6 +145,7 @@ change fields; new information comes as new events.
 |---|---|---|
 | `PoolInitialized` | `init_pool` | pool, asset_mint, share_mint, admin |
 | `PoolConfigured` | `init_pool`, after `PoolInitialized` | pool, grace_period_seconds |
+| `PoolLineCapSet` | `init_pool`, after `PoolConfigured` | pool, max_line_bps |
 | `Deposited` | `deposit` | pool, depositor, assets, shares, nav_after, supply_after |
 | `Redeemed` | `redeem` | pool, holder, shares, assets, nav_after, supply_after |
 | `LineOpened` | `open_line` | pool, line_id, borrower, sponsor, agreement_hash, principal, rate_bps, interest_due, term_end |
