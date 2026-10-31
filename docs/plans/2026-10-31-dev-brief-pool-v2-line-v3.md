@@ -229,7 +229,16 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   single `asset_freezable` flag; a `DefaultAccountState` other than Initialized on the asset is
   rejected; any confidential extension (`ConfidentialTransferMint`, `ConfidentialTransferFeeConfig`,
   `ConfidentialMintBurn`) is rejected, because the NAV reads `vault.amount`.
-- **Next:** PR 2 steps 2 to 4.
+- **PR 2 step 2 accepted** (`e12354b`, asset-mint policy; 85 Rust + 7 JS). Deviation recorded:
+  `permissioned` lives in `reserved[6]` and `asset_controls` in `reserved[7]` because PR 1 took
+  `reserved[4..6]` for `max_line_bps`; new event `PoolFlags { pool, asset_controls, permissioned }`
+  and client reader `poolFlags`; new error 6022 `AssetMintNotAllowed`.
+- **Step 3 answers:** share mint may be classic or Token-2022 (the first mainnet pool must be
+  Token-2022 frozen-by-default under Token ACL; runbook says so); reject the three confidential
+  extensions and `InterestBearingConfig` on the share mint; `NonTransferable` shares allowed; a
+  frozen default state requires a freeze authority; dead-shares thaw per 2e with both paths tested;
+  `init_pool` joins `compute.rs`.
+- **Next:** PR 2 steps 3 and 4.
 
 ## Points the coordinator still owns
 
