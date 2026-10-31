@@ -18,6 +18,26 @@ export function poolGracePeriodSeconds(reserved: Bytes): bigint {
   return BigInt(view(reserved).getUint32(0, true));
 }
 
+export type PoolFlags = {
+  /** `reserved[6]`: shares are frozen by default (Token ACL); holders need a thaw. */
+  permissioned: boolean;
+  /** `reserved[7]` bit 0: the asset's issuer can freeze the vault. */
+  assetFreezable: boolean;
+  /** `reserved[7]` bit 1: the asset carries the Token-2022 `Pausable` extension. */
+  assetPausable: boolean;
+};
+
+/** The read-only facts `init_pool` recorded about the two mints (`Pool.reserved[6..8]`). */
+export function poolFlags(reserved: Bytes): PoolFlags {
+  const v = view(reserved);
+  const controls = v.getUint8(7);
+  return {
+    permissioned: v.getUint8(6) === 1,
+    assetFreezable: (controls & 0b01) !== 0,
+    assetPausable: (controls & 0b10) !== 0,
+  };
+}
+
 /** `Pool.reserved[4..6]`: the largest line as a share of the NAV, in basis points (u16 LE). */
 export function poolMaxLineBps(reserved: Bytes): number {
   return view(reserved).getUint16(4, true);

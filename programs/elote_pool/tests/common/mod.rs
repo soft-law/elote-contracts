@@ -61,6 +61,7 @@ pub const E_WRITE_OFF_TOO_EARLY: u32 = ERR_BASE + 18; // PoolError::WriteOffTooE
 pub const E_BORROWER_IS_ADMIN: u32 = ERR_BASE + 19; // PoolError::BorrowerIsAdmin
 pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + 20; // PoolError::LineTooLarge
 pub const E_INVARIANT_BROKEN: u32 = ERR_BASE + 21; // PoolError::InvariantBroken
+pub const E_ASSET_MINT_NOT_ALLOWED: u32 = ERR_BASE + 22; // PoolError::AssetMintNotAllowed
 
 /// `state::BPS` as the `u16` that `init_pool` takes.
 pub const BPS: u16 = elote_pool::state::BPS as u16;

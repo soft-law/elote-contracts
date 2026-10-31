@@ -25,6 +25,17 @@ pub struct PoolLineCapSet {
     pub max_line_bps: u16,
 }
 
+/// Emitted by `init_pool` after `PoolLineCapSet`: the read-only facts about the two mints.
+/// `asset_controls`: the issuer controls on the asset mint, as `Pool::asset_controls` bits
+/// (bit 0 freeze authority, bit 1 Pausable). `permissioned`: the share mint is frozen by
+/// default, so holders must be thawed (Token ACL).
+#[event]
+pub struct PoolFlags {
+    pub pool: Pubkey,
+    pub asset_controls: u8,
+    pub permissioned: bool,
+}
+
 #[event]
 pub struct Deposited {
     pub pool: Pubkey,

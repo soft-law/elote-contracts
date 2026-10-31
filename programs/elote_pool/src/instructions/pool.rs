@@ -1,12 +1,17 @@
 //! Pool creation, deposits and redemptions at net asset value, and the pause switch.
 
 use anchor_lang::prelude::*;
+use anchor_spl::token_interface::spl_token_2022::extension::default_account_state::DefaultAccountState;
+use anchor_spl::token_interface::spl_token_2022::extension::{BaseStateWithExtensions, ExtensionType, StateWithExtensions};
+use anchor_spl::token_interface::spl_token_2022::state::{AccountState, Mint as MintState};
 use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::errors::PoolError;
-use crate::events::{Deposited, PoolConfigured, PoolInitialized, PoolLineCapSet, PoolPaused, Redeemed};
+use crate::events::{Deposited, PoolConfigured, PoolFlags, PoolInitialized, PoolLineCapSet, PoolPaused, Redeemed};
 use crate::math;
-use crate::state::{min_first_deposit, seeds, Pool, BPS, DEAD_SHARES, POOL_VERSION};
+use crate::state::{
+    min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES, POOL_VERSION,
+};
 
 /// Signs CPIs as the pool PDA.
 #[macro_export]
@@ -83,12 +88,54 @@ pub struct InitPool<'info> {
     pub system_program: Program<'info, System>,
 }
 
+/// The asset-mint policy (series-shelf 2b, decision 15). Refused, because they take or hide
+/// value or would freeze the vault at creation: `TransferFeeConfig`, `PermanentDelegate`,
+/// `TransferHook`, `NonTransferable`, every confidential extension (`ConfidentialTransferMint`,
+/// `ConfidentialTransferFeeConfig`, `ConfidentialMintBurn`: a mint that can hold confidential
+/// balances makes `vault.amount` unreliable as the NAV's first term), `MintCloseAuthority`, and
+/// `DefaultAccountState` unless the state is `Initialized`. Accepted and recorded as
+/// `asset_controls` bits: a freeze authority and `Pausable`, the issuer controls that can stop
+/// the vault without touching the program. Everything else (metadata, interest-bearing display
+/// rate, scaled UI amount, group membership) is accepted and not recorded. Works on a classic
+/// mint too: it has no extensions and may have a freeze authority.
+fn asset_controls(asset_mint: &AccountInfo) -> Result<u8> {
+    let data = asset_mint.data.borrow();
+    let state = StateWithExtensions::<MintState>::unpack(&data)?;
+    let mut controls = 0u8;
+    if state.base.freeze_authority.is_some() {
+        controls |= ASSET_CONTROL_FREEZE;
+    }
+    for extension in state.get_extension_types()? {
+        match extension {
+            ExtensionType::TransferFeeConfig
+            | ExtensionType::PermanentDelegate
+            | ExtensionType::TransferHook
+            | ExtensionType::NonTransferable
+            | ExtensionType::ConfidentialTransferMint
+            | ExtensionType::ConfidentialTransferFeeConfig
+            | ExtensionType::ConfidentialMintBurn
+            | ExtensionType::MintCloseAuthority => return err!(PoolError::AssetMintNotAllowed),
+            ExtensionType::DefaultAccountState => {
+                let default_state = state.get_extension::<DefaultAccountState>()?;
+                let initialized = AccountState::try_from(default_state.state)
+                    .map(|s| s == AccountState::Initialized)
+                    .unwrap_or(false);
+                require!(initialized, PoolError::AssetMintNotAllowed);
+            }
+            ExtensionType::Pausable => controls |= ASSET_CONTROL_PAUSABLE,
+            _ => {}
+        }
+    }
+    Ok(controls)
+}
+
 /// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the life of
 /// the pool.
 pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16) -> Result<()> {
     require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);
     // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
     require!(min_first_deposit(ctx.accounts.asset_mint.decimals).is_some(), PoolError::WrongAccount);
+    let controls = asset_controls(&ctx.accounts.asset_mint.to_account_info())?;
     let pool = &mut ctx.accounts.pool;
     pool.version = POOL_VERSION;
     pool.admin = ctx.accounts.admin.key();
@@ -104,6 +151,9 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps
     pool.reserved = [0; 32];
     pool.set_grace_period_seconds(grace_period_seconds);
     pool.set_max_line_bps(max_line_bps);
+    pool.set_asset_controls(controls);
+    // The share mint is created here without `DefaultAccountState`, so holders need no thaw.
+    pool.set_permissioned(false);
     pool.bump = ctx.bumps.pool;
 
     emit_cpi!(PoolInitialized {
@@ -114,6 +164,7 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps
     });
     emit_cpi!(PoolConfigured { pool: pool.key(), grace_period_seconds });
     emit_cpi!(PoolLineCapSet { pool: pool.key(), max_line_bps });
+    emit_cpi!(PoolFlags { pool: pool.key(), asset_controls: controls, permissioned: pool.permissioned() });
     Ok(())
 }
 

@@ -8,6 +8,7 @@ import {
   decodeSchedule,
   lineArrears,
   maxLinePrincipal,
+  poolFlags,
   poolGracePeriodSeconds,
   poolMaxLineBps,
 } from "../src/schedule";
@@ -114,6 +115,25 @@ test("poolGracePeriodSeconds reads Pool.reserved[0..4]", () => {
   const reserved = new Uint8Array(32);
   new DataView(reserved.buffer).setUint32(0, 86_400, true);
   assert.equal(poolGracePeriodSeconds(reserved), 86_400n);
+});
+
+test("poolFlags reads the permissioned and asset-control bytes of Pool.reserved", () => {
+  const reserved = new Uint8Array(32);
+  assert.deepEqual(poolFlags(reserved), {
+    permissioned: false,
+    assetFreezable: false,
+    assetPausable: false,
+  });
+  reserved[6] = 1;
+  reserved[7] = 0b11;
+  assert.deepEqual(poolFlags(reserved), {
+    permissioned: true,
+    assetFreezable: true,
+    assetPausable: true,
+  });
+  reserved[7] = 0b10;
+  assert.equal(poolFlags(reserved).assetFreezable, false);
+  assert.equal(poolFlags(reserved).assetPausable, true);
 });
 
 test("poolMaxLineBps reads Pool.reserved[4..6] and maxLinePrincipal applies it to the NAV", () => {

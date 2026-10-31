@@ -76,10 +76,12 @@ export type Pool = {
    * |---------|------------------------|----------|-------------------------------------------|
    * | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
    * | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
-   * | 6..32   | unused                 | zero     |                                           |
+   * | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
+   * | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
+   * | 8..32   | unused                 | zero     |                                           |
    *
-   * Read and written only through [`Pool::grace_period_seconds`],
-   * [`Pool::set_grace_period_seconds`], [`Pool::max_line_bps`] and [`Pool::set_max_line_bps`].
+   * Read and written only through the accessors below (`grace_period_seconds`,
+   * `max_line_bps`, `permissioned`, `asset_controls` and their setters).
    */
   reserved: ReadonlyUint8Array;
   bump: number;
@@ -110,10 +112,12 @@ export type PoolArgs = {
    * |---------|------------------------|----------|-------------------------------------------|
    * | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
    * | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
-   * | 6..32   | unused                 | zero     |                                           |
+   * | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
+   * | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
+   * | 8..32   | unused                 | zero     |                                           |
    *
-   * Read and written only through [`Pool::grace_period_seconds`],
-   * [`Pool::set_grace_period_seconds`], [`Pool::max_line_bps`] and [`Pool::set_max_line_bps`].
+   * Read and written only through the accessors below (`grace_period_seconds`,
+   * `max_line_bps`, `permissioned`, `asset_controls` and their setters).
    */
   reserved: ReadonlyUint8Array;
   bump: number;

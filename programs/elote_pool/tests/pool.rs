@@ -3,9 +3,15 @@
 mod common;
 
 use anchor_lang::AccountDeserialize;
+use anchor_spl::token_2022::spl_token_2022;
 use common::*;
-use elote_pool::events::{PoolConfigured, PoolInitialized, PoolLineCapSet, PoolPaused};
+use elote_pool::events::{PoolConfigured, PoolFlags, PoolInitialized, PoolLineCapSet, PoolPaused};
+use elote_pool::state::{ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE};
+use solana_instruction::Instruction;
+use solana_pubkey::Pubkey;
 use solana_signer::Signer;
+use spl_token_2022::extension::{self as ext, ExtensionType};
+use spl_token_2022::state::AccountState;
 
 /// Value of one whole share in asset units, at `nav` and `supply`, rounded down.
 fn per_share(nav: u64, supply: u64) -> u128 {
@@ -369,6 +375,154 @@ fn a_pool_on_a_token_2022_asset_runs_the_full_cycle() {
     let out = env.redeem(&k, &a, minted);
     assert_eq!(out.assets, (minted as u128 * (10 * UNIT + 400_000) as u128 / (10 * UNIT) as u128) as u64);
     assert_eq!(env.token_balance(&k.asset_ata(&a.pubkey())), out.assets);
+}
+
+/// A 6-decimal Token-2022 mint (authority = admin) with the given extensions initialised by
+/// `ixs(mint)` before `initialize_mint2`.
+fn mint_2022_with(env: &mut Env, exts: &[ExtensionType], ixs: impl FnOnce(&Pubkey) -> Vec<Instruction>) -> Pubkey {
+    let admin = env.admin.pubkey();
+    env.create_mint_in(&TOKEN_2022_PROGRAM_ID, &admin, None, 6, exts, ixs)
+}
+
+fn expect_asset_rejected(env: &mut Env, mint: &Pubkey) {
+    let admin = env.admin.insecure_clone();
+    let ix = env.init_pool_ix(&admin.pubkey(), mint);
+    env.expect_err(ix, &admin, &[], E_ASSET_MINT_NOT_ALLOWED);
+}
+
+fn init_accepting(env: &mut Env, mint: &Pubkey) -> (PoolKeys, PoolFlags) {
+    let admin = env.admin.insecure_clone();
+    let ix = env.init_pool_ix(&admin.pubkey(), mint);
+    let meta = env.send(ix, &admin, &[]);
+    let k = PoolKeys::with_asset_program(&admin.pubkey(), mint, env.mint_program(mint));
+    (k, find_event(&meta).expect("PoolFlags"))
+}
+
+/// Series-shelf 2b, decision 15: the asset mint may not carry an extension that takes or hides
+/// value (transfer fee, permanent delegate, transfer hook, non-transferable, any confidential
+/// extension, mint close authority) or that would freeze the vault at creation.
+#[test]
+fn init_pool_rejects_asset_mints_whose_extensions_take_or_hide_value() {
+    let p = TOKEN_2022_PROGRAM_ID;
+    let mut env = Env::new();
+    let admin = env.admin.pubkey();
+
+    let m = mint_2022_with(&mut env, &[ExtensionType::TransferFeeConfig], |mint| {
+        vec![ext::transfer_fee::instruction::initialize_transfer_fee_config(&p, mint, Some(&admin), Some(&admin), 50, 1_000).unwrap()]
+    });
+    expect_asset_rejected(&mut env, &m);
+
+    let m = mint_2022_with(&mut env, &[ExtensionType::PermanentDelegate], |mint| {
+        vec![spl_token_2022::instruction::initialize_permanent_delegate(&p, mint, &admin).unwrap()]
+    });
+    expect_asset_rejected(&mut env, &m);
+
+    let m = mint_2022_with(&mut env, &[ExtensionType::TransferHook], |mint| {
+        vec![ext::transfer_hook::instruction::initialize(&p, mint, Some(admin), Some(Pubkey::new_unique())).unwrap()]
+    });
+    expect_asset_rejected(&mut env, &m);
+
+    let m = mint_2022_with(&mut env, &[ExtensionType::NonTransferable], |mint| {
+        vec![spl_token_2022::instruction::initialize_non_transferable_mint(&p, mint).unwrap()]
+    });
+    expect_asset_rejected(&mut env, &m);
+
+    let m = mint_2022_with(&mut env, &[ExtensionType::MintCloseAuthority], |mint| {
+        vec![spl_token_2022::instruction::initialize_mint_close_authority(&p, mint, Some(&admin)).unwrap()]
+    });
+    expect_asset_rejected(&mut env, &m);
+
+    // The three confidential extensions, whatever their flags: a mint that can hold confidential
+    // balances makes `vault.amount` unreliable as the NAV's first term.
+    let m = mint_2022_with(&mut env, &[ExtensionType::ConfidentialTransferMint], |mint| {
+        vec![ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(admin), true, None).unwrap()]
+    });
+    expect_asset_rejected(&mut env, &m);
+
+    let m = mint_2022_with(
+        &mut env,
+        &[ExtensionType::TransferFeeConfig, ExtensionType::ConfidentialTransferMint, ExtensionType::ConfidentialTransferFeeConfig],
+        |mint| {
+            vec![
+                ext::transfer_fee::instruction::initialize_transfer_fee_config(&p, mint, Some(&admin), Some(&admin), 0, 0).unwrap(),
+                ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(admin), true, None).unwrap(),
+                ext::confidential_transfer_fee::instruction::initialize_confidential_transfer_fee_config(
+                    &p,
+                    mint,
+                    Some(admin),
+                    &Default::default(),
+                )
+                .unwrap(),
+            ]
+        },
+    );
+    expect_asset_rejected(&mut env, &m);
+
+    let m = mint_2022_with(&mut env, &[ExtensionType::ConfidentialTransferMint, ExtensionType::ConfidentialMintBurn], |mint| {
+        vec![
+            ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(admin), true, None).unwrap(),
+            ext::confidential_mint_burn::instruction::initialize_mint(&p, mint, &Default::default(), &Default::default()).unwrap(),
+        ]
+    });
+    expect_asset_rejected(&mut env, &m);
+
+    // Frozen by default: every vault would be born frozen. Initialized by default is harmless.
+    // (Token-2022 only allows the extension on a mint with a freeze authority.)
+    let m = env.create_mint_in(&p, &admin, Some(&admin), 6, &[ExtensionType::DefaultAccountState], |mint| {
+        vec![ext::default_account_state::instruction::initialize_default_account_state(&p, mint, &AccountState::Frozen).unwrap()]
+    });
+    expect_asset_rejected(&mut env, &m);
+    let m = env.create_mint_in(&p, &admin, Some(&admin), 6, &[ExtensionType::DefaultAccountState], |mint| {
+        vec![ext::default_account_state::instruction::initialize_default_account_state(&p, mint, &AccountState::Initialized).unwrap()]
+    });
+    let (_, flags) = init_accepting(&mut env, &m);
+    assert_eq!(flags.asset_controls, ASSET_CONTROL_FREEZE, "only the freeze authority it needed");
+}
+
+/// Decision 15 and the coordinator's step-2 answer: issuer controls that can stop the vault
+/// without touching the program (a freeze authority, the Pausable extension) are accepted and
+/// recorded in `asset_controls`; display-only extensions such as interest-bearing are accepted.
+#[test]
+fn init_pool_records_the_asset_issuer_controls_it_accepts() {
+    let p = TOKEN_2022_PROGRAM_ID;
+    let mut env = Env::new();
+    let admin = env.admin.pubkey();
+
+    // A classic mint with a freeze authority (MEXe's shape).
+    let m = env.create_mint_in(&TOKEN_PROGRAM_ID, &admin, Some(&admin), 6, &[], |_| vec![]);
+    let (k, flags) = init_accepting(&mut env, &m);
+    assert_eq!((flags.pool, flags.asset_controls, flags.permissioned), (k.pool, ASSET_CONTROL_FREEZE, false));
+    let pool = env.pool(&k);
+    assert!(pool.asset_freezable() && !pool.asset_pausable());
+    assert_eq!(pool.reserved[7], ASSET_CONTROL_FREEZE, "byte 7 of reserved");
+
+    // A pausable Token-2022 mint without a freeze authority.
+    let m = mint_2022_with(&mut env, &[ExtensionType::Pausable], |mint| {
+        vec![ext::pausable::instruction::initialize(&p, mint, &admin).unwrap()]
+    });
+    let (k, flags) = init_accepting(&mut env, &m);
+    assert_eq!(flags.asset_controls, ASSET_CONTROL_PAUSABLE);
+    let pool = env.pool(&k);
+    assert!(!pool.asset_freezable() && pool.asset_pausable());
+
+    // Both controls at once.
+    let m = env.create_mint_in(&p, &admin, Some(&admin), 6, &[ExtensionType::Pausable], |mint| {
+        vec![ext::pausable::instruction::initialize(&p, mint, &admin).unwrap()]
+    });
+    let (_, flags) = init_accepting(&mut env, &m);
+    assert_eq!(flags.asset_controls, ASSET_CONTROL_FREEZE | ASSET_CONTROL_PAUSABLE);
+
+    // Interest-bearing is a display rate; neither a control nor a reason to refuse.
+    let m = mint_2022_with(&mut env, &[ExtensionType::InterestBearingConfig], |mint| {
+        vec![ext::interest_bearing_mint::instruction::initialize(&p, mint, Some(admin), 500).unwrap()]
+    });
+    let (_, flags) = init_accepting(&mut env, &m);
+    assert_eq!(flags.asset_controls, 0);
+
+    // The plain mints of the other tests carry nothing.
+    let (k, meta) = env.setup_pool();
+    let flags: PoolFlags = find_event(&meta).expect("PoolFlags");
+    assert_eq!((flags.asset_controls, flags.permissioned, env.pool(&k).asset_controls()), (0, false, 0));
 }
 
 /// SPL Token accepts any `decimals` byte. Above 19, `10^decimals` does not fit a `u64`, so no

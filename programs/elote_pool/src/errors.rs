@@ -48,4 +48,6 @@ pub enum PoolError {
     LineTooLarge,
     #[msg("A pool invariant does not hold after this instruction; the transaction is refused")]
     InvariantBroken,
+    #[msg("The asset mint carries a Token-2022 extension the pool does not accept")]
+    AssetMintNotAllowed,
 }

@@ -1104,6 +1104,19 @@
       ]
     },
     {
+      "name": "PoolFlags",
+      "discriminator": [
+        120,
+        29,
+        59,
+        248,
+        206,
+        33,
+        76,
+        230
+      ]
+    },
+    {
       "name": "PoolInitialized",
       "discriminator": [
         100,
@@ -1266,6 +1279,11 @@
       "code": 6021,
       "name": "InvariantBroken",
       "msg": "A pool invariant does not hold after this instruction; the transaction is refused"
+    },
+    {
+      "code": 6022,
+      "name": "AssetMintNotAllowed",
+      "msg": "The asset mint carries a Token-2022 extension the pool does not accept"
     }
   ],
   "types": [
@@ -1745,10 +1763,12 @@
               "|---------|------------------------|----------|-------------------------------------------|",
               "| 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |",
               "| 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |",
-              "| 6..32   | unused                 | zero     |                                           |",
+              "| 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |",
+              "| 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |",
+              "| 8..32   | unused                 | zero     |                                           |",
               "",
-              "Read and written only through [`Pool::grace_period_seconds`],",
-              "[`Pool::set_grace_period_seconds`], [`Pool::max_line_bps`] and [`Pool::set_max_line_bps`]."
+              "Read and written only through the accessors below (`grace_period_seconds`,",
+              "`max_line_bps`, `permissioned`, `asset_controls` and their setters)."
             ],
             "type": {
               "array": [
@@ -1779,6 +1799,32 @@
           {
             "name": "grace_period_seconds",
             "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolFlags",
+      "docs": [
+        "Emitted by `init_pool` after `PoolLineCapSet`: the read-only facts about the two mints.",
+        "`asset_controls`: the issuer controls on the asset mint, as `Pool::asset_controls` bits",
+        "(bit 0 freeze authority, bit 1 Pausable). `permissioned`: the share mint is frozen by",
+        "default, so holders must be thawed (Token ACL)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset_controls",
+            "type": "u8"
+          },
+          {
+            "name": "permissioned",
+            "type": "bool"
           }
         ]
       }

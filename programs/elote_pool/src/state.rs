@@ -42,6 +42,10 @@ pub const MAX_INSTALLMENTS: u16 = 120;
 pub const MIN_MAX_MISSED: u8 = 3;
 /// The year that annualizes `late_bps`: 365 days.
 pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
+/// `Pool::asset_controls` bit: the asset mint has a freeze authority.
+pub const ASSET_CONTROL_FREEZE: u8 = 1 << 0;
+/// `Pool::asset_controls` bit: the asset mint carries the Token-2022 `Pausable` extension.
+pub const ASSET_CONTROL_PAUSABLE: u8 = 1 << 1;
 
 #[account]
 #[derive(InitSpace)]
@@ -69,10 +73,12 @@ pub struct Pool {
     /// |---------|------------------------|----------|-------------------------------------------|
     /// | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
     /// | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
-    /// | 6..32   | unused                 | zero     |                                           |
+    /// | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
+    /// | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
+    /// | 8..32   | unused                 | zero     |                                           |
     ///
-    /// Read and written only through [`Pool::grace_period_seconds`],
-    /// [`Pool::set_grace_period_seconds`], [`Pool::max_line_bps`] and [`Pool::set_max_line_bps`].
+    /// Read and written only through the accessors below (`grace_period_seconds`,
+    /// `max_line_bps`, `permissioned`, `asset_controls` and their setters).
     pub reserved: [u8; 32],
     pub bump: u8,
 }
@@ -96,6 +102,39 @@ impl Pool {
 
     pub fn set_max_line_bps(&mut self, bps: u16) {
         self.reserved[4..6].copy_from_slice(&bps.to_le_bytes());
+    }
+
+    /// Shares are permissioned: the share mint has `DefaultAccountState = Frozen`, so a holder's
+    /// account must be thawed by the mint's freeze authority (Token ACL) before it can receive
+    /// or burn shares. Read-only fact recorded at `init_pool`.
+    pub fn permissioned(&self) -> bool {
+        self.reserved[6] == 1
+    }
+
+    pub fn set_permissioned(&mut self, v: bool) {
+        self.reserved[6] = u8::from(v);
+    }
+
+    /// The issuer controls the asset mint carries that can stop the vault without touching the
+    /// program, as bits (decision 15: accepted and recorded, never rejected): bit 0, a freeze
+    /// authority (MEXe has one, CETES none); bit 1, the Token-2022 `Pausable` extension.
+    /// Read-only facts recorded at `init_pool`.
+    pub fn asset_controls(&self) -> u8 {
+        self.reserved[7]
+    }
+
+    pub fn set_asset_controls(&mut self, bits: u8) {
+        self.reserved[7] = bits;
+    }
+
+    /// Bit 0 of `asset_controls`: the asset's issuer can freeze the vault.
+    pub fn asset_freezable(&self) -> bool {
+        self.asset_controls() & ASSET_CONTROL_FREEZE != 0
+    }
+
+    /// Bit 1 of `asset_controls`: the asset's issuer can pause every transfer of the mint.
+    pub fn asset_pausable(&self) -> bool {
+        self.asset_controls() & ASSET_CONTROL_PAUSABLE != 0
     }
 
     /// `nav * max_line_bps / BPS`, rounded down: the largest line the pool opens at this NAV.

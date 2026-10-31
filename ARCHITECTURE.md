@@ -127,7 +127,7 @@ filters.
 | 185 | 8 | `written_off` | informative running total |
 | 193 | 8 | `line_count` | next `line_id` |
 | 201 | 1 | `paused` | |
-| 202 | 32 | `reserved` | bytes 0..4: `grace_period_seconds` (u32 LE); bytes 4..6: `max_line_bps` (u16 LE); rest zero |
+| 202 | 32 | `reserved` | bytes 0..4: `grace_period_seconds` (u32 LE); bytes 4..6: `max_line_bps` (u16 LE); byte 6: `permissioned` flag; byte 7: `asset_controls` bits (0 freeze authority, 1 Pausable); rest zero |
 | 234 | 1 | `bump` | |
 
 `grace_period_seconds` and `max_line_bps` live inside `reserved` so the layout did not change
@@ -268,12 +268,18 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
   `token_program`, an `Interface<TokenInterface>` that must be the asset mint's own program
   (classic SPL Token or Token-2022). `asset_mint` is an `InterfaceAccount<Mint>`.
 - **Checks:** `1 <= max_line_bps <= 10 000` (`WrongAmount`); `asset_mint.decimals <= 19`, so
-  that `min_first_deposit` exists (`WrongAccount`). Any value of `grace_period_seconds` is
-  accepted, including zero. The asset mint is not inspected further (see §9).
-- **Writes:** every `Pool` field; `reserved` zeroed then the grace period and `max_line_bps`
-  packed in.
+  that `min_first_deposit` exists (`WrongAccount`); the asset-mint policy (`asset_controls` in
+  `pool.rs`): the mint is unpacked with its extensions and refused (`AssetMintNotAllowed`) if
+  it carries `TransferFeeConfig`, `PermanentDelegate`, `TransferHook`, `NonTransferable`,
+  `ConfidentialTransferMint`, `ConfidentialTransferFeeConfig`, `ConfidentialMintBurn`,
+  `MintCloseAuthority`, or `DefaultAccountState` other than `Initialized`; a freeze authority
+  and `Pausable` are accepted and recorded as bits of `asset_controls`; other extensions are
+  accepted and ignored. Any value of `grace_period_seconds` is accepted, including zero.
+- **Writes:** every `Pool` field; `reserved` zeroed then the grace period, `max_line_bps`,
+  `permissioned` (false: the program-created share mint has no default state) and
+  `asset_controls` packed in.
 - **CPIs:** the four `init`s (system program + token program) done by Anchor.
-- **Events:** `PoolInitialized`, then `PoolConfigured`, then `PoolLineCapSet`.
+- **Events:** `PoolInitialized`, then `PoolConfigured`, `PoolLineCapSet`, `PoolFlags`.
 
 ### 5.2 `deposit(assets: u64, min_shares_out: u64)`
 
@@ -535,9 +541,10 @@ The review ids refer to the 2026-10-12 review in theOffice.
 Other points outside the test file, from the same review and from the Etherfuse research
 (theOffice, 2026-10-19):
 
-- `init_pool` accepts any classic SPL mint and never checks its freeze authority. If the asset
-  issuer can freeze the vault, every instruction that moves tokens fails until it is thawed
-  (MEXe and MXNe both have one). Policy decision pending, part of P0-5.
+- Closed 2026-10-31 (series-shelf 2b, decision 15): `init_pool` applies an asset-mint policy
+  (§5.1) and records the issuer controls it accepts in `asset_controls`. If the asset issuer
+  freezes the vault or pauses the mint, every instruction that moves tokens fails until it is
+  undone; that is accepted and visible to clients (`poolFlags` in the JS client), not refused.
 - Inverted 2026-10-31 (series-shelf 2a): Token-2022 mints (MEX, CETES) can be the asset. The
   program uses `anchor_spl::token_interface` (`InterfaceAccount`, `Interface<TokenInterface>`)
   and `transfer_checked` everywhere, and every money instruction takes the asset mint read-only

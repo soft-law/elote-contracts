@@ -59,8 +59,11 @@ export const ELOTE_POOL_ERROR__BORROWER_IS_ADMIN = 0x1783; // 6019
 export const ELOTE_POOL_ERROR__LINE_TOO_LARGE = 0x1784; // 6020
 /** InvariantBroken: A pool invariant does not hold after this instruction; the transaction is refused */
 export const ELOTE_POOL_ERROR__INVARIANT_BROKEN = 0x1785; // 6021
+/** AssetMintNotAllowed: The asset mint carries a Token-2022 extension the pool does not accept */
+export const ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED = 0x1786; // 6022
 
 export type ElotePoolError =
+  | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_ADMIN
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
@@ -87,6 +90,7 @@ export type ElotePoolError =
 let elotePoolErrorMessages: Record<ElotePoolError, string> | undefined;
 if (process.env["NODE_ENV"] !== "production") {
   elotePoolErrorMessages = {
+    [ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED]: `The asset mint carries a Token-2022 extension the pool does not accept`,
     [ELOTE_POOL_ERROR__BORROWER_IS_ADMIN]: `The pool admin cannot be the borrower`,
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,

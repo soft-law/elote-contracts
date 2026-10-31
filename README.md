@@ -67,7 +67,9 @@ Both accounts keep 32 `reserved` bytes; new parameters live there so the layouts
 |---|---|---|
 | `Pool` | 0..4 | `grace_period_seconds`, u32 LE (zero: no grace) |
 | | 4..6 | `max_line_bps`, u16 LE: the largest line as a share of the NAV at `open_line`, 1 to 10,000. Zero on a pool created before the cap existed (the devnet demo pools): such a pool opens no new line |
-| | 6..32 | zero |
+| | 6 | `permissioned`, u8: 1 when the share mint is frozen by default (Token ACL), so holders must be thawed |
+| | 7 | `asset_controls`, u8 bits: bit 0 the asset mint has a freeze authority; bit 1 it carries the Token-2022 `Pausable` extension |
+| | 8..32 | zero |
 | `CreditLine` v2 | 0..8 | `interval_seconds`, i64 LE |
 | | 8..10 | `installments`, u16 LE |
 | | 10..12 | `late_bps`, u16 LE, annual |
@@ -146,6 +148,7 @@ change fields; new information comes as new events.
 | `PoolInitialized` | `init_pool` | pool, asset_mint, share_mint, admin |
 | `PoolConfigured` | `init_pool`, after `PoolInitialized` | pool, grace_period_seconds |
 | `PoolLineCapSet` | `init_pool`, after `PoolConfigured` | pool, max_line_bps |
+| `PoolFlags` | `init_pool`, after `PoolLineCapSet` | pool, asset_controls (bits: freeze authority, Pausable), permissioned |
 | `Deposited` | `deposit` | pool, depositor, assets, shares, nav_after, supply_after |
 | `Redeemed` | `redeem` | pool, holder, shares, assets, nav_after, supply_after |
 | `LineOpened` | `open_line` | pool, line_id, borrower, sponsor, agreement_hash, principal, rate_bps, interest_due, term_end |
