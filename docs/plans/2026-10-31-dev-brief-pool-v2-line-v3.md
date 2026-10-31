@@ -70,7 +70,7 @@ running are "elote_pool known limits", "arrears vectors", "anchor build --arch v
 
 ## Work plan: three pull requests, in order
 
-### PR 1: Phase 1 hardening (no account layout change, no IDL change except new errors)
+### PR 1: Phase 1 hardening (no account layout change; the IDL changes for `init_pool`'s new argument, the read-only `vault` on `OpenLine`, new errors and one new event)
 
 Branch `hardening/phase-1` from the tip of `poc/kyc-identity-eval` (which is `main` 3c1debd plus the docs and PoCs; `main` itself has none of the plans yet). Items, all spec-free:
 
@@ -186,6 +186,25 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   a legal brief with a list of verifiable conditions for the pagaré token. The coordinator will
   send you the mapped conditions; do not consider steps 5 and 6 final until that message arrives.
   Steps 1 to 4 and all of PR 1 are not affected.
+
+## Answers to the developer's first reading (2026-10-31)
+
+1. `OpenLine` takes `vault` read-only (`address = pool.vault`) for the NAV cap; regenerate the
+   client and update the two scripts. Accepted.
+2. `PoolLineCapSet { pool, max_line_bps }` as a new event after `PoolConfigured`. Accepted.
+3. `Pool::check()` runs the vault-plus-outstanding leg everywhere and the supply leg only where
+   `share_mint` is already an account (`deposit`, `redeem`). Accepted.
+4. Test-harness default `max_line_bps = 10_000`; the cap has its own tests at a lower value;
+   scripts default to 1,000. Accepted.
+5. PR 2 drops the v1 pool code paths (program-created share mint) and, with them, the v1 line
+   semantics: every line opened by the new program is version 3, bullet or scheduled, with one
+   repayment order (late interest, then interest, then principal) and clamped overpayment. The
+   v1 "principal first, reject overpayment" order dies; invert or delete its tests and update
+   `ARCHITECTURE.md` §5 and §9 accordingly. Decided by the coordinator under decision 14.
+6. D1 governs the per-tranche interest, and after decision 25 `last_due` is
+   `first_due_at + (installments - 1) * interval` on a scheduled line. The instruction table's
+   `term_end - now` is superseded.
+7. `poolMaxLineBps` reader in `clients/js/src/schedule.ts` next to the grace reader. Accepted.
 
 ## Points the coordinator still owns
 
