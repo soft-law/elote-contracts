@@ -881,7 +881,7 @@ impl Env {
         let s = line.schedule().expect("scheduled line");
         let terms = elote_pool::math::ScheduleTerms {
             total: line.principal + line.interest_due,
-            drawn_at: line.drawn_at,
+            anchor: line.drawn_at,
             interval: s.interval_seconds,
             installments: s.installments,
             late_bps: s.late_bps,

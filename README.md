@@ -111,11 +111,13 @@ Without it the line is a single-maturity line (version 1) and nothing below appl
 - **Missed installments** are computed, never stored: installments fallen due minus installments fully
   covered by the principal and interest repaid. At its due second an installment already counts as due.
   The pool's grace period does not change the count.
-- **Late interest** accrues on each overdue part from its due date plus the pool's grace period (or
-  from the last repayment, whichever is later), linear per second at `late_bps` a year (365 days):
-  `Σ part * min(seconds, cap) * late_bps / (10_000 * 31_536_000)`, rounded down, in `u128`, where
-  `cap = ceil(10_000 * 31_536_000 / late_bps)` seconds. Two caps apply:
-  - **per settlement:** within one repayment, each overdue part accrues at most its own amount. A
+- **Late interest** accrues on the **principal share** of each overdue part (decision 11: no
+  interest on overdue interest; the share is `part * principal / total`, rounded down) from its due
+  date plus the pool's grace period (or from the last repayment, whichever is later), linear per
+  second at `late_bps` a year (365 days):
+  `Σ principal_share(part) * min(seconds, cap) * late_bps / (10_000 * 31_536_000)`, rounded down, in
+  `u128`, where `cap = ceil(10_000 * 31_536_000 / late_bps)` seconds. Two caps apply:
+  - **per settlement:** within one repayment, each overdue part accrues at most its own principal share. A
     repayment that collects late interest settles it in full and records `late_paid_until`, so no
     period is charged twice; a repayment that collects none (the accrual rounded down to zero) leaves
     the watermark alone, so the accrual keeps running. A part that stays unpaid accrues again after

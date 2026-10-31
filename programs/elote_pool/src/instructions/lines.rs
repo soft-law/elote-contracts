@@ -422,7 +422,7 @@ fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
     let s = line.schedule().ok_or(PoolError::NotScheduled)?;
     let terms = ScheduleTerms {
         total: line.principal.checked_add(line.interest_due).ok_or(PoolError::Overflow)?,
-        drawn_at: line.drawn_at,
+        anchor: line.drawn_at,
         interval: s.interval_seconds,
         installments: s.installments,
         late_bps: s.late_bps,

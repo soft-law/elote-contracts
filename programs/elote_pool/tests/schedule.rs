@@ -220,29 +220,31 @@ fn late_interest_accrues_after_grace_and_is_collected_first() {
     let a = env.arrears(&k, line_id);
     assert_eq!((a.missed, a.overdue, a.late_due), (1, 1_120_000, 0));
 
-    // 1% of a year after grace: 1.12 * 100% * 0.01 = 0.0112.
+    // 1% of a year after grace, on the principal share of the 1.12 installment (1.0; decision 11,
+    // no interest on overdue interest): 1.0 * 100% * 0.01 = 0.01.
     let year = elote_pool::state::SECONDS_PER_YEAR as i64;
     env.warp(t0 + MONTH + i64::from(grace) + year / 100);
-    assert_eq!(env.arrears(&k, line_id).late_due, 11_200);
+    assert_eq!(env.arrears(&k, line_id).overdue_principal, UNIT);
+    assert_eq!(env.arrears(&k, line_id).late_due, 10_000);
 
     // A repayment must cover the late interest.
-    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 11_199);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 9_999);
     env.expect_err(ix, &b, &[], E_LATE_INTEREST_UNPAID);
 
     // Late interest, then the whole interest, then principal.
-    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1_120_000 + 11_200);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1_120_000 + 10_000);
     let meta = env.send(ix, &b, &[]);
     let ev: LateInterestCollected = find_event(&meta).expect("LateInterestCollected");
-    assert_eq!((ev.pool, ev.line_id, ev.amount), (k.pool, line_id, 11_200));
+    assert_eq!((ev.pool, ev.line_id, ev.amount), (k.pool, line_id, 10_000));
     let ev: LineRepaid = find_event(&meta).expect("LineRepaid");
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (720_000, 400_000, 5_600_000));
-    assert_eq!(ev.nav_after, nav0 + 11_200 + 720_000, "late interest raises the NAV like interest");
-    assert_eq!(env.nav(&k), nav0 + 11_200 + 720_000);
+    assert_eq!(ev.nav_after, nav0 + 10_000 + 720_000, "late interest raises the NAV like interest");
+    assert_eq!(env.nav(&k), nav0 + 10_000 + 720_000);
     let pool = env.pool(&k);
     assert_eq!(pool.interest_collected, 720_000, "late interest is not ordinary interest");
     assert_eq!(pool.outstanding_principal, 5_600_000);
     let s = env.line(&k, line_id).schedule().unwrap();
-    assert_eq!((s.late_collected, s.late_paid_until), (11_200, env.now()));
+    assert_eq!((s.late_collected, s.late_paid_until), (10_000, env.now()));
     let a = env.arrears(&k, line_id);
     assert_eq!((a.missed, a.late_due), (0, 0));
 
@@ -250,7 +252,7 @@ fn late_interest_accrues_after_grace_and_is_collected_first() {
     env.warp(env.now() + 24 * 3600);
     let ev = env.repay(&k, line_id, &b, 1);
     assert_eq!((ev.interest_part, ev.principal_part), (0, 1));
-    assert_eq!(env.line(&k, line_id).schedule().unwrap().late_collected, 11_200);
+    assert_eq!(env.line(&k, line_id).schedule().unwrap().late_collected, 10_000);
 }
 
 #[test]
@@ -261,23 +263,25 @@ fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
     let total = 1_100_000;
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 5 * UNIT);
 
-    // Twenty years late at 100% a year: each part stops at its own amount (1.1 overdue in all),
-    // and the lifetime cap holds late interest to the principal, 1.0.
+    // Twenty years late at 100% a year: each part stops at its own principal share (1.1 overdue
+    // in all, of which 0.999998 is principal: three shares each rounded down), which binds
+    // before the lifetime cap of 1.0.
+    let late = 999_998;
     env.warp(t0 + 3 * MONTH + 20 * elote_pool::state::SECONDS_PER_YEAR as i64);
     let a = env.arrears(&k, line_id);
-    assert_eq!((a.overdue, a.late_due), (total, UNIT));
+    assert_eq!((a.overdue, a.overdue_principal, a.late_due), (total, late, late));
 
     // Paying far more than is due debits only what is due.
     let before = borrower_balance(&env, &k, &b);
     let ix = env.repay_ix(&k, line_id, &b.pubkey(), 6 * UNIT);
     let meta = env.send(ix, &b, &[]);
-    assert_eq!(find_event::<LateInterestCollected>(&meta).unwrap().amount, UNIT);
+    assert_eq!(find_event::<LateInterestCollected>(&meta).unwrap().amount, late);
     let ev: LineRepaid = find_event(&meta).unwrap();
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (100_000, UNIT, 0));
-    assert_eq!(before - borrower_balance(&env, &k, &b), UNIT + total);
+    assert_eq!(before - borrower_balance(&env, &k, &b), late + total);
     let line = env.line(&k, line_id);
     assert_eq!(line.status, LineStatus::Repaid);
-    assert_eq!(line.schedule().unwrap().late_collected, UNIT);
+    assert_eq!(line.schedule().unwrap().late_collected, late);
 }
 
 #[test]
@@ -609,8 +613,9 @@ fn late_interest_caps_each_overdue_part_separately() {
 fn a_repayment_that_settles_no_late_interest_leaves_the_watermark_where_it_was() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
-    // 6.0 at 12%: six installments of 1.12; 50% a year late interest. The overdue 1.12 accrues
-    // 1.12 * 0.5 / 31_536_000 units a second: about 0.018, so 30 s round to 0 and 60 s to 1.
+    // 6.0 at 12%: six installments of 1.12, of which 1.0 is principal; 50% a year late interest.
+    // The overdue principal share accrues 1.0 * 0.5 / 31_536_000 units a second: about 0.016, so
+    // 30 s round to 0 and 70 s to 1.
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
 
@@ -620,8 +625,8 @@ fn a_repayment_that_settles_no_late_interest_leaves_the_watermark_where_it_was()
     let meta = env.send(ix, &b, &[]);
     assert!(find_event::<LateInterestCollected>(&meta).is_none());
 
-    env.warp(t0 + MONTH + 60);
-    assert_eq!(env.arrears(&k, line_id).late_due, 1, "60 s since the due date, not 30 s since the last payment");
+    env.warp(t0 + MONTH + 70);
+    assert_eq!(env.arrears(&k, line_id).late_due, 1, "70 s since the due date, not 40 s since the last payment");
     let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1);
     let meta = env.send(ix, &b, &[]);
     let ev: LateInterestCollected = find_event(&meta).expect("the second repayment settles one unit");

@@ -61,10 +61,10 @@ proptest! {
 
     /// Installments fall due monotonically with time and never beyond the schedule.
     #[test]
-    fn installments_due_is_monotone(drawn_at in 0..1i64 << 40, interval in 1..1i64 << 30, n in 1..=MAX_INSTALLMENTS, a in 0..1i64 << 41, b in 0..1i64 << 41) {
+    fn installments_due_is_monotone(anchor in 0..1i64 << 40, interval in 1..1i64 << 30, n in 1..=MAX_INSTALLMENTS, a in 0..1i64 << 41, b in 0..1i64 << 41) {
         let (lo, hi) = (a.min(b), a.max(b));
-        let d_lo = installments_due(lo, drawn_at, interval, n);
-        let d_hi = installments_due(hi, drawn_at, interval, n);
+        let d_lo = installments_due(lo, anchor, interval, n);
+        let d_hi = installments_due(hi, anchor, interval, n);
         prop_assert!(d_lo <= d_hi);
         prop_assert!(d_hi <= n);
     }
@@ -82,14 +82,15 @@ proptest! {
     }
 
     /// The arrears of any valid line are consistent: counts bounded by the schedule, the overdue
-    /// part bounded by what is unpaid, late interest bounded by the overdue part and by what is
-    /// left of the lifetime cap, and a first missed due date exactly when something is missed.
+    /// part bounded by what is unpaid, its principal share bounded by it, late interest bounded by
+    /// the overdue principal and by what is left of the lifetime cap, and a first missed due date
+    /// exactly when something is missed.
     #[test]
     fn arrears_are_consistent(
         total in 1..=1u64 << 50,
         n in 1..=MAX_INSTALLMENTS,
         interest_share in 0..=10_000u64,
-        drawn_at in 1_000_000_000i64..2_000_000_000,
+        anchor in 1_000_000_000i64..2_000_000_000,
         interval in 1..=10_000_000i64,
         late_bps in 0..=10_000u16,
         grace in 0..=2_000_000u32,
@@ -103,18 +104,20 @@ proptest! {
         let principal = total - interest;
         let late_collected = principal / 10_000 * collected_share;
         let paid = (total / 10_000).max(1) * paid_num; // up to 120% of the total
-        let now = drawn_at + interval * now_num; // from before the draw to past the last due date
-        let late_paid_until = if watermark == 0 { 0 } else { drawn_at + (now - drawn_at) * watermark / 10_000 };
+        let now = anchor + interval * now_num; // from before the first due date to past the last
+        let late_paid_until = if watermark == 0 { 0 } else { anchor + (now - anchor) * watermark / 10_000 };
         let t = ScheduleTerms {
-            total, drawn_at, interval, installments: n, late_bps, grace, late_paid_until, principal, late_collected,
+            total, anchor, interval, installments: n, late_bps, grace, late_paid_until, principal, late_collected,
         };
-        let Arrears { due, covered, missed, overdue, late_due, first_missed_due } =
+        let Arrears { due, covered, missed, overdue, overdue_principal, late_due, first_missed_due } =
             arrears(&t, paid, now).expect("valid terms never overflow");
         prop_assert!(due <= n);
         prop_assert!(covered <= n);
         prop_assert_eq!(missed, due.saturating_sub(covered));
         prop_assert!(overdue <= total.saturating_sub(paid));
-        prop_assert!(late_due <= overdue);
+        prop_assert!(overdue_principal <= overdue);
+        prop_assert!(overdue_principal <= principal);
+        prop_assert!(late_due <= overdue_principal);
         prop_assert!(late_due <= principal - late_collected);
         prop_assert_eq!(first_missed_due.is_some(), missed > 0);
         prop_assert_eq!(overdue > 0, missed > 0);
@@ -122,7 +125,7 @@ proptest! {
             prop_assert_eq!(late_due, 0);
         }
         if let Some(first) = first_missed_due {
-            prop_assert!(first > drawn_at && first <= now, "a missed due date lies between the draw and now");
+            prop_assert!(first > anchor && first <= now, "a missed due date lies between the anchor and now");
         }
     }
 }

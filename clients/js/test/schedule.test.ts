@@ -16,7 +16,7 @@ import {
 type Vector = {
   total: string;
   principal: string;
-  drawn_at: string;
+  anchor: string;
   interval: string;
   installments: number;
   late_bps: number;
@@ -29,6 +29,7 @@ type Vector = {
   covered: number;
   missed: number;
   overdue: string;
+  overdue_principal: string;
   late_due: string;
   first_missed_due: string | null;
 };
@@ -49,7 +50,7 @@ test("lineArrears agrees with math::arrears on every vector", () => {
         interestDue: BigInt(v.total) - BigInt(v.principal),
         principalRepaid: BigInt(v.paid),
         interestRepaid: 0n,
-        drawnAt: BigInt(v.drawn_at),
+        drawnAt: BigInt(v.anchor),
       },
       {
         intervalSeconds: BigInt(v.interval),
@@ -69,6 +70,7 @@ test("lineArrears agrees with math::arrears on every vector", () => {
         covered: a.covered,
         missed: a.missed,
         overdue: a.overdue.toString(),
+        overduePrincipal: a.overduePrincipal.toString(),
         lateDue: a.lateDue.toString(),
         firstMissedDue:
           a.firstMissedDue === null ? null : a.firstMissedDue.toString(),
@@ -78,6 +80,7 @@ test("lineArrears agrees with math::arrears on every vector", () => {
         covered: v.covered,
         missed: v.missed,
         overdue: v.overdue,
+        overduePrincipal: v.overdue_principal,
         lateDue: v.late_due,
         firstMissedDue: v.first_missed_due,
       },

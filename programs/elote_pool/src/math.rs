@@ -27,11 +27,22 @@ pub fn assets_for_redeem(shares: u64, supply: u64, nav: u64) -> Option<u64> {
         .and_then(|v| u64::try_from(v).ok())
 }
 
-/// Fixed interest on `principal` at `rate_bps`.
+/// Fixed interest on `principal` at `rate_bps` (versions 1 and 2: a flat rate for the term).
 pub fn interest_due(principal: u64, rate_bps: u16) -> Option<u64> {
     (principal as u128)
         .checked_mul(rate_bps as u128)?
         .checked_div(BPS as u128)
+        .and_then(|v| u64::try_from(v).ok())
+}
+
+/// Ordinary interest on a tranche of `amount` outstanding for `seconds` at an annual `rate_bps`
+/// (version 3, decision 9): `amount * rate_bps * seconds / (10_000 * SECONDS_PER_YEAR)`, rounded
+/// down once per tranche.
+pub fn tranche_interest(amount: u64, rate_bps: u16, seconds: u64) -> Option<u64> {
+    (amount as u128)
+        .checked_mul(rate_bps as u128)?
+        .checked_mul(seconds as u128)?
+        .checked_div((BPS as u128).checked_mul(SECONDS_PER_YEAR as u128)?)
         .and_then(|v| u64::try_from(v).ok())
 }
 
@@ -40,13 +51,14 @@ pub fn interest_due(principal: u64, rate_bps: u16) -> Option<u64> {
 // -----------------------------------------------------------------------------------------------
 
 /// Installments whose due date has arrived: installment `k` (1-based) is due at
-/// `drawn_at + k * interval`, and at that very second it already counts as due. Zero before the
-/// first due date, never more than `installments`.
-pub fn installments_due(now: i64, drawn_at: i64, interval: i64, installments: u16) -> u16 {
-    if interval <= 0 || now <= drawn_at {
+/// `anchor + k * interval`, and at that very second it already counts as due. Zero before the
+/// first due date, never more than `installments`. The anchor is one interval before the first
+/// due date (a version-3 line's `first_due_at - interval`).
+pub fn installments_due(now: i64, anchor: i64, interval: i64, installments: u16) -> u16 {
+    if interval <= 0 || now <= anchor {
         return 0;
     }
-    let Some(elapsed) = now.checked_sub(drawn_at) else { return 0 };
+    let Some(elapsed) = now.checked_sub(anchor) else { return 0 };
     let periods = elapsed / interval;
     if periods >= i64::from(installments) {
         installments
@@ -124,6 +136,8 @@ pub struct Arrears {
     pub missed: u16,
     /// Principal and interest fallen due and not paid.
     pub overdue: u64,
+    /// The principal share of `overdue`: what late interest accrues on (decision 11).
+    pub overdue_principal: u64,
     /// Late interest owed now and not yet settled.
     pub late_due: u64,
     /// Due date of the oldest unpaid installment that has fallen due; `None` when nothing is missed.
@@ -133,9 +147,10 @@ pub struct Arrears {
 /// Terms of a scheduled line, as the arrears computation needs them.
 #[derive(Clone, Copy, Debug)]
 pub struct ScheduleTerms {
-    /// `principal + interest_due`.
+    /// `drawn + interest_due`: what the installments add up to.
     pub total: u64,
-    pub drawn_at: i64,
+    /// One interval before the first due date: installment `k` is due at `anchor + k * interval`.
+    pub anchor: i64,
     pub interval: i64,
     pub installments: u16,
     pub late_bps: u16,
@@ -143,27 +158,40 @@ pub struct ScheduleTerms {
     pub grace: u32,
     /// Late interest is settled up to this time (zero: never).
     pub late_paid_until: i64,
-    /// The line's principal: late interest collected over the life of the line never exceeds it.
+    /// The principal the installments repay (`drawn` on a version-3 line): the share of each
+    /// installment that late interest accrues on, and the lifetime cap on late interest.
     pub principal: u64,
     /// Late interest collected so far.
     pub late_collected: u64,
 }
 
+/// The principal share of a `part` of the installments: `part * principal / total`, rounded down.
+/// Every installment repays principal and interest in the proportion of the whole, so the share is
+/// the same whatever the order the repayment allocation follows.
+fn principal_share(part: u64, principal: u64, total: u64) -> Option<u64> {
+    (part as u128)
+        .checked_mul(principal as u128)?
+        .checked_div(total as u128)
+        .and_then(|v| u64::try_from(v).ok())
+}
+
 /// Arrears of a scheduled line that has repaid `paid` (principal plus interest) by `now`.
 ///
-/// Late interest accrues on each overdue part separately: the unpaid part of installment `k`
-/// accrues from `start_k = max(due_k + grace, late_paid_until)` until `now`, at `late_bps` a year,
-/// and never beyond its own amount. The sum is divided once:
+/// Late interest accrues on the principal share of each overdue part separately (decision 11: no
+/// interest on overdue interest): the unpaid part of installment `k` accrues from
+/// `start_k = max(due_k + grace, late_paid_until)` until `now`, at `late_bps` a year, and never
+/// beyond its own amount. The sum is divided once:
 ///
-/// `late_due = Σ part_k * min(now - start_k, cap) * late_bps / (10_000 * SECONDS_PER_YEAR)`,
-/// capped at `overdue` for this settlement and at `principal - late_collected` over the life of the
-/// line. The per-part cap applies to one settlement: after a repayment the watermark moves and the
-/// same unpaid part can accrue again, which is what the lifetime cap bounds.
+/// `late_due = Σ principal_share(part_k) * min(now - start_k, cap) * late_bps / (10_000 * SECONDS_PER_YEAR)`,
+/// capped at `overdue_principal` for this settlement and at `principal - late_collected` over the
+/// life of the line. The per-part cap applies to one settlement: after a repayment the watermark
+/// moves and the same unpaid part can accrue again, which is what the lifetime cap bounds.
 pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
-    let due = installments_due(now, t.drawn_at, t.interval, t.installments);
+    let due = installments_due(now, t.anchor, t.interval, t.installments);
     let covered = installments_covered(paid, t.total, t.installments)?;
     let missed = due.saturating_sub(covered); // a count, zero when paid ahead
     let mut overdue: u64 = 0;
+    let mut overdue_principal: u64 = 0;
     let mut weighted: u128 = 0;
     let mut first_missed_due = None;
     let mut k = covered;
@@ -172,7 +200,8 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
         let upto = cumulative_due(t.total, t.installments, k)?;
         let before = cumulative_due(t.total, t.installments, k - 1)?;
         let part = upto.checked_sub(paid.max(before))?;
-        let due_at = t.drawn_at.checked_add(t.interval.checked_mul(i64::from(k))?)?;
+        let part_principal = principal_share(part, t.principal, t.total)?;
+        let due_at = t.anchor.checked_add(t.interval.checked_mul(i64::from(k))?)?;
         if first_missed_due.is_none() {
             first_missed_due = Some(due_at);
         }
@@ -180,13 +209,14 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
         if now > start {
             let seconds = now.checked_sub(start)? as u64; // positive
             let s = capped_seconds(t.late_bps, seconds);
-            weighted = weighted.checked_add((part as u128).checked_mul(s as u128)?)?;
+            weighted = weighted.checked_add((part_principal as u128).checked_mul(s as u128)?)?;
         }
         overdue = overdue.checked_add(part)?;
+        overdue_principal = overdue_principal.checked_add(part_principal)?;
     }
     let lifetime_left = t.principal.checked_sub(t.late_collected)?;
-    let late_due = late_from_weighted(weighted, t.late_bps, overdue)?.min(lifetime_left);
-    Some(Arrears { due, covered, missed, overdue, late_due, first_missed_due })
+    let late_due = late_from_weighted(weighted, t.late_bps, overdue_principal)?.min(lifetime_left);
+    Some(Arrears { due, covered, missed, overdue, overdue_principal, late_due, first_missed_due })
 }
 
 #[cfg(test)]
@@ -324,10 +354,25 @@ mod tests {
 
     // -- arrears -------------------------------------------------------------------------------
 
+    #[test]
+    fn tranche_interest_is_proportional_to_time_and_rounded_down() {
+        // 6.0 at 12% a year for a whole year: 0.72.
+        assert_eq!(tranche_interest(6_000_000, 1_200, YEAR), Some(720_000));
+        // Half the time, half the interest; a second of a 1-unit tranche rounds to nothing.
+        assert_eq!(tranche_interest(6_000_000, 1_200, YEAR / 2), Some(360_000));
+        assert_eq!(tranche_interest(1, 1_200, 1), Some(0));
+        assert_eq!(tranche_interest(6_000_000, 1_200, 0), Some(0));
+        assert_eq!(tranche_interest(6_000_000, 0, YEAR), Some(0));
+        // 180 of 365 days at 12% on 6.0: 6_000_000 * 1_200 * 15_552_000 / (10_000 * 31_536_000).
+        assert_eq!(tranche_interest(6_000_000, 1_200, 180 * 86_400), Some(355_068));
+        assert_eq!(tranche_interest(u64::MAX, 10_000, YEAR), Some(u64::MAX), "no overflow at the extremes");
+        assert_eq!(tranche_interest(u64::MAX, 10_000, 2 * YEAR), None, "but a result above u64 is refused");
+    }
+
     fn terms(total: u64, n: u16, late_bps: u16, grace: u32) -> ScheduleTerms {
         ScheduleTerms {
             total,
-            drawn_at: 1_000,
+            anchor: 1_000,
             interval: 100,
             installments: n,
             late_bps,
@@ -360,14 +405,14 @@ mod tests {
         let mut t = terms(365 * 3 * YEAR / 1_000, 3, 10_000, 10);
         t.interval = 1_000;
         let part = t.total / 3; // 365 * YEAR / 1_000
-        let now = t.drawn_at + 2_000 + 10 + 100; // k=1 due at +1000, k=2 at +2000
+        let now = t.anchor + 2_000 + 10 + 100; // k=1 due at +1000, k=2 at +2000
         let a = arrears(&t, 0, now).unwrap();
         assert_eq!(a.missed, 2);
         // One division over the weighted sum: part * (1_100 + 100) / YEAR.
         assert_eq!(a.late_due, (part as u128 * 1_200 / YEAR as u128) as u64);
         assert_eq!(a.late_due, 438);
         // Within grace nothing accrues.
-        let a = arrears(&t, 0, t.drawn_at + 1_000 + 10).unwrap();
+        let a = arrears(&t, 0, t.anchor + 1_000 + 10).unwrap();
         assert_eq!((a.missed, a.late_due), (1, 0));
         // The watermark stops a second charge for the same time.
         t.late_paid_until = now;
@@ -402,5 +447,30 @@ mod tests {
         let t = terms(600, 6, 0, 0);
         let a = arrears(&t, 60, 1_200).unwrap();
         assert_eq!((a.due, a.covered, a.missed, a.overdue, a.first_missed_due), (2, 0, 2, 140, Some(1_100)));
+        assert_eq!(a.overdue_principal, 140, "principal == total here, so every part is principal");
+    }
+
+    /// Decision 11: late interest accrues on the principal share of each overdue part, never on
+    /// the interest share. With 500 of principal in a total of 600, an overdue installment of 100
+    /// carries 83 of principal (rounded down), and the late interest and the per-settlement cap
+    /// both follow that figure.
+    #[test]
+    fn arrears_late_interest_accrues_on_the_principal_share_only() {
+        let mut t = terms(600, 6, 10_000, 0);
+        t.principal = 500;
+        t.interval = YEAR as i64; // yearly installments, so a tenth of a year later only one is due
+        // One installment overdue for a tenth of a year at 100%: 8.3 of late interest on the
+        // principal share, i.e. 8 after rounding; 10 would be the figure on the whole part.
+        let first_due = t.anchor + YEAR as i64;
+        let a = arrears(&t, 0, first_due + (YEAR / 10) as i64).unwrap();
+        assert_eq!((a.due, a.overdue, a.overdue_principal), (1, 100, 83));
+        assert_eq!(a.late_due, (83u128 * (YEAR / 10) as u128 / YEAR as u128) as u64);
+        assert_eq!(a.late_due, 8);
+        // A partial payment of 60 leaves 40 overdue, of which 33 is principal.
+        let a = arrears(&t, 60, first_due + (YEAR / 10) as i64).unwrap();
+        assert_eq!((a.overdue, a.overdue_principal), (40, 33));
+        // Far in the future the per-settlement cap is the overdue principal, not the overdue total.
+        let a = arrears(&t, 0, t.anchor + 60 * YEAR as i64).unwrap();
+        assert_eq!((a.overdue, a.overdue_principal, a.late_due), (600, 498, 498));
     }
 }

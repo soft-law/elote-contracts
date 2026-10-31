@@ -31,7 +31,7 @@ fn case(t: &ScheduleTerms, paid: u64, now: i64) -> Value {
     json!({
         "total": t.total.to_string(),
         "principal": t.principal.to_string(),
-        "drawn_at": t.drawn_at.to_string(),
+        "anchor": t.anchor.to_string(),
         "interval": t.interval.to_string(),
         "installments": t.installments,
         "late_bps": t.late_bps,
@@ -44,6 +44,7 @@ fn case(t: &ScheduleTerms, paid: u64, now: i64) -> Value {
         "covered": a.covered,
         "missed": a.missed,
         "overdue": a.overdue.to_string(),
+        "overdue_principal": a.overdue_principal.to_string(),
         "late_due": a.late_due.to_string(),
         "first_missed_due": a.first_missed_due.map(|v| v.to_string()),
     })
@@ -54,7 +55,7 @@ fn hand_cases() -> Vec<Value> {
     const YEAR: u64 = elote_pool::state::SECONDS_PER_YEAR;
     let terms = |total: u64, n: u16, late_bps: u16, grace: u32| ScheduleTerms {
         total,
-        drawn_at: 1_000,
+        anchor: 1_000,
         interval: 100,
         installments: n,
         late_bps,
@@ -71,9 +72,9 @@ fn hand_cases() -> Vec<Value> {
     // Two installments of 365 overdue at 100% a year, grace 10: late interest 438.
     let mut t = terms(365 * 3 * YEAR / 1_000, 3, 10_000, 10);
     t.interval = 1_000;
-    let now = t.drawn_at + 2_000 + 10 + 100;
+    let now = t.anchor + 2_000 + 10 + 100;
     v.push(case(&t, 0, now));
-    v.push(case(&t, 0, t.drawn_at + 1_000 + 10));
+    v.push(case(&t, 0, t.anchor + 1_000 + 10));
     t.late_paid_until = now;
     v.push(case(&t, 0, now));
     v.push(case(&t, 0, now + 10));
@@ -88,6 +89,15 @@ fn hand_cases() -> Vec<Value> {
     v.push(case(&t, 0, 1_000 + 600 + 50 * YEAR as i64));
     // A partial payment lowers the overdue part.
     v.push(case(&terms(600, 6, 0, 0), 60, 1_200));
+    // Late interest on the principal share only (decision 11): 500 of principal in 600, yearly
+    // installments.
+    let mut t = terms(600, 6, 10_000, 0);
+    t.principal = 500;
+    t.interval = YEAR as i64;
+    let first_due = t.anchor + YEAR as i64;
+    v.push(case(&t, 0, first_due + (YEAR / 10) as i64));
+    v.push(case(&t, 60, first_due + (YEAR / 10) as i64));
+    v.push(case(&t, 0, t.anchor + 60 * YEAR as i64));
     v
 }
 
@@ -101,19 +111,19 @@ fn generated_cases() -> Vec<Value> {
             let principal = total - interest;
             let late_collected = if r.range(0, 3) == 0 { principal / 10_000 * r.range(0, 10_000) } else { 0 };
             let interval = r.range(1, 10_000_000) as i64;
-            let drawn_at = r.range(1_000_000_000, 2_000_000_000) as i64;
+            let anchor = r.range(1_000_000_000, 2_000_000_000) as i64;
             let grace = r.range(0, 2_000_000) as u32;
             let late_bps = r.range(0, 10_000) as u16;
             let paid = (total / 10_000).max(1) * r.range(0, 12_000);
-            let now = drawn_at + interval * (r.range(0, 230) as i64 - 100);
+            let now = anchor + interval * (r.range(0, 230) as i64 - 100);
             let late_paid_until = if r.range(0, 1) == 0 {
                 0
             } else {
-                drawn_at + (now - drawn_at) * (r.range(0, 10_000) as i64) / 10_000
+                anchor + (now - anchor) * (r.range(0, 10_000) as i64) / 10_000
             };
             let t = ScheduleTerms {
                 total,
-                drawn_at,
+                anchor,
                 interval,
                 installments: n,
                 late_bps,

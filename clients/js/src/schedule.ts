@@ -84,7 +84,10 @@ export type Arrears = {
   due: number;
   covered: number;
   missed: number;
+  /** Principal and interest fallen due and not paid. */
   overdue: bigint;
+  /** The principal share of `overdue`: what late interest accrues on (decision 11). */
+  overduePrincipal: bigint;
   lateDue: bigint;
   firstMissedDue: bigint | null;
 };
@@ -120,22 +123,29 @@ export function lineArrears(
       ? 0n
       : (BPS * SECONDS_PER_YEAR + BigInt(s.lateBps) - 1n) / BigInt(s.lateBps);
   let overdue = 0n;
+  let overduePrincipal = 0n;
   let weighted = 0n;
   let firstMissedDue: bigint | null = null;
   for (let k = covered + 1n; k <= due; k++) {
     const part = cumulative(k) - max(paid, cumulative(k - 1n));
+    // Late interest accrues on the principal share of each part only (decision 11).
+    const partPrincipal = (part * line.principal) / total;
     const dueAt = line.drawnAt + k * s.intervalSeconds;
     firstMissedDue ??= dueAt;
     const start = max(dueAt + graceSeconds, s.latePaidUntil);
-    if (now > start) weighted += part * min(now - start, lateCap);
+    if (now > start) weighted += partPrincipal * min(now - start, lateCap);
     overdue += part;
+    overduePrincipal += partPrincipal;
   }
-  // Capped at the overdue amount for this settlement and at the principal over the line's life.
-  // The program refuses `lateCollected > principal` with Overflow; the mirror clamps the
+  // Capped at the overdue principal for this settlement and at the principal over the line's
+  // life. The program refuses `lateCollected > principal` with Overflow; the mirror clamps the
   // lifetime room at zero rather than reporting a negative figure.
   const lifetimeLeft = max(0n, line.principal - s.lateCollected);
   const lateDue = min(
-    min(overdue, (weighted * BigInt(s.lateBps)) / (BPS * SECONDS_PER_YEAR)),
+    min(
+      overduePrincipal,
+      (weighted * BigInt(s.lateBps)) / (BPS * SECONDS_PER_YEAR)
+    ),
     lifetimeLeft
   );
   return {
@@ -143,6 +153,7 @@ export function lineArrears(
     covered: Number(covered),
     missed: Number(due > covered ? due - covered : 0n),
     overdue,
+    overduePrincipal,
     lateDue,
     firstMissedDue,
   };

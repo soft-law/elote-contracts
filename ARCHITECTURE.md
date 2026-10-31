@@ -481,28 +481,35 @@ interest never pays an installment (`paid` is principal + ordinary interest only
 **Missed** is `due - covered` when positive; the grace period does not change the count, it
 only delays late interest and collection.
 
-**Late interest** accrues on each overdue part `part_k` separately, from
-`start_k = max(due_k + grace, late_paid_until)` until `now`, linearly at `late_bps` a year of
-365 days:
+**Late interest** accrues on the principal share of each overdue part `part_k` separately
+(decision 11: no interest on overdue interest), from `start_k = max(due_k + grace,
+late_paid_until)` until `now`, linearly at `late_bps` a year of 365 days:
 
 ```
-late_due = Σ_k part_k * min(now - start_k, cap_k) * late_bps / (10 000 * SECONDS_PER_YEAR)
-cap      = ceil(10 000 * SECONDS_PER_YEAR / late_bps)      seconds after which a part would
+p_k      = part_k * principal / total                        the principal share, rounded down
+late_due = Σ_k p_k * min(now - start_k, cap_k) * late_bps / (10 000 * SECONDS_PER_YEAR)
+cap      = ceil(10 000 * SECONDS_PER_YEAR / late_bps)      seconds after which a share would
                                                              exceed itself
 ```
+
+Every installment repays principal and interest in the proportion of the whole line, so the
+share is the same whatever order the repayment allocation follows; it depends only on the total
+paid. The due dates count from an *anchor*, one interval before the first due date: on a
+version-3 line `first_due_at - interval`, fixed by the signed contract (decision 25).
 
 The weighted sum is accumulated in `u128` and divided once, so rounding happens once per
 settlement. Two caps apply, and they are different things:
 
-- **Per settlement:** `late_due <= overdue` for this repayment; each part accrues at most its own
-  amount in one settlement because of `cap`. After a repayment moves `late_paid_until`, a part
-  that is still unpaid accrues again, so across several repayments one part can accrue more than
-  itself.
+- **Per settlement:** `late_due <= overdue_principal` for this repayment; each principal share
+  accrues at most itself in one settlement because of `cap`. After a repayment moves
+  `late_paid_until`, a part that is still unpaid accrues again, so across several repayments one
+  share can accrue more than itself.
 - **Over the life of the line:** `late_due <= principal - late_collected`. Once a borrower has
   paid late interest equal to the principal, no more is charged; every further payment goes to
   interest and principal.
 
-`arrears` returns `Arrears { due, covered, missed, overdue, late_due, first_missed_due }`.
+`arrears` returns `Arrears { due, covered, missed, overdue, overdue_principal, late_due,
+first_missed_due }`.
 `repay` uses `late_due`; `mark_in_collection` uses `covered` and `missed`; `write_off` uses
 `first_missed_due`. The loop runs at most `installments <= 120` times, which is what
 `tests/compute.rs` bounds: the arrears instructions stay under the compute ceiling at 18 and at
