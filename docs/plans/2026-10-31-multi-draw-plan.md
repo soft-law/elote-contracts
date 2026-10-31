@@ -140,6 +140,12 @@ split would add an account to each of them for no gain at our size.
   draws stop on a KYC or KYB failure or a default event, which the legal agent lists as a required
   lender right. It never touches repayment, and it is not a pause: the pool-wide `set_paused`
   stays as it is. Emits `LineDrawsSuspended { pool, line_id, available_forfeited }`.
+- **D9 extended, D14 and D15 (expediente token).** Per `docs/plans/2026-10-31-expediente-token-design.md`
+  (owner review, 2026-10-31): the per-draw document hash is stored in a `Pagare` record PDA
+  `["pagare", line, draw_index]`, not only emitted; `draw` also requires the pool's `attestor`
+  co-signature (D14), and `CreditLine` gains `expediente_root: [u8; 32]` at opening (D15, 51 bytes
+  of growth in total). New instructions `endorse_pagare`, `close_pagare`, `set_attestor`; tests and
+  estimate in that document.
 - **D12. Two sponsor roles, one byte.** The loans-gov-mexico research
   (`research-brief-tokenized-securities.md`, Finding 2) reads the Ley de Disciplina Financiera as
   making a state or municipality a debtor the moment it gives an aval, a guarantee, a first-loss
