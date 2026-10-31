@@ -244,7 +244,16 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   rides in the init transaction" (path 2) or a thaw before the first deposit (path 1); the demo
   runs on a classic share mint until PR 3. First mainnet pool: Token-2022 frozen-by-default under
   Token ACL, `PoolFlags.permissioned` as the public fact (runbook, SECURITY.md).
-- **Next:** PR 2 step 4, then pause for the coordinator's go on step 5 (legal brief pending).
+- **PR 2 step 4 accepted** (`08006a7`, Pool v2 fields; 92 Rust + 7 JS; Pool 299 bytes, `attestor`
+  at 235 and `collection` at 267, `POOL_VERSION = 2`; `init_pool(grace, max_line_bps, attestor)` plus
+  the collection account; `set_attestor`; events `AttestorSet`, `PoolCollectionSet`, `NavUpdated`;
+  `repay` and `write_off` take the share mint). App/backend list grows accordingly.
+- **Step 5 go given** without the legal brief, because its conditions bear on step 6 and on the
+  agreements engine; step 6 (pagaré asset, cancel, endorse) stays gated. Step 5 scope restated in
+  the coordinator's message of the same day: line v3 fields, attestor on `open_line` and `draw`,
+  `first_due_at` anchor, proportional interest to `last_due`, principal-only late interest with
+  regenerated vectors, `suspend_draws`, `cancel_line`, one repayment order.
+- **Next:** step 5 report, then the step 6 conditions from the legal brief.
 
 ## Points the coordinator still owns
 
