@@ -206,6 +206,23 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
    `term_end - now` is superseded.
 7. `poolMaxLineBps` reader in `clients/js/src/schedule.ts` next to the grace reader. Accepted.
 
+## Status log
+
+- **2026-10-31, PR 1 accepted** at `e1a0e36` on `hardening/phase-1` (nine commits on `8c44e74`,
+  worktree `.claude/worktrees/hardening-phase-1`, local, not pushed). Tests 75 Rust + 4 JS → 82
+  Rust + 6 JS, 0 failures; full command list green; CU at 120 installments: repay 58,221,
+  mark_in_collection 37,785, write_off 39,891. Accepted deviations: demo script default 5,000 bps;
+  `min_first_deposit` keeps a floor of 1,000 × `DEAD_SHARES` under `10^decimals`; the liquidity test
+  drains by redemption; Prettier on one test file. Accepted design facts: the cap bounds one honest
+  proposal, not the admin (R-01, Q8 work); pools created before the branch open no new line after an
+  in-place upgrade, with no zero-means-uncapped fallback. New errors 6019 `BorrowerIsAdmin`, 6020
+  `LineTooLarge`, 6021 `InvariantBroken`; new event `PoolLineCapSet`; `init_pool` takes
+  `max_line_bps`; `open_line` takes the vault read-only; client exports `poolMaxLineBps` and
+  `maxLinePrincipal`. The app and backend must pick these up.
+- **Rule agreed the same day:** only the developer session edits its worktree; the coordinator
+  sends changes as messages.
+- **Next:** PR 2 steps 1 to 4 on `v2/pool-and-lines` from `hardening/phase-1`.
+
 ## Points the coordinator still owns
 
 - Whether the series' Core collection is created by `init_pool` or supplied like the share mint.
