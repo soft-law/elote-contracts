@@ -349,10 +349,14 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
     line.principal_repaid = line.principal_repaid.checked_add(principal_part).ok_or(PoolError::Overflow)?;
     line.interest_repaid = line.interest_repaid.checked_add(interest_part).ok_or(PoolError::Overflow)?;
     if let Some(mut s) = schedule {
-        // The late interest accrued until now is settled, whether or not any was due.
-        s.late_collected = s.late_collected.checked_add(late_part).ok_or(PoolError::Overflow)?;
-        s.late_paid_until = now;
-        line.set_schedule(&s);
+        // The late interest accrued until now is settled, and the watermark moves, only when
+        // something was actually collected. When the accrual rounds down to zero the watermark
+        // stays, so the sub-unit accrual keeps running instead of being erased by every payment.
+        if late_part > 0 {
+            s.late_collected = s.late_collected.checked_add(late_part).ok_or(PoolError::Overflow)?;
+            s.late_paid_until = now;
+            line.set_schedule(&s);
+        }
     }
     let remaining_after = remaining
         .checked_sub(interest_part)

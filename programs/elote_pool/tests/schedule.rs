@@ -600,3 +600,32 @@ fn late_interest_caps_each_overdue_part_separately() {
     let meta = env.send(ix, &b, &[]);
     assert_eq!(find_event::<LateInterestCollected>(&meta).unwrap().amount, expected);
 }
+
+/// R-11. A repayment settles the late interest accrued until its own time and moves the
+/// watermark. When the accrued amount rounds down to zero, the watermark must not move: otherwise
+/// a borrower paying one unit every few seconds would keep the accrual below one unit forever
+/// and never owe late interest at all.
+#[test]
+fn a_repayment_that_settles_no_late_interest_leaves_the_watermark_where_it_was() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    // 6.0 at 12%: six installments of 1.12; 50% a year late interest. The overdue 1.12 accrues
+    // 1.12 * 0.5 / 31_536_000 units a second: about 0.018, so 30 s round to 0 and 60 s to 1.
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
+
+    env.warp(t0 + MONTH + 30);
+    assert_eq!(env.arrears(&k, line_id).late_due, 0, "30 s of accrual round to zero");
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1);
+    let meta = env.send(ix, &b, &[]);
+    assert!(find_event::<LateInterestCollected>(&meta).is_none());
+
+    env.warp(t0 + MONTH + 60);
+    assert_eq!(env.arrears(&k, line_id).late_due, 1, "60 s since the due date, not 30 s since the last payment");
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1);
+    let meta = env.send(ix, &b, &[]);
+    let ev: LateInterestCollected = find_event(&meta).expect("the second repayment settles one unit");
+    assert_eq!(ev.amount, 1);
+    let s = env.line(&k, line_id).schedule().unwrap();
+    assert_eq!((s.late_collected, s.late_paid_until), (1, env.now()));
+}

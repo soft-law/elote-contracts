@@ -110,10 +110,11 @@ Without it the line is a single-maturity line (version 1) and nothing below appl
   from the last repayment, whichever is later), linear per second at `late_bps` a year (365 days):
   `Σ part * min(seconds, cap) * late_bps / (10_000 * 31_536_000)`, rounded down, in `u128`, where
   `cap = ceil(10_000 * 31_536_000 / late_bps)` seconds. Two caps apply:
-  - **per settlement:** within one repayment, each overdue part accrues at most its own amount. Each
-    repayment settles the late interest in full and records `late_paid_until`, so no period is charged
-    twice; but a part that stays unpaid accrues again after the next repayment, so over several
-    repayments the late interest on one part can exceed that part.
+  - **per settlement:** within one repayment, each overdue part accrues at most its own amount. A
+    repayment that collects late interest settles it in full and records `late_paid_until`, so no
+    period is charged twice; a repayment that collects none (the accrual rounded down to zero) leaves
+    the watermark alone, so the accrual keeps running. A part that stays unpaid accrues again after
+    the next settlement, so over several repayments the late interest on one part can exceed that part.
   - **over the life of the line:** late interest collected never exceeds the line's principal
     (`late_due <= principal - late_collected`). A borrower who pays only late interest reaches this cap
     and from then on every payment goes to interest and principal.

@@ -363,10 +363,11 @@ no authority afterwards (a sponsor repays through `repay` like anyone else).
 - **CPIs:** one `transfer` payer → vault (payer signs) for the computed total.
 - **Writes:** `pool.outstanding_principal -= principal_part`;
   `pool.interest_collected += interest_part` (late interest is *not* counted here);
-  `line.principal_repaid`, `line.interest_repaid`; on version 2, `late_collected += late` and
-  `late_paid_until = now` — **set on every repayment, even when `late` is zero**, which is what
-  stops the same seconds being charged twice; if `remaining` reaches zero, `status = Repaid`
-  and `closed_at = now`.
+  `line.principal_repaid`, `line.interest_repaid`; on version 2, when `late > 0`,
+  `late_collected += late` and `late_paid_until = now`, which stops the same seconds being
+  charged twice. **When `late` is zero the watermark does not move** (R-11): the accrual that
+  rounded down to zero keeps running, so a borrower cannot erase it by paying one unit every
+  few seconds; if `remaining` reaches zero, `status = Repaid` and `closed_at = now`.
 - **Events:** `LateInterestCollected` (only when `late > 0`), then `LineRepaid` with
   `remaining` after this payment (without late interest) and `nav_after`.
 
