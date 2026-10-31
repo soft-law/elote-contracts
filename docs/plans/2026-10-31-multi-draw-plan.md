@@ -62,10 +62,11 @@ Append to `CreditLine` (after `closed_at`, before `reserved`):
 | `drawn` | `u64` | principal transferred to the borrower so far; `drawn <= principal` |
 | `draws` | `u16` | number of tranches; `MAX_DRAWS = 64` |
 | `availability_end` | `i64` | last time a draw is accepted (strict `<`); see D3 |
+| `sponsor_role` | `u8` | `Promoter = 0`, `Guarantor = 1`; see D12 |
 
 `principal` keeps its meaning as the approved commitment. `available = principal - drawn`.
 `interest_due` keeps its meaning as interest charged to date, summed per tranche. `version = 3`
-for every line opened after this lands. `InitSpace` grows by 18 bytes; the line PDA is created by
+for every line opened after this lands. `InitSpace` grows by 19 bytes; the line PDA is created by
 `open_line`, so no realloc path. Old v1/v2 line accounts on devnet will not deserialize under the
 new struct; the devnet demo pool is redeployed, as the series-shelf plan already expects for pool v2.
 
@@ -139,6 +140,26 @@ split would add an account to each of them for no gain at our size.
   draws stop on a KYC or KYB failure or a default event, which the legal agent lists as a required
   lender right. It never touches repayment, and it is not a pause: the pool-wide `set_paused`
   stays as it is. Emits `LineDrawsSuspended { pool, line_id, available_forfeited }`.
+- **D12. Two sponsor roles, one byte.** The loans-gov-mexico research
+  (`research-brief-tokenized-securities.md`, Finding 2) reads the Ley de Disciplina Financiera as
+  making a state or municipality a debtor the moment it gives an aval, a guarantee, a first-loss
+  reserve from public funds, a revenue pledge or control of the vehicle (LDF art. 2 XI, art. 24),
+  which triggers the full regime (two-thirds of Congress, competitive process, RPU). A public
+  sponsor must therefore co-sign as a **promoter** only: referral, training, data, no payment
+  obligation. A private sponsor, or development banking through a partner SOFOM, can be a
+  **guarantor** with full liability, since the research's RCT evidence says a co-signer whose
+  liability was halved cut repayment by about a fifth (`sr/synthesis.md` §2.2.6). Version-3 lines
+  carry `sponsor_role: u8` (`Promoter = 0`, `Guarantor = 1`), set at `open_line` and emitted in
+  `LineOpened`'s successor event `LineSponsorRole { pool, line_id, sponsor, role }` (append-only
+  rule). The program enforces nothing on it: it is the on-chain record of which kind of promise
+  the sponsor made, for the agreements engine and for counsel. Reading of the LDF is the
+  research team's, with no SHCP criterion **no verificado**.
+- **D13. Concentration cap per line, in Phase 1.** Nafin's network rules cap exposure at 30% of
+  capital per legal entity and 10% per natural person (`N-guarantees-etherfuse-liquidity.md` §A2).
+  The register already has "the admin can open a line for 100% of the vault" as P1-1. Phase 1
+  adds `max_line_bps` to `init_pool` (a share of the NAV at `open_line`, default 1,000 bps) and a
+  `LineTooLarge` error; the tranched plan inherits it unchanged, because the cap binds the
+  commitment, not the tranche.
 - **D11. Late interest basis, flagged for counsel.** On a v2 line late interest accrues on
   `overdue`, which is principal **and interest** fallen due and unpaid (`math.rs` `Arrears.overdue`
   and `late_interest`). The legal agent notes that charging interest on overdue interest is
@@ -249,6 +270,38 @@ changes: question 1 is **(a)**, and question 6 is **overdue principal only**.
    not satisfy that: electronic pagaré custody and conservation are a counsel-plus-engineering
    item for the agreements engine before any merchant signs **no verificado**. The program side
    is unaffected: it stores nothing but the master hash and emits the pagaré hash per draw.
+
+## What the lending evidence says about these choices
+
+From the loans-gov-mexico research (2026-10-31; files under
+`/Users/wario/Documents/softlaw/loans-gov-mexico/`, mostly RCTs outside Mexico, certainty low to
+moderate), kept here so the next person does not redo the search:
+
+- **Weekly, quincenal or monthly is fine.** Moving from weekly to monthly did not change
+  first-loan default (Field & Pande, India); the schedule cadence this plan offers is supported.
+- **Avoid an initial grace period.** A payment holiday at the start raised default by 6 to 9
+  points (Field et al.). The program has none: the first installment falls one interval after the
+  first draw. Keep it that way.
+- **A limited number of postponements may help.** BRAC's vouchers to skip a cuota cut default by
+  about a third and raised business income. Not in this plan; a `skips_allowed` parameter is a
+  candidate for a later version, never an open-ended grace.
+- **Co-signer liability must be full** (D12). Group liability is not needed for repayment.
+- **Graduation (bigger tranches after good payment) has no clean evaluation** either way; the
+  tranche cap and the availability window are exposure controls, not validated risk reducers.
+- **Loss sizing for the series documents, not the program:** the research recommends PD 12 to
+  20% a year (stress 30 to 40%), LGD 80 to 90%, expected loss 10 to 18% for uncollateralised
+  Mexican micro and small business credit (`M-pagares-recovery.md` §3.7); a 65% LGD needs
+  collection before 90 days, an obligado solidario and captured cash flows together. First-loss
+  tranches in Goldfinch and Maple were exhausted by off-chain conduct, and recovery went through
+  courts.
+- **CAT.** Every program or municipal rate the research read is published as a plain rate, and
+  no source says how to disclose total cost for a stablecoin-denominated loan. The events this
+  plan emits (`LineOpened`, `LineDrawState`, `LineRepaid`, `LateInterestCollected`) carry every
+  amount and time needed to compute the CAT in MXN off chain; the SPEI fee lives in the platform
+  terms and must be added there.
+- **Pagaré holder.** A PDA cannot be the tenedor of a pagaré (LGTOC arts. 23, 38, 170); a
+  persona (SOFOM, fiduciario or SPV) holds the paper and the chain tracks the economic interest.
+  That is what D9 already assumes: the program stores and emits hashes only.
 
 ## Deferred: revolving lines
 

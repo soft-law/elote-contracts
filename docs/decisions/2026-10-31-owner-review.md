@@ -38,7 +38,12 @@ human's hands or a licence, it says so and names the person.
 | 15 | Series-shelf open questions | Permissioned from the first mainnet pool: **yes**. Gate: **ABL**. Permanent delegate: **no**. Asset freeze: **accept and record** (MEXe has one, CETES none). Squads: **one multisig, one vault per series**. | See the plan's updated list. | series-shelf plan |
 | 16 | CETES product | **Shape A, distribution as Etherfuse partner** into investors' own wallets; no program change. B (idle yield in a series) parked until pool v2; C dropped. Placeholder partner fee for the sandbox: **50 bps**, a placeholder until the business sets it. | Lightest footprint, where peso yield actually lives. | CETES review |
 | 17 | Repository | **Commit** `ARCHITECTURE.md`, `docs/`, `poc/` on branch `poc/kyc-identity-eval`, local only, no push. | `ARCHITECTURE.md` had no history; the plans are the working record. Pushing is Mario's call. | this commit |
-| 18 | Peso stablecoin | **MEXe stays the candidate pool asset**, pending the production `supported_assets` check. | Unchanged since 2026-10-19; the sandbox PoC closes the check. | series-shelf plan |
+| 18 | Peso stablecoin | **MEXe stays the candidate pool asset**, pending the production `supported_assets` check. The loans-gov-mexico brief prefers a peso stablecoin with SPEI redemption and names MXNB; it is evaluated in the same check, and public money (a public payer of interest, for example) moves only in MXN through SPEI and bank accounts. | Unchanged since 2026-10-19; the sandbox PoC closes the check. | series-shelf plan |
+| 19 | Sponsor roles | **Two roles on the line: promoter and guarantor.** A public sponsor is a promoter only (referral, training, data, no payment obligation); a guarantor carries full liability and is private, or development banking through a partner SOFOM. | loans-gov-mexico `research-brief-tokenized-securities.md` Finding 2: under the LDF an aval, a public first-loss reserve, a revenue pledge or vehicle control makes a government a debtor. Co-signers with halved liability cut repayment by about a fifth in the RCT evidence. | tranched plan D12; Rosarito gets a no-liability collaboration agreement |
+| 20 | Concentration cap | **`max_line_bps` at `init_pool`, default 1,000 bps of NAV per line**, enforced at `open_line`. | Nafin caps exposure at 30% per entity and 10% per natural person; the register's P1-1 already flags 100%-of-vault lines. | Phase 1 hardening, tranched plan D13 |
+| 21 | Posture A narrowed | Private placement means **institutional or qualified investors, or a CNBV route (emisora simplificada through a trust)**. The fewer-than-100-persons route of LMV art. 8 fracc. II applies to shares of capital stock only, not to a debt-like participation. | loans-gov-mexico `research-brief-tokenized-securities.md` Finding 3 (textual reading, counsel to confirm). Corrects the identity page's counsel table, republished today. | identity artifact, counsel item 2 |
+| 22 | Loss assumptions for series documents | Base PD 12 to 20% a year, LGD 80 to 90%, expected loss 10 to 18%; stress PD 35%, LGD 95%. No initial grace period; weekly, quincenal or monthly cadence as offered; postponement vouchers as a later parameter. | loans-gov-mexico `M-pagares-recovery.md` §3.7 and `sr/synthesis.md`; first-loss tranches in Goldfinch and Maple were exhausted by off-chain conduct. | series term sheets, tranched plan evidence section |
+| 23 | Etherfuse on-chain routes | **Shape A stays REST-only.** The SDK has disabled every user buy and redeem instruction since 3.0.13 ("contact Etherfuse for OTC"); a PDA may hold CETES and may fund an off-ramp by transfer, which keeps shape B possible later through a KYB'd entity, not through on-chain CPIs. | loans-gov-mexico `N-guarantees-etherfuse-liquidity.md` "Corrections" and §B6, §B8; verified in the 3.0.19 bundle. | CETES review |
 
 ## Corrections made today
 
@@ -89,6 +94,22 @@ Added 2026-10-31 from the legal agent's annex to the counsel brief (theOffice
 11. The Etherfuse partner contract itself: contracting party, liability allocation, and the real
     fee schedule behind the partner fee.
 12. Legal capacity of a public-sector sponsor to give an aval or any other guarantee form.
+
+Added from the loans-gov-mexico research (2026-10-31):
+
+13. Ley de Disciplina Financiera: confirm that a municipal or state sponsor that only refers,
+    trains and shares data, with no aval, guarantee, first-loss reserve, revenue pledge or
+    vehicle control, is outside the LDF (research reading, no SHCP criterion), and draft the
+    no-liability collaboration agreement with Rosarito accordingly.
+14. LMV art. 8: confirm that a tokenised participation in a loan book can only use fracc. I
+    (institutional or qualified investors) or a CNBV authorisation, and whether the emisora
+    simplificada route through a trust fits a series; whether checking eligibility at every
+    transfer, not only at entry, is required.
+15. Electronic pagaré specifics beyond item 6: whether a wallet signature anchored on chain plus a
+    PSC NOM-151 constancia satisfies CCom art. 97 and LGTOC art. 170 fr. VI without SAT e.firma;
+    whether the contractual designation of the Softlaw system as the "sistema de información"
+    (LGTOC arts. 17, 27) is enough while no CNBV rules exist; the art. 5o Bis gate in a juicio
+    ejecutivo; and which persona (SOFOM, fiduciario or SPV) is the tenedor, since a PDA cannot be.
 
 Decided facts the brief may state for its scope section (from this record and `ARCHITECTURE.md`
 §8): the design is non-custodial throughout, since investors hold series shares and CETES in
