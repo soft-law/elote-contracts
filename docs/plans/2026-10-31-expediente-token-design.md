@@ -60,6 +60,15 @@ extra.
 
 ## Design
 
+### Opening: the signed contract fixes the terms and the calendar
+
+`open_line` carries the hash of the signed credit agreement (as today), `expediente_root`, and the
+schedule with `first_due_at` copied from the contract (decision 25: the payment dates are born in
+the signed document, not at the first draw). The attestor co-signs `open_line`, stating that the
+agreement with that hash was signed by the parties and that its terms are exactly the arguments
+(principal, rate, `term_end`, schedule, sponsor and role). From then on every pagaré issued at a
+draw carries dates taken from that calendar.
+
 ### Issuance: `draw` mints the pagaré
 
 - `draw(amount, pagare_hash)` requires three signatures: the borrower (the suscriptor), the

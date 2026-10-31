@@ -167,10 +167,28 @@ Revolving lines (deferred); any KYC provider integration (Didit lives in softlaw
 CETES product; SNS; Layer 2 ideas beyond the pagaré asset itself (no secondary market venue);
 investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, document storage).
 
+## Decided after the first version of this brief (2026-10-31, later the same day)
+
+- **Decision 25, the calendar comes from the signed contract.** In PR 2 step 5 the schedule anchor
+  is `first_due_at`, an argument of `open_line` inside the schedule parameters, not `drawn_at`:
+  installment `k` is due at `first_due_at + (k - 1) * interval`; `availability_end` is set at
+  `open_line` (`first_due_at` on scheduled lines, `term_end` on bullet lines); `drawn_at` stays as
+  the time of the first draw, informational; `last_due` for the per-tranche interest is
+  `first_due_at + (installments - 1) * interval`. Add `cancel_line` (admin, `drawn == 0`) with a
+  `LineCancelled` event for lines never drawn by their first due date. The hold on the draw-window
+  tests is lifted; write them against this anchor. The "minimum days before the first due date"
+  item below is closed: not needed.
+- **D16, every obligation is born from a signed document.** The attestor co-signs `open_line` too
+  (not only `draw` and `endorse_pagare`), attesting that the signed agreement's hash matches the
+  arguments. Add the signer to the `OpenLine` accounts and a test that `open_line` without it
+  fails with `AttestorRequired`.
+- **Architecture gate before PR 2 steps 5 and 6 are closed.** The research session is producing
+  a legal brief with a list of verifiable conditions for the pagaré token. The coordinator will
+  send you the mapped conditions; do not consider steps 5 and 6 final until that message arrives.
+  Steps 1 to 4 and all of PR 1 are not affected.
+
 ## Points the coordinator still owns
 
-- A minimum number of days between a later tranche and the first due date (a product question
-  with Mario; if it lands, it is one `require!` in `draw` and a line parameter).
 - Whether the series' Core collection is created by `init_pool` or supplied like the share mint.
   Default until told otherwise: supplied by the admin and validated (same pattern as 2c).
 - Exact `sponsor_role` semantics beyond the byte (nothing enforced on chain in this batch).

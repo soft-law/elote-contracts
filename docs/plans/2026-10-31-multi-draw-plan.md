@@ -61,12 +61,13 @@ Append to `CreditLine` (after `closed_at`, before `reserved`):
 |---|---|---|
 | `drawn` | `u64` | principal transferred to the borrower so far; `drawn <= principal` |
 | `draws` | `u16` | number of tranches; `MAX_DRAWS = 64` |
-| `availability_end` | `i64` | last time a draw is accepted (strict `<`); see D3 |
+| `availability_end` | `i64` | last time a draw is accepted (strict `<`), set at `open_line` from the contract; see D3 |
+| `first_due_at` | `i64` | first installment date from the signed contract (0 on a bullet line); the anchor of the calendar, see D3 |
 | `sponsor_role` | `u8` | `Promoter = 0`, `Guarantor = 1`; see D12 |
 
 `principal` keeps its meaning as the approved commitment. `available = principal - drawn`.
 `interest_due` keeps its meaning as interest charged to date, summed per tranche. `version = 3`
-for every line opened after this lands. `InitSpace` grows by 19 bytes; the line PDA is created by
+for every line opened after this lands. `InitSpace` grows by 27 bytes before the expediente fields; the line PDA is created by
 `open_line`, so no realloc path. Old v1/v2 line accounts on devnet will not deserialize under the
 new struct; the devnet demo pool is redeployed, as the series-shelf plan already expects for pool v2.
 
@@ -79,10 +80,10 @@ split would add an account to each of them for no gain at our size.
 - **D1. Interest proportional to time, per tranche.** On a version-3 line `rate_bps` is an
   **annual** rate. At each draw,
   `interest_due += amount * rate_bps * (last_due - now) / (BPS * SECONDS_PER_YEAR)`,
-  rounded down once per tranche, where `last_due` is `term_end` on a bullet line and the last
-  installment's due date, `schedule_end(drawn_at, interval, installments)` (`lines.rs:162-165`),
-  on a scheduled line, since that is when the last payment is owed and it can be earlier than
-  `term_end`. `interest_due` starts at 0 at opening. Undrawn principal
+  rounded down once per tranche, where `last_due` is `term_end` on a bullet line and
+  `first_due_at + (installments - 1) * interval_seconds` on a scheduled line (decision 25: the
+  calendar comes from the signed contract, not from the draw), since that is when the last payment
+  is owed and it can be earlier than `term_end`. `interest_due` starts at 0 at opening. Undrawn principal
   carries no interest and no commitment fee. This matches how Atlendis prices a late draw
   (`protocol-v1 PoolLogic.sol:232-238`) and the owner's "interest proportional". The flat figure
   stays available for the agreement's "if fully drawn today" line as
@@ -90,17 +91,23 @@ split would add an account to each of them for no gain at our size.
   client, not stored. Version 1 and 2 lines keep their flat semantics; the field's unit is
   documented per version in `state.rs`.
 - **D2. Non-revolving.** `available = principal - drawn`, which only goes down. Confirmed.
-- **D3. Availability window.** Set at the first draw: `term_end` for a bullet line;
-  `drawn_at + interval_seconds` (the first due date) for a scheduled line. A draw is accepted
-  while `now < availability_end`, strictly, because an installment counts as due at the second it
-  falls due (`math.rs:42-56`). At or after it, `draw` fails with `AvailabilityEnded`. Every tranche
-  therefore lands before any installment is due, so `total` changes only while
-  `cumulative_due(k) = 0`, and the schedule re-amortizes the drawn principal, not the limit, which
-  is the Goldfinch mistake to avoid (`CreditLine.sol:279-287` schedules principal on
-  `currentLimit`). The owner's answer ("due date finish all") is read as: at the first due date
-  the draw window closes and everything from then on is repayment. Drawing across several
-  installments would need per-tranche schedules (Jet's one account per draw with FIFO repayment,
-  `idl-full.json:2088-2148`) and is out of scope.
+- **D3. Availability window, fixed by the signed contract (decision 25, Mario 2026-10-31: "todo
+  nace del documento firmado").** The payment calendar is not born at the first draw: it is in the
+  signed credit agreement. `open_line` takes `first_due_at` inside the schedule parameters (and
+  `term_end` as today), both copied from the contract; installment `k` is due at
+  `first_due_at + (k - 1) * interval_seconds`, and the last one, `last_due`, must be no later
+  than `term_end`. The draw window is therefore known at signing: a draw is accepted while
+  `now < first_due_at`, strictly, on a scheduled line (an installment counts as due at the second
+  it falls due, `math.rs:42-56`), and while `now < term_end` on a bullet line. At or after that,
+  `draw` fails with `AvailabilityEnded`; `availability_end` is set at `open_line`, not at the
+  first draw, and `drawn_at` becomes informational (time of the first draw). Every tranche lands
+  before any installment is due, so `total` changes only while `cumulative_due(k) = 0`, and the
+  schedule re-amortizes the drawn principal, not the limit (the Goldfinch mistake to avoid,
+  `CreditLine.sol:279-287`). A borrower who draws late pays on the dates the contract fixed, with
+  fewer days of use, which the contract already told them; the "late-drawer" question theOffice
+  raised is closed by this decision, and no minimum-days parameter is needed. A line never drawn
+  by `first_due_at` lapses: `cancel_line` (admin signer, `drawn == 0`) closes it with
+  `LineCancelled`, which also answers register row R-19 for undrawn offers.
 - **D3b. No tranche may leave the schedule unpayable.** `open_line` requires
   `principal + interest_due >= installments` so that every installment is at least one unit
   (`lines.rs:154-155`). With `interest_due` starting at 0 and tranches of any size, a first draw
@@ -140,6 +147,14 @@ split would add an account to each of them for no gain at our size.
   draws stop on a KYC or KYB failure or a default event, which the legal agent lists as a required
   lender right. It never touches repayment, and it is not a pause: the pool-wide `set_paused`
   stays as it is. Emits `LineDrawsSuspended { pool, line_id, available_forfeited }`.
+- **D16. Everything on chain is born from a signed document (decision 25).** Every instruction
+  that creates or changes a party's obligation carries the hash of the signed document behind it
+  and the attestor's signature that the document exists, was signed by the parties and matches the
+  arguments: `open_line` (the credit agreement: principal, rate, `term_end`, schedule with
+  `first_due_at`, sponsor and role, `expediente_root`), `draw` (the pagaré), `endorse_pagare` (the
+  endoso), and later `amend_line` (the convenio modificatorio). The program keeps enforcing only
+  the economic terms; the attestor is what ties them to the paper. The attestor therefore
+  co-signs `open_line` as well as `draw` (D14 widens accordingly).
 - **D9 extended, D14 and D15 (pagaré token).** Per `docs/plans/2026-10-31-expediente-token-design.md`
   (owner, 2026-10-31): **the token is the pagaré.** `draw` mints one Metaplex Core asset per
   disposición by CPI, frozen in the pool PDA, with a `Pagare` sidecar PDA `["pagare", line,
