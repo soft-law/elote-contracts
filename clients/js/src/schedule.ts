@@ -97,9 +97,12 @@ export function lineArrears(
     overdue += part;
   }
   // Capped at the overdue amount for this settlement and at the principal over the line's life.
+  // The program refuses `lateCollected > principal` with Overflow; the mirror clamps the
+  // lifetime room at zero rather than reporting a negative figure.
+  const lifetimeLeft = max(0n, line.principal - s.lateCollected);
   const lateDue = min(
     min(overdue, (weighted * BigInt(s.lateBps)) / (BPS * SECONDS_PER_YEAR)),
-    line.principal - s.lateCollected
+    lifetimeLeft
   );
   return {
     due: Number(due),

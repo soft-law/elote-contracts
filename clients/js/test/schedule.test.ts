@@ -109,3 +109,29 @@ test("poolGracePeriodSeconds reads Pool.reserved[0..4]", () => {
   new DataView(reserved.buffer).setUint32(0, 86_400, true);
   assert.equal(poolGracePeriodSeconds(reserved), 86_400n);
 });
+
+test("lateDue is never negative when lateCollected exceeds the principal (R-24)", () => {
+  // The program refuses this state with Overflow; the mirror must report 0, not a negative figure.
+  const a = lineArrears(
+    {
+      principal: 600n,
+      interestDue: 0n,
+      principalRepaid: 0n,
+      interestRepaid: 0n,
+      drawnAt: 1_000n,
+    },
+    {
+      intervalSeconds: 100n,
+      installments: 6,
+      lateBps: 10_000,
+      maxMissed: 3,
+      flags: 0,
+      lateCollected: 601n,
+      latePaidUntil: 0n,
+    },
+    0n,
+    1_000n + 600n + 50n * 31_536_000n
+  );
+  assert.equal(a.overdue, 600n);
+  assert.equal(a.lateDue, 0n);
+});
