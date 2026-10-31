@@ -13,7 +13,7 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 
 use crate::errors::PoolError;
 use crate::events::{
-    LateInterestCollected, LineDrawn, LineInCollection, LineOpened, LineRepaid, LineScheduled, LineWrittenOff,
+    LateInterestCollected, LineDrawn, LineInCollection, LineOpened, LineRepaid, LineScheduled, LineWrittenOff, NavUpdated,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
 use crate::pool_signer;
@@ -295,6 +295,10 @@ pub struct Repay<'info> {
     #[account(address = pool.asset_mint @ PoolError::WrongAccount)]
     pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
 
+    /// Read for the share supply (`NavUpdated` and the invariant check).
+    #[account(address = pool.share_mint @ PoolError::WrongAccount)]
+    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
+
     #[account(mut, address = pool.vault @ PoolError::WrongAccount)]
     pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
@@ -394,7 +398,8 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
     }
 
     ctx.accounts.vault.reload()?;
-    let nav_after = pool.check(ctx.accounts.vault.amount, None)?;
+    let share_supply = ctx.accounts.share_mint.supply;
+    let nav_after = pool.check(ctx.accounts.vault.amount, Some(share_supply))?;
     if late_part > 0 {
         emit_cpi!(LateInterestCollected { pool: pool.key(), line_id: line.line_id, amount: late_part });
     }
@@ -407,6 +412,7 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
         remaining: remaining_after,
         nav_after,
     });
+    emit_cpi!(NavUpdated { pool: pool.key(), total_assets: nav_after, share_supply });
     Ok(())
 }
 
@@ -508,6 +514,10 @@ pub struct WriteOff<'info> {
     )]
     pub line: Account<'info, CreditLine>,
 
+    /// Read for the share supply (`NavUpdated` and the invariant check).
+    #[account(address = pool.share_mint @ PoolError::WrongAccount)]
+    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
+
     /// Read for the NAV in the event.
     #[account(address = pool.vault @ PoolError::WrongAccount)]
     pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
@@ -548,13 +558,15 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
     line.status = LineStatus::WrittenOff;
     line.closed_at = now;
 
-    // No CPI in this instruction, so the vault balance read by Anchor is current.
-    let nav_after = pool.check(ctx.accounts.vault.amount, None)?;
+    // No CPI in this instruction, so the balances read by Anchor are current.
+    let share_supply = ctx.accounts.share_mint.supply;
+    let nav_after = pool.check(ctx.accounts.vault.amount, Some(share_supply))?;
     emit_cpi!(LineWrittenOff {
         pool: pool.key(),
         line_id: line.line_id,
         loss,
         nav_after,
     });
+    emit_cpi!(NavUpdated { pool: pool.key(), total_assets: nav_after, share_supply });
     Ok(())
 }

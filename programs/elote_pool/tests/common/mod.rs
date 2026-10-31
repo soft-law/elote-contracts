@@ -114,6 +114,9 @@ pub struct PoolKeys {
     pub dead_shares: Pubkey,
     pub asset_program: Pubkey,
     pub share_program: Pubkey,
+    /// The series' Metaplex Core collection the pool records (pool v2). A fresh placeholder
+    /// address here; step 6 of the batch validates it as a Core collection.
+    pub collection: Pubkey,
 }
 
 impl PoolKeys {
@@ -128,6 +131,7 @@ impl PoolKeys {
             dead_shares: dead_shares_pda(&pool).0,
             asset_program,
             share_program,
+            collection: Pubkey::new_unique(),
         }
     }
 
@@ -172,6 +176,9 @@ pub struct LineParams {
 pub struct Env {
     pub svm: LiteSVM,
     pub admin: Keypair,
+    /// The attestor every pool of this env is created with (pool v2, decision 24): the
+    /// agreements engine's key, which co-signs openings, draws and endosos from step 5 on.
+    pub attestor: Keypair,
 }
 
 fn event_metas() -> (Pubkey, Pubkey) {
@@ -201,8 +208,10 @@ impl Env {
 
         let admin = Keypair::new();
         svm.airdrop(&admin.pubkey(), 500 * LAMPORTS_PER_SOL).expect("airdrop admin");
+        let attestor = Keypair::new();
+        svm.airdrop(&attestor.pubkey(), 10 * LAMPORTS_PER_SOL).expect("airdrop attestor");
 
-        Self { svm, admin }
+        Self { svm, admin, attestor }
     }
 
     pub fn funded(&mut self, sol: u64) -> Keypair {
@@ -444,6 +453,7 @@ impl Env {
                 share_mint: k.share_mint,
                 vault: k.vault,
                 dead_shares: k.dead_shares,
+                collection: k.collection,
                 token_program: k.asset_program,
                 share_token_program: k.share_program,
                 system_program: SYSTEM_PROGRAM_ID,
@@ -451,7 +461,18 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::InitPool { grace_period_seconds, max_line_bps }.data(),
+            data: elote_pool::instruction::InitPool { grace_period_seconds, max_line_bps, attestor: self.attestor.pubkey() }
+                .data(),
+        }
+    }
+
+    pub fn set_attestor_ix(&self, k: &PoolKeys, admin: &Pubkey, attestor: &Pubkey) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::SetAttestor { admin: *admin, pool: k.pool, event_authority, program }
+                .to_account_metas(None),
+            data: elote_pool::instruction::SetAttestor { attestor: *attestor }.data(),
         }
     }
 
@@ -803,6 +824,7 @@ impl Env {
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
                 asset_mint: k.asset_mint,
+                share_mint: k.share_mint,
                 vault: k.vault,
                 payer_asset_account: k.asset_ata(payer),
                 token_program: k.asset_program,
@@ -828,6 +850,7 @@ impl Env {
                 admin: *admin,
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
+                share_mint: k.share_mint,
                 vault: k.vault,
                 event_authority,
                 program,

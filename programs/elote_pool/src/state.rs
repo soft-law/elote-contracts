@@ -29,7 +29,9 @@ pub fn min_first_deposit(decimals: u8) -> Option<u64> {
     Some(one_unit.max(MIN_FIRST_DEPOSIT_DEAD_RATIO.checked_mul(DEAD_SHARES)?))
 }
 pub const BPS: u64 = 10_000;
-pub const POOL_VERSION: u8 = 1;
+/// Pool v2 (2026-10-31): token interface, asset and share mint policies, `attestor` and
+/// `collection`. Version 1 pools (the devnet demo) do not deserialize under this layout.
+pub const POOL_VERSION: u8 = 2;
 pub const LINE_VERSION: u8 = 1;
 /// Version of a line opened with an installment schedule (see [`Schedule`]).
 pub const LINE_VERSION_SCHEDULED: u8 = 2;
@@ -79,6 +81,15 @@ pub struct Pool {
     /// `max_line_bps`, `permissioned`, `asset_controls` and their setters).
     pub reserved: [u8; 32],
     pub bump: u8,
+    // Pool v2 (decision 24): appended after `bump` so every v1 offset holds.
+    /// The agreements engine's key. It co-signs `open_line`, `draw` and `endorse_pagare`,
+    /// attesting that the signed document behind the hash exists and matches the arguments.
+    /// Rotated by the admin with `set_attestor`; never the zero key.
+    pub attestor: Pubkey,
+    /// The series' Metaplex Core collection, in which `draw` mints one pagaré asset per
+    /// disposición. Recorded at `init_pool`; validated as a Core collection from step 6 of the
+    /// pool v2 batch.
+    pub collection: Pubkey,
 }
 
 impl Pool {
@@ -302,6 +313,8 @@ mod tests {
             paused: false,
             reserved: [0; 32],
             bump: 0,
+            attestor: Pubkey::default(),
+            collection: Pubkey::default(),
         }
     }
 

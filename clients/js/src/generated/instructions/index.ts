@@ -13,5 +13,6 @@ export * from "./markInCollection";
 export * from "./openLine";
 export * from "./redeem";
 export * from "./repay";
+export * from "./setAttestor";
 export * from "./setPaused";
 export * from "./writeOff";

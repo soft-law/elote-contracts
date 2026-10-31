@@ -85,6 +85,18 @@ export type Pool = {
    */
   reserved: ReadonlyUint8Array;
   bump: number;
+  /**
+   * The agreements engine's key. It co-signs `open_line`, `draw` and `endorse_pagare`,
+   * attesting that the signed document behind the hash exists and matches the arguments.
+   * Rotated by the admin with `set_attestor`; never the zero key.
+   */
+  attestor: Address;
+  /**
+   * The series' Metaplex Core collection, in which `draw` mints one pagaré asset per
+   * disposición. Recorded at `init_pool`; validated as a Core collection from step 6 of the
+   * pool v2 batch.
+   */
+  collection: Address;
 };
 
 export type PoolArgs = {
@@ -121,6 +133,18 @@ export type PoolArgs = {
    */
   reserved: ReadonlyUint8Array;
   bump: number;
+  /**
+   * The agreements engine's key. It co-signs `open_line`, `draw` and `endorse_pagare`,
+   * attesting that the signed document behind the hash exists and matches the arguments.
+   * Rotated by the admin with `set_attestor`; never the zero key.
+   */
+  attestor: Address | HasAddress;
+  /**
+   * The series' Metaplex Core collection, in which `draw` mints one pagaré asset per
+   * disposición. Recorded at `init_pool`; validated as a Core collection from step 6 of the
+   * pool v2 batch.
+   */
+  collection: Address | HasAddress;
 };
 
 /** Gets the encoder for {@link PoolArgs} account data. */
@@ -141,6 +165,8 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["paused", getBooleanEncoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 32)],
       ["bump", getU8Encoder()],
+      ["attestor", getAddressEncoder()],
+      ["collection", getAddressEncoder()],
     ]),
     (value) => ({ ...value, discriminator: POOL_DISCRIMINATOR }),
   );
@@ -163,6 +189,8 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["paused", getBooleanDecoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 32)],
     ["bump", getU8Decoder()],
+    ["attestor", getAddressDecoder()],
+    ["collection", getAddressDecoder()],
   ]);
 }
 
@@ -233,5 +261,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 235;
+  return 299;
 }

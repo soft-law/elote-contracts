@@ -54,7 +54,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 
 | Account | Address | Holds |
 |---|---|---|
-| `Pool` | PDA `["pool", admin, asset_mint]` | admin, asset, vault, share token, outstanding principal, running totals, pause flag |
+| `Pool` | PDA `["pool", admin, asset_mint]` | admin, asset, vault, share token, outstanding principal, running totals, pause flag, packed parameters and flags, and (pool v2) the attestor and the series' Metaplex Core collection |
 | share token | a mint the admin creates and hands to `init_pool` | classic SPL Token or Token-2022 with the asset's decimals, mint authority = the pool PDA, supply 0, no extension that takes or hides value; frozen by default (Token-2022 `DefaultAccountState`) for a permissioned series under Token ACL |
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
 | dead shares | PDA token account `["dead", pool]`, owned by the pool PDA | the 1,000 shares locked by the first deposit |
@@ -85,7 +85,7 @@ A version-1 line (single maturity) has all 32 bytes at zero.
 
 | Instruction | Signers | Effect |
 |---|---|---|
-| `init_pool(grace_period_seconds, max_line_bps)` | admin | creates the pool, its vault and its dead-shares account around an asset mint and an admin-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; the grace period and the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) are fixed for the life of the pool |
+| `init_pool(grace_period_seconds, max_line_bps, attestor)` | admin | creates the pool, its vault and its dead-shares account around an asset mint and an admin-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the attestor (the agreements engine's key) and the series' Metaplex Core collection; the grace period and the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) are fixed for the life of the pool |
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit is at least 1.0 and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, schedule)` | admin, borrower, sponsor if named | approves the next line; moves no money; the borrower is not the admin and `principal <= NAV * max_line_bps / 10_000` (reads the vault); `schedule` (optional) makes it an installment line |
@@ -94,6 +94,7 @@ A version-1 line (single maturity) has all 32 bytes at zero.
 | `mark_in_collection` | anyone | moves an installment line to `InCollection` once `max_missed` installments are missed and the grace period of the last of them has run. Never paused |
 | `write_off` | admin | after the term plus grace, or for a line in collection after its oldest missed due date plus grace, the unpaid principal is recognised as a loss |
 | `set_paused(paused)` | admin | pause switch for deposits, redemptions, openings and draws |
+| `set_attestor(attestor)` | admin | replaces the pool's attestor (never the zero key); the recovery when the agreements engine's key rotates |
 
 Error codes start at 6000 in the order of `PoolError` in `programs/elote_pool/src/errors.rs`.
 
@@ -158,7 +159,10 @@ change fields; new information comes as new events.
 | `LineRepaid` | `repay` | pool, line_id, payer, principal_part, interest_part, remaining (without late interest), nav_after |
 | `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining |
 | `LineWrittenOff` | `write_off` | pool, line_id, loss, nav_after |
+| `NavUpdated` | `deposit`, `redeem`, `repay`, `write_off`, last in each | pool, total_assets, share_supply |
 | `PoolPaused` | `set_paused` | pool, paused |
+| `AttestorSet` | `init_pool`, `set_attestor` | pool, attestor |
+| `PoolCollectionSet` | `init_pool` | pool, collection |
 
 ## Build and test
 

@@ -36,6 +36,30 @@ pub struct PoolFlags {
     pub permissioned: bool,
 }
 
+/// The pool's attestor, at `init_pool` and after every `set_attestor`.
+#[event]
+pub struct AttestorSet {
+    pub pool: Pubkey,
+    pub attestor: Pubkey,
+}
+
+/// The series' Metaplex Core collection the pool records, at `init_pool`.
+#[event]
+pub struct PoolCollectionSet {
+    pub pool: Pubkey,
+    pub collection: Pubkey,
+}
+
+/// The NAV and the share supply after every instruction that moves either (`deposit`,
+/// `redeem`, `repay`, `write_off`), read back after the CPIs. For indexers, the shelf page and a
+/// later secondary venue: `price per share = total_assets / share_supply`.
+#[event]
+pub struct NavUpdated {
+    pub pool: Pubkey,
+    pub total_assets: u64,
+    pub share_supply: u64,
+}
+
 #[event]
 pub struct Deposited {
     pub pool: Pubkey,

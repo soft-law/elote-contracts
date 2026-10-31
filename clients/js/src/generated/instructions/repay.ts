@@ -59,6 +59,7 @@ export type RepayInstruction<
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountAssetMint extends string | AccountMeta<string> = string,
+  TAccountShareMint extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountPayerAssetAccount extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
@@ -84,6 +85,9 @@ export type RepayInstruction<
       TAccountAssetMint extends string
         ? ReadonlyAccount<TAccountAssetMint>
         : TAccountAssetMint,
+      TAccountShareMint extends string
+        ? ReadonlyAccount<TAccountShareMint>
+        : TAccountShareMint,
       TAccountVault extends string
         ? WritableAccount<TAccountVault>
         : TAccountVault,
@@ -142,6 +146,7 @@ export type RepayAsyncInput<
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountPayerAssetAccount extends InstructionAccountInput =
     InstructionAccountInput,
@@ -157,6 +162,8 @@ export type RepayAsyncInput<
   line: TAccountLine;
   /** Read for its decimals (`transfer_checked`). */
   assetMint: TAccountAssetMint;
+  /** Read for the share supply (`NavUpdated` and the invariant check). */
+  shareMint: TAccountShareMint;
   vault: TAccountVault;
   payerAssetAccount: TAccountPayerAssetAccount;
   tokenProgram?: TAccountTokenProgram;
@@ -170,6 +177,7 @@ export async function getRepayInstructionAsync<
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountPayerAssetAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
@@ -182,6 +190,7 @@ export async function getRepayInstructionAsync<
     TAccountPool,
     TAccountLine,
     TAccountAssetMint,
+    TAccountShareMint,
     TAccountVault,
     TAccountPayerAssetAccount,
     TAccountTokenProgram,
@@ -209,6 +218,10 @@ export async function getRepayInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountAssetMint,
       InstructionAccountInputAddress<TAccountAssetMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountShareMint,
+      InstructionAccountInputAddress<TAccountShareMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountVault,
@@ -250,6 +263,11 @@ export async function getRepayInstructionAsync<
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     assetMint: {
       value: input.assetMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    shareMint: {
+      value: input.shareMint ?? null,
       isSigner: false,
       isWritable: false,
     },
@@ -305,6 +323,7 @@ export async function getRepayInstructionAsync<
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("assetMint", accounts.assetMint),
+      getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("payerAssetAccount", accounts.payerAssetAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
@@ -334,6 +353,10 @@ export async function getRepayInstructionAsync<
       InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareMint,
+      InstructionAccountInputAddress<TAccountShareMint>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountVault,
       InstructionAccountInputAddress<TAccountVault>
     >,
@@ -361,6 +384,7 @@ export type RepayInput<
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountPayerAssetAccount extends InstructionAccountInput =
     InstructionAccountInput,
@@ -376,6 +400,8 @@ export type RepayInput<
   line: TAccountLine;
   /** Read for its decimals (`transfer_checked`). */
   assetMint: TAccountAssetMint;
+  /** Read for the share supply (`NavUpdated` and the invariant check). */
+  shareMint: TAccountShareMint;
   vault: TAccountVault;
   payerAssetAccount: TAccountPayerAssetAccount;
   tokenProgram?: TAccountTokenProgram;
@@ -389,6 +415,7 @@ export function getRepayInstruction<
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountPayerAssetAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
@@ -401,6 +428,7 @@ export function getRepayInstruction<
     TAccountPool,
     TAccountLine,
     TAccountAssetMint,
+    TAccountShareMint,
     TAccountVault,
     TAccountPayerAssetAccount,
     TAccountTokenProgram,
@@ -427,6 +455,10 @@ export function getRepayInstruction<
   ResolvedInstructionAccountMeta<
     TAccountAssetMint,
     InstructionAccountInputAddress<TAccountAssetMint>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountShareMint,
+    InstructionAccountInputAddress<TAccountShareMint>
   >,
   ResolvedInstructionAccountMeta<
     TAccountVault,
@@ -467,6 +499,11 @@ export function getRepayInstruction<
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     assetMint: {
       value: input.assetMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    shareMint: {
+      value: input.shareMint ?? null,
       isSigner: false,
       isWritable: false,
     },
@@ -516,6 +553,7 @@ export function getRepayInstruction<
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("assetMint", accounts.assetMint),
+      getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("payerAssetAccount", accounts.payerAssetAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
@@ -543,6 +581,10 @@ export function getRepayInstruction<
     ResolvedInstructionAccountMeta<
       TAccountAssetMint,
       InstructionAccountInputAddress<TAccountAssetMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountShareMint,
+      InstructionAccountInputAddress<TAccountShareMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountVault,
@@ -579,11 +621,13 @@ export type ParsedRepayInstruction<
     line: TAccountMetas[2];
     /** Read for its decimals (`transfer_checked`). */
     assetMint: TAccountMetas[3];
-    vault: TAccountMetas[4];
-    payerAssetAccount: TAccountMetas[5];
-    tokenProgram: TAccountMetas[6];
-    eventAuthority: TAccountMetas[7];
-    program: TAccountMetas[8];
+    /** Read for the share supply (`NavUpdated` and the invariant check). */
+    shareMint: TAccountMetas[4];
+    vault: TAccountMetas[5];
+    payerAssetAccount: TAccountMetas[6];
+    tokenProgram: TAccountMetas[7];
+    eventAuthority: TAccountMetas[8];
+    program: TAccountMetas[9];
   };
   data: RepayInstructionData;
 };
@@ -596,12 +640,12 @@ export function parseRepayInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedRepayInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 9) {
+  if (instruction.accounts.length < 10) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 9,
+        expectedAccountMetas: 10,
       },
     );
   }
@@ -618,6 +662,7 @@ export function parseRepayInstruction<
       pool: getNextAccount(),
       line: getNextAccount(),
       assetMint: getNextAccount(),
+      shareMint: getNextAccount(),
       vault: getNextAccount(),
       payerAssetAccount: getNextAccount(),
       tokenProgram: getNextAccount(),

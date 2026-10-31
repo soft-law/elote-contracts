@@ -56,6 +56,7 @@ export type WriteOffInstruction<
   TAccountAdmin extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
+  TAccountShareMint extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
@@ -75,6 +76,9 @@ export type WriteOffInstruction<
       TAccountLine extends string
         ? WritableAccount<TAccountLine>
         : TAccountLine,
+      TAccountShareMint extends string
+        ? ReadonlyAccount<TAccountShareMint>
+        : TAccountShareMint,
       TAccountVault extends string
         ? ReadonlyAccount<TAccountVault>
         : TAccountVault,
@@ -119,6 +123,7 @@ export type WriteOffAsyncInput<
   TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
@@ -127,6 +132,8 @@ export type WriteOffAsyncInput<
   admin: TAccountAdmin;
   pool: TAccountPool;
   line: TAccountLine;
+  /** Read for the share supply (`NavUpdated` and the invariant check). */
+  shareMint: TAccountShareMint;
   /** Read for the NAV in the event. */
   vault: TAccountVault;
   eventAuthority?: TAccountEventAuthority;
@@ -137,6 +144,7 @@ export async function getWriteOffInstructionAsync<
   TAccountAdmin extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -146,6 +154,7 @@ export async function getWriteOffInstructionAsync<
     TAccountAdmin,
     TAccountPool,
     TAccountLine,
+    TAccountShareMint,
     TAccountVault,
     TAccountEventAuthority,
     TAccountProgram
@@ -167,6 +176,10 @@ export async function getWriteOffInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountLine,
       InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountShareMint,
+      InstructionAccountInputAddress<TAccountShareMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountVault,
@@ -198,6 +211,11 @@ export async function getWriteOffInstructionAsync<
     admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    shareMint: {
+      value: input.shareMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -232,6 +250,7 @@ export async function getWriteOffInstructionAsync<
       getAccountMeta("admin", accounts.admin),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
+      getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -253,6 +272,10 @@ export async function getWriteOffInstructionAsync<
       InstructionAccountInputAddress<TAccountLine>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareMint,
+      InstructionAccountInputAddress<TAccountShareMint>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountVault,
       InstructionAccountInputAddress<TAccountVault>
     >,
@@ -271,6 +294,7 @@ export type WriteOffInput<
   TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
@@ -279,6 +303,8 @@ export type WriteOffInput<
   admin: TAccountAdmin;
   pool: TAccountPool;
   line: TAccountLine;
+  /** Read for the share supply (`NavUpdated` and the invariant check). */
+  shareMint: TAccountShareMint;
   /** Read for the NAV in the event. */
   vault: TAccountVault;
   eventAuthority: TAccountEventAuthority;
@@ -289,6 +315,7 @@ export function getWriteOffInstruction<
   TAccountAdmin extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -298,6 +325,7 @@ export function getWriteOffInstruction<
     TAccountAdmin,
     TAccountPool,
     TAccountLine,
+    TAccountShareMint,
     TAccountVault,
     TAccountEventAuthority,
     TAccountProgram
@@ -318,6 +346,10 @@ export function getWriteOffInstruction<
   ResolvedInstructionAccountMeta<
     TAccountLine,
     InstructionAccountInputAddress<TAccountLine>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountShareMint,
+    InstructionAccountInputAddress<TAccountShareMint>
   >,
   ResolvedInstructionAccountMeta<
     TAccountVault,
@@ -348,6 +380,11 @@ export function getWriteOffInstruction<
     admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    shareMint: {
+      value: input.shareMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -376,6 +413,7 @@ export function getWriteOffInstruction<
       getAccountMeta("admin", accounts.admin),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
+      getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -395,6 +433,10 @@ export function getWriteOffInstruction<
     ResolvedInstructionAccountMeta<
       TAccountLine,
       InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountShareMint,
+      InstructionAccountInputAddress<TAccountShareMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountVault,
@@ -420,10 +462,12 @@ export type ParsedWriteOffInstruction<
     admin: TAccountMetas[0];
     pool: TAccountMetas[1];
     line: TAccountMetas[2];
+    /** Read for the share supply (`NavUpdated` and the invariant check). */
+    shareMint: TAccountMetas[3];
     /** Read for the NAV in the event. */
-    vault: TAccountMetas[3];
-    eventAuthority: TAccountMetas[4];
-    program: TAccountMetas[5];
+    vault: TAccountMetas[4];
+    eventAuthority: TAccountMetas[5];
+    program: TAccountMetas[6];
   };
   data: WriteOffInstructionData;
 };
@@ -436,12 +480,12 @@ export function parseWriteOffInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedWriteOffInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+  if (instruction.accounts.length < 7) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 6,
+        expectedAccountMetas: 7,
       },
     );
   }
@@ -457,6 +501,7 @@ export function parseWriteOffInstruction<
       admin: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
+      shareMint: getNextAccount(),
       vault: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

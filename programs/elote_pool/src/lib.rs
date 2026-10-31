@@ -37,11 +37,18 @@ security_txt! {
 pub mod elote_pool {
     use super::*;
 
-    /// Creates the pool, its share token mint and its vault for `asset_mint`, with the grace
-    /// period (seconds) that applies to every line of the pool and the largest line `open_line`
-    /// accepts, as a share of the NAV in basis points (`1..=10_000`).
-    pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16) -> Result<()> {
-        instructions::pool::init_pool(ctx, grace_period_seconds, max_line_bps)
+    /// Creates the pool, its vault and its dead-shares account around `asset_mint` and the
+    /// admin-supplied share mint, with the grace period (seconds) that applies to every line of
+    /// the pool, the largest line `open_line` accepts as a share of the NAV in basis points
+    /// (`1..=10_000`), and the attestor (the agreements engine's key).
+    pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey) -> Result<()> {
+        instructions::pool::init_pool(ctx, grace_period_seconds, max_line_bps, attestor)
+    }
+
+    /// Replaces the pool's attestor. Admin only; the recovery when the agreements engine's key
+    /// rotates or is lost.
+    pub fn set_attestor(ctx: Context<SetAttestor>, attestor: Pubkey) -> Result<()> {
+        instructions::pool::set_attestor(ctx, attestor)
     }
 
     /// Deposits `assets` into the vault and receives shares at the current NAV, at least

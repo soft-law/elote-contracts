@@ -110,7 +110,7 @@ Pool            PDA ["pool", admin, asset_mint]          data account, program-o
   `pool_signer!(pool)`, which rebuilds the seeds `["pool", admin, asset_mint, bump]` from the
   account's own fields.
 
-### 2.1 `Pool` (235 bytes)
+### 2.1 `Pool` (299 bytes; 235 before pool v2)
 
 Offsets include the 8-byte Anchor discriminator, so they can be used directly in `memcmp`
 filters.
@@ -131,6 +131,8 @@ filters.
 | 201 | 1 | `paused` | |
 | 202 | 32 | `reserved` | bytes 0..4: `grace_period_seconds` (u32 LE); bytes 4..6: `max_line_bps` (u16 LE); byte 6: `permissioned` flag; byte 7: `asset_controls` bits (0 freeze authority, 1 Pausable); rest zero |
 | 234 | 1 | `bump` | |
+| 235 | 32 | `attestor` | pool v2: the agreements engine's key; co-signs openings, draws and endosos; rotated by `set_attestor` |
+| 267 | 32 | `collection` | pool v2: the series' Metaplex Core collection the pagaré assets are minted into; validated from step 6 |
 
 `grace_period_seconds` and `max_line_bps` live inside `reserved` so the layout did not change
 when they were added. They are read and written only through `Pool::grace_period_seconds()` /
@@ -260,7 +262,7 @@ handler runs, the checks in the order the handler makes them, what it writes, wh
 makes and which events it emits. Error codes are `PoolError` variants (6000 + index in
 `errors.rs`).
 
-### 5.1 `init_pool(grace_period_seconds: u32, max_line_bps: u16)`
+### 5.1 `init_pool(grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey)`
 
 - **Signers:** `admin` (also pays rent).
 - **Constraints:** `pool` is `init` at `["pool", admin, asset_mint]`; `share_mint` is an
@@ -283,13 +285,17 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
   ones; `DefaultAccountState == Frozen` sets `permissioned` and then requires a freeze
   authority; `NonTransferable` is allowed (deposit mints, redeem burns); all failures are
   `ShareMintNotAllowed`. Who the freeze authority is (Token ACL's `MintConfig` or a key) is not
-  recorded. Any value of `grace_period_seconds` is accepted, including zero.
-- **Writes:** every `Pool` field; `reserved` zeroed then the grace period, `max_line_bps`,
-  `permissioned` and `asset_controls` packed in. On a permissioned share mint the dead account
-  is born frozen: the freeze authority thaws it in this transaction or before the first deposit,
-  or the first deposit fails inside Token-2022 (`AccountFrozen`).
-- **CPIs:** the four `init`s (system program + token program) done by Anchor.
-- **Events:** `PoolInitialized`, then `PoolConfigured`, `PoolLineCapSet`, `PoolFlags`.
+  recorded. `attestor != Pubkey::default()` (`WrongAccount`). Any value of
+  `grace_period_seconds` is accepted, including zero. The `collection` account is recorded by
+  key only until step 6 validates it as a Metaplex Core collection.
+- **Writes:** every `Pool` field (`version = 2`, `attestor`, `collection`); `reserved` zeroed
+  then the grace period, `max_line_bps`, `permissioned` and `asset_controls` packed in. On a
+  permissioned share mint the dead account is born frozen: the freeze authority thaws it in this
+  transaction or before the first deposit, or the first deposit fails inside Token-2022
+  (`AccountFrozen`).
+- **CPIs:** the three `init`s (system program + token programs) done by Anchor.
+- **Events:** `PoolInitialized`, then `PoolConfigured`, `PoolLineCapSet`, `PoolFlags`,
+  `AttestorSet`, `PoolCollectionSet`.
 
 ### 5.2 `deposit(assets: u64, min_shares_out: u64)`
 
@@ -310,7 +316,8 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
 - **CPIs:** `transfer` assets depositor → vault (depositor signs); `mint_to` shares → depositor
   (pool signs); on a first deposit, `mint_to` `DEAD_SHARES` → dead account (pool signs).
 - **Writes:** none to `Pool`. The state is in the token accounts.
-- **Events:** `Deposited` with `nav_after` and `supply_after` read back after `reload()`.
+- **Events:** `Deposited` with `nav_after` and `supply_after` read back after `reload()`, then
+  `NavUpdated`.
 
 ### 5.3 `redeem(shares: u64, min_assets_out: u64)`
 
@@ -322,7 +329,7 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
   `assets >= min_assets_out` (`SlippageExceeded`); `assets <= vault.amount`
   (`InsufficientLiquidity`: the NAV counts money lent out, but only the vault can pay).
 - **CPIs:** `burn` shares (holder signs); `transfer` vault → holder (pool signs).
-- **Events:** `Redeemed`.
+- **Events:** `Redeemed`, then `NavUpdated`.
 
 A redemption while principal is out and the vault is thin fails rather than paying a partial
 amount; the holder retries with fewer shares.
@@ -398,7 +405,7 @@ no authority afterwards (a sponsor repays through `repay` like anyone else).
   charged twice. **When `late` is zero the watermark does not move** (R-11): the accrual that
   rounded down to zero keeps running, so a borrower cannot erase it by paying one unit every
   few seconds; if `remaining` reaches zero, `status = Repaid` and `closed_at = now`.
-- **Events:** `LateInterestCollected` (only when `late > 0`), then `LineRepaid` with
+- **Events:** `LateInterestCollected` (only when `late > 0`), then `LineRepaid` (and `NavUpdated` last) with
   `remaining` after this payment (without late interest) and `nav_after`.
 
 Because `late_due` is computed at execution time, a client that quotes it a few seconds
@@ -432,7 +439,7 @@ earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad th
 - **Writes:** `loss = principal - principal_repaid`; `pool.outstanding_principal -= loss`;
   `pool.written_off += loss`; `status = WrittenOff`; `closed_at = now`.
 - **CPIs:** none. No tokens move; the NAV drops by `loss` because `outstanding_principal` does.
-- **Events:** `LineWrittenOff` with `loss` and `nav_after`.
+- **Events:** `LineWrittenOff` with `loss` and `nav_after`, then `NavUpdated`.
 
 Unpaid interest is never part of the loss: it was never in the NAV.
 
@@ -440,6 +447,16 @@ Unpaid interest is never part of the loss: it was never in the NAV.
 
 - **Signers:** `admin`.
 - **Writes:** `pool.paused`. **Events:** `PoolPaused`.
+
+### 5.10 `set_attestor(attestor: Pubkey)`
+
+- **Signers:** `admin` (`has_one = admin`, `Unauthorized`).
+- **Checks:** `attestor != Pubkey::default()` (`WrongAccount`): the zero key could never
+  co-sign, so a pool with it would open no line.
+- **Writes:** `pool.attestor`. **Events:** `AttestorSet`.
+
+The attestor can block every opening, draw and endoso by withholding its signature and can move
+nothing; this instruction is the recovery when its key rotates or is lost.
 
 ## 6. Installments, arrears and late interest (`math.rs`)
 
@@ -504,8 +521,9 @@ What must hold between instructions, and which code keeps it:
    `InvariantBroken`.
 3. `share_mint.supply >= DEAD_SHARES` once anything was deposited: the dead account's shares are
    never burned (no instruction takes `dead_shares` as a burn source). `Pool::check()` re-checks
-   it (`supply == 0 || supply >= DEAD_SHARES`) in `deposit` and `redeem`, the two instructions
-   that carry the share mint.
+   it (`supply == 0 || supply >= DEAD_SHARES`) in `deposit`, `redeem`, `repay` and `write_off`,
+   the four instructions that carry the share mint (since pool v2, for `NavUpdated`); `draw`
+   runs the NAV leg only.
 4. Only `draw` and `redeem` move tokens out of the vault, both signed by the pool PDA, both to
    an account whose owner signed the instruction (the borrower of an admin-approved line, the
    holder burning shares).
@@ -521,7 +539,9 @@ What must hold between instructions, and which code keeps it:
 
 | role | identified by | can |
 |---|---|---|
-| admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `set_paused` |
+| admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `set_paused`, `set_attestor` |
+| attestor | `Pool.attestor`, set at `init_pool`, rotated by `set_attestor` | recorded in pool v2 step 4; from step 5 it co-signs `open_line` and `draw` (and `endorse_pagare` in step 6), so it can block every opening, draw and endoso and move nothing |
+| share-mint freeze authority | the freeze authority of the admin-supplied share mint (Token ACL's `MintConfig` in production); not recorded by the program | thaw or freeze share accounts, the dead account included: admits and bars investors |
 | borrower | `CreditLine.borrower` | `draw` its own approved line before the term |
 | sponsor | `CreditLine.sponsor` | nothing after co-signing the opening |
 | depositor / holder | any signer with the asset or shares | `deposit`, `redeem` |

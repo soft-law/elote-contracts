@@ -261,6 +261,10 @@ await send("create the share token", admin, [
   getInitializeMint2Instruction({ mint: shareMintSigner.address, decimals: DECIMALS, mintAuthority: pool }),
 ]);
 const shareMint = shareMintSigner.address;
+// Pool v2 records the attestor (the agreements engine's key; the admin stands in for it in the
+// demo) and the series' Metaplex Core collection (a placeholder address until PR 3 creates one).
+const attestor = admin.address;
+const collection = (await generateKeyPairSigner()).address;
 const ataOf = async (owner: Address, mint: Address) =>
   (await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
 const [vault] = await findVaultPda({ pool });
@@ -277,10 +281,12 @@ await send("init_pool", admin, [
     shareMint,
     vault,
     deadShares,
+    collection,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
     shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
     gracePeriodSeconds: graceSeconds,
     maxLineBps,
+    attestor,
   }),
 ]);
 console.log(
@@ -378,6 +384,7 @@ await send("repay by the borrower: 6,000 tMXN (devnet test token, no value) of p
     pool,
     line,
     assetMint: assetMint.address,
+    shareMint,
     vault,
     payerAssetAccount: borrowerAsset,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
@@ -390,6 +397,7 @@ await send("repay by the sponsor: 720 tMXN (devnet test token, no value) of inte
     pool,
     line,
     assetMint: assetMint.address,
+    shareMint,
     vault,
     payerAssetAccount: await ataOf(sponsor.address, assetMint.address),
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
@@ -513,6 +521,7 @@ async function scheduleDemo() {
       pool,
       line: sLine,
       assetMint: assetMint.address,
+      shareMint,
       vault,
       payerAssetAccount: borrowerAsset,
       tokenProgram: TOKEN_PROGRAM_ADDRESS,

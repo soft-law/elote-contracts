@@ -51,6 +51,7 @@ import {
   getOpenLineInstructionAsync,
   getRedeemInstructionAsync,
   getRepayInstructionAsync,
+  getSetAttestorInstructionAsync,
   getSetPausedInstructionAsync,
   getWriteOffInstructionAsync,
   parseDepositInstruction,
@@ -60,6 +61,7 @@ import {
   parseOpenLineInstruction,
   parseRedeemInstruction,
   parseRepayInstruction,
+  parseSetAttestorInstruction,
   parseSetPausedInstruction,
   parseWriteOffInstruction,
   type DepositAsyncInput,
@@ -74,10 +76,12 @@ import {
   type ParsedOpenLineInstruction,
   type ParsedRedeemInstruction,
   type ParsedRepayInstruction,
+  type ParsedSetAttestorInstruction,
   type ParsedSetPausedInstruction,
   type ParsedWriteOffInstruction,
   type RedeemAsyncInput,
   type RepayAsyncInput,
+  type SetAttestorAsyncInput,
   type SetPausedAsyncInput,
   type WriteOffAsyncInput,
 } from "../instructions";
@@ -129,6 +133,7 @@ export function identifyElotePoolAccount(
 }
 
 export enum ElotePoolEvent {
+  AttestorSet,
   Deposited,
   LateInterestCollected,
   LineDrawn,
@@ -137,6 +142,8 @@ export enum ElotePoolEvent {
   LineRepaid,
   LineScheduled,
   LineWrittenOff,
+  NavUpdated,
+  PoolCollectionSet,
   PoolConfigured,
   PoolFlags,
   PoolInitialized,
@@ -149,6 +156,17 @@ export function identifyElotePoolEvent(
   event: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
 ): ElotePoolEvent {
   const data = "data" in event ? event.data : event;
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([172, 95, 188, 131, 231, 42, 189, 23]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.AttestorSet;
+  }
   if (
     containsBytes(
       data,
@@ -241,6 +259,28 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([182, 153, 142, 26, 205, 24, 110, 154]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.NavUpdated;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([230, 60, 239, 27, 171, 112, 123, 10]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.PoolCollectionSet;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([110, 51, 15, 167, 103, 41, 48, 66]),
       ),
       0,
@@ -316,6 +356,7 @@ export enum ElotePoolInstruction {
   OpenLine,
   Redeem,
   Repay,
+  SetAttestor,
   SetPaused,
   WriteOff,
 }
@@ -405,6 +446,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([95, 11, 236, 157, 234, 146, 163, 237]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SetAttestor;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([91, 60, 125, 192, 176, 225, 166, 218]),
       ),
       0,
@@ -453,6 +505,9 @@ export type ParsedElotePoolInstruction<
   | ({
       instructionType: ElotePoolInstruction.Repay;
     } & ParsedRepayInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.SetAttestor;
+    } & ParsedSetAttestorInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.SetPaused;
     } & ParsedSetPausedInstruction<TProgram>)
@@ -512,6 +567,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.Repay,
         ...parseRepayInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.SetAttestor: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SetAttestor,
+        ...parseSetAttestorInstruction(instruction),
       };
     }
     case ElotePoolInstruction.SetPaused: {
@@ -586,6 +648,11 @@ export type ElotePoolPluginInstructions = {
     input: MakeOptional<RepayAsyncInput, "payer">,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRepayInstructionAsync> & SelfPlanAndSendFunctions;
+  setAttestor: (
+    input: SetAttestorAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSetAttestorInstructionAsync> &
+    SelfPlanAndSendFunctions;
   setPaused: (
     input: SetPausedAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -683,6 +750,14 @@ export function elotePoolProgram(
                     instructionConfig?.programAddress ?? config.programAddress,
                 },
               ),
+            ),
+          setAttestor: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetAttestorInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
             ),
           setPaused: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(

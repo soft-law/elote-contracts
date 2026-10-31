@@ -7,7 +7,10 @@ use anchor_spl::token_interface::spl_token_2022::state::{AccountState, Mint as M
 use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::errors::PoolError;
-use crate::events::{Deposited, PoolConfigured, PoolFlags, PoolInitialized, PoolLineCapSet, PoolPaused, Redeemed};
+use crate::events::{
+    AttestorSet, Deposited, NavUpdated, PoolCollectionSet, PoolConfigured, PoolFlags, PoolInitialized, PoolLineCapSet,
+    PoolPaused, Redeemed,
+};
 use crate::math;
 use crate::state::{
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES, POOL_VERSION,
@@ -78,6 +81,11 @@ pub struct InitPool<'info> {
         token::token_program = share_token_program,
     )]
     pub dead_shares: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    /// The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch
+    /// adds the check that it is a Core collection the pool can mint into.
+    /// CHECK: recorded by key only until the pagaré-token step validates it.
+    pub collection: UncheckedAccount<'info>,
 
     /// The token program of `asset_mint` (classic SPL Token or Token-2022).
     pub token_program: Interface<'info, TokenInterface>,
@@ -178,8 +186,10 @@ fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
 
 /// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the life of
 /// the pool.
-pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16) -> Result<()> {
+pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey) -> Result<()> {
     require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);
+    // The zero key could never co-sign: a pool with it would open no line.
+    require!(attestor != Pubkey::default(), PoolError::WrongAccount);
     // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
     require!(min_first_deposit(ctx.accounts.asset_mint.decimals).is_some(), PoolError::WrongAccount);
     let controls = asset_controls(&ctx.accounts.asset_mint.to_account_info())?;
@@ -202,6 +212,8 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps
     pool.set_asset_controls(controls);
     pool.set_permissioned(permissioned);
     pool.bump = ctx.bumps.pool;
+    pool.attestor = attestor;
+    pool.collection = ctx.accounts.collection.key();
 
     emit_cpi!(PoolInitialized {
         pool: pool.key(),
@@ -212,6 +224,8 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps
     emit_cpi!(PoolConfigured { pool: pool.key(), grace_period_seconds });
     emit_cpi!(PoolLineCapSet { pool: pool.key(), max_line_bps });
     emit_cpi!(PoolFlags { pool: pool.key(), asset_controls: controls, permissioned: pool.permissioned() });
+    emit_cpi!(AttestorSet { pool: pool.key(), attestor });
+    emit_cpi!(PoolCollectionSet { pool: pool.key(), collection: pool.collection });
     Ok(())
 }
 
@@ -338,6 +352,11 @@ pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Resul
         nav_after,
         supply_after: ctx.accounts.share_mint.supply,
     });
+    emit_cpi!(NavUpdated {
+        pool: ctx.accounts.pool.key(),
+        total_assets: nav_after,
+        share_supply: ctx.accounts.share_mint.supply,
+    });
     Ok(())
 }
 
@@ -438,6 +457,11 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
         nav_after,
         supply_after: ctx.accounts.share_mint.supply,
     });
+    emit_cpi!(NavUpdated {
+        pool: ctx.accounts.pool.key(),
+        total_assets: nav_after,
+        share_supply: ctx.accounts.share_mint.supply,
+    });
     Ok(())
 }
 
@@ -463,5 +487,33 @@ pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     pool.paused = paused;
     emit_cpi!(PoolPaused { pool: pool.key(), paused });
+    Ok(())
+}
+
+// -----------------------------------------------------------------------------------------------
+// set_attestor
+// -----------------------------------------------------------------------------------------------
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct SetAttestor<'info> {
+    pub admin: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+        has_one = admin @ PoolError::Unauthorized,
+    )]
+    pub pool: Account<'info, Pool>,
+}
+
+/// Admin only. The attestor can block every opening, draw and endoso by withholding its
+/// signature and can move nothing; replacing it is the recovery when its key rotates or is lost.
+pub fn set_attestor(ctx: Context<SetAttestor>, attestor: Pubkey) -> Result<()> {
+    require!(attestor != Pubkey::default(), PoolError::WrongAccount);
+    let pool = &mut ctx.accounts.pool;
+    pool.attestor = attestor;
+    emit_cpi!(AttestorSet { pool: pool.key(), attestor });
     Ok(())
 }

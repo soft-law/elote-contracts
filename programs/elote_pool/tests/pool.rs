@@ -2,10 +2,12 @@
 
 mod common;
 
-use anchor_lang::AccountDeserialize;
+use anchor_lang::{AccountDeserialize, InstructionData, Space};
 use anchor_spl::token_2022::spl_token_2022;
 use common::*;
-use elote_pool::events::{PoolConfigured, PoolFlags, PoolInitialized, PoolLineCapSet, PoolPaused};
+use elote_pool::events::{
+    AttestorSet, NavUpdated, PoolCollectionSet, PoolConfigured, PoolFlags, PoolInitialized, PoolLineCapSet, PoolPaused,
+};
 use elote_pool::state::{ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE};
 use solana_instruction::Instruction;
 use solana_pubkey::Pubkey;
@@ -24,7 +26,7 @@ fn init_pool_creates_share_mint_and_vault() {
     let (k, meta) = env.setup_pool();
 
     let pool = env.pool(&k);
-    assert_eq!(pool.version, 1);
+    assert_eq!(pool.version, 2, "pool v2");
     assert_eq!(pool.admin, env.admin.pubkey());
     assert_eq!(pool.asset_mint, k.asset_mint);
     assert_eq!(pool.vault, k.vault);
@@ -312,7 +314,7 @@ fn init_pool_records_the_grace_period() {
     let (k, meta) = env.setup_pool_with_grace(grace);
 
     let pool = env.pool(&k);
-    assert_eq!(pool.version, 1, "pools stay at version 1");
+    assert_eq!(pool.version, 2);
     assert_eq!(pool.grace_period_seconds(), grace);
     assert_eq!(&pool.reserved[0..4], &grace.to_le_bytes(), "bytes 0..4 of reserved, little endian");
     assert_eq!(&pool.reserved[4..6], &BPS.to_le_bytes(), "bytes 4..6: the harness default cap of 10,000 bps");
@@ -528,6 +530,106 @@ fn init_pool_records_the_asset_issuer_controls_it_accepts() {
     let (k, meta) = env.setup_pool();
     let flags: PoolFlags = find_event(&meta).expect("PoolFlags");
     assert_eq!((flags.asset_controls, flags.permissioned, env.pool(&k).asset_controls()), (0, false, 0));
+}
+
+/// Pool v2 (decision 24, series-shelf 2d): `attestor` and `collection` are appended after `bump`
+/// so every earlier offset holds, the account grows by exactly 64 bytes and `version` is 2.
+#[test]
+fn init_pool_records_the_attestor_and_the_collection_as_version_2() {
+    let mut env = Env::new();
+    let (k, meta) = env.setup_pool();
+    let pool = env.pool(&k);
+    assert_eq!(pool.version, 2);
+    assert_eq!(pool.attestor, env.attestor.pubkey());
+    assert_eq!(pool.collection, k.collection);
+    assert_eq!(elote_pool::state::Pool::INIT_SPACE, 227 + 64, "64 bytes more than the v1 layout");
+    assert_eq!(env.account(&k.pool).data.len(), 8 + 227 + 64);
+    // The two keys sit after `bump` at offsets 235 and 267 (discriminator included).
+    let data = env.account(&k.pool).data;
+    assert_eq!(&data[235..267], env.attestor.pubkey().as_ref());
+    assert_eq!(&data[267..299], k.collection.as_ref());
+    let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
+    assert_eq!((ev.pool, ev.attestor), (k.pool, env.attestor.pubkey()));
+    let ev: PoolCollectionSet = find_event(&meta).expect("PoolCollectionSet");
+    assert_eq!((ev.pool, ev.collection), (k.pool, k.collection));
+
+    // The zero key is not an attestor: nobody could ever co-sign.
+    let admin = env.admin.insecure_clone();
+    let mint = env.create_mint(&admin.pubkey(), 6);
+    let (k2, mut ix) = env.init_pool_plain(&mint);
+    ix.data = elote_pool::instruction::InitPool { grace_period_seconds: 0, max_line_bps: BPS, attestor: Pubkey::default() }.data();
+    env.expect_err(ix, &admin, &[], E_WRONG_ACCOUNT);
+    assert!(env.svm.get_account(&k2.pool).is_none());
+}
+
+/// `set_attestor` is the recovery when the agreements engine's key rotates or is lost: admin
+/// only, never the zero key, announced by `AttestorSet`.
+#[test]
+fn set_attestor_is_admin_only_and_rejects_the_zero_key() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let admin = env.admin.insecure_clone();
+    let new_attestor = Pubkey::new_unique();
+
+    let stranger = env.funded(1);
+    let ix = env.set_attestor_ix(&k, &stranger.pubkey(), &new_attestor);
+    env.expect_err(ix, &stranger, &[], E_UNAUTHORIZED);
+    let ix = env.set_attestor_ix(&k, &admin.pubkey(), &Pubkey::default());
+    env.expect_err(ix, &admin, &[], E_WRONG_ACCOUNT);
+    assert_eq!(env.pool(&k).attestor, env.attestor.pubkey(), "unchanged");
+
+    let ix = env.set_attestor_ix(&k, &admin.pubkey(), &new_attestor);
+    let meta = env.send(ix, &admin, &[]);
+    let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
+    assert_eq!((ev.pool, ev.attestor), (k.pool, new_attestor));
+    assert_eq!(env.pool(&k).attestor, new_attestor);
+}
+
+/// Series-shelf 2f: `NavUpdated { pool, total_assets, share_supply }` follows every instruction
+/// that moves the NAV or the supply (deposit, redeem, repay, write_off), read back after the
+/// CPIs, so indexers and the shelf page price shares without a simulation.
+#[test]
+fn nav_updated_follows_every_money_instruction() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let a = env.investor(&k, 10 * UNIT);
+    let ix = env.deposit_ix(&k, &a.pubkey(), 10 * UNIT);
+    let meta = env.send(ix, &a, &[]);
+    let ev: NavUpdated = find_event(&meta).expect("NavUpdated after deposit");
+    assert_eq!((ev.pool, ev.total_assets, ev.share_supply), (k.pool, 10 * UNIT, 10 * UNIT));
+
+    let borrower = env.borrower(&k);
+    let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000);
+    let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
+    let meta = env.send(ix, &borrower, &[]);
+    assert!(find_event::<NavUpdated>(&meta).is_none(), "a draw moves no value: vault down, outstanding up");
+
+    // Principal plus the 0.4 of interest: the NAV rises, the supply does not.
+    let admin = env.admin.insecure_clone();
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 400_000);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 4 * UNIT + 400_000);
+    let meta = env.send(ix, &borrower, &[]);
+    let ev: NavUpdated = find_event(&meta).expect("NavUpdated after repay");
+    assert_eq!((ev.total_assets, ev.share_supply), (10 * UNIT + 400_000, 10 * UNIT));
+    assert_eq!(ev.total_assets, env.nav(&k));
+
+    let ix = env.redeem_ix(&k, &a.pubkey(), UNIT);
+    let meta = env.send(ix, &a, &[]);
+    let ev: NavUpdated = find_event(&meta).expect("NavUpdated after redeem");
+    assert_eq!((ev.total_assets, ev.share_supply), (env.nav(&k), 9 * UNIT));
+
+    // A second line, drawn and never repaid, is written off after its term: the NAV drops by the
+    // unpaid principal and the supply stays.
+    let second = env.open_line(&k, &borrower, 2 * UNIT, 0);
+    env.draw(&k, second, &borrower);
+    let before = env.nav(&k);
+    env.warp(env.line(&k, second).term_end + 1);
+    let ix = env.write_off_ix(&k, second, &admin.pubkey());
+    let meta = env.send(ix, &admin, &[]);
+    let ev: NavUpdated = find_event(&meta).expect("NavUpdated after write_off");
+    assert_eq!((ev.total_assets, ev.share_supply), (before - 2 * UNIT, 9 * UNIT));
+    assert_eq!(ev.total_assets, env.nav(&k));
+    assert_eq!(env.pool(&k).outstanding_principal, 0);
 }
 
 /// A share-mint candidate for a pool on `asset`: Token-2022, 6 decimals, with `exts` initialised

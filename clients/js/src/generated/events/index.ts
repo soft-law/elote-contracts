@@ -6,6 +6,7 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./attestorSet";
 export * from "./deposited";
 export * from "./lateInterestCollected";
 export * from "./lineDrawn";
@@ -14,6 +15,8 @@ export * from "./lineOpened";
 export * from "./lineRepaid";
 export * from "./lineScheduled";
 export * from "./lineWrittenOff";
+export * from "./navUpdated";
+export * from "./poolCollectionSet";
 export * from "./poolConfigured";
 export * from "./poolFlags";
 export * from "./poolInitialized";

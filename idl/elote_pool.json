@@ -218,9 +218,10 @@
     {
       "name": "init_pool",
       "docs": [
-        "Creates the pool, its share token mint and its vault for `asset_mint`, with the grace",
-        "period (seconds) that applies to every line of the pool and the largest line `open_line`",
-        "accepts, as a share of the NAV in basis points (`1..=10_000`)."
+        "Creates the pool, its vault and its dead-shares account around `asset_mint` and the",
+        "admin-supplied share mint, with the grace period (seconds) that applies to every line of",
+        "the pool, the largest line `open_line` accepts as a share of the NAV in basis points",
+        "(`1..=10_000`), and the attestor (the agreements engine's key)."
       ],
       "discriminator": [
         116,
@@ -329,6 +330,13 @@
           }
         },
         {
+          "name": "collection",
+          "docs": [
+            "The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch",
+            "adds the check that it is a Core collection the pool can mint into."
+          ]
+        },
+        {
           "name": "token_program",
           "docs": [
             "The token program of `asset_mint` (classic SPL Token or Token-2022)."
@@ -359,6 +367,10 @@
         {
           "name": "max_line_bps",
           "type": "u16"
+        },
+        {
+          "name": "attestor",
+          "type": "pubkey"
         }
       ]
     },
@@ -781,6 +793,12 @@
           ]
         },
         {
+          "name": "share_mint",
+          "docs": [
+            "Read for the share supply (`NavUpdated` and the invariant check)."
+          ]
+        },
+        {
           "name": "vault",
           "writable": true
         },
@@ -802,6 +820,71 @@
         {
           "name": "amount",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_attestor",
+      "docs": [
+        "Replaces the pool's attestor. Admin only; the recovery when the agreements engine's key",
+        "rotates or is lost."
+      ],
+      "discriminator": [
+        95,
+        11,
+        236,
+        157,
+        234,
+        146,
+        163,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "attestor",
+          "type": "pubkey"
         }
       ]
     },
@@ -953,6 +1036,12 @@
           }
         },
         {
+          "name": "share_mint",
+          "docs": [
+            "Read for the share supply (`NavUpdated` and the invariant check)."
+          ]
+        },
+        {
           "name": "vault",
           "docs": [
             "Read for the NAV in the event."
@@ -997,6 +1086,19 @@
     }
   ],
   "events": [
+    {
+      "name": "AttestorSet",
+      "discriminator": [
+        172,
+        95,
+        188,
+        131,
+        231,
+        42,
+        189,
+        23
+      ]
+    },
     {
       "name": "Deposited",
       "discriminator": [
@@ -1099,6 +1201,32 @@
         99,
         164,
         168
+      ]
+    },
+    {
+      "name": "NavUpdated",
+      "discriminator": [
+        182,
+        153,
+        142,
+        26,
+        205,
+        24,
+        110,
+        154
+      ]
+    },
+    {
+      "name": "PoolCollectionSet",
+      "discriminator": [
+        230,
+        60,
+        239,
+        27,
+        171,
+        112,
+        123,
+        10
       ]
     },
     {
@@ -1303,6 +1431,25 @@
     }
   ],
   "types": [
+    {
+      "name": "AttestorSet",
+      "docs": [
+        "The pool's attestor, at `init_pool` and after every `set_attestor`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "attestor",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
     {
       "name": "CreditLine",
       "type": {
@@ -1704,6 +1851,31 @@
       }
     },
     {
+      "name": "NavUpdated",
+      "docs": [
+        "The NAV and the share supply after every instruction that moves either (`deposit`,",
+        "`redeem`, `repay`, `write_off`), read back after the CPIs. For indexers, the shelf page and a",
+        "later secondary venue: `price per share = total_assets / share_supply`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_assets",
+            "type": "u64"
+          },
+          {
+            "name": "share_supply",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "Pool",
       "type": {
         "kind": "struct",
@@ -1796,6 +1968,43 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "attestor",
+            "docs": [
+              "The agreements engine's key. It co-signs `open_line`, `draw` and `endorse_pagare`,",
+              "attesting that the signed document behind the hash exists and matches the arguments.",
+              "Rotated by the admin with `set_attestor`; never the zero key."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "collection",
+            "docs": [
+              "The series' Metaplex Core collection, in which `draw` mints one pagaré asset per",
+              "disposición. Recorded at `init_pool`; validated as a Core collection from step 6 of the",
+              "pool v2 batch."
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolCollectionSet",
+      "docs": [
+        "The series' Metaplex Core collection the pool records, at `init_pool`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "collection",
+            "type": "pubkey"
           }
         ]
       }

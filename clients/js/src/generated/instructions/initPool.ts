@@ -10,6 +10,8 @@ import {
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
+  getAddressDecoder,
+  getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
   getProgramDerivedAddress,
@@ -29,6 +31,7 @@ import {
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
+  type HasAddress,
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
@@ -65,6 +68,7 @@ export type InitPoolInstruction<
   TAccountShareMint extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountDeadShares extends string | AccountMeta<string> = string,
+  TAccountCollection extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   TAccountShareTokenProgram extends string | AccountMeta<string> = string,
@@ -97,6 +101,9 @@ export type InitPoolInstruction<
       TAccountDeadShares extends string
         ? WritableAccount<TAccountDeadShares>
         : TAccountDeadShares,
+      TAccountCollection extends string
+        ? ReadonlyAccount<TAccountCollection>
+        : TAccountCollection,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
@@ -120,11 +127,13 @@ export type InitPoolInstructionData = {
   discriminator: ReadonlyUint8Array;
   gracePeriodSeconds: number;
   maxLineBps: number;
+  attestor: Address;
 };
 
 export type InitPoolInstructionDataArgs = {
   gracePeriodSeconds: number;
   maxLineBps: number;
+  attestor: Address | HasAddress;
 };
 
 export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolInstructionDataArgs> {
@@ -133,6 +142,7 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["gracePeriodSeconds", getU32Encoder()],
       ["maxLineBps", getU16Encoder()],
+      ["attestor", getAddressEncoder()],
     ]),
     (value) => ({ ...value, discriminator: INIT_POOL_DISCRIMINATOR }),
   );
@@ -143,6 +153,7 @@ export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolIn
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["gracePeriodSeconds", getU32Decoder()],
     ["maxLineBps", getU16Decoder()],
+    ["attestor", getAddressDecoder()],
   ]);
 }
 
@@ -163,6 +174,7 @@ export type InitPoolAsyncInput<
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput = InstructionAccountInput,
+  TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountShareTokenProgram extends InstructionAccountInput =
@@ -191,6 +203,11 @@ export type InitPoolAsyncInput<
    * first deposit (in this transaction or a later one).
    */
   deadShares?: TAccountDeadShares;
+  /**
+   * The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch
+   * adds the check that it is a Core collection the pool can mint into.
+   */
+  collection: TAccountCollection;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
   tokenProgram?: TAccountTokenProgram;
   /** The token program of `share_mint` (Token-2022 in production, under Token ACL). */
@@ -200,6 +217,7 @@ export type InitPoolAsyncInput<
   program?: TAccountProgram;
   gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
+  attestor: InitPoolInstructionDataArgs["attestor"];
 };
 
 export async function getInitPoolInstructionAsync<
@@ -209,6 +227,7 @@ export async function getInitPoolInstructionAsync<
   TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput,
+  TAccountCollection extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
   TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
@@ -223,6 +242,7 @@ export async function getInitPoolInstructionAsync<
     TAccountShareMint,
     TAccountVault,
     TAccountDeadShares,
+    TAccountCollection,
     TAccountTokenProgram,
     TAccountShareTokenProgram,
     TAccountSystemProgram,
@@ -258,6 +278,10 @@ export async function getInitPoolInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountDeadShares,
       InstructionAccountInputAddress<TAccountDeadShares>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountCollection,
+      InstructionAccountInputAddress<TAccountCollection>
     >,
     ResolvedInstructionAccountMeta<
       TAccountTokenProgram,
@@ -311,6 +335,11 @@ export async function getInitPoolInstructionAsync<
       value: input.deadShares ?? null,
       isSigner: false,
       isWritable: true,
+    },
+    collection: {
+      value: input.collection ?? null,
+      isSigner: false,
+      isWritable: false,
     },
     tokenProgram: {
       value: input.tokenProgram ?? null,
@@ -411,6 +440,7 @@ export async function getInitPoolInstructionAsync<
       getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("deadShares", accounts.deadShares),
+      getAccountMeta("collection", accounts.collection),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
@@ -448,6 +478,10 @@ export async function getInitPoolInstructionAsync<
       InstructionAccountInputAddress<TAccountDeadShares>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountCollection,
+      InstructionAccountInputAddress<TAccountCollection>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountTokenProgram,
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
@@ -477,6 +511,7 @@ export type InitPoolInput<
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput = InstructionAccountInput,
+  TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountShareTokenProgram extends InstructionAccountInput =
@@ -505,6 +540,11 @@ export type InitPoolInput<
    * first deposit (in this transaction or a later one).
    */
   deadShares: TAccountDeadShares;
+  /**
+   * The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch
+   * adds the check that it is a Core collection the pool can mint into.
+   */
+  collection: TAccountCollection;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
   tokenProgram?: TAccountTokenProgram;
   /** The token program of `share_mint` (Token-2022 in production, under Token ACL). */
@@ -514,6 +554,7 @@ export type InitPoolInput<
   program?: TAccountProgram;
   gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
+  attestor: InitPoolInstructionDataArgs["attestor"];
 };
 
 export function getInitPoolInstruction<
@@ -523,6 +564,7 @@ export function getInitPoolInstruction<
   TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput,
+  TAccountCollection extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
   TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
@@ -537,6 +579,7 @@ export function getInitPoolInstruction<
     TAccountShareMint,
     TAccountVault,
     TAccountDeadShares,
+    TAccountCollection,
     TAccountTokenProgram,
     TAccountShareTokenProgram,
     TAccountSystemProgram,
@@ -571,6 +614,10 @@ export function getInitPoolInstruction<
   ResolvedInstructionAccountMeta<
     TAccountDeadShares,
     InstructionAccountInputAddress<TAccountDeadShares>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountCollection,
+    InstructionAccountInputAddress<TAccountCollection>
   >,
   ResolvedInstructionAccountMeta<
     TAccountTokenProgram,
@@ -623,6 +670,11 @@ export function getInitPoolInstruction<
       value: input.deadShares ?? null,
       isSigner: false,
       isWritable: true,
+    },
+    collection: {
+      value: input.collection ?? null,
+      isSigner: false,
+      isWritable: false,
     },
     tokenProgram: {
       value: input.tokenProgram ?? null,
@@ -680,6 +732,7 @@ export function getInitPoolInstruction<
       getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("deadShares", accounts.deadShares),
+      getAccountMeta("collection", accounts.collection),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
@@ -715,6 +768,10 @@ export function getInitPoolInstruction<
     ResolvedInstructionAccountMeta<
       TAccountDeadShares,
       InstructionAccountInputAddress<TAccountDeadShares>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountCollection,
+      InstructionAccountInputAddress<TAccountCollection>
     >,
     ResolvedInstructionAccountMeta<
       TAccountTokenProgram,
@@ -763,13 +820,18 @@ export type ParsedInitPoolInstruction<
      * first deposit (in this transaction or a later one).
      */
     deadShares: TAccountMetas[5];
+    /**
+     * The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch
+     * adds the check that it is a Core collection the pool can mint into.
+     */
+    collection: TAccountMetas[6];
     /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
-    tokenProgram: TAccountMetas[6];
+    tokenProgram: TAccountMetas[7];
     /** The token program of `share_mint` (Token-2022 in production, under Token ACL). */
-    shareTokenProgram: TAccountMetas[7];
-    systemProgram: TAccountMetas[8];
-    eventAuthority: TAccountMetas[9];
-    program: TAccountMetas[10];
+    shareTokenProgram: TAccountMetas[8];
+    systemProgram: TAccountMetas[9];
+    eventAuthority: TAccountMetas[10];
+    program: TAccountMetas[11];
   };
   data: InitPoolInstructionData;
 };
@@ -782,12 +844,12 @@ export function parseInitPoolInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedInitPoolInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 11) {
+  if (instruction.accounts.length < 12) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 11,
+        expectedAccountMetas: 12,
       },
     );
   }
@@ -806,6 +868,7 @@ export function parseInitPoolInstruction<
       shareMint: getNextAccount(),
       vault: getNextAccount(),
       deadShares: getNextAccount(),
+      collection: getNextAccount(),
       tokenProgram: getNextAccount(),
       shareTokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),
