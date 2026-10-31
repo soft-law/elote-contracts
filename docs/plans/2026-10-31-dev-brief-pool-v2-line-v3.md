@@ -221,7 +221,15 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `maxLinePrincipal`. The app and backend must pick these up.
 - **Rule agreed the same day:** only the developer session edits its worktree; the coordinator
   sends changes as messages.
-- **Next:** PR 2 steps 1 to 4 on `v2/pool-and-lines` from `hardening/phase-1`.
+- **PR 2 step 1 accepted** (Token interface; 83 Rust + 6 JS; repay 59,128 CU at 120). Every money
+  instruction now takes the asset mint read-only and an explicit token program: app and backend
+  change list.
+- **Step 2 answers:** `Pausable` is accepted and recorded like the freeze authority, as
+  `asset_controls: u8` in `Pool.reserved` (bit 0 freeze authority, bit 1 Pausable) replacing the
+  single `asset_freezable` flag; a `DefaultAccountState` other than Initialized on the asset is
+  rejected; any confidential extension (`ConfidentialTransferMint`, `ConfidentialTransferFeeConfig`,
+  `ConfidentialMintBurn`) is rejected, because the NAV reads `vault.amount`.
+- **Next:** PR 2 steps 2 to 4.
 
 ## Points the coordinator still owns
 
