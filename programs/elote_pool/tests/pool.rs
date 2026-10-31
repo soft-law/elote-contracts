@@ -202,7 +202,8 @@ fn deposit_and_redeem_reject_wrong_accounts() {
 
     // A vault that is not the pool's.
     let mut ix = env.deposit_ix(&k, &a.pubkey(), UNIT);
-    ix.accounts[3].pubkey = ata(&other.pubkey(), &k.asset_mint);
+    let vault_index = ix.accounts.iter().position(|m| m.pubkey == k.vault).expect("vault meta");
+    ix.accounts[vault_index].pubkey = ata(&other.pubkey(), &k.asset_mint);
     env.expect_err(ix, &a, &[], E_WRONG_ACCOUNT);
 }
 
@@ -340,6 +341,34 @@ fn init_pool_records_the_line_cap_and_bounds_it() {
         let ix = env.init_pool_ix_full(&admin.pubkey(), &mint, 0, bad);
         env.expect_err(ix, &admin, &[], E_WRONG_AMOUNT);
     }
+}
+
+/// Series-shelf 2a: the program speaks the token interface, so a Token-2022 asset (MEX, CETES)
+/// runs the whole cycle: deposit, draw, repay with interest, redeem at the higher NAV.
+#[test]
+fn a_pool_on_a_token_2022_asset_runs_the_full_cycle() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool_2022();
+    assert_eq!(env.mint_program(&k.asset_mint), TOKEN_2022_PROGRAM_ID);
+    assert_eq!(env.account(&k.vault).owner, TOKEN_2022_PROGRAM_ID, "the vault lives under Token-2022");
+
+    let a = env.investor(&k, 10 * UNIT);
+    let minted = env.deposit(&k, &a, 10 * UNIT).shares;
+    assert_eq!(minted, 10 * UNIT - DEAD_SHARES);
+    assert_eq!(env.token_balance(&k.vault), 10 * UNIT);
+
+    let borrower = env.borrower(&k);
+    let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000);
+    env.draw(&k, line_id, &borrower);
+    assert_eq!(env.token_balance(&k.asset_ata(&borrower.pubkey())), 4 * UNIT);
+    let admin = env.admin.insecure_clone();
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 400_000);
+    env.repay(&k, line_id, &borrower, 4 * UNIT + 400_000);
+    assert_eq!(env.nav(&k), 10 * UNIT + 400_000);
+
+    let out = env.redeem(&k, &a, minted);
+    assert_eq!(out.assets, (minted as u128 * (10 * UNIT + 400_000) as u128 / (10 * UNIT) as u128) as u64);
+    assert_eq!(env.token_balance(&k.asset_ata(&a.pubkey())), out.assets);
 }
 
 /// SPL Token accepts any `decimals` byte. Above 19, `10^decimals` does not fit a `u64`, so no

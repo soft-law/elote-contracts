@@ -9,7 +9,7 @@
 //! it once.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::errors::PoolError;
 use crate::events::{
@@ -57,7 +57,7 @@ pub struct OpenLine<'info> {
 
     /// Read for the NAV the concentration cap is measured against.
     #[account(address = pool.vault @ PoolError::WrongAccount)]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
     pub system_program: Program<'info, System>,
 }
@@ -200,17 +200,21 @@ pub struct Draw<'info> {
     )]
     pub line: Account<'info, CreditLine>,
 
+    /// Read for its decimals (`transfer_checked`).
+    #[account(address = pool.asset_mint @ PoolError::WrongAccount)]
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
+
     #[account(mut, address = pool.vault @ PoolError::WrongAccount)]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         constraint = borrower_asset_account.mint == pool.asset_mint @ PoolError::WrongAccount,
         constraint = borrower_asset_account.owner == borrower.key() @ PoolError::WrongAccount,
     )]
-    pub borrower_asset_account: Box<Account<'info, TokenAccount>>,
+    pub borrower_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 pub fn draw(ctx: Context<Draw>) -> Result<()> {
@@ -228,17 +232,19 @@ pub fn draw(ctx: Context<Draw>) -> Result<()> {
     let amount = line.principal;
     require!(amount <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
 
-    token::transfer(
+    token::transfer_checked(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.key(),
-            Transfer {
+            TransferChecked {
                 from: ctx.accounts.vault.to_account_info(),
+                mint: ctx.accounts.asset_mint.to_account_info(),
                 to: ctx.accounts.borrower_asset_account.to_account_info(),
                 authority: ctx.accounts.pool.to_account_info(),
             },
             pool_signer!(pool),
         ),
         amount,
+        ctx.accounts.asset_mint.decimals,
     )?;
 
     let pool = &mut ctx.accounts.pool;
@@ -285,17 +291,21 @@ pub struct Repay<'info> {
     )]
     pub line: Account<'info, CreditLine>,
 
+    /// Read for its decimals (`transfer_checked`).
+    #[account(address = pool.asset_mint @ PoolError::WrongAccount)]
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
+
     #[account(mut, address = pool.vault @ PoolError::WrongAccount)]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         constraint = payer_asset_account.mint == pool.asset_mint @ PoolError::WrongAccount,
         constraint = payer_asset_account.owner == payer.key() @ PoolError::WrongAccount,
     )]
-    pub payer_asset_account: Box<Account<'info, TokenAccount>>,
+    pub payer_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 /// Version 1: `amount` must not exceed what remains; principal first, then interest.
@@ -340,16 +350,18 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
         .and_then(|v| v.checked_add(principal_part))
         .ok_or(PoolError::Overflow)?;
 
-    token::transfer(
+    token::transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.key(),
-            Transfer {
+            TransferChecked {
                 from: ctx.accounts.payer_asset_account.to_account_info(),
+                mint: ctx.accounts.asset_mint.to_account_info(),
                 to: ctx.accounts.vault.to_account_info(),
                 authority: ctx.accounts.payer.to_account_info(),
             },
         ),
         transfer,
+        ctx.accounts.asset_mint.decimals,
     )?;
 
     let pool = &mut ctx.accounts.pool;
@@ -498,7 +510,7 @@ pub struct WriteOff<'info> {
 
     /// Read for the NAV in the event.
     #[account(address = pool.vault @ PoolError::WrongAccount)]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 }
 
 /// Recognises the unpaid principal of an overdue line as a loss. Admin only; not blocked by the

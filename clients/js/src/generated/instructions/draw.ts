@@ -56,6 +56,7 @@ export type DrawInstruction<
   TAccountBorrower extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
+  TAccountAssetMint extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountBorrowerAssetAccount extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
@@ -78,6 +79,9 @@ export type DrawInstruction<
       TAccountLine extends string
         ? WritableAccount<TAccountLine>
         : TAccountLine,
+      TAccountAssetMint extends string
+        ? ReadonlyAccount<TAccountAssetMint>
+        : TAccountAssetMint,
       TAccountVault extends string
         ? WritableAccount<TAccountVault>
         : TAccountVault,
@@ -128,6 +132,7 @@ export type DrawAsyncInput<
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountBorrowerAssetAccount extends InstructionAccountInput =
     InstructionAccountInput,
@@ -140,6 +145,8 @@ export type DrawAsyncInput<
   borrower: TAccountBorrower;
   pool: TAccountPool;
   line: TAccountLine;
+  /** Read for its decimals (`transfer_checked`). */
+  assetMint: TAccountAssetMint;
   vault: TAccountVault;
   borrowerAssetAccount: TAccountBorrowerAssetAccount;
   tokenProgram?: TAccountTokenProgram;
@@ -151,6 +158,7 @@ export async function getDrawInstructionAsync<
   TAccountBorrower extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountBorrowerAssetAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
@@ -162,6 +170,7 @@ export async function getDrawInstructionAsync<
     TAccountBorrower,
     TAccountPool,
     TAccountLine,
+    TAccountAssetMint,
     TAccountVault,
     TAccountBorrowerAssetAccount,
     TAccountTokenProgram,
@@ -185,6 +194,10 @@ export async function getDrawInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountLine,
       InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAssetMint,
+      InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountVault,
@@ -228,6 +241,11 @@ export async function getDrawInstructionAsync<
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    assetMint: {
+      value: input.assetMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     vault: { value: input.vault ?? null, isSigner: false, isWritable: true },
     borrowerAssetAccount: {
       value: input.borrowerAssetAccount ?? null,
@@ -276,6 +294,7 @@ export async function getDrawInstructionAsync<
       getAccountMeta("borrower", accounts.borrower),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
+      getAccountMeta("assetMint", accounts.assetMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("borrowerAssetAccount", accounts.borrowerAssetAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
@@ -297,6 +316,10 @@ export async function getDrawInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountLine,
       InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAssetMint,
+      InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountVault,
@@ -325,6 +348,7 @@ export type DrawInput<
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountBorrowerAssetAccount extends InstructionAccountInput =
     InstructionAccountInput,
@@ -337,6 +361,8 @@ export type DrawInput<
   borrower: TAccountBorrower;
   pool: TAccountPool;
   line: TAccountLine;
+  /** Read for its decimals (`transfer_checked`). */
+  assetMint: TAccountAssetMint;
   vault: TAccountVault;
   borrowerAssetAccount: TAccountBorrowerAssetAccount;
   tokenProgram?: TAccountTokenProgram;
@@ -348,6 +374,7 @@ export function getDrawInstruction<
   TAccountBorrower extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountBorrowerAssetAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
@@ -359,6 +386,7 @@ export function getDrawInstruction<
     TAccountBorrower,
     TAccountPool,
     TAccountLine,
+    TAccountAssetMint,
     TAccountVault,
     TAccountBorrowerAssetAccount,
     TAccountTokenProgram,
@@ -381,6 +409,10 @@ export function getDrawInstruction<
   ResolvedInstructionAccountMeta<
     TAccountLine,
     InstructionAccountInputAddress<TAccountLine>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountAssetMint,
+    InstructionAccountInputAddress<TAccountAssetMint>
   >,
   ResolvedInstructionAccountMeta<
     TAccountVault,
@@ -423,6 +455,11 @@ export function getDrawInstruction<
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    assetMint: {
+      value: input.assetMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     vault: { value: input.vault ?? null, isSigner: false, isWritable: true },
     borrowerAssetAccount: {
       value: input.borrowerAssetAccount ?? null,
@@ -465,6 +502,7 @@ export function getDrawInstruction<
       getAccountMeta("borrower", accounts.borrower),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
+      getAccountMeta("assetMint", accounts.assetMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("borrowerAssetAccount", accounts.borrowerAssetAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
@@ -486,6 +524,10 @@ export function getDrawInstruction<
     ResolvedInstructionAccountMeta<
       TAccountLine,
       InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAssetMint,
+      InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountVault,
@@ -519,11 +561,13 @@ export type ParsedDrawInstruction<
     borrower: TAccountMetas[0];
     pool: TAccountMetas[1];
     line: TAccountMetas[2];
-    vault: TAccountMetas[3];
-    borrowerAssetAccount: TAccountMetas[4];
-    tokenProgram: TAccountMetas[5];
-    eventAuthority: TAccountMetas[6];
-    program: TAccountMetas[7];
+    /** Read for its decimals (`transfer_checked`). */
+    assetMint: TAccountMetas[3];
+    vault: TAccountMetas[4];
+    borrowerAssetAccount: TAccountMetas[5];
+    tokenProgram: TAccountMetas[6];
+    eventAuthority: TAccountMetas[7];
+    program: TAccountMetas[8];
   };
   data: DrawInstructionData;
 };
@@ -536,12 +580,12 @@ export function parseDrawInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedDrawInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 8) {
+  if (instruction.accounts.length < 9) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 8,
+        expectedAccountMetas: 9,
       },
     );
   }
@@ -557,6 +601,7 @@ export function parseDrawInstruction<
       borrower: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
+      assetMint: getNextAccount(),
       vault: getNextAccount(),
       borrowerAssetAccount: getNextAccount(),
       tokenProgram: getNextAccount(),

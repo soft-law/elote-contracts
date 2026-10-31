@@ -57,6 +57,7 @@ export type DepositInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountDepositor extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
+  TAccountAssetMint extends string | AccountMeta<string> = string,
   TAccountShareMint extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountDeadShares extends string | AccountMeta<string> = string,
@@ -79,6 +80,9 @@ export type DepositInstruction<
       TAccountPool extends string
         ? ReadonlyAccount<TAccountPool>
         : TAccountPool,
+      TAccountAssetMint extends string
+        ? ReadonlyAccount<TAccountAssetMint>
+        : TAccountAssetMint,
       TAccountShareMint extends string
         ? WritableAccount<TAccountShareMint>
         : TAccountShareMint,
@@ -150,6 +154,7 @@ export function getDepositInstructionDataCodec(): FixedSizeCodec<
 export type DepositAsyncInput<
   TAccountDepositor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput = InstructionAccountInput,
@@ -165,6 +170,8 @@ export type DepositAsyncInput<
 > = {
   depositor: TAccountDepositor;
   pool: TAccountPool;
+  /** Read for its decimals (`transfer_checked`). */
+  assetMint: TAccountAssetMint;
   shareMint: TAccountShareMint;
   vault: TAccountVault;
   deadShares: TAccountDeadShares;
@@ -180,6 +187,7 @@ export type DepositAsyncInput<
 export async function getDepositInstructionAsync<
   TAccountDepositor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput,
@@ -193,6 +201,7 @@ export async function getDepositInstructionAsync<
   input: DepositAsyncInput<
     TAccountDepositor,
     TAccountPool,
+    TAccountAssetMint,
     TAccountShareMint,
     TAccountVault,
     TAccountDeadShares,
@@ -215,6 +224,10 @@ export async function getDepositInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAssetMint,
+      InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountShareMint,
@@ -269,6 +282,11 @@ export async function getDepositInstructionAsync<
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    assetMint: {
+      value: input.assetMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     shareMint: {
       value: input.shareMint ?? null,
       isSigner: false,
@@ -334,6 +352,7 @@ export async function getDepositInstructionAsync<
     accounts: [
       getAccountMeta("depositor", accounts.depositor),
       getAccountMeta("pool", accounts.pool),
+      getAccountMeta("assetMint", accounts.assetMint),
       getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("deadShares", accounts.deadShares),
@@ -356,6 +375,10 @@ export async function getDepositInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAssetMint,
+      InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountShareMint,
@@ -395,6 +418,7 @@ export async function getDepositInstructionAsync<
 export type DepositInput<
   TAccountDepositor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput = InstructionAccountInput,
@@ -410,6 +434,8 @@ export type DepositInput<
 > = {
   depositor: TAccountDepositor;
   pool: TAccountPool;
+  /** Read for its decimals (`transfer_checked`). */
+  assetMint: TAccountAssetMint;
   shareMint: TAccountShareMint;
   vault: TAccountVault;
   deadShares: TAccountDeadShares;
@@ -425,6 +451,7 @@ export type DepositInput<
 export function getDepositInstruction<
   TAccountDepositor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput,
@@ -438,6 +465,7 @@ export function getDepositInstruction<
   input: DepositInput<
     TAccountDepositor,
     TAccountPool,
+    TAccountAssetMint,
     TAccountShareMint,
     TAccountVault,
     TAccountDeadShares,
@@ -459,6 +487,10 @@ export function getDepositInstruction<
   ResolvedInstructionAccountMeta<
     TAccountPool,
     InstructionAccountInputAddress<TAccountPool>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountAssetMint,
+    InstructionAccountInputAddress<TAccountAssetMint>
   >,
   ResolvedInstructionAccountMeta<
     TAccountShareMint,
@@ -512,6 +544,11 @@ export function getDepositInstruction<
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    assetMint: {
+      value: input.assetMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     shareMint: {
       value: input.shareMint ?? null,
       isSigner: false,
@@ -571,6 +608,7 @@ export function getDepositInstruction<
     accounts: [
       getAccountMeta("depositor", accounts.depositor),
       getAccountMeta("pool", accounts.pool),
+      getAccountMeta("assetMint", accounts.assetMint),
       getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("deadShares", accounts.deadShares),
@@ -593,6 +631,10 @@ export function getDepositInstruction<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAssetMint,
+      InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountShareMint,
@@ -637,14 +679,16 @@ export type ParsedDepositInstruction<
   accounts: {
     depositor: TAccountMetas[0];
     pool: TAccountMetas[1];
-    shareMint: TAccountMetas[2];
-    vault: TAccountMetas[3];
-    deadShares: TAccountMetas[4];
-    depositorAssetAccount: TAccountMetas[5];
-    depositorShareAccount: TAccountMetas[6];
-    tokenProgram: TAccountMetas[7];
-    eventAuthority: TAccountMetas[8];
-    program: TAccountMetas[9];
+    /** Read for its decimals (`transfer_checked`). */
+    assetMint: TAccountMetas[2];
+    shareMint: TAccountMetas[3];
+    vault: TAccountMetas[4];
+    deadShares: TAccountMetas[5];
+    depositorAssetAccount: TAccountMetas[6];
+    depositorShareAccount: TAccountMetas[7];
+    tokenProgram: TAccountMetas[8];
+    eventAuthority: TAccountMetas[9];
+    program: TAccountMetas[10];
   };
   data: DepositInstructionData;
 };
@@ -657,12 +701,12 @@ export function parseDepositInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedDepositInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 10) {
+  if (instruction.accounts.length < 11) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 10,
+        expectedAccountMetas: 11,
       },
     );
   }
@@ -677,6 +721,7 @@ export function parseDepositInstruction<
     accounts: {
       depositor: getNextAccount(),
       pool: getNextAccount(),
+      assetMint: getNextAccount(),
       shareMint: getNextAccount(),
       vault: getNextAccount(),
       deadShares: getNextAccount(),

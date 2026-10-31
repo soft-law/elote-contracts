@@ -262,6 +262,7 @@ await send("init_pool", admin, [
     shareMint,
     vault,
     deadShares,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
     gracePeriodSeconds: graceSeconds,
     maxLineBps,
   }),
@@ -302,8 +303,10 @@ async function deposit(label: string, who: KeyPairSigner, assets: bigint) {
     await getDepositInstructionAsync({
       depositor: who,
       pool,
+      assetMint: assetMint.address,
       shareMint,
       vault,
+      tokenProgram: TOKEN_PROGRAM_ADDRESS,
       depositorAssetAccount: await ataOf(who.address, assetMint.address),
       depositorShareAccount: await ataOf(who.address, shareMint),
       deadShares,
@@ -341,19 +344,38 @@ await send("open_line", admin, [
 ]);
 const borrowerAsset = await ataOf(borrower.address, assetMint.address);
 await send("draw: 6,000 tMXN (devnet test token, no value) to the borrower", borrower, [
-  await getDrawInstructionAsync({ borrower, pool, line, vault, borrowerAssetAccount: borrowerAsset }),
+  await getDrawInstructionAsync({
+    borrower,
+    pool,
+    line,
+    assetMint: assetMint.address,
+    vault,
+    borrowerAssetAccount: borrowerAsset,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+  }),
 ]);
 const drawn = await snapshot();
 await send("repay by the borrower: 6,000 tMXN (devnet test token, no value) of principal", borrower, [
-  await getRepayInstructionAsync({ payer: borrower, pool, line, vault, payerAssetAccount: borrowerAsset, amount: 6_000n * UNIT }),
+  await getRepayInstructionAsync({
+    payer: borrower,
+    pool,
+    line,
+    assetMint: assetMint.address,
+    vault,
+    payerAssetAccount: borrowerAsset,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    amount: 6_000n * UNIT,
+  }),
 ]);
 await send("repay by the sponsor: 720 tMXN (devnet test token, no value) of interest", sponsor, [
   await getRepayInstructionAsync({
     payer: sponsor,
     pool,
     line,
+    assetMint: assetMint.address,
     vault,
     payerAssetAccount: await ataOf(sponsor.address, assetMint.address),
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
     amount: 720n * UNIT,
   }),
 ]);
@@ -366,8 +388,10 @@ await send("investor A redeems 4,000 shares", investorA, [
   await getRedeemInstructionAsync({
     holder: investorA,
     pool,
+    assetMint: assetMint.address,
     shareMint,
     vault,
+    tokenProgram: TOKEN_PROGRAM_ADDRESS,
     holderShareAccount: await ataOf(investorA.address, shareMint),
     holderAssetAccount: await ataOf(investorA.address, assetMint.address),
     shares: redeemShares,
@@ -426,7 +450,15 @@ async function scheduleDemo() {
     }),
   ]);
   await send("draw: 600 tMXN (devnet test token, no value) to the borrower", borrower, [
-    await getDrawInstructionAsync({ borrower, pool, line: sLine, vault, borrowerAssetAccount: borrowerAsset }),
+    await getDrawInstructionAsync({
+      borrower,
+      pool,
+      line: sLine,
+      assetMint: assetMint.address,
+      vault,
+      borrowerAssetAccount: borrowerAsset,
+      tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    }),
   ]);
 
   const grace = poolGracePeriodSeconds((await fetchPool(rpc, pool, { commitment: "confirmed" })).data.reserved);
@@ -458,7 +490,16 @@ async function scheduleDemo() {
   const amount = a.overdue + installment + 2n * a.lateDue + 1_000n;
   const lateBefore = s.lateCollected;
   await send("repay: overdue installment, its late interest and the next installment", borrower, [
-    await getRepayInstructionAsync({ payer: borrower, pool, line: sLine, vault, payerAssetAccount: borrowerAsset, amount }),
+    await getRepayInstructionAsync({
+      payer: borrower,
+      pool,
+      line: sLine,
+      assetMint: assetMint.address,
+      vault,
+      payerAssetAccount: borrowerAsset,
+      tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      amount,
+    }),
   ]);
   ({ l, s, a } = await read());
   console.log(`  late interest collected ${fmt(s.lateCollected - lateBefore)}; missed installments now ${a.missed}`);

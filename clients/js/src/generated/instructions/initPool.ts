@@ -173,6 +173,7 @@ export type InitPoolAsyncInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   admin: TAccountAdmin;
+  /** Classic SPL Token or Token-2022; `token_program` must be the mint's own program. */
   assetMint: TAccountAssetMint;
   pool?: TAccountPool;
   shareMint?: TAccountShareMint;
@@ -180,6 +181,7 @@ export type InitPoolAsyncInput<
   vault?: TAccountVault;
   /** Holds the dead shares of the first deposit; nothing ever moves them. */
   deadShares?: TAccountDeadShares;
+  /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
   tokenProgram?: TAccountTokenProgram;
   systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
@@ -467,6 +469,7 @@ export type InitPoolInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   admin: TAccountAdmin;
+  /** Classic SPL Token or Token-2022; `token_program` must be the mint's own program. */
   assetMint: TAccountAssetMint;
   pool: TAccountPool;
   shareMint: TAccountShareMint;
@@ -474,6 +477,7 @@ export type InitPoolInput<
   vault: TAccountVault;
   /** Holds the dead shares of the first deposit; nothing ever moves them. */
   deadShares: TAccountDeadShares;
+  /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
   tokenProgram?: TAccountTokenProgram;
   systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
@@ -696,6 +700,7 @@ export type ParsedInitPoolInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     admin: TAccountMetas[0];
+    /** Classic SPL Token or Token-2022; `token_program` must be the mint's own program. */
     assetMint: TAccountMetas[1];
     pool: TAccountMetas[2];
     shareMint: TAccountMetas[3];
@@ -703,6 +708,7 @@ export type ParsedInitPoolInstruction<
     vault: TAccountMetas[4];
     /** Holds the dead shares of the first deposit; nothing ever moves them. */
     deadShares: TAccountMetas[5];
+    /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
     tokenProgram: TAccountMetas[6];
     systemProgram: TAccountMetas[7];
     eventAuthority: TAccountMetas[8];

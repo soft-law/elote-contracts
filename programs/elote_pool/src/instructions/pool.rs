@@ -1,7 +1,7 @@
 //! Pool creation, deposits and redemptions at net asset value, and the pause switch.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
+use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked};
 
 use crate::errors::PoolError;
 use crate::events::{Deposited, PoolConfigured, PoolInitialized, PoolLineCapSet, PoolPaused, Redeemed};
@@ -31,7 +31,8 @@ pub struct InitPool<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
-    pub asset_mint: Box<Account<'info, Mint>>,
+    /// Classic SPL Token or Token-2022; `token_program` must be the mint's own program.
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         init,
@@ -49,8 +50,9 @@ pub struct InitPool<'info> {
         bump,
         mint::decimals = asset_mint.decimals,
         mint::authority = pool,
+        mint::token_program = token_program,
     )]
-    pub share_mint: Box<Account<'info, Mint>>,
+    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// A PDA token account, so nobody can pre-create it and block the pool.
     #[account(
@@ -60,8 +62,9 @@ pub struct InitPool<'info> {
         bump,
         token::mint = asset_mint,
         token::authority = pool,
+        token::token_program = token_program,
     )]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// Holds the dead shares of the first deposit; nothing ever moves them.
     #[account(
@@ -71,10 +74,12 @@ pub struct InitPool<'info> {
         bump,
         token::mint = share_mint,
         token::authority = pool,
+        token::token_program = token_program,
     )]
-    pub dead_shares: Box<Account<'info, TokenAccount>>,
+    pub dead_shares: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    pub token_program: Program<'info, Token>,
+    /// The token program of `asset_mint` (classic SPL Token or Token-2022).
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 
@@ -127,30 +132,34 @@ pub struct Deposit<'info> {
     )]
     pub pool: Account<'info, Pool>,
 
+    /// Read for its decimals (`transfer_checked`).
+    #[account(address = pool.asset_mint @ PoolError::WrongAccount)]
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
+
     #[account(mut, address = pool.share_mint @ PoolError::WrongAccount)]
-    pub share_mint: Box<Account<'info, Mint>>,
+    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(mut, address = pool.vault @ PoolError::WrongAccount)]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(mut, address = pool.dead_shares @ PoolError::WrongAccount)]
-    pub dead_shares: Box<Account<'info, TokenAccount>>,
+    pub dead_shares: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         constraint = depositor_asset_account.mint == pool.asset_mint @ PoolError::WrongAccount,
         constraint = depositor_asset_account.owner == depositor.key() @ PoolError::WrongAccount,
     )]
-    pub depositor_asset_account: Box<Account<'info, TokenAccount>>,
+    pub depositor_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         constraint = depositor_share_account.mint == pool.share_mint @ PoolError::WrongAccount,
         constraint = depositor_share_account.owner == depositor.key() @ PoolError::WrongAccount,
     )]
-    pub depositor_share_account: Box<Account<'info, TokenAccount>>,
+    pub depositor_share_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 /// The first deposit locks `DEAD_SHARES` of its shares in the pool-owned dead account; the
@@ -176,16 +185,18 @@ pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Resul
     require!(shares >= min_shares_out, PoolError::SlippageExceeded);
 
     let token_program = ctx.accounts.token_program.key();
-    token::transfer(
+    token::transfer_checked(
         CpiContext::new(
             token_program,
-            Transfer {
+            TransferChecked {
                 from: ctx.accounts.depositor_asset_account.to_account_info(),
+                mint: ctx.accounts.asset_mint.to_account_info(),
                 to: ctx.accounts.vault.to_account_info(),
                 authority: ctx.accounts.depositor.to_account_info(),
             },
         ),
         assets,
+        ctx.accounts.asset_mint.decimals,
     )?;
     token::mint_to(
         CpiContext::new_with_signer(
@@ -243,27 +254,31 @@ pub struct Redeem<'info> {
     )]
     pub pool: Account<'info, Pool>,
 
+    /// Read for its decimals (`transfer_checked`).
+    #[account(address = pool.asset_mint @ PoolError::WrongAccount)]
+    pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
+
     #[account(mut, address = pool.share_mint @ PoolError::WrongAccount)]
-    pub share_mint: Box<Account<'info, Mint>>,
+    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(mut, address = pool.vault @ PoolError::WrongAccount)]
-    pub vault: Box<Account<'info, TokenAccount>>,
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         constraint = holder_share_account.mint == pool.share_mint @ PoolError::WrongAccount,
         constraint = holder_share_account.owner == holder.key() @ PoolError::WrongAccount,
     )]
-    pub holder_share_account: Box<Account<'info, TokenAccount>>,
+    pub holder_share_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         mut,
         constraint = holder_asset_account.mint == pool.asset_mint @ PoolError::WrongAccount,
         constraint = holder_asset_account.owner == holder.key() @ PoolError::WrongAccount,
     )]
-    pub holder_asset_account: Box<Account<'info, TokenAccount>>,
+    pub holder_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 /// `min_assets_out` is the holder's slippage floor.
@@ -292,17 +307,19 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
         ),
         shares,
     )?;
-    token::transfer(
+    token::transfer_checked(
         CpiContext::new_with_signer(
             token_program,
-            Transfer {
+            TransferChecked {
                 from: ctx.accounts.vault.to_account_info(),
+                mint: ctx.accounts.asset_mint.to_account_info(),
                 to: ctx.accounts.holder_asset_account.to_account_info(),
                 authority: ctx.accounts.pool.to_account_info(),
             },
             pool_signer!(pool),
         ),
         assets,
+        ctx.accounts.asset_mint.decimals,
     )?;
 
     ctx.accounts.vault.reload()?;

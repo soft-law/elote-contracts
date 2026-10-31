@@ -54,6 +54,12 @@
           }
         },
         {
+          "name": "asset_mint",
+          "docs": [
+            "Read for its decimals (`transfer_checked`)."
+          ]
+        },
+        {
           "name": "share_mint",
           "writable": true
         },
@@ -74,8 +80,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         },
         {
           "name": "event_authority"
@@ -176,6 +181,12 @@
           }
         },
         {
+          "name": "asset_mint",
+          "docs": [
+            "Read for its decimals (`transfer_checked`)."
+          ]
+        },
+        {
           "name": "vault",
           "writable": true
         },
@@ -184,8 +195,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         },
         {
           "name": "event_authority"
@@ -220,7 +230,10 @@
           "signer": true
         },
         {
-          "name": "asset_mint"
+          "name": "asset_mint",
+          "docs": [
+            "Classic SPL Token or Token-2022; `token_program` must be the mint's own program."
+          ]
         },
         {
           "name": "pool",
@@ -321,7 +334,9 @@
         },
         {
           "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "docs": [
+            "The token program of `asset_mint` (classic SPL Token or Token-2022)."
+          ]
         },
         {
           "name": "system_program",
@@ -625,6 +640,12 @@
           }
         },
         {
+          "name": "asset_mint",
+          "docs": [
+            "Read for its decimals (`transfer_checked`)."
+          ]
+        },
+        {
           "name": "share_mint",
           "writable": true
         },
@@ -641,8 +662,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         },
         {
           "name": "event_authority"
@@ -744,6 +764,12 @@
           }
         },
         {
+          "name": "asset_mint",
+          "docs": [
+            "Read for its decimals (`transfer_checked`)."
+          ]
+        },
+        {
           "name": "vault",
           "writable": true
         },
@@ -752,8 +778,7 @@
           "writable": true
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "token_program"
         },
         {
           "name": "event_authority"

@@ -264,8 +264,9 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
 - **Constraints:** `pool` is `init` at `["pool", admin, asset_mint]`; `share_mint` is `init` at
   `["shares", pool]` with `decimals = asset_mint.decimals` and `mint::authority = pool`; `vault`
   is `init` at `["vault", pool]` for `asset_mint` with `authority = pool`; `dead_shares` is
-  `init` at `["dead", pool]` for `share_mint` with `authority = pool`. `asset_mint` must
-  deserialise as a classic SPL `Mint`.
+  `init` at `["dead", pool]` for `share_mint` with `authority = pool`; all four under
+  `token_program`, an `Interface<TokenInterface>` that must be the asset mint's own program
+  (classic SPL Token or Token-2022). `asset_mint` is an `InterfaceAccount<Mint>`.
 - **Checks:** `1 <= max_line_bps <= 10 000` (`WrongAmount`); `asset_mint.decimals <= 19`, so
   that `min_first_deposit` exists (`WrongAccount`). Any value of `grace_period_seconds` is
   accepted, including zero. The asset mint is not inspected further (see §9).
@@ -277,8 +278,10 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
 ### 5.2 `deposit(assets: u64, min_shares_out: u64)`
 
 - **Signers:** `depositor`.
-- **Constraints:** `pool` re-derived from its own `admin`/`asset_mint`/`bump`; `share_mint`,
-  `vault`, `dead_shares` must equal the addresses stored in the pool (`WrongAccount`);
+- **Constraints:** `pool` re-derived from its own `admin`/`asset_mint`/`bump`; `asset_mint`
+  (read-only, for the decimals `transfer_checked` needs), `share_mint`, `vault`, `dead_shares`
+  must equal the addresses stored in the pool (`WrongAccount`); `token_program` is an
+  `Interface<TokenInterface>`;
   `depositor_asset_account` must have `mint == pool.asset_mint` and `owner == depositor`;
   `depositor_share_account` must have `mint == pool.share_mint` and `owner == depositor`.
 - **Checks, in order:** not paused (`Paused`); `assets > 0` (`WrongAmount`); read
@@ -342,7 +345,7 @@ no authority afterwards (a sponsor repays through `repay` like anyone else).
 
 - **Signers:** `borrower`.
 - **Constraints:** `line` has `has_one = pool` and `has_one = borrower` (`Unauthorized`);
-  `vault` matches the pool; `borrower_asset_account` has the pool's asset mint and is owned by
+  `asset_mint` (read-only) and `vault` match the pool; `borrower_asset_account` has the pool's asset mint and is owned by
   the borrower.
 - **Checks, in order:** not paused; `status == Approved` (`LineStatus`); `now <= term_end`
   (`TermEnded`); on a scheduled line, `now + installments * interval <= term_end`
@@ -357,8 +360,8 @@ no authority afterwards (a sponsor repays through `repay` like anyone else).
 ### 5.6 `repay(amount: u64)`
 
 - **Signers:** `payer`, anyone. The event records who paid.
-- **Constraints:** `line` has `has_one = pool`; `vault` matches; `payer_asset_account` has the
-  pool's asset mint and is owned by the payer.
+- **Constraints:** `line` has `has_one = pool`; `asset_mint` (read-only) and `vault` match the
+  pool; `payer_asset_account` has the pool's asset mint and is owned by the payer.
 - **Common checks:** status accepted (`Active` for version 1; `Active` or `InCollection` for
   version 2, `LineStatus`); `remaining = (principal - principal_repaid) + (interest_due -
   interest_repaid)`; `amount > 0`.
@@ -535,8 +538,11 @@ Other points outside the test file, from the same review and from the Etherfuse 
 - `init_pool` accepts any classic SPL mint and never checks its freeze authority. If the asset
   issuer can freeze the vault, every instruction that moves tokens fails until it is thawed
   (MEXe and MXNe both have one). Policy decision pending, part of P0-5.
-- Token-2022 mints (MEX, CETES) cannot be the asset: the program uses `anchor_spl::token`
-  (classic) and `token::transfer`, not `TokenInterface` / `transfer_checked`.
+- Inverted 2026-10-31 (series-shelf 2a): Token-2022 mints (MEX, CETES) can be the asset. The
+  program uses `anchor_spl::token_interface` (`InterfaceAccount`, `Interface<TokenInterface>`)
+  and `transfer_checked` everywhere, and every money instruction takes the asset mint read-only
+  for its decimals. `tests/pool.rs::a_pool_on_a_token_2022_asset_runs_the_full_cycle` runs the
+  whole cycle on a Token-2022 asset.
 - Missed installments are counted from amounts paid, not from due dates: a borrower who pays
   one installment of principal and one of interest in a different order is still "covered"
   by amount (review STR-1 discusses counting by due date).

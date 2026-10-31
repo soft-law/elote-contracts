@@ -10,9 +10,13 @@
 
 use anchor_lang::{AccountDeserialize, Discriminator, InstructionData, ToAccountMetas};
 use anchor_spl::associated_token::{
-    get_associated_token_address, spl_associated_token_account::instruction as ata_ix,
+    get_associated_token_address, get_associated_token_address_with_program_id,
+    spl_associated_token_account::instruction as ata_ix,
 };
-use anchor_spl::token::spl_token;
+// The Token-2022 interface crate's instruction builders accept both token program ids, so the
+// harness uses them for classic and Token-2022 mints alike.
+use anchor_spl::token_2022::spl_token_2022;
+use spl_token_2022::extension::{BaseStateWithExtensions, ExtensionType, StateWithExtensions};
 use litesvm::types::{FailedTransactionMetadata, TransactionMetadata};
 use litesvm::LiteSVM;
 use solana_instruction::Instruction;
@@ -25,6 +29,8 @@ use solana_transaction_error::TransactionError;
 /// `elote_pool`'s `declare_id!`.
 pub const PROGRAM_ID: Pubkey = pubkey!("BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM");
 pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+/// Token-2022, loaded by `LiteSVM::new()` as `spl_token_2022-10.0.0.so`.
+pub const TOKEN_2022_PROGRAM_ID: Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 pub const ATA_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 pub const SYSTEM_PROGRAM_ID: Pubkey = pubkey!("11111111111111111111111111111111");
 
@@ -95,26 +101,47 @@ pub fn line_pda(pool: &Pubkey, line_id: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"line", pool.as_ref(), &line_id.to_le_bytes()], &PROGRAM_ID)
 }
 
-/// The addresses of one pool, all derived from the admin and the asset mint.
+/// The addresses of one pool, all derived from the admin and the asset mint, plus the token
+/// program of each mint (classic SPL Token unless the pool was set up on Token-2022).
 #[derive(Clone, Copy, Debug)]
 pub struct PoolKeys {
+    pub admin: Pubkey,
     pub pool: Pubkey,
     pub asset_mint: Pubkey,
     pub share_mint: Pubkey,
     pub vault: Pubkey,
     pub dead_shares: Pubkey,
+    pub asset_program: Pubkey,
+    pub share_program: Pubkey,
 }
 
 impl PoolKeys {
+    /// A pool whose asset and shares are classic SPL Token.
     pub fn new(admin: &Pubkey, asset_mint: &Pubkey) -> Self {
+        Self::with_asset_program(admin, asset_mint, TOKEN_PROGRAM_ID)
+    }
+
+    /// A pool whose asset lives under `asset_program`; the program-created share mint follows it.
+    pub fn with_asset_program(admin: &Pubkey, asset_mint: &Pubkey, asset_program: Pubkey) -> Self {
         let pool = pool_pda(admin, asset_mint).0;
         Self {
+            admin: *admin,
             pool,
             asset_mint: *asset_mint,
             share_mint: share_mint_pda(&pool).0,
             vault: vault_pda(&pool).0,
             dead_shares: dead_shares_pda(&pool).0,
+            asset_program,
+            share_program: asset_program,
         }
+    }
+
+    pub fn asset_ata(&self, owner: &Pubkey) -> Pubkey {
+        ata_for(owner, &self.asset_mint, &self.asset_program)
+    }
+
+    pub fn share_ata(&self, owner: &Pubkey) -> Pubkey {
+        ata_for(owner, &self.share_mint, &self.share_program)
     }
 }
 
@@ -123,8 +150,14 @@ pub fn event_authority_pda() -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"__event_authority"], &PROGRAM_ID)
 }
 
+/// The classic SPL Token associated token account; for a mint under another token program use
+/// `ata_for` or `PoolKeys::asset_ata` / `share_ata`.
 pub fn ata(owner: &Pubkey, mint: &Pubkey) -> Pubkey {
     get_associated_token_address(owner, mint)
+}
+
+pub fn ata_for(owner: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
+    get_associated_token_address_with_program_id(owner, mint, token_program)
 }
 
 /// The fixed agreement hash the tests open lines with.
@@ -259,70 +292,117 @@ impl Env {
 
     // -- SPL Token helpers ---------------------------------------------------------------------
 
-    /// Creates a classic SPL mint with `authority` as mint authority.
+    /// Creates a classic SPL mint with `authority` as mint authority and no freeze authority.
     pub fn create_mint(&mut self, authority: &Pubkey, decimals: u8) -> Pubkey {
+        self.create_mint_in(&TOKEN_PROGRAM_ID, authority, None, decimals, &[], |_| vec![])
+    }
+
+    /// Creates a plain Token-2022 mint (no extensions) with `authority` as mint authority.
+    pub fn create_mint_2022(&mut self, authority: &Pubkey, decimals: u8) -> Pubkey {
+        self.create_mint_in(&TOKEN_2022_PROGRAM_ID, authority, None, decimals, &[], |_| vec![])
+    }
+
+    /// Creates a mint under `token_program` with the given mint and freeze authorities. For
+    /// Token-2022, `extensions` sizes the account and `extension_ixs(mint)` returns the extension
+    /// initializers, which must run before `initialize_mint2`.
+    pub fn create_mint_in(
+        &mut self,
+        token_program: &Pubkey,
+        authority: &Pubkey,
+        freeze_authority: Option<&Pubkey>,
+        decimals: u8,
+        extensions: &[ExtensionType],
+        extension_ixs: impl FnOnce(&Pubkey) -> Vec<Instruction>,
+    ) -> Pubkey {
         let mint = Keypair::new();
-        let len = anchor_spl::token::Mint::LEN;
+        let len = ExtensionType::try_calculate_account_len::<spl_token_2022::state::Mint>(extensions).expect("mint size");
         let lamports = self.svm.minimum_balance_for_rent_exemption(len);
-        let create = anchor_lang::solana_program::system_instruction::create_account(
+        let mut ixs = vec![anchor_lang::solana_program::system_instruction::create_account(
             &self.admin.pubkey(),
             &mint.pubkey(),
             lamports,
             len as u64,
-            &TOKEN_PROGRAM_ID,
+            token_program,
+        )];
+        ixs.extend(extension_ixs(&mint.pubkey()));
+        ixs.push(
+            spl_token_2022::instruction::initialize_mint2(token_program, &mint.pubkey(), authority, freeze_authority, decimals)
+                .expect("initialize_mint2"),
         );
-        let init = spl_token::instruction::initialize_mint2(&TOKEN_PROGRAM_ID, &mint.pubkey(), authority, None, decimals)
-            .expect("initialize_mint2");
         let admin = self.admin.insecure_clone();
-        self.send_all(&[create, init], &admin, &[&mint]);
+        self.send_all(&ixs, &admin, &[&mint]);
         mint.pubkey()
+    }
+
+    /// The token program that owns `mint`.
+    pub fn mint_program(&self, mint: &Pubkey) -> Pubkey {
+        self.account(mint).owner
+    }
+
+    /// `owner`'s associated token account for `mint`, under the mint's own token program.
+    pub fn ata_of(&self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
+        ata_for(owner, mint, &self.mint_program(mint))
     }
 
     /// Creates `owner`'s associated token account for `mint`, paid by the admin.
     pub fn create_ata(&mut self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
-        let ix = ata_ix::create_associated_token_account(&self.admin.pubkey(), owner, mint, &TOKEN_PROGRAM_ID);
+        let program = self.mint_program(mint);
+        let ix = ata_ix::create_associated_token_account(&self.admin.pubkey(), owner, mint, &program);
         let admin = self.admin.insecure_clone();
         self.send(ix, &admin, &[]);
-        ata(owner, mint)
+        ata_for(owner, mint, &program)
     }
 
     /// Mints `amount` of `mint` into `owner`'s ATA (created if missing); `authority` signs.
     pub fn mint_to(&mut self, mint: &Pubkey, authority: &Keypair, owner: &Pubkey, amount: u64) -> Pubkey {
-        let dest = ata(owner, mint);
+        let program = self.mint_program(mint);
+        let dest = ata_for(owner, mint, &program);
         if self.svm.get_account(&dest).is_none() {
             self.create_ata(owner, mint);
         }
-        let ix = spl_token::instruction::mint_to(&TOKEN_PROGRAM_ID, mint, &dest, &authority.pubkey(), &[], amount)
-            .expect("mint_to");
+        let ix = spl_token_2022::instruction::mint_to(&program, mint, &dest, &authority.pubkey(), &[], amount).expect("mint_to");
         let admin = self.admin.insecure_clone();
         self.send(ix, &admin, &[authority]);
         dest
     }
 
-    /// A plain SPL transfer between two token accounts, signed by `owner`.
-    pub fn transfer(&mut self, from: &Pubkey, to: &Pubkey, owner: &Keypair, amount: u64) {
-        let ix = spl_token::instruction::transfer(&TOKEN_PROGRAM_ID, from, to, &owner.pubkey(), &[], amount)
-            .expect("transfer");
+    /// A `transfer_checked` between two token accounts of `mint`, signed by `owner`.
+    pub fn transfer(&mut self, mint: &Pubkey, from: &Pubkey, to: &Pubkey, owner: &Keypair, amount: u64) {
+        let program = self.mint_program(mint);
+        let decimals = self.mint_decimals(mint);
+        let ix = spl_token_2022::instruction::transfer_checked(&program, from, mint, to, &owner.pubkey(), &[], amount, decimals)
+            .expect("transfer_checked");
         let admin = self.admin.insecure_clone();
         self.send(ix, &admin, &[owner]);
+    }
+
+    /// The unpacked token account (classic or Token-2022, extensions skipped).
+    pub fn token_account(&self, account: &Pubkey) -> spl_token_2022::state::Account {
+        let acc = self.account(account);
+        StateWithExtensions::<spl_token_2022::state::Account>::unpack(&acc.data).expect("token account").base
     }
 
     /// The balance of a token account, or 0 when it does not exist.
     pub fn token_balance(&self, account: &Pubkey) -> u64 {
         match self.svm.get_account(account) {
-            Some(acc) => anchor_spl::token::TokenAccount::try_deserialize(&mut acc.data.as_slice())
-                .expect("token account")
-                .amount,
+            Some(acc) => StateWithExtensions::<spl_token_2022::state::Account>::unpack(&acc.data).expect("token account").base.amount,
             None => 0,
         }
     }
 
+    /// The unpacked mint (classic or Token-2022) and the list of its extensions.
+    pub fn mint_state(&self, mint: &Pubkey) -> (spl_token_2022::state::Mint, Vec<ExtensionType>) {
+        let acc = self.account(mint);
+        let s = StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&acc.data).expect("mint");
+        (s.base, s.get_extension_types().expect("extension types"))
+    }
+
     pub fn mint_supply(&self, mint: &Pubkey) -> u64 {
-        self.anchor_account::<anchor_spl::token::Mint>(mint).supply
+        self.mint_state(mint).0.supply
     }
 
     pub fn mint_decimals(&self, mint: &Pubkey) -> u8 {
-        self.anchor_account::<anchor_spl::token::Mint>(mint).decimals
+        self.mint_state(mint).0.decimals
     }
 
     // -- pool instructions ---------------------------------------------------------------------
@@ -345,18 +425,23 @@ impl Env {
         grace_period_seconds: u32,
         max_line_bps: u16,
     ) -> Instruction {
-        let k = PoolKeys::new(admin, asset_mint);
+        let k = PoolKeys::with_asset_program(admin, asset_mint, self.mint_program(asset_mint));
+        self.init_pool_ix_for(&k, grace_period_seconds, max_line_bps)
+    }
+
+    /// `init_pool` for the pool described by `k`, under the token program `k` names.
+    pub fn init_pool_ix_for(&self, k: &PoolKeys, grace_period_seconds: u32, max_line_bps: u16) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::InitPool {
-                admin: *admin,
+                admin: k.admin,
                 asset_mint: k.asset_mint,
                 pool: k.pool,
                 share_mint: k.share_mint,
                 vault: k.vault,
                 dead_shares: k.dead_shares,
-                token_program: TOKEN_PROGRAM_ID,
+                token_program: k.asset_program,
                 system_program: SYSTEM_PROGRAM_ID,
                 event_authority,
                 program,
@@ -378,6 +463,16 @@ impl Env {
         let ix = self.init_pool_ix_with_grace(&admin.pubkey(), &asset_mint, grace_period_seconds);
         let meta = self.send(ix, &admin, &[]);
         (PoolKeys::new(&admin.pubkey(), &asset_mint), meta)
+    }
+
+    /// A pool on a plain Token-2022 asset (6 decimals, no extensions, no grace, no effective cap).
+    pub fn setup_pool_2022(&mut self) -> (PoolKeys, TransactionMetadata) {
+        let admin = self.admin.insecure_clone();
+        let asset_mint = self.create_mint_2022(&admin.pubkey(), 6);
+        let k = PoolKeys::with_asset_program(&admin.pubkey(), &asset_mint, TOKEN_2022_PROGRAM_ID);
+        let ix = self.init_pool_ix_for(&k, 0, BPS);
+        let meta = self.send(ix, &admin, &[]);
+        (k, meta)
     }
 
     /// A funded wallet holding `assets` of the pool asset, with its share account already created.
@@ -409,12 +504,13 @@ impl Env {
             accounts: elote_pool::accounts::Deposit {
                 depositor: *depositor,
                 pool: k.pool,
+                asset_mint: k.asset_mint,
                 share_mint: k.share_mint,
                 vault: k.vault,
                 dead_shares: k.dead_shares,
                 depositor_asset_account: asset_account,
                 depositor_share_account: share_account,
-                token_program: TOKEN_PROGRAM_ID,
+                token_program: k.asset_program,
                 event_authority,
                 program,
             }
@@ -428,11 +524,11 @@ impl Env {
     }
 
     pub fn deposit_ix_min(&self, k: &PoolKeys, depositor: &Pubkey, assets: u64, min_shares_out: u64) -> Instruction {
-        self.deposit_ix_full(k, depositor, ata(depositor, &k.asset_mint), ata(depositor, &k.share_mint), assets, min_shares_out)
+        self.deposit_ix_full(k, depositor, k.asset_ata(depositor), k.share_ata(depositor), assets, min_shares_out)
     }
 
     pub fn deposit_ix(&self, k: &PoolKeys, depositor: &Pubkey, assets: u64) -> Instruction {
-        self.deposit_ix_with(k, depositor, ata(depositor, &k.asset_mint), ata(depositor, &k.share_mint), assets)
+        self.deposit_ix_with(k, depositor, k.asset_ata(depositor), k.share_ata(depositor), assets)
     }
 
     pub fn deposit(&mut self, k: &PoolKeys, depositor: &Keypair, assets: u64) -> elote_pool::events::Deposited {
@@ -452,11 +548,12 @@ impl Env {
             accounts: elote_pool::accounts::Redeem {
                 holder: *holder,
                 pool: k.pool,
+                asset_mint: k.asset_mint,
                 share_mint: k.share_mint,
                 vault: k.vault,
-                holder_share_account: ata(holder, &k.share_mint),
-                holder_asset_account: ata(holder, &k.asset_mint),
-                token_program: TOKEN_PROGRAM_ID,
+                holder_share_account: k.share_ata(holder),
+                holder_asset_account: k.asset_ata(holder),
+                token_program: k.asset_program,
                 event_authority,
                 program,
             }
@@ -612,9 +709,10 @@ impl Env {
                 borrower: *borrower,
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
+                asset_mint: k.asset_mint,
                 vault: k.vault,
-                borrower_asset_account: ata(borrower, &k.asset_mint),
-                token_program: TOKEN_PROGRAM_ID,
+                borrower_asset_account: k.asset_ata(borrower),
+                token_program: k.asset_program,
                 event_authority,
                 program,
             }
@@ -637,9 +735,10 @@ impl Env {
                 payer: *payer,
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
+                asset_mint: k.asset_mint,
                 vault: k.vault,
-                payer_asset_account: ata(payer, &k.asset_mint),
-                token_program: TOKEN_PROGRAM_ID,
+                payer_asset_account: k.asset_ata(payer),
+                token_program: k.asset_program,
                 event_authority,
                 program,
             }
@@ -725,7 +824,7 @@ impl Env {
         let admin = self.admin.insecure_clone();
         let donor = self.funded(1);
         let from = self.mint_to(&k.asset_mint, &admin, &donor.pubkey(), amount);
-        self.transfer(&from, &k.vault, &donor, amount);
+        self.transfer(&k.asset_mint, &from, &k.vault, &donor, amount);
     }
 }
 

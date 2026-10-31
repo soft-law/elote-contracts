@@ -57,6 +57,7 @@ export type RedeemInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountHolder extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
+  TAccountAssetMint extends string | AccountMeta<string> = string,
   TAccountShareMint extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountHolderShareAccount extends string | AccountMeta<string> = string,
@@ -78,6 +79,9 @@ export type RedeemInstruction<
       TAccountPool extends string
         ? ReadonlyAccount<TAccountPool>
         : TAccountPool,
+      TAccountAssetMint extends string
+        ? ReadonlyAccount<TAccountAssetMint>
+        : TAccountAssetMint,
       TAccountShareMint extends string
         ? WritableAccount<TAccountShareMint>
         : TAccountShareMint,
@@ -146,6 +150,7 @@ export function getRedeemInstructionDataCodec(): FixedSizeCodec<
 export type RedeemAsyncInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountHolderShareAccount extends InstructionAccountInput =
@@ -160,6 +165,8 @@ export type RedeemAsyncInput<
 > = {
   holder: TAccountHolder;
   pool: TAccountPool;
+  /** Read for its decimals (`transfer_checked`). */
+  assetMint: TAccountAssetMint;
   shareMint: TAccountShareMint;
   vault: TAccountVault;
   holderShareAccount: TAccountHolderShareAccount;
@@ -174,6 +181,7 @@ export type RedeemAsyncInput<
 export async function getRedeemInstructionAsync<
   TAccountHolder extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountHolderShareAccount extends InstructionAccountInput,
@@ -186,6 +194,7 @@ export async function getRedeemInstructionAsync<
   input: RedeemAsyncInput<
     TAccountHolder,
     TAccountPool,
+    TAccountAssetMint,
     TAccountShareMint,
     TAccountVault,
     TAccountHolderShareAccount,
@@ -207,6 +216,10 @@ export async function getRedeemInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAssetMint,
+      InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountShareMint,
@@ -253,6 +266,11 @@ export async function getRedeemInstructionAsync<
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    assetMint: {
+      value: input.assetMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     shareMint: {
       value: input.shareMint ?? null,
       isSigner: false,
@@ -313,6 +331,7 @@ export async function getRedeemInstructionAsync<
     accounts: [
       getAccountMeta("holder", accounts.holder),
       getAccountMeta("pool", accounts.pool),
+      getAccountMeta("assetMint", accounts.assetMint),
       getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("holderShareAccount", accounts.holderShareAccount),
@@ -334,6 +353,10 @@ export async function getRedeemInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAssetMint,
+      InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountShareMint,
@@ -369,6 +392,7 @@ export async function getRedeemInstructionAsync<
 export type RedeemInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountHolderShareAccount extends InstructionAccountInput =
@@ -383,6 +407,8 @@ export type RedeemInput<
 > = {
   holder: TAccountHolder;
   pool: TAccountPool;
+  /** Read for its decimals (`transfer_checked`). */
+  assetMint: TAccountAssetMint;
   shareMint: TAccountShareMint;
   vault: TAccountVault;
   holderShareAccount: TAccountHolderShareAccount;
@@ -397,6 +423,7 @@ export type RedeemInput<
 export function getRedeemInstruction<
   TAccountHolder extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
+  TAccountAssetMint extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountHolderShareAccount extends InstructionAccountInput,
@@ -409,6 +436,7 @@ export function getRedeemInstruction<
   input: RedeemInput<
     TAccountHolder,
     TAccountPool,
+    TAccountAssetMint,
     TAccountShareMint,
     TAccountVault,
     TAccountHolderShareAccount,
@@ -429,6 +457,10 @@ export function getRedeemInstruction<
   ResolvedInstructionAccountMeta<
     TAccountPool,
     InstructionAccountInputAddress<TAccountPool>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountAssetMint,
+    InstructionAccountInputAddress<TAccountAssetMint>
   >,
   ResolvedInstructionAccountMeta<
     TAccountShareMint,
@@ -474,6 +506,11 @@ export function getRedeemInstruction<
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    assetMint: {
+      value: input.assetMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     shareMint: {
       value: input.shareMint ?? null,
       isSigner: false,
@@ -528,6 +565,7 @@ export function getRedeemInstruction<
     accounts: [
       getAccountMeta("holder", accounts.holder),
       getAccountMeta("pool", accounts.pool),
+      getAccountMeta("assetMint", accounts.assetMint),
       getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("holderShareAccount", accounts.holderShareAccount),
@@ -549,6 +587,10 @@ export function getRedeemInstruction<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAssetMint,
+      InstructionAccountInputAddress<TAccountAssetMint>
     >,
     ResolvedInstructionAccountMeta<
       TAccountShareMint,
@@ -589,13 +631,15 @@ export type ParsedRedeemInstruction<
   accounts: {
     holder: TAccountMetas[0];
     pool: TAccountMetas[1];
-    shareMint: TAccountMetas[2];
-    vault: TAccountMetas[3];
-    holderShareAccount: TAccountMetas[4];
-    holderAssetAccount: TAccountMetas[5];
-    tokenProgram: TAccountMetas[6];
-    eventAuthority: TAccountMetas[7];
-    program: TAccountMetas[8];
+    /** Read for its decimals (`transfer_checked`). */
+    assetMint: TAccountMetas[2];
+    shareMint: TAccountMetas[3];
+    vault: TAccountMetas[4];
+    holderShareAccount: TAccountMetas[5];
+    holderAssetAccount: TAccountMetas[6];
+    tokenProgram: TAccountMetas[7];
+    eventAuthority: TAccountMetas[8];
+    program: TAccountMetas[9];
   };
   data: RedeemInstructionData;
 };
@@ -608,12 +652,12 @@ export function parseRedeemInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedRedeemInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 9) {
+  if (instruction.accounts.length < 10) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 9,
+        expectedAccountMetas: 10,
       },
     );
   }
@@ -628,6 +672,7 @@ export function parseRedeemInstruction<
     accounts: {
       holder: getNextAccount(),
       pool: getNextAccount(),
+      assetMint: getNextAccount(),
       shareMint: getNextAccount(),
       vault: getNextAccount(),
       holderShareAccount: getNextAccount(),
