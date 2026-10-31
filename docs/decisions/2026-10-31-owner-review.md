@@ -76,6 +76,27 @@ are new to it.
 8. Personal data: provider processing agreements, and confirmation that an on-chain attestation
    holding a country code and a timestamp is not personal data under the LFPDPPP.
 
+Added 2026-10-31 from the legal agent's annex to the counsel brief (theOffice
+`docs/product/2026-10-31-elote-counsel-brief.md`), so the two records agree:
+
+9. Whether the lending activity itself is regulated: captación irregular under the LIC, SOFOM or
+   habitual-lender status, CONDUSEF, LFPIORPI vulnerable activity, usury limits, and ISR/IVA on
+   Elote's own fees.
+10. Electronic signatures and the on-chain hash as a mensaje de datos under the Código de
+    Comercio, NOM-151 conservation, and whether the admin powers the program holds
+    (`suspend_draws`, `write_off`, freeze through Token ACL, attestation revocation) are
+    consistent with investors' and borrowers' contractual rights.
+11. The Etherfuse partner contract itself: contracting party, liability allocation, and the real
+    fee schedule behind the partner fee.
+12. Legal capacity of a public-sector sponsor to give an aval or any other guarantee form.
+
+Decided facts the brief may state for its scope section (from this record and `ARCHITECTURE.md`
+§8): the design is non-custodial throughout, since investors hold series shares and CETES in
+their own wallets, the pool vault is a program-derived account from which the admin cannot
+withdraw, and the admin is a Squads vault; Etherfuse is the counterparty of every onramp,
+offramp and swap, and MEXe is the candidate pool asset pending the production `supported_assets`
+check; remittances and a swap product are outside this record and undecided.
+
 ## Human actions that remain
 
 | Who | Action |
