@@ -41,6 +41,21 @@ fn compute_units(installments: u16) -> [(&'static str, u64); 3] {
     [("repay", repay), ("mark_in_collection", mark), ("write_off", write_off)]
 }
 
+/// `init_pool` walks the extensions of both mints and validates the share mint; the heaviest
+/// realistic shape is a Token-2022 asset with issuer controls and a permissioned share mint.
+#[test]
+fn init_pool_stays_under_the_ceiling_with_and_without_extensions() {
+    let mut env = Env::new();
+    let (_, meta) = env.setup_pool();
+    let plain = meta.compute_units_consumed;
+    let gate = env.funded(1);
+    let (_, meta) = env.setup_permissioned_pool(&gate.pubkey());
+    let permissioned = meta.compute_units_consumed;
+    println!("init_pool, classic asset and plain shares: {plain} CU");
+    println!("init_pool, classic asset and permissioned shares: {permissioned} CU");
+    assert!(plain < CEILING && permissioned < CEILING, "init_pool used {plain} / {permissioned} CU, ceiling {CEILING}");
+}
+
 #[test]
 fn arrears_instructions_stay_under_the_ceiling_at_18_and_120_installments() {
     for n in [18u16, 120] {

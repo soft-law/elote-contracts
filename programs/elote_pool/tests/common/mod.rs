@@ -62,6 +62,10 @@ pub const E_BORROWER_IS_ADMIN: u32 = ERR_BASE + 19; // PoolError::BorrowerIsAdmi
 pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + 20; // PoolError::LineTooLarge
 pub const E_INVARIANT_BROKEN: u32 = ERR_BASE + 21; // PoolError::InvariantBroken
 pub const E_ASSET_MINT_NOT_ALLOWED: u32 = ERR_BASE + 22; // PoolError::AssetMintNotAllowed
+pub const E_SHARE_MINT_NOT_ALLOWED: u32 = ERR_BASE + 23; // PoolError::ShareMintNotAllowed
+
+/// Token-2022's `TokenError::AccountFrozen`, surfaced as custom error 17 by a failed CPI.
+pub const SPL_TOKEN_ACCOUNT_FROZEN: u32 = 17;
 
 /// `state::BPS` as the `u16` that `init_pool` takes.
 pub const BPS: u16 = elote_pool::state::BPS as u16;
@@ -86,10 +90,6 @@ pub fn pool_pda(admin: &Pubkey, asset_mint: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"pool", admin.as_ref(), asset_mint.as_ref()], &PROGRAM_ID)
 }
 
-pub fn share_mint_pda(pool: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"shares", pool.as_ref()], &PROGRAM_ID)
-}
-
 pub fn vault_pda(pool: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"vault", pool.as_ref()], &PROGRAM_ID)
 }
@@ -102,8 +102,8 @@ pub fn line_pda(pool: &Pubkey, line_id: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"line", pool.as_ref(), &line_id.to_le_bytes()], &PROGRAM_ID)
 }
 
-/// The addresses of one pool, all derived from the admin and the asset mint, plus the token
-/// program of each mint (classic SPL Token unless the pool was set up on Token-2022).
+/// The addresses of one pool: the PDAs derived from the admin and the asset mint, the
+/// admin-supplied share mint, and the token program of each mint.
 #[derive(Clone, Copy, Debug)]
 pub struct PoolKeys {
     pub admin: Pubkey,
@@ -117,23 +117,17 @@ pub struct PoolKeys {
 }
 
 impl PoolKeys {
-    /// A pool whose asset and shares are classic SPL Token.
-    pub fn new(admin: &Pubkey, asset_mint: &Pubkey) -> Self {
-        Self::with_asset_program(admin, asset_mint, TOKEN_PROGRAM_ID)
-    }
-
-    /// A pool whose asset lives under `asset_program`; the program-created share mint follows it.
-    pub fn with_asset_program(admin: &Pubkey, asset_mint: &Pubkey, asset_program: Pubkey) -> Self {
+    pub fn new(admin: &Pubkey, asset_mint: &Pubkey, share_mint: &Pubkey, asset_program: Pubkey, share_program: Pubkey) -> Self {
         let pool = pool_pda(admin, asset_mint).0;
         Self {
             admin: *admin,
             pool,
             asset_mint: *asset_mint,
-            share_mint: share_mint_pda(&pool).0,
+            share_mint: *share_mint,
             vault: vault_pda(&pool).0,
             dead_shares: dead_shares_pda(&pool).0,
             asset_program,
-            share_program: asset_program,
+            share_program,
         }
     }
 
@@ -408,29 +402,37 @@ impl Env {
 
     // -- pool instructions ---------------------------------------------------------------------
 
-    pub fn init_pool_ix(&self, admin: &Pubkey, asset_mint: &Pubkey) -> Instruction {
-        self.init_pool_ix_with_grace(admin, asset_mint, 0)
+    /// The share mint the admin supplies to `init_pool`: Token-2022, mint authority = the pool
+    /// PDA, the asset's decimals, freeze authority `gate` (a plain keypair standing in for Token
+    /// ACL's `MintConfig`; the program never looks at who it is), and, with `frozen_default`,
+    /// the `DefaultAccountState = Frozen` extension that makes the shares permissioned.
+    pub fn create_share_mint(&mut self, pool: &Pubkey, decimals: u8, gate: Option<&Pubkey>, frozen_default: bool) -> Pubkey {
+        let p = TOKEN_2022_PROGRAM_ID;
+        if frozen_default {
+            self.create_mint_in(&p, pool, gate, decimals, &[ExtensionType::DefaultAccountState], |mint| {
+                vec![spl_token_2022::extension::default_account_state::instruction::initialize_default_account_state(
+                    &p,
+                    mint,
+                    &spl_token_2022::state::AccountState::Frozen,
+                )
+                .expect("default state")]
+            })
+        } else {
+            self.create_mint_in(&p, pool, gate, decimals, &[], |_| vec![])
+        }
     }
 
-    /// A pool with `grace_period_seconds` and no effective concentration cap (`max_line_bps` =
-    /// 10,000, the whole NAV), so the tests that open large lines keep working; the cap has its
-    /// own tests through `init_pool_ix_full`.
-    pub fn init_pool_ix_with_grace(&self, admin: &Pubkey, asset_mint: &Pubkey, grace_period_seconds: u32) -> Instruction {
-        self.init_pool_ix_full(admin, asset_mint, grace_period_seconds, BPS)
+    /// The keys of a pool for `asset_mint` (whatever its token program), with a fresh plain
+    /// Token-2022 share mint created for it. Does not run `init_pool`.
+    pub fn pool_keys_for(&mut self, asset_mint: &Pubkey) -> PoolKeys {
+        let admin = self.admin.pubkey();
+        let pool = pool_pda(&admin, asset_mint).0;
+        let decimals = self.mint_decimals(asset_mint);
+        let share_mint = self.create_share_mint(&pool, decimals, None, false);
+        PoolKeys::new(&admin, asset_mint, &share_mint, self.mint_program(asset_mint), TOKEN_2022_PROGRAM_ID)
     }
 
-    pub fn init_pool_ix_full(
-        &self,
-        admin: &Pubkey,
-        asset_mint: &Pubkey,
-        grace_period_seconds: u32,
-        max_line_bps: u16,
-    ) -> Instruction {
-        let k = PoolKeys::with_asset_program(admin, asset_mint, self.mint_program(asset_mint));
-        self.init_pool_ix_for(&k, grace_period_seconds, max_line_bps)
-    }
-
-    /// `init_pool` for the pool described by `k`, under the token program `k` names.
+    /// `init_pool` for the pool described by `k`.
     pub fn init_pool_ix_for(&self, k: &PoolKeys, grace_period_seconds: u32, max_line_bps: u16) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
@@ -443,6 +445,7 @@ impl Env {
                 vault: k.vault,
                 dead_shares: k.dead_shares,
                 token_program: k.asset_program,
+                share_token_program: k.share_program,
                 system_program: SYSTEM_PROGRAM_ID,
                 event_authority,
                 program,
@@ -452,7 +455,23 @@ impl Env {
         }
     }
 
-    /// Creates a 6-decimal test asset mint (authority = admin) and a pool for it.
+    /// Keys and `init_pool` instruction for `asset_mint` with the given grace and cap; a fresh
+    /// plain Token-2022 share mint is created for it.
+    pub fn init_pool_full(&mut self, asset_mint: &Pubkey, grace_period_seconds: u32, max_line_bps: u16) -> (PoolKeys, Instruction) {
+        let k = self.pool_keys_for(asset_mint);
+        let ix = self.init_pool_ix_for(&k, grace_period_seconds, max_line_bps);
+        (k, ix)
+    }
+
+    /// As `init_pool_full` with no grace and no effective concentration cap (`max_line_bps` =
+    /// 10,000, the whole NAV), so the tests that open large lines keep working; the cap has its
+    /// own tests.
+    pub fn init_pool_plain(&mut self, asset_mint: &Pubkey) -> (PoolKeys, Instruction) {
+        self.init_pool_full(asset_mint, 0, BPS)
+    }
+
+    /// Creates a 6-decimal classic test asset mint (authority = admin) and a pool for it with a
+    /// plain Token-2022 share mint.
     pub fn setup_pool(&mut self) -> (PoolKeys, TransactionMetadata) {
         self.setup_pool_with_grace(0)
     }
@@ -461,19 +480,64 @@ impl Env {
     pub fn setup_pool_with_grace(&mut self, grace_period_seconds: u32) -> (PoolKeys, TransactionMetadata) {
         let admin = self.admin.insecure_clone();
         let asset_mint = self.create_mint(&admin.pubkey(), 6);
-        let ix = self.init_pool_ix_with_grace(&admin.pubkey(), &asset_mint, grace_period_seconds);
+        let (k, ix) = self.init_pool_full(&asset_mint, grace_period_seconds, BPS);
         let meta = self.send(ix, &admin, &[]);
-        (PoolKeys::new(&admin.pubkey(), &asset_mint), meta)
+        (k, meta)
     }
 
     /// A pool on a plain Token-2022 asset (6 decimals, no extensions, no grace, no effective cap).
     pub fn setup_pool_2022(&mut self) -> (PoolKeys, TransactionMetadata) {
         let admin = self.admin.insecure_clone();
         let asset_mint = self.create_mint_2022(&admin.pubkey(), 6);
-        let k = PoolKeys::with_asset_program(&admin.pubkey(), &asset_mint, TOKEN_2022_PROGRAM_ID);
+        let (k, ix) = self.init_pool_plain(&asset_mint);
+        let meta = self.send(ix, &admin, &[]);
+        (k, meta)
+    }
+
+    /// A pool on a classic asset whose shares are permissioned: frozen by default, with `gate`
+    /// as the share mint's freeze authority. Nothing is thawed here.
+    pub fn setup_permissioned_pool(&mut self, gate: &Pubkey) -> (PoolKeys, TransactionMetadata) {
+        let admin = self.admin.insecure_clone();
+        let asset_mint = self.create_mint(&admin.pubkey(), 6);
+        let pool = pool_pda(&admin.pubkey(), &asset_mint).0;
+        let share_mint = self.create_share_mint(&pool, 6, Some(gate), true);
+        let k = PoolKeys::new(&admin.pubkey(), &asset_mint, &share_mint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
         let ix = self.init_pool_ix_for(&k, 0, BPS);
         let meta = self.send(ix, &admin, &[]);
         (k, meta)
+    }
+
+    /// Thaws a token account of `mint`, signed by its freeze authority `gate` (the stand-in for
+    /// Token ACL's thaw).
+    pub fn thaw_ix(&self, mint: &Pubkey, account: &Pubkey, gate: &Pubkey) -> Instruction {
+        spl_token_2022::instruction::thaw_account(&self.mint_program(mint), account, mint, gate, &[]).expect("thaw")
+    }
+
+    pub fn thaw(&mut self, mint: &Pubkey, account: &Pubkey, gate: &Keypair) {
+        let ix = self.thaw_ix(mint, account, &gate.pubkey());
+        let admin = self.admin.insecure_clone();
+        self.send(ix, &admin, &[gate]);
+    }
+
+    /// Hands `authority_type` of `mint` from `current` to `new` (`None` revokes it for good).
+    pub fn set_mint_authority(
+        &mut self,
+        mint: &Pubkey,
+        authority_type: spl_token_2022::instruction::AuthorityType,
+        current: &Keypair,
+        new: Option<&Pubkey>,
+    ) {
+        let ix = spl_token_2022::instruction::set_authority(
+            &self.mint_program(mint),
+            mint,
+            new,
+            authority_type,
+            &current.pubkey(),
+            &[],
+        )
+        .expect("set_authority");
+        let admin = self.admin.insecure_clone();
+        self.send(ix, &admin, &[current]);
     }
 
     /// A funded wallet holding `assets` of the pool asset, with its share account already created.
@@ -512,6 +576,7 @@ impl Env {
                 depositor_asset_account: asset_account,
                 depositor_share_account: share_account,
                 token_program: k.asset_program,
+                share_token_program: k.share_program,
                 event_authority,
                 program,
             }
@@ -555,6 +620,7 @@ impl Env {
                 holder_share_account: k.share_ata(holder),
                 holder_asset_account: k.asset_ata(holder),
                 token_program: k.asset_program,
+                share_token_program: k.share_program,
                 event_authority,
                 program,
             }

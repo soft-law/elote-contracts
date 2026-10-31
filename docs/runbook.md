@@ -19,6 +19,16 @@ attestor, pagaré token) are marked "after pool v2" and become binding when that
 
 The admin is part of the pool PDA's seeds and cannot be rotated. Members rotate inside Squads.
 
+**Creating a series (pool v2).** The admin creates the share mint before `init_pool`: the first
+mainnet pool, and every CR series after it, uses a Token-2022 mint with `DefaultAccountState =
+Frozen` and Token ACL's `MintConfig` as freeze authority, mint authority = the pool PDA, the
+asset's decimals, no other extension. `init_pool` then records `permissioned = true`, and
+`PoolFlags.permissioned` (event) or `poolFlags(reserved).permissioned` (client) is the fact
+anyone can check before investing. In the same transaction, or before the first deposit, the
+gate thaws the dead-shares account `["dead", pool]`; until then the first deposit fails with
+Token-2022's `AccountFrozen`. The devnet demo uses a plain classic share mint and shows
+`permissioned = false`.
+
 ## 2. Keeper: `mark_in_collection`
 
 `mark_in_collection` is permissionless and never paused. It records a fact (the line missed

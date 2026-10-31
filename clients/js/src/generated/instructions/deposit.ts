@@ -65,6 +65,7 @@ export type DepositInstruction<
   TAccountDepositorShareAccount extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountShareTokenProgram extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
     "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
@@ -101,6 +102,9 @@ export type DepositInstruction<
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountShareTokenProgram extends string
+        ? ReadonlyAccount<TAccountShareTokenProgram>
+        : TAccountShareTokenProgram,
       TAccountEventAuthority extends string
         ? ReadonlyAccount<TAccountEventAuthority>
         : TAccountEventAuthority,
@@ -164,6 +168,8 @@ export type DepositAsyncInput<
     InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -177,7 +183,10 @@ export type DepositAsyncInput<
   deadShares: TAccountDeadShares;
   depositorAssetAccount: TAccountDepositorAssetAccount;
   depositorShareAccount: TAccountDepositorShareAccount;
+  /** The asset's token program. */
   tokenProgram?: TAccountTokenProgram;
+  /** The share mint's token program. */
+  shareTokenProgram: TAccountShareTokenProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   assets: DepositInstructionDataArgs["assets"];
@@ -194,6 +203,7 @@ export async function getDepositInstructionAsync<
   TAccountDepositorAssetAccount extends InstructionAccountInput,
   TAccountDepositorShareAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
@@ -208,6 +218,7 @@ export async function getDepositInstructionAsync<
     TAccountDepositorAssetAccount,
     TAccountDepositorShareAccount,
     TAccountTokenProgram,
+    TAccountShareTokenProgram,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -252,6 +263,10 @@ export async function getDepositInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountTokenProgram,
       InstructionAccountInputAddress<TAccountTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountShareTokenProgram,
+      InstructionAccountInputAddress<TAccountShareTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
@@ -313,6 +328,11 @@ export async function getDepositInstructionAsync<
       isSigner: false,
       isWritable: false,
     },
+    shareTokenProgram: {
+      value: input.shareTokenProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -359,6 +379,7 @@ export async function getDepositInstructionAsync<
       getAccountMeta("depositorAssetAccount", accounts.depositorAssetAccount),
       getAccountMeta("depositorShareAccount", accounts.depositorShareAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
@@ -405,6 +426,10 @@ export async function getDepositInstructionAsync<
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareTokenProgram,
+      InstructionAccountInputAddress<TAccountShareTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -428,6 +453,8 @@ export type DepositInput<
     InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -441,7 +468,10 @@ export type DepositInput<
   deadShares: TAccountDeadShares;
   depositorAssetAccount: TAccountDepositorAssetAccount;
   depositorShareAccount: TAccountDepositorShareAccount;
+  /** The asset's token program. */
   tokenProgram?: TAccountTokenProgram;
+  /** The share mint's token program. */
+  shareTokenProgram: TAccountShareTokenProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   assets: DepositInstructionDataArgs["assets"];
@@ -458,6 +488,7 @@ export function getDepositInstruction<
   TAccountDepositorAssetAccount extends InstructionAccountInput,
   TAccountDepositorShareAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
@@ -472,6 +503,7 @@ export function getDepositInstruction<
     TAccountDepositorAssetAccount,
     TAccountDepositorShareAccount,
     TAccountTokenProgram,
+    TAccountShareTokenProgram,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -515,6 +547,10 @@ export function getDepositInstruction<
   ResolvedInstructionAccountMeta<
     TAccountTokenProgram,
     InstructionAccountInputAddress<TAccountTokenProgram>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountShareTokenProgram,
+    InstructionAccountInputAddress<TAccountShareTokenProgram>
   >,
   ResolvedInstructionAccountMeta<
     TAccountEventAuthority,
@@ -575,6 +611,11 @@ export function getDepositInstruction<
       isSigner: false,
       isWritable: false,
     },
+    shareTokenProgram: {
+      value: input.shareTokenProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -615,6 +656,7 @@ export function getDepositInstruction<
       getAccountMeta("depositorAssetAccount", accounts.depositorAssetAccount),
       getAccountMeta("depositorShareAccount", accounts.depositorShareAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
@@ -661,6 +703,10 @@ export function getDepositInstruction<
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareTokenProgram,
+      InstructionAccountInputAddress<TAccountShareTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -686,9 +732,12 @@ export type ParsedDepositInstruction<
     deadShares: TAccountMetas[5];
     depositorAssetAccount: TAccountMetas[6];
     depositorShareAccount: TAccountMetas[7];
+    /** The asset's token program. */
     tokenProgram: TAccountMetas[8];
-    eventAuthority: TAccountMetas[9];
-    program: TAccountMetas[10];
+    /** The share mint's token program. */
+    shareTokenProgram: TAccountMetas[9];
+    eventAuthority: TAccountMetas[10];
+    program: TAccountMetas[11];
   };
   data: DepositInstructionData;
 };
@@ -701,12 +750,12 @@ export function parseDepositInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedDepositInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 11) {
+  if (instruction.accounts.length < 12) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 11,
+        expectedAccountMetas: 12,
       },
     );
   }
@@ -728,6 +777,7 @@ export function parseDepositInstruction<
       depositorAssetAccount: getNextAccount(),
       depositorShareAccount: getNextAccount(),
       tokenProgram: getNextAccount(),
+      shareTokenProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },

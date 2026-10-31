@@ -48,15 +48,9 @@ pub struct InitPool<'info> {
     )]
     pub pool: Account<'info, Pool>,
 
-    #[account(
-        init,
-        payer = admin,
-        seeds = [seeds::SHARES, pool.key().as_ref()],
-        bump,
-        mint::decimals = asset_mint.decimals,
-        mint::authority = pool,
-        mint::token_program = token_program,
-    )]
+    /// The share mint, created by the admin beforehand and validated here (series-shelf 2c):
+    /// mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that
+    /// takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned.
     pub share_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// A PDA token account, so nobody can pre-create it and block the pool.
@@ -71,7 +65,9 @@ pub struct InitPool<'info> {
     )]
     pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// Holds the dead shares of the first deposit; nothing ever moves them.
+    /// Holds the dead shares of the first deposit; nothing ever moves them. On a permissioned
+    /// share mint it is born frozen and must be thawed by the mint's freeze authority before the
+    /// first deposit (in this transaction or a later one).
     #[account(
         init,
         payer = admin,
@@ -79,12 +75,14 @@ pub struct InitPool<'info> {
         bump,
         token::mint = share_mint,
         token::authority = pool,
-        token::token_program = token_program,
+        token::token_program = share_token_program,
     )]
     pub dead_shares: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// The token program of `asset_mint` (classic SPL Token or Token-2022).
     pub token_program: Interface<'info, TokenInterface>,
+    /// The token program of `share_mint` (Token-2022 in production, under Token ACL).
+    pub share_token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 
@@ -129,6 +127,55 @@ fn asset_controls(asset_mint: &AccountInfo) -> Result<u8> {
     Ok(controls)
 }
 
+/// The share-mint policy (series-shelf 2c, decision 15). The admin creates the mint and the
+/// pool must be able to own and price it: owned by `share_token_program`, mint authority = the
+/// pool PDA, supply 0, the asset's decimals. Refused extensions: `TransferFeeConfig`,
+/// `TransferHook`, `MintCloseAuthority`, `PermanentDelegate`, `InterestBearingConfig` (a display
+/// rate on a NAV-priced share misleads wallets), the three confidential ones (a hidden supply
+/// breaks the price per share). `DefaultAccountState = Frozen` makes the shares permissioned and
+/// then requires a freeze authority, or nothing could ever be thawed. `NonTransferable` is
+/// allowed: deposit mints and redeem burns. Who the freeze authority is (Token ACL's
+/// `MintConfig` or a key) is the admin's choice and not recorded. Returns `permissioned`.
+fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
+    let share_mint = &ctx.accounts.share_mint;
+    require!(
+        *share_mint.to_account_info().owner == ctx.accounts.share_token_program.key(),
+        PoolError::ShareMintNotAllowed
+    );
+    require!(share_mint.mint_authority == Some(ctx.accounts.pool.key()).into(), PoolError::ShareMintNotAllowed);
+    require!(share_mint.supply == 0, PoolError::ShareMintNotAllowed);
+    require!(share_mint.decimals == ctx.accounts.asset_mint.decimals, PoolError::ShareMintNotAllowed);
+
+    let info = share_mint.to_account_info();
+    let data = info.data.borrow();
+    let state = StateWithExtensions::<MintState>::unpack(&data)?;
+    let mut permissioned = false;
+    for extension in state.get_extension_types()? {
+        match extension {
+            ExtensionType::TransferFeeConfig
+            | ExtensionType::TransferHook
+            | ExtensionType::MintCloseAuthority
+            | ExtensionType::PermanentDelegate
+            | ExtensionType::InterestBearingConfig
+            | ExtensionType::ConfidentialTransferMint
+            | ExtensionType::ConfidentialTransferFeeConfig
+            | ExtensionType::ConfidentialMintBurn => return err!(PoolError::ShareMintNotAllowed),
+            ExtensionType::DefaultAccountState => {
+                let default_state = state.get_extension::<DefaultAccountState>()?;
+                let frozen = AccountState::try_from(default_state.state)
+                    .map(|s| s == AccountState::Frozen)
+                    .unwrap_or(false);
+                if frozen {
+                    require!(state.base.freeze_authority.is_some(), PoolError::ShareMintNotAllowed);
+                    permissioned = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(permissioned)
+}
+
 /// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the life of
 /// the pool.
 pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16) -> Result<()> {
@@ -136,6 +183,7 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps
     // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
     require!(min_first_deposit(ctx.accounts.asset_mint.decimals).is_some(), PoolError::WrongAccount);
     let controls = asset_controls(&ctx.accounts.asset_mint.to_account_info())?;
+    let permissioned = validate_share_mint(&ctx)?;
     let pool = &mut ctx.accounts.pool;
     pool.version = POOL_VERSION;
     pool.admin = ctx.accounts.admin.key();
@@ -152,8 +200,7 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps
     pool.set_grace_period_seconds(grace_period_seconds);
     pool.set_max_line_bps(max_line_bps);
     pool.set_asset_controls(controls);
-    // The share mint is created here without `DefaultAccountState`, so holders need no thaw.
-    pool.set_permissioned(false);
+    pool.set_permissioned(permissioned);
     pool.bump = ctx.bumps.pool;
 
     emit_cpi!(PoolInitialized {
@@ -210,7 +257,10 @@ pub struct Deposit<'info> {
     )]
     pub depositor_share_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
+    /// The asset's token program.
     pub token_program: Interface<'info, TokenInterface>,
+    /// The share mint's token program.
+    pub share_token_program: Interface<'info, TokenInterface>,
 }
 
 /// The first deposit locks `DEAD_SHARES` of its shares in the pool-owned dead account; the
@@ -249,9 +299,10 @@ pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Resul
         assets,
         ctx.accounts.asset_mint.decimals,
     )?;
+    let share_token_program = ctx.accounts.share_token_program.key();
     token::mint_to(
         CpiContext::new_with_signer(
-            token_program,
+            share_token_program,
             MintTo {
                 mint: ctx.accounts.share_mint.to_account_info(),
                 to: ctx.accounts.depositor_share_account.to_account_info(),
@@ -264,7 +315,7 @@ pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Resul
     if dead > 0 {
         token::mint_to(
             CpiContext::new_with_signer(
-                token_program,
+                share_token_program,
                 MintTo {
                     mint: ctx.accounts.share_mint.to_account_info(),
                     to: ctx.accounts.dead_shares.to_account_info(),
@@ -329,7 +380,10 @@ pub struct Redeem<'info> {
     )]
     pub holder_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
+    /// The asset's token program.
     pub token_program: Interface<'info, TokenInterface>,
+    /// The share mint's token program.
+    pub share_token_program: Interface<'info, TokenInterface>,
 }
 
 /// `min_assets_out` is the holder's slippage floor.
@@ -349,7 +403,7 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
     let token_program = ctx.accounts.token_program.key();
     token::burn(
         CpiContext::new(
-            token_program,
+            ctx.accounts.share_token_program.key(),
             Burn {
                 mint: ctx.accounts.share_mint.to_account_info(),
                 from: ctx.accounts.holder_share_account.to_account_info(),

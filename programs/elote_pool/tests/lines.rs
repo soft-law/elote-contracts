@@ -341,9 +341,8 @@ fn open_line_refuses_a_principal_above_max_line_bps_of_the_nav() {
     let mut env = Env::new();
     let admin = env.admin.insecure_clone();
     let mint = env.create_mint(&admin.pubkey(), 6);
-    let ix = env.init_pool_ix_full(&admin.pubkey(), &mint, 0, 1_000); // 10% of the NAV per line
+    let (k, ix) = env.init_pool_full(&mint, 0, 1_000); // 10% of the NAV per line
     env.send(ix, &admin, &[]);
-    let k = PoolKeys::new(&admin.pubkey(), &mint);
 
     // NAV 0: nothing can be opened, however small.
     let borrower = env.borrower(&k);

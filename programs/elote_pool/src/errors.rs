@@ -50,4 +50,6 @@ pub enum PoolError {
     InvariantBroken,
     #[msg("The asset mint carries a Token-2022 extension the pool does not accept")]
     AssetMintNotAllowed,
+    #[msg("The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions")]
+    ShareMintNotAllowed,
 }

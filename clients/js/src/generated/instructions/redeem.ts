@@ -64,6 +64,7 @@ export type RedeemInstruction<
   TAccountHolderAssetAccount extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountShareTokenProgram extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
     "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
@@ -97,6 +98,9 @@ export type RedeemInstruction<
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountShareTokenProgram extends string
+        ? ReadonlyAccount<TAccountShareTokenProgram>
+        : TAccountShareTokenProgram,
       TAccountEventAuthority extends string
         ? ReadonlyAccount<TAccountEventAuthority>
         : TAccountEventAuthority,
@@ -159,6 +163,8 @@ export type RedeemAsyncInput<
     InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -171,7 +177,10 @@ export type RedeemAsyncInput<
   vault: TAccountVault;
   holderShareAccount: TAccountHolderShareAccount;
   holderAssetAccount: TAccountHolderAssetAccount;
+  /** The asset's token program. */
   tokenProgram?: TAccountTokenProgram;
+  /** The share mint's token program. */
+  shareTokenProgram: TAccountShareTokenProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   shares: RedeemInstructionDataArgs["shares"];
@@ -187,6 +196,7 @@ export async function getRedeemInstructionAsync<
   TAccountHolderShareAccount extends InstructionAccountInput,
   TAccountHolderAssetAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
@@ -200,6 +210,7 @@ export async function getRedeemInstructionAsync<
     TAccountHolderShareAccount,
     TAccountHolderAssetAccount,
     TAccountTokenProgram,
+    TAccountShareTokenProgram,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -240,6 +251,10 @@ export async function getRedeemInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountTokenProgram,
       InstructionAccountInputAddress<TAccountTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountShareTokenProgram,
+      InstructionAccountInputAddress<TAccountShareTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
@@ -292,6 +307,11 @@ export async function getRedeemInstructionAsync<
       isSigner: false,
       isWritable: false,
     },
+    shareTokenProgram: {
+      value: input.shareTokenProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -337,6 +357,7 @@ export async function getRedeemInstructionAsync<
       getAccountMeta("holderShareAccount", accounts.holderShareAccount),
       getAccountMeta("holderAssetAccount", accounts.holderAssetAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
@@ -379,6 +400,10 @@ export async function getRedeemInstructionAsync<
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareTokenProgram,
+      InstructionAccountInputAddress<TAccountShareTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -401,6 +426,8 @@ export type RedeemInput<
     InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -413,7 +440,10 @@ export type RedeemInput<
   vault: TAccountVault;
   holderShareAccount: TAccountHolderShareAccount;
   holderAssetAccount: TAccountHolderAssetAccount;
+  /** The asset's token program. */
   tokenProgram?: TAccountTokenProgram;
+  /** The share mint's token program. */
+  shareTokenProgram: TAccountShareTokenProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   shares: RedeemInstructionDataArgs["shares"];
@@ -429,6 +459,7 @@ export function getRedeemInstruction<
   TAccountHolderShareAccount extends InstructionAccountInput,
   TAccountHolderAssetAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
@@ -442,6 +473,7 @@ export function getRedeemInstruction<
     TAccountHolderShareAccount,
     TAccountHolderAssetAccount,
     TAccountTokenProgram,
+    TAccountShareTokenProgram,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -481,6 +513,10 @@ export function getRedeemInstruction<
   ResolvedInstructionAccountMeta<
     TAccountTokenProgram,
     InstructionAccountInputAddress<TAccountTokenProgram>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountShareTokenProgram,
+    InstructionAccountInputAddress<TAccountShareTokenProgram>
   >,
   ResolvedInstructionAccountMeta<
     TAccountEventAuthority,
@@ -532,6 +568,11 @@ export function getRedeemInstruction<
       isSigner: false,
       isWritable: false,
     },
+    shareTokenProgram: {
+      value: input.shareTokenProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -571,6 +612,7 @@ export function getRedeemInstruction<
       getAccountMeta("holderShareAccount", accounts.holderShareAccount),
       getAccountMeta("holderAssetAccount", accounts.holderAssetAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
@@ -613,6 +655,10 @@ export function getRedeemInstruction<
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareTokenProgram,
+      InstructionAccountInputAddress<TAccountShareTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -637,9 +683,12 @@ export type ParsedRedeemInstruction<
     vault: TAccountMetas[4];
     holderShareAccount: TAccountMetas[5];
     holderAssetAccount: TAccountMetas[6];
+    /** The asset's token program. */
     tokenProgram: TAccountMetas[7];
-    eventAuthority: TAccountMetas[8];
-    program: TAccountMetas[9];
+    /** The share mint's token program. */
+    shareTokenProgram: TAccountMetas[8];
+    eventAuthority: TAccountMetas[9];
+    program: TAccountMetas[10];
   };
   data: RedeemInstructionData;
 };
@@ -652,12 +701,12 @@ export function parseRedeemInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedRedeemInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 10) {
+  if (instruction.accounts.length < 11) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 10,
+        expectedAccountMetas: 11,
       },
     );
   }
@@ -678,6 +727,7 @@ export function parseRedeemInstruction<
       holderShareAccount: getNextAccount(),
       holderAssetAccount: getNextAccount(),
       tokenProgram: getNextAccount(),
+      shareTokenProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },

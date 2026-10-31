@@ -61,6 +61,8 @@ export const ELOTE_POOL_ERROR__LINE_TOO_LARGE = 0x1784; // 6020
 export const ELOTE_POOL_ERROR__INVARIANT_BROKEN = 0x1785; // 6021
 /** AssetMintNotAllowed: The asset mint carries a Token-2022 extension the pool does not accept */
 export const ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED = 0x1786; // 6022
+/** ShareMintNotAllowed: The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions */
+export const ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED = 0x1787; // 6023
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
@@ -77,6 +79,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__OVERFLOW
   | typeof ELOTE_POOL_ERROR__PAUSED
   | typeof ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM
+  | typeof ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED
   | typeof ELOTE_POOL_ERROR__SPONSOR_REQUIRED
   | typeof ELOTE_POOL_ERROR__TERM_ENDED
@@ -104,6 +107,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__OVERFLOW]: `Arithmetic overflow`,
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,
     [ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM]: `The last installment would fall due after the term`,
+    [ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED]: `The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions`,
     [ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED]: `The result is below the minimum the caller accepts`,
     [ELOTE_POOL_ERROR__SPONSOR_REQUIRED]: `The sponsor named on this line must sign`,
     [ELOTE_POOL_ERROR__TERM_ENDED]: `The term has ended`,

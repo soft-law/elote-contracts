@@ -55,7 +55,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 | Account | Address | Holds |
 |---|---|---|
 | `Pool` | PDA `["pool", admin, asset_mint]` | admin, asset, vault, share token, outstanding principal, running totals, pause flag |
-| share token | PDA `["shares", pool]` | an SPL token with the asset's decimals; only the pool PDA can issue shares |
+| share token | a mint the admin creates and hands to `init_pool` | classic SPL Token or Token-2022 with the asset's decimals, mint authority = the pool PDA, supply 0, no extension that takes or hides value; frozen by default (Token-2022 `DefaultAccountState`) for a permissioned series under Token ACL |
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
 | dead shares | PDA token account `["dead", pool]`, owned by the pool PDA | the 1,000 shares locked by the first deposit |
 | `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | terms, agreement hash, repayments, status, installment schedule (version 2) |
@@ -85,7 +85,7 @@ A version-1 line (single maturity) has all 32 bytes at zero.
 
 | Instruction | Signers | Effect |
 |---|---|---|
-| `init_pool(grace_period_seconds, max_line_bps)` | admin | creates the pool, its share token, its vault and its dead-shares account; the grace period and the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) are fixed for the life of the pool |
+| `init_pool(grace_period_seconds, max_line_bps)` | admin | creates the pool, its vault and its dead-shares account around an asset mint and an admin-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; the grace period and the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) are fixed for the life of the pool |
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit is at least 1.0 and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, schedule)` | admin, borrower, sponsor if named | approves the next line; moves no money; the borrower is not the admin and `principal <= NAV * max_line_bps / 10_000` (reads the vault); `schedule` (optional) makes it an installment line |

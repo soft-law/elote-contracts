@@ -59,7 +59,6 @@ import {
   findDeadSharesPda,
   findLinePda,
   findPoolPda,
-  findShareMintPda,
   findVaultPda,
   getDepositInstructionAsync,
   getDrawInstructionAsync,
@@ -245,7 +244,23 @@ await send("create tMXN (devnet test token, no value)", admin, [
 console.log(`  tMXN (devnet test token, no value) address ${assetMint.address}`);
 
 const [pool] = await findPoolPda({ admin: admin.address, assetMint: assetMint.address });
-const [shareMint] = await findShareMintPda({ pool });
+
+// The share mint is supplied by the admin (pool v2): created here with the pool PDA as mint
+// authority and the asset's decimals. The demo uses a classic SPL mint, which the program
+// accepts; a production series uses a Token-2022 mint frozen by default under Token ACL, so
+// that PoolFlags.permissioned is true (the switch is PR 3's).
+const shareMintSigner = await generateKeyPairSigner();
+await send("create the share token", admin, [
+  getCreateAccountInstruction({
+    payer: admin,
+    newAccount: shareMintSigner,
+    lamports: mintRent,
+    space: mintSpace,
+    programAddress: TOKEN_PROGRAM_ADDRESS,
+  }),
+  getInitializeMint2Instruction({ mint: shareMintSigner.address, decimals: DECIMALS, mintAuthority: pool }),
+]);
+const shareMint = shareMintSigner.address;
 const ataOf = async (owner: Address, mint: Address) =>
   (await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
 const [vault] = await findVaultPda({ pool });
@@ -263,6 +278,7 @@ await send("init_pool", admin, [
     vault,
     deadShares,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
     gracePeriodSeconds: graceSeconds,
     maxLineBps,
   }),
@@ -307,6 +323,7 @@ async function deposit(label: string, who: KeyPairSigner, assets: bigint) {
       shareMint,
       vault,
       tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
       depositorAssetAccount: await ataOf(who.address, assetMint.address),
       depositorShareAccount: await ataOf(who.address, shareMint),
       deadShares,
@@ -392,6 +409,7 @@ await send("investor A redeems 4,000 shares", investorA, [
     shareMint,
     vault,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
     holderShareAccount: await ataOf(investorA.address, shareMint),
     holderAssetAccount: await ataOf(investorA.address, assetMint.address),
     shares: redeemShares,

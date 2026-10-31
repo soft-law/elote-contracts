@@ -36,22 +36,28 @@ fn init_pool_creates_share_mint_and_vault() {
     assert!(!pool.paused);
     assert_eq!(pool.bump, pool_pda(&env.admin.pubkey(), &k.asset_mint).1);
 
-    let share_mint = env.anchor_account::<anchor_spl::token::Mint>(&k.share_mint);
+    // The share mint is supplied by the admin (series-shelf 2c), not created here: Token-2022,
+    // mint authority = the pool PDA, the asset's decimals, nothing minted yet.
+    let (share_mint, extensions) = env.mint_state(&k.share_mint);
+    assert_eq!(env.mint_program(&k.share_mint), TOKEN_2022_PROGRAM_ID);
     assert_eq!(share_mint.decimals, 6, "share decimals follow the asset");
     assert_eq!(share_mint.supply, 0);
     assert_eq!(Option::<solana_pubkey::Pubkey>::from(share_mint.mint_authority), Some(k.pool));
     assert_eq!(Option::<solana_pubkey::Pubkey>::from(share_mint.freeze_authority), None);
+    assert!(extensions.is_empty());
+    assert!(!pool.permissioned(), "no DefaultAccountState: holders need no thaw");
 
-    let vault = anchor_spl::token::TokenAccount::try_deserialize(&mut env.account(&k.vault).data.as_slice()).unwrap();
+    let vault = env.token_account(&k.vault);
     assert_eq!(vault.mint, k.asset_mint);
     assert_eq!(vault.owner, k.pool);
     assert_eq!(vault.amount, 0);
     assert_eq!(k.vault, vault_pda(&k.pool).0, "the vault is a PDA token account, not an ATA");
     assert_eq!(pool.dead_shares, k.dead_shares);
-    let dead = anchor_spl::token::TokenAccount::try_deserialize(&mut env.account(&k.dead_shares).data.as_slice()).unwrap();
+    let dead = env.token_account(&k.dead_shares);
     assert_eq!(dead.mint, k.share_mint);
     assert_eq!(dead.owner, k.pool);
     assert_eq!(dead.amount, 0);
+    assert_eq!(env.account(&k.dead_shares).owner, TOKEN_2022_PROGRAM_ID, "the dead account follows the share mint's program");
 
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!(ev.pool, k.pool);
@@ -61,7 +67,7 @@ fn init_pool_creates_share_mint_and_vault() {
 
     // A second init for the same admin and asset is refused (the pool account already exists).
     let admin = env.admin.insecure_clone();
-    let ix = env.init_pool_ix(&admin.pubkey(), &k.asset_mint);
+    let ix = env.init_pool_ix_for(&k, 0, BPS);
     assert!(env.try_send(ix, &admin, &[]).is_err());
 }
 
@@ -85,7 +91,7 @@ fn first_deposit_mints_one_to_one_and_enforces_minimum() {
     assert_eq!(ev.shares, UNIT - DEAD_SHARES);
     assert_eq!(ev.nav_after, UNIT);
     assert_eq!(ev.supply_after, UNIT);
-    assert_eq!(env.token_balance(&ata(&a.pubkey(), &k.share_mint)), UNIT - DEAD_SHARES);
+    assert_eq!(env.token_balance(&k.share_ata(&a.pubkey())), UNIT - DEAD_SHARES);
     assert_eq!(env.token_balance(&k.dead_shares), DEAD_SHARES);
     assert_eq!(env.token_balance(&ata(&a.pubkey(), &k.asset_mint)), 4 * UNIT);
     assert_eq!(env.token_balance(&k.vault), UNIT);
@@ -146,7 +152,7 @@ fn redeem_returns_pro_rata_and_respects_liquidity() {
     // Everything A holds is worth about 10.4: more than the vault has. Nothing is burned.
     let ix = env.redeem_ix(&k, &a.pubkey(), 10 * UNIT - DEAD_SHARES);
     env.expect_err(ix, &a, &[], E_INSUFFICIENT_LIQUIDITY);
-    assert_eq!(env.token_balance(&ata(&a.pubkey(), &k.share_mint)), 10 * UNIT - DEAD_SHARES);
+    assert_eq!(env.token_balance(&k.share_ata(&a.pubkey())), 10 * UNIT - DEAD_SHARES);
     assert_eq!(env.supply(&k), 15 * UNIT);
 
     // What fits is paid pro rata.
@@ -157,7 +163,7 @@ fn redeem_returns_pro_rata_and_respects_liquidity() {
     assert_eq!(ev.nav_after, 12_480_000);
     assert_eq!(ev.supply_after, 12 * UNIT);
     assert_eq!(env.token_balance(&ata(&a.pubkey(), &k.asset_mint)), 3_120_000);
-    assert_eq!(env.token_balance(&ata(&a.pubkey(), &k.share_mint)), 7 * UNIT - DEAD_SHARES);
+    assert_eq!(env.token_balance(&k.share_ata(&a.pubkey())), 7 * UNIT - DEAD_SHARES);
     assert_eq!(per_share(env.nav(&k), env.supply(&k)), before, "redeeming leaves the value per share unchanged");
 
     // 1.0 share is worth 1.04; 0.48 is left in the vault.
@@ -200,10 +206,11 @@ fn deposit_and_redeem_reject_wrong_accounts() {
     let other = env.investor(&k, 0);
 
     // Share account of somebody else.
-    let ix = env.deposit_ix_with(&k, &a.pubkey(), ata(&a.pubkey(), &k.asset_mint), ata(&other.pubkey(), &k.share_mint), UNIT);
+    let ix = env.deposit_ix_with(&k, &a.pubkey(), ata(&a.pubkey(), &k.asset_mint), k.share_ata(&other.pubkey()), UNIT);
     env.expect_err(ix, &a, &[], E_WRONG_ACCOUNT);
-    // Asset and share accounts swapped: each has the wrong mint.
-    let ix = env.deposit_ix_with(&k, &a.pubkey(), ata(&a.pubkey(), &k.share_mint), ata(&a.pubkey(), &k.asset_mint), UNIT);
+    // Asset and share accounts swapped: each has the wrong mint (and, now, the wrong token
+    // program, which Anchor's owner check catches first).
+    let ix = env.deposit_ix_with(&k, &a.pubkey(), k.share_ata(&a.pubkey()), ata(&a.pubkey(), &k.asset_mint), UNIT);
     env.expect_err(ix, &a, &[], E_WRONG_ACCOUNT);
 
     // A vault that is not the pool's.
@@ -331,9 +338,8 @@ fn init_pool_records_the_line_cap_and_bounds_it() {
     let mut env = Env::new();
     let admin = env.admin.insecure_clone();
     let mint = env.create_mint(&admin.pubkey(), 6);
-    let ix = env.init_pool_ix_full(&admin.pubkey(), &mint, 0, 1_000);
+    let (k, ix) = env.init_pool_full(&mint, 0, 1_000);
     let meta = env.send(ix, &admin, &[]);
-    let k = PoolKeys::new(&admin.pubkey(), &mint);
 
     let pool = env.pool(&k);
     assert_eq!(pool.max_line_bps(), 1_000);
@@ -344,7 +350,7 @@ fn init_pool_records_the_line_cap_and_bounds_it() {
 
     for bad in [0u16, BPS + 1, u16::MAX] {
         let mint = env.create_mint(&admin.pubkey(), 6);
-        let ix = env.init_pool_ix_full(&admin.pubkey(), &mint, 0, bad);
+        let (_, ix) = env.init_pool_full(&mint, 0, bad);
         env.expect_err(ix, &admin, &[], E_WRONG_AMOUNT);
     }
 }
@@ -386,15 +392,14 @@ fn mint_2022_with(env: &mut Env, exts: &[ExtensionType], ixs: impl FnOnce(&Pubke
 
 fn expect_asset_rejected(env: &mut Env, mint: &Pubkey) {
     let admin = env.admin.insecure_clone();
-    let ix = env.init_pool_ix(&admin.pubkey(), mint);
+    let (_, ix) = env.init_pool_plain(mint);
     env.expect_err(ix, &admin, &[], E_ASSET_MINT_NOT_ALLOWED);
 }
 
 fn init_accepting(env: &mut Env, mint: &Pubkey) -> (PoolKeys, PoolFlags) {
     let admin = env.admin.insecure_clone();
-    let ix = env.init_pool_ix(&admin.pubkey(), mint);
+    let (k, ix) = env.init_pool_plain(mint);
     let meta = env.send(ix, &admin, &[]);
-    let k = PoolKeys::with_asset_program(&admin.pubkey(), mint, env.mint_program(mint));
     (k, find_event(&meta).expect("PoolFlags"))
 }
 
@@ -525,6 +530,169 @@ fn init_pool_records_the_asset_issuer_controls_it_accepts() {
     assert_eq!((flags.asset_controls, flags.permissioned, env.pool(&k).asset_controls()), (0, false, 0));
 }
 
+/// A share-mint candidate for a pool on `asset`: Token-2022, 6 decimals, with `exts` initialised
+/// by `ixs`, mint authority `authority` and freeze authority `gate`.
+fn share_candidate(
+    env: &mut Env,
+    authority: &Pubkey,
+    gate: Option<&Pubkey>,
+    decimals: u8,
+    exts: &[ExtensionType],
+    ixs: impl FnOnce(&Pubkey) -> Vec<Instruction>,
+) -> Pubkey {
+    env.create_mint_in(&TOKEN_2022_PROGRAM_ID, authority, gate, decimals, exts, ixs)
+}
+
+fn expect_share_rejected(env: &mut Env, asset: &Pubkey, share_mint: &Pubkey) {
+    let admin = env.admin.insecure_clone();
+    let k = PoolKeys::new(&admin.pubkey(), asset, share_mint, TOKEN_PROGRAM_ID, env.mint_program(share_mint));
+    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    env.expect_err(ix, &admin, &[], E_SHARE_MINT_NOT_ALLOWED);
+}
+
+/// Series-shelf 2c: the share mint the admin supplies must be one the pool can own and price.
+/// Refused: a mint authority other than the pool PDA, a non-zero supply, decimals other than the
+/// asset's, a transfer fee, a transfer hook, a close authority, a permanent delegate (decision
+/// 15), an interest-bearing display rate, any confidential extension, and a frozen default state
+/// without a freeze authority (nothing could ever be thawed).
+#[test]
+fn init_pool_rejects_share_mints_the_pool_cannot_own_or_price() {
+    let p = TOKEN_2022_PROGRAM_ID;
+    let mut env = Env::new();
+    let admin = env.admin.insecure_clone();
+    let asset = env.create_mint(&admin.pubkey(), 6);
+    let pool = pool_pda(&admin.pubkey(), &asset).0;
+
+    // Mint authority is the admin, not the pool.
+    let m = share_candidate(&mut env, &admin.pubkey(), None, 6, &[], |_| vec![]);
+    expect_share_rejected(&mut env, &asset, &m);
+
+    // Right authority, but something was minted before the handover.
+    let m = share_candidate(&mut env, &admin.pubkey(), None, 6, &[], |_| vec![]);
+    let holder = env.funded(1);
+    env.mint_to(&m, &admin, &holder.pubkey(), 1);
+    env.set_mint_authority(&m, spl_token_2022::instruction::AuthorityType::MintTokens, &admin, Some(&pool));
+    expect_share_rejected(&mut env, &asset, &m);
+
+    // Wrong decimals.
+    let m = share_candidate(&mut env, &pool, None, 2, &[], |_| vec![]);
+    expect_share_rejected(&mut env, &asset, &m);
+
+    // Extensions that take or hide value, or mislead wallets about the share price.
+    let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::TransferFeeConfig], |mint| {
+        vec![ext::transfer_fee::instruction::initialize_transfer_fee_config(&p, mint, Some(&admin.pubkey()), Some(&admin.pubkey()), 50, 1_000).unwrap()]
+    });
+    expect_share_rejected(&mut env, &asset, &m);
+    let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::TransferHook], |mint| {
+        vec![ext::transfer_hook::instruction::initialize(&p, mint, Some(admin.pubkey()), Some(Pubkey::new_unique())).unwrap()]
+    });
+    expect_share_rejected(&mut env, &asset, &m);
+    let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::MintCloseAuthority], |mint| {
+        vec![spl_token_2022::instruction::initialize_mint_close_authority(&p, mint, Some(&admin.pubkey())).unwrap()]
+    });
+    expect_share_rejected(&mut env, &asset, &m);
+    let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::PermanentDelegate], |mint| {
+        vec![spl_token_2022::instruction::initialize_permanent_delegate(&p, mint, &admin.pubkey()).unwrap()]
+    });
+    expect_share_rejected(&mut env, &asset, &m);
+    let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::InterestBearingConfig], |mint| {
+        vec![ext::interest_bearing_mint::instruction::initialize(&p, mint, Some(admin.pubkey()), 500).unwrap()]
+    });
+    expect_share_rejected(&mut env, &asset, &m);
+    let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::ConfidentialTransferMint], |mint| {
+        vec![ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(admin.pubkey()), true, None).unwrap()]
+    });
+    expect_share_rejected(&mut env, &asset, &m);
+
+    // Frozen by default, but the freeze authority was revoked: no holder could ever be thawed.
+    let gate = env.funded(1);
+    let m = env.create_share_mint(&pool, 6, Some(&gate.pubkey()), true);
+    env.set_mint_authority(&m, spl_token_2022::instruction::AuthorityType::FreezeAccount, &gate, None);
+    expect_share_rejected(&mut env, &asset, &m);
+
+    // And the plain candidate the harness builds is accepted.
+    let (k, ix) = env.init_pool_plain(&asset);
+    env.send(ix, &admin, &[]);
+    assert_eq!(env.pool(&k).share_mint, k.share_mint);
+}
+
+/// Non-transferable shares are an issuer choice (no Token ACL needed for that series): deposit
+/// mints and redeem burns, neither transfers, so both still work.
+#[test]
+fn non_transferable_shares_still_deposit_and_redeem() {
+    let p = TOKEN_2022_PROGRAM_ID;
+    let mut env = Env::new();
+    let admin = env.admin.insecure_clone();
+    let asset = env.create_mint(&admin.pubkey(), 6);
+    let pool = pool_pda(&admin.pubkey(), &asset).0;
+    let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::NonTransferable], |mint| {
+        vec![spl_token_2022::instruction::initialize_non_transferable_mint(&p, mint).unwrap()]
+    });
+    let k = PoolKeys::new(&admin.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, p);
+    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    env.send(ix, &admin, &[]);
+
+    let a = env.investor(&k, 3 * UNIT);
+    let minted = env.deposit(&k, &a, 3 * UNIT).shares;
+    assert_eq!(minted, 3 * UNIT - DEAD_SHARES);
+    let out = env.redeem(&k, &a, minted);
+    assert_eq!(out.assets, minted);
+}
+
+/// Series-shelf 2d/2e, decision 3: with `DefaultAccountState = Frozen` the shares are
+/// permissioned. Every share account is born frozen, the dead account included, so the first
+/// deposit fails until the freeze authority (Token ACL's `MintConfig` in production, a plain
+/// keypair here) has thawed both the dead account and the depositor's account. The thaw can
+/// come in a later transaction or in the `init_pool` transaction itself.
+#[test]
+fn permissioned_shares_need_a_thaw_before_the_first_deposit() {
+    let mut env = Env::new();
+    let gate = env.funded(1);
+    let (k, meta) = env.setup_permissioned_pool(&gate.pubkey());
+    let flags: PoolFlags = find_event(&meta).expect("PoolFlags");
+    assert!(flags.permissioned && env.pool(&k).permissioned());
+    assert_eq!(env.pool(&k).reserved[6], 1, "byte 6 of reserved");
+    assert_eq!(env.token_account(&k.dead_shares).state, AccountState::Frozen);
+
+    // Nothing thawed: the mint into the depositor's frozen account fails inside Token-2022.
+    let a = env.investor(&k, 10 * UNIT);
+    assert_eq!(env.token_account(&k.share_ata(&a.pubkey())).state, AccountState::Frozen);
+    let ix = env.deposit_ix(&k, &a.pubkey(), 10 * UNIT);
+    env.expect_err(ix, &a, &[], SPL_TOKEN_ACCOUNT_FROZEN);
+
+    // The depositor is admitted but the dead account is still frozen: the first deposit fails on it.
+    env.thaw(&k.share_mint, &k.share_ata(&a.pubkey()), &gate);
+    let ix = env.deposit_ix(&k, &a.pubkey(), 10 * UNIT);
+    env.expect_err(ix, &a, &[], SPL_TOKEN_ACCOUNT_FROZEN);
+
+    // Dead account thawed by the gate (path 1: the gate admits the pool PDA's account).
+    env.thaw(&k.share_mint, &k.dead_shares, &gate);
+    let minted = env.deposit(&k, &a, 10 * UNIT).shares;
+    assert_eq!(minted, 10 * UNIT - DEAD_SHARES);
+    assert_eq!(env.token_balance(&k.dead_shares), DEAD_SHARES);
+
+    // A second investor who was never admitted cannot deposit; once thawed, can.
+    let b = env.investor(&k, UNIT);
+    let ix = env.deposit_ix(&k, &b.pubkey(), UNIT);
+    env.expect_err(ix, &b, &[], SPL_TOKEN_ACCOUNT_FROZEN);
+    env.thaw(&k.share_mint, &k.share_ata(&b.pubkey()), &gate);
+    env.deposit(&k, &b, UNIT);
+
+    // Path 2: the dead account is thawed in the init_pool transaction, so the pool is born ready.
+    let admin = env.admin.insecure_clone();
+    let asset = env.create_mint(&admin.pubkey(), 6);
+    let pool = pool_pda(&admin.pubkey(), &asset).0;
+    let m = env.create_share_mint(&pool, 6, Some(&gate.pubkey()), true);
+    let k2 = PoolKeys::new(&admin.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
+    let init = env.init_pool_ix_for(&k2, 0, BPS);
+    let thaw = env.thaw_ix(&m, &k2.dead_shares, &gate.pubkey());
+    env.send_all(&[init, thaw], &admin, &[&gate]);
+    assert_eq!(env.token_account(&k2.dead_shares).state, AccountState::Initialized);
+    let c = env.investor(&k2, 2 * UNIT);
+    env.thaw(&m, &k2.share_ata(&c.pubkey()), &gate);
+    assert_eq!(env.deposit(&k2, &c, 2 * UNIT).shares, 2 * UNIT - DEAD_SHARES);
+}
+
 /// SPL Token accepts any `decimals` byte. Above 19, `10^decimals` does not fit a `u64`, so no
 /// first deposit could ever meet the minimum; `init_pool` refuses such a mint instead of creating
 /// a pool that can never take a deposit.
@@ -533,10 +701,10 @@ fn init_pool_rejects_a_mint_whose_decimals_make_the_first_deposit_impossible() {
     let mut env = Env::new();
     let admin = env.admin.insecure_clone();
     let mint = env.create_mint(&admin.pubkey(), 20);
-    let ix = env.init_pool_ix(&admin.pubkey(), &mint);
+    let (_, ix) = env.init_pool_plain(&mint);
     env.expect_err(ix, &admin, &[], E_WRONG_ACCOUNT);
     // Nineteen decimals is the largest the minimum can express.
     let mint = env.create_mint(&admin.pubkey(), 19);
-    let ix = env.init_pool_ix(&admin.pubkey(), &mint);
+    let (_, ix) = env.init_pool_plain(&mint);
     env.send(ix, &admin, &[]);
 }

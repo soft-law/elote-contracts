@@ -46,12 +46,7 @@ import {
   type ResolvedInstructionAccount,
   type ResolvedInstructionAccountMeta,
 } from "@solana/program-client-core";
-import {
-  findDeadSharesPda,
-  findPoolPda,
-  findShareMintPda,
-  findVaultPda,
-} from "../pdas";
+import { findDeadSharesPda, findPoolPda, findVaultPda } from "../pdas";
 import { ELOTE_POOL_PROGRAM_ADDRESS } from "../programs";
 
 export const INIT_POOL_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
@@ -72,6 +67,7 @@ export type InitPoolInstruction<
   TAccountDeadShares extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountShareTokenProgram extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TAccountEventAuthority extends string | AccountMeta<string> = string,
@@ -93,7 +89,7 @@ export type InitPoolInstruction<
         ? WritableAccount<TAccountPool>
         : TAccountPool,
       TAccountShareMint extends string
-        ? WritableAccount<TAccountShareMint>
+        ? ReadonlyAccount<TAccountShareMint>
         : TAccountShareMint,
       TAccountVault extends string
         ? WritableAccount<TAccountVault>
@@ -104,6 +100,9 @@ export type InitPoolInstruction<
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountShareTokenProgram extends string
+        ? ReadonlyAccount<TAccountShareTokenProgram>
+        : TAccountShareTokenProgram,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -166,6 +165,8 @@ export type InitPoolAsyncInput<
   TAccountDeadShares extends InstructionAccountInput = InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
@@ -176,13 +177,24 @@ export type InitPoolAsyncInput<
   /** Classic SPL Token or Token-2022; `token_program` must be the mint's own program. */
   assetMint: TAccountAssetMint;
   pool?: TAccountPool;
-  shareMint?: TAccountShareMint;
+  /**
+   * The share mint, created by the admin beforehand and validated here (series-shelf 2c):
+   * mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that
+   * takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned.
+   */
+  shareMint: TAccountShareMint;
   /** A PDA token account, so nobody can pre-create it and block the pool. */
   vault?: TAccountVault;
-  /** Holds the dead shares of the first deposit; nothing ever moves them. */
+  /**
+   * Holds the dead shares of the first deposit; nothing ever moves them. On a permissioned
+   * share mint it is born frozen and must be thawed by the mint's freeze authority before the
+   * first deposit (in this transaction or a later one).
+   */
   deadShares?: TAccountDeadShares;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
   tokenProgram?: TAccountTokenProgram;
+  /** The token program of `share_mint` (Token-2022 in production, under Token ACL). */
+  shareTokenProgram: TAccountShareTokenProgram;
   systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -198,6 +210,7 @@ export async function getInitPoolInstructionAsync<
   TAccountVault extends InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -211,6 +224,7 @@ export async function getInitPoolInstructionAsync<
     TAccountVault,
     TAccountDeadShares,
     TAccountTokenProgram,
+    TAccountShareTokenProgram,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -250,6 +264,10 @@ export async function getInitPoolInstructionAsync<
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareTokenProgram,
+      InstructionAccountInputAddress<TAccountShareTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountSystemProgram,
       InstructionAccountInputAddress<TAccountSystemProgram>
     >,
@@ -286,7 +304,7 @@ export async function getInitPoolInstructionAsync<
     shareMint: {
       value: input.shareMint ?? null,
       isSigner: false,
-      isWritable: true,
+      isWritable: false,
     },
     vault: { value: input.vault ?? null, isSigner: false, isWritable: true },
     deadShares: {
@@ -296,6 +314,11 @@ export async function getInitPoolInstructionAsync<
     },
     tokenProgram: {
       value: input.tokenProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    shareTokenProgram: {
+      value: input.shareTokenProgram ?? null,
       isSigner: false,
       isWritable: false,
     },
@@ -334,17 +357,6 @@ export async function getInitPoolInstructionAsync<
         assetMint: getAddressFromResolvedInstructionAccount(
           "assetMint",
           accounts.assetMint.value,
-        ),
-      },
-      { programAddress },
-    );
-  }
-  if (!accounts.shareMint.value) {
-    accounts.shareMint.value = await findShareMintPda(
-      {
-        pool: getAddressFromResolvedInstructionAccount(
-          "pool",
-          accounts.pool.value,
         ),
       },
       { programAddress },
@@ -400,6 +412,7 @@ export async function getInitPoolInstructionAsync<
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("deadShares", accounts.deadShares),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -439,6 +452,10 @@ export async function getInitPoolInstructionAsync<
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareTokenProgram,
+      InstructionAccountInputAddress<TAccountShareTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountSystemProgram,
       InstructionAccountInputAddress<TAccountSystemProgram>
     >,
@@ -462,6 +479,8 @@ export type InitPoolInput<
   TAccountDeadShares extends InstructionAccountInput = InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
@@ -472,13 +491,24 @@ export type InitPoolInput<
   /** Classic SPL Token or Token-2022; `token_program` must be the mint's own program. */
   assetMint: TAccountAssetMint;
   pool: TAccountPool;
+  /**
+   * The share mint, created by the admin beforehand and validated here (series-shelf 2c):
+   * mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that
+   * takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned.
+   */
   shareMint: TAccountShareMint;
   /** A PDA token account, so nobody can pre-create it and block the pool. */
   vault: TAccountVault;
-  /** Holds the dead shares of the first deposit; nothing ever moves them. */
+  /**
+   * Holds the dead shares of the first deposit; nothing ever moves them. On a permissioned
+   * share mint it is born frozen and must be thawed by the mint's freeze authority before the
+   * first deposit (in this transaction or a later one).
+   */
   deadShares: TAccountDeadShares;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
   tokenProgram?: TAccountTokenProgram;
+  /** The token program of `share_mint` (Token-2022 in production, under Token ACL). */
+  shareTokenProgram: TAccountShareTokenProgram;
   systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -494,6 +524,7 @@ export function getInitPoolInstruction<
   TAccountVault extends InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
+  TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -507,6 +538,7 @@ export function getInitPoolInstruction<
     TAccountVault,
     TAccountDeadShares,
     TAccountTokenProgram,
+    TAccountShareTokenProgram,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -545,6 +577,10 @@ export function getInitPoolInstruction<
     InstructionAccountInputAddress<TAccountTokenProgram>
   >,
   ResolvedInstructionAccountMeta<
+    TAccountShareTokenProgram,
+    InstructionAccountInputAddress<TAccountShareTokenProgram>
+  >,
+  ResolvedInstructionAccountMeta<
     TAccountSystemProgram,
     InstructionAccountInputAddress<TAccountSystemProgram>
   >,
@@ -580,7 +616,7 @@ export function getInitPoolInstruction<
     shareMint: {
       value: input.shareMint ?? null,
       isSigner: false,
-      isWritable: true,
+      isWritable: false,
     },
     vault: { value: input.vault ?? null, isSigner: false, isWritable: true },
     deadShares: {
@@ -590,6 +626,11 @@ export function getInitPoolInstruction<
     },
     tokenProgram: {
       value: input.tokenProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    shareTokenProgram: {
+      value: input.shareTokenProgram ?? null,
       isSigner: false,
       isWritable: false,
     },
@@ -640,6 +681,7 @@ export function getInitPoolInstruction<
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("deadShares", accounts.deadShares),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -679,6 +721,10 @@ export function getInitPoolInstruction<
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareTokenProgram,
+      InstructionAccountInputAddress<TAccountShareTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountSystemProgram,
       InstructionAccountInputAddress<TAccountSystemProgram>
     >,
@@ -703,16 +749,27 @@ export type ParsedInitPoolInstruction<
     /** Classic SPL Token or Token-2022; `token_program` must be the mint's own program. */
     assetMint: TAccountMetas[1];
     pool: TAccountMetas[2];
+    /**
+     * The share mint, created by the admin beforehand and validated here (series-shelf 2c):
+     * mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that
+     * takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned.
+     */
     shareMint: TAccountMetas[3];
     /** A PDA token account, so nobody can pre-create it and block the pool. */
     vault: TAccountMetas[4];
-    /** Holds the dead shares of the first deposit; nothing ever moves them. */
+    /**
+     * Holds the dead shares of the first deposit; nothing ever moves them. On a permissioned
+     * share mint it is born frozen and must be thawed by the mint's freeze authority before the
+     * first deposit (in this transaction or a later one).
+     */
     deadShares: TAccountMetas[5];
     /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
     tokenProgram: TAccountMetas[6];
-    systemProgram: TAccountMetas[7];
-    eventAuthority: TAccountMetas[8];
-    program: TAccountMetas[9];
+    /** The token program of `share_mint` (Token-2022 in production, under Token ACL). */
+    shareTokenProgram: TAccountMetas[7];
+    systemProgram: TAccountMetas[8];
+    eventAuthority: TAccountMetas[9];
+    program: TAccountMetas[10];
   };
   data: InitPoolInstructionData;
 };
@@ -725,12 +782,12 @@ export function parseInitPoolInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedInitPoolInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 10) {
+  if (instruction.accounts.length < 11) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 10,
+        expectedAccountMetas: 11,
       },
     );
   }
@@ -750,6 +807,7 @@ export function parseInitPoolInstruction<
       vault: getNextAccount(),
       deadShares: getNextAccount(),
       tokenProgram: getNextAccount(),
+      shareTokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

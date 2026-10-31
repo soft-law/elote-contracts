@@ -7,8 +7,6 @@ pub mod seeds {
     pub const POOL: &[u8] = b"pool";
     /// `[LINE, pool, line_id (u64 LE)]`
     pub const LINE: &[u8] = b"line";
-    /// `[SHARES, pool]`: the share token mint.
-    pub const SHARES: &[u8] = b"shares";
     /// `[VAULT, pool]`: the pool's asset token account.
     pub const VAULT: &[u8] = b"vault";
     /// `[DEAD, pool]`: the pool-owned share token account holding the dead shares.

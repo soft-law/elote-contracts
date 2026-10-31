@@ -86,15 +86,17 @@ the inner instructions instead of from logs that can be truncated.
 
 ## 2. Accounts and the PDA tree
 
-Every account the program owns or controls hangs off the pool PDA. Nothing is user-chosen
-except the admin key and the asset mint.
+Every account the program owns or controls hangs off the pool PDA. The user-chosen inputs are
+the admin key, the asset mint and, since pool v2, the share mint (created by the admin and
+validated at `init_pool`).
 
 ```
 Pool            PDA ["pool", admin, asset_mint]          data account, program-owned
-├── share_mint  PDA ["shares", pool]                     SPL mint, decimals = asset decimals,
-│                                                        mint authority = pool, no freeze authority
-├── vault       PDA ["vault", pool]                      SPL token account of asset_mint, owner = pool
-├── dead_shares PDA ["dead", pool]                       SPL token account of share_mint, owner = pool
+├── share_mint  admin-supplied mint (any address)        classic or Token-2022, decimals = asset decimals,
+│                                                        mint authority = pool, freeze authority = the
+│                                                        admin's choice (Token ACL MintConfig in production)
+├── vault       PDA ["vault", pool]                      token account of asset_mint, owner = pool
+├── dead_shares PDA ["dead", pool]                       token account of share_mint, owner = pool
 └── CreditLine  PDA ["line", pool, line_id as u64 LE]    one per approved line, program-owned
 ```
 
@@ -261,12 +263,12 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
 ### 5.1 `init_pool(grace_period_seconds: u32, max_line_bps: u16)`
 
 - **Signers:** `admin` (also pays rent).
-- **Constraints:** `pool` is `init` at `["pool", admin, asset_mint]`; `share_mint` is `init` at
-  `["shares", pool]` with `decimals = asset_mint.decimals` and `mint::authority = pool`; `vault`
-  is `init` at `["vault", pool]` for `asset_mint` with `authority = pool`; `dead_shares` is
-  `init` at `["dead", pool]` for `share_mint` with `authority = pool`; all four under
-  `token_program`, an `Interface<TokenInterface>` that must be the asset mint's own program
-  (classic SPL Token or Token-2022). `asset_mint` is an `InterfaceAccount<Mint>`.
+- **Constraints:** `pool` is `init` at `["pool", admin, asset_mint]`; `share_mint` is an
+  existing `InterfaceAccount<Mint>` the admin created (validated below, not `init`); `vault` is
+  `init` at `["vault", pool]` for `asset_mint` with `authority = pool` under `token_program`
+  (the asset's program); `dead_shares` is `init` at `["dead", pool]` for `share_mint` with
+  `authority = pool` under `share_token_program` (the share mint's program). Both token
+  programs are `Interface<TokenInterface>`: classic SPL Token or Token-2022, independently.
 - **Checks:** `1 <= max_line_bps <= 10 000` (`WrongAmount`); `asset_mint.decimals <= 19`, so
   that `min_first_deposit` exists (`WrongAccount`); the asset-mint policy (`asset_controls` in
   `pool.rs`): the mint is unpacked with its extensions and refused (`AssetMintNotAllowed`) if
@@ -274,10 +276,18 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
   `ConfidentialTransferMint`, `ConfidentialTransferFeeConfig`, `ConfidentialMintBurn`,
   `MintCloseAuthority`, or `DefaultAccountState` other than `Initialized`; a freeze authority
   and `Pausable` are accepted and recorded as bits of `asset_controls`; other extensions are
-  accepted and ignored. Any value of `grace_period_seconds` is accepted, including zero.
+  accepted and ignored. The share-mint policy (`validate_share_mint`): owned by
+  `share_token_program`, `mint_authority == pool`, `supply == 0`,
+  `decimals == asset_mint.decimals`; refused extensions `TransferFeeConfig`, `TransferHook`,
+  `MintCloseAuthority`, `PermanentDelegate`, `InterestBearingConfig` and the three confidential
+  ones; `DefaultAccountState == Frozen` sets `permissioned` and then requires a freeze
+  authority; `NonTransferable` is allowed (deposit mints, redeem burns); all failures are
+  `ShareMintNotAllowed`. Who the freeze authority is (Token ACL's `MintConfig` or a key) is not
+  recorded. Any value of `grace_period_seconds` is accepted, including zero.
 - **Writes:** every `Pool` field; `reserved` zeroed then the grace period, `max_line_bps`,
-  `permissioned` (false: the program-created share mint has no default state) and
-  `asset_controls` packed in.
+  `permissioned` and `asset_controls` packed in. On a permissioned share mint the dead account
+  is born frozen: the freeze authority thaws it in this transaction or before the first deposit,
+  or the first deposit fails inside Token-2022 (`AccountFrozen`).
 - **CPIs:** the four `init`s (system program + token program) done by Anchor.
 - **Events:** `PoolInitialized`, then `PoolConfigured`, `PoolLineCapSet`, `PoolFlags`.
 
@@ -286,8 +296,8 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
 - **Signers:** `depositor`.
 - **Constraints:** `pool` re-derived from its own `admin`/`asset_mint`/`bump`; `asset_mint`
   (read-only, for the decimals `transfer_checked` needs), `share_mint`, `vault`, `dead_shares`
-  must equal the addresses stored in the pool (`WrongAccount`); `token_program` is an
-  `Interface<TokenInterface>`;
+  must equal the addresses stored in the pool (`WrongAccount`); `token_program` (asset) and
+  `share_token_program` (shares) are `Interface<TokenInterface>`s;
   `depositor_asset_account` must have `mint == pool.asset_mint` and `owner == depositor`;
   `depositor_share_account` must have `mint == pool.share_mint` and `owner == depositor`.
 - **Checks, in order:** not paused (`Paused`); `assets > 0` (`WrongAmount`); read

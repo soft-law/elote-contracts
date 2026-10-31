@@ -42,9 +42,8 @@ fn a_line_for_the_whole_vault_is_refused_under_the_concentration_cap() {
     let mut env = Env::new();
     let admin = env.admin.insecure_clone();
     let mint = env.create_mint(&admin.pubkey(), 6);
-    let ix = env.init_pool_ix_full(&admin.pubkey(), &mint, 0, 1_000);
+    let (k, ix) = env.init_pool_full(&mint, 0, 1_000);
     env.send(ix, &admin, &[]);
-    let k = PoolKeys::new(&admin.pubkey(), &mint);
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
 
@@ -202,9 +201,8 @@ fn first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor() {
 
     // Nine decimals: the minimum is 10^9 base units, one whole unit.
     let mint = env.create_mint(&admin.pubkey(), 9);
-    let ix = env.init_pool_ix(&admin.pubkey(), &mint);
+    let (k, ix) = env.init_pool_plain(&mint);
     env.send(ix, &admin, &[]);
-    let k = PoolKeys::new(&admin.pubkey(), &mint);
     assert_eq!(env.mint_decimals(&k.share_mint), 9);
     let investor = env.funded(10);
     env.mint_to(&mint, &admin, &investor.pubkey(), 2_000_000_000);
@@ -216,9 +214,8 @@ fn first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor() {
     // Two decimals: 1.0 would be 100 base units, below the dead shares; the floor of
     // 1,000 x DEAD_SHARES = 1_000_000 base units (10,000.00) applies instead.
     let mint = env.create_mint(&admin.pubkey(), 2);
-    let ix = env.init_pool_ix(&admin.pubkey(), &mint);
+    let (k, ix) = env.init_pool_plain(&mint);
     env.send(ix, &admin, &[]);
-    let k = PoolKeys::new(&admin.pubkey(), &mint);
     let investor = env.funded(10);
     env.mint_to(&mint, &admin, &investor.pubkey(), 1_000_000);
     env.create_ata(&investor.pubkey(), &k.share_mint);

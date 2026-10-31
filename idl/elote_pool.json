@@ -80,7 +80,16 @@
           "writable": true
         },
         {
-          "name": "token_program"
+          "name": "token_program",
+          "docs": [
+            "The asset's token program."
+          ]
+        },
+        {
+          "name": "share_token_program",
+          "docs": [
+            "The share mint's token program."
+          ]
         },
         {
           "name": "event_authority"
@@ -262,26 +271,11 @@
         },
         {
           "name": "share_mint",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  104,
-                  97,
-                  114,
-                  101,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool"
-              }
-            ]
-          }
+          "docs": [
+            "The share mint, created by the admin beforehand and validated here (series-shelf 2c):",
+            "mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that",
+            "takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned."
+          ]
         },
         {
           "name": "vault",
@@ -311,7 +305,9 @@
         {
           "name": "dead_shares",
           "docs": [
-            "Holds the dead shares of the first deposit; nothing ever moves them."
+            "Holds the dead shares of the first deposit; nothing ever moves them. On a permissioned",
+            "share mint it is born frozen and must be thawed by the mint's freeze authority before the",
+            "first deposit (in this transaction or a later one)."
           ],
           "writable": true,
           "pda": {
@@ -336,6 +332,12 @@
           "name": "token_program",
           "docs": [
             "The token program of `asset_mint` (classic SPL Token or Token-2022)."
+          ]
+        },
+        {
+          "name": "share_token_program",
+          "docs": [
+            "The token program of `share_mint` (Token-2022 in production, under Token ACL)."
           ]
         },
         {
@@ -662,7 +664,16 @@
           "writable": true
         },
         {
-          "name": "token_program"
+          "name": "token_program",
+          "docs": [
+            "The asset's token program."
+          ]
+        },
+        {
+          "name": "share_token_program",
+          "docs": [
+            "The share mint's token program."
+          ]
         },
         {
           "name": "event_authority"
@@ -1284,6 +1295,11 @@
       "code": 6022,
       "name": "AssetMintNotAllowed",
       "msg": "The asset mint carries a Token-2022 extension the pool does not accept"
+    },
+    {
+      "code": 6023,
+      "name": "ShareMintNotAllowed",
+      "msg": "The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions"
     }
   ],
   "types": [

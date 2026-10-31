@@ -85,7 +85,6 @@ import {
   findDeadSharesPda,
   findLinePda,
   findPoolPda,
-  findShareMintPda,
   findVaultPda,
 } from "../pdas";
 
@@ -601,7 +600,6 @@ export type ElotePoolPluginInstructions = {
 
 export type ElotePoolPluginPdas = {
   pool: typeof findPoolPda;
-  shareMint: typeof findShareMintPda;
   vault: typeof findVaultPda;
   deadShares: typeof findDeadSharesPda;
   line: typeof findLinePda;
@@ -706,11 +704,6 @@ export function elotePoolProgram(
         pdas: {
           pool: (seeds, pdaConfig) =>
             findPoolPda(seeds, {
-              programAddress:
-                pdaConfig?.programAddress ?? config.programAddress,
-            }),
-          shareMint: (seeds, pdaConfig) =>
-            findShareMintPda(seeds, {
               programAddress:
                 pdaConfig?.programAddress ?? config.programAddress,
             }),
