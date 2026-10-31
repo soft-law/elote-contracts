@@ -51,7 +51,7 @@ running are "elote_pool known limits", "arrears vectors", "anchor build --arch v
   use its program, testing and security references, and its Anchor 1.2 notes),
   `superpowers:test-driven-development` (write the LiteSVM test first for every behaviour
   change), `superpowers:verification-before-completion` (run the full command list below before
-  reporting anything done), `superpowers:using-git-worktrees` or a plain branch from `main`, and
+  reporting anything done), `superpowers:using-git-worktrees` or a plain branch as named per PR below, and
   `code-review` on your own diff before handing a PR to the coordinator.
 - Commands that must be green before any report of "done":
   ```sh
@@ -72,7 +72,7 @@ running are "elote_pool known limits", "arrears vectors", "anchor build --arch v
 
 ### PR 1: Phase 1 hardening (no account layout change, no IDL change except new errors)
 
-Branch `hardening/phase-1` from `main`. Items, all spec-free:
+Branch `hardening/phase-1` from the tip of `poc/kyc-identity-eval` (which is `main` 3c1debd plus the docs and PoCs; `main` itself has none of the plans yet). Items, all spec-free:
 
 - **R-11**: in `repay`, advance `late_paid_until` only when `late_part > 0`; test: miss one
   installment, repay 1 unit twice 30 s apart, assert the second settlement is nonzero.
@@ -99,7 +99,7 @@ Estimate 1 to 2 days. Report test counts before and after.
 
 ### PR 2: pool v2 + line v3 + pagaré token (one breaking batch)
 
-Branch `v2/pool-and-lines` from `main` after PR 1 merges (or rebased on it). Order inside the
+Branch `v2/pool-and-lines` from `hardening/phase-1` after PR 1 is reviewed (rebase when it merges). Order inside the
 branch, each step with its tests before moving on:
 
 1. **Token interface**: `TokenInterface`, `InterfaceAccount<Mint/TokenAccount>`,
