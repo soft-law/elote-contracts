@@ -6,7 +6,7 @@ use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer}
 use crate::errors::PoolError;
 use crate::events::{Deposited, PoolConfigured, PoolInitialized, PoolPaused, Redeemed};
 use crate::math;
-use crate::state::{seeds, Pool, DEAD_SHARES, MIN_FIRST_DEPOSIT, POOL_VERSION};
+use crate::state::{min_first_deposit, seeds, Pool, DEAD_SHARES, POOL_VERSION};
 
 /// Signs CPIs as the pool PDA.
 #[macro_export]
@@ -158,7 +158,10 @@ pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Resul
     let supply = ctx.accounts.share_mint.supply;
     let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
     if supply == 0 {
-        require!(assets >= MIN_FIRST_DEPOSIT, PoolError::FirstDepositTooSmall);
+        // The share mint has the asset's decimals (fixed at `init_pool`), so it stands in for
+        // the asset mint here.
+        let min = min_first_deposit(ctx.accounts.share_mint.decimals).ok_or(PoolError::Overflow)?;
+        require!(assets >= min, PoolError::FirstDepositTooSmall);
     }
     let minted = math::shares_for_deposit(assets, supply, nav).ok_or(PoolError::Overflow)?;
     let dead = if supply == 0 { DEAD_SHARES } else { 0 };

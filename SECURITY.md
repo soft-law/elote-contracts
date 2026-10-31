@@ -54,7 +54,7 @@ These are documented limits of the current program, not open vulnerabilities. Al
 - **No cancel.** There is no instruction to revoke an approved line: it is an option for the borrower to draw until the term ends.
 - **No recovery after write-off.** A written-off line takes no repayment. If every line is written off and the NAV reaches zero while shares exist, `deposit` fails until value is transferred into the vault directly.
 - **Collection can be unreachable.** `mark_in_collection` requires `covered + max_missed <= installments`; on a short schedule a borrower who paid early installments and then stopped can only be written off after the term.
-- **Decimals.** The first-deposit minimum is a fixed 1,000,000 base units, meant as 1.0 of a six-decimal asset.
+- **First-deposit floor on low-decimal assets.** The first-deposit minimum is 1.0 of the asset, but never fewer base units than 1,000 times the dead shares (1,000,000), so on an asset with fewer than six decimals the minimum is more than one whole unit (10,000.00 on a two-decimal asset). Pinned by `first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor`.
 - **Late interest timing.** Late interest is computed at the second of the repayment, so a client must pad a repayment that is meant to settle it, or the program rejects it with `LateInterestUnpaid`.
 
 ## What the program does enforce

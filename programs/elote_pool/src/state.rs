@@ -15,12 +15,21 @@ pub mod seeds {
     pub const DEAD: &[u8] = b"dead";
 }
 
-/// Smallest first deposit (1.0 of a 6-decimal asset), so the opening price of a share cannot be
-/// set by a dust deposit.
-pub const MIN_FIRST_DEPOSIT: u64 = 1_000_000;
 /// Shares the first deposit locks forever in the pool-owned dead account, so the supply never
 /// returns below this floor and a donation cannot round later deposits down to nothing.
 pub const DEAD_SHARES: u64 = 1_000;
+/// The first deposit is at least this many times `DEAD_SHARES`, whatever the asset's decimals,
+/// so the inflation attack keeps needing a donation of about a thousand times the victim's
+/// deposit (the ratio the original 1_000_000 minimum on a 6-decimal asset gave).
+pub const MIN_FIRST_DEPOSIT_DEAD_RATIO: u64 = 1_000;
+
+/// Smallest first deposit for an asset with `decimals`: one whole unit (`10^decimals`), and never
+/// fewer base units than `MIN_FIRST_DEPOSIT_DEAD_RATIO * DEAD_SHARES`, so the opening price of a
+/// share cannot be set by a dust deposit on any asset. `None` when `10^decimals` overflows.
+pub fn min_first_deposit(decimals: u8) -> Option<u64> {
+    let one_unit = 10u64.checked_pow(u32::from(decimals))?;
+    Some(one_unit.max(MIN_FIRST_DEPOSIT_DEAD_RATIO.checked_mul(DEAD_SHARES)?))
+}
 pub const BPS: u64 = 10_000;
 pub const POOL_VERSION: u8 = 1;
 pub const LINE_VERSION: u8 = 1;

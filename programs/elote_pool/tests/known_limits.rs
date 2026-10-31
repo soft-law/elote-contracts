@@ -170,24 +170,39 @@ fn limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installm
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
 }
 
-/// `MIN_FIRST_DEPOSIT` is a raw amount of 1_000_000 base units, meant as 1.0 of a six-decimal
-/// asset. On a two-decimal asset it is 10,000.00 (roadmap: "Any SPL asset").
+/// Inverted 2026-10-31 (R-07 delta). The first-deposit minimum is derived from the asset's
+/// decimals: 1.0 of the asset, and never fewer base units than 1,000 times `DEAD_SHARES`, the
+/// ratio the dead-shares defence relies on. On a 9-decimal asset (MXNe) that is 1.0, not 0.001.
 #[test]
-fn limit_first_deposit_minimum_assumes_six_decimals() {
+fn first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor() {
     let mut env = Env::new();
     let admin = env.admin.insecure_clone();
+
+    // Nine decimals: the minimum is 10^9 base units, one whole unit.
+    let mint = env.create_mint(&admin.pubkey(), 9);
+    let ix = env.init_pool_ix(&admin.pubkey(), &mint);
+    env.send(ix, &admin, &[]);
+    let k = PoolKeys::new(&admin.pubkey(), &mint);
+    assert_eq!(env.mint_decimals(&k.share_mint), 9);
+    let investor = env.funded(10);
+    env.mint_to(&mint, &admin, &investor.pubkey(), 2_000_000_000);
+    env.create_ata(&investor.pubkey(), &k.share_mint);
+    let ix = env.deposit_ix(&k, &investor.pubkey(), 999_999_999); // 0.999999999
+    env.expect_err(ix, &investor, &[], E_FIRST_DEPOSIT_TOO_SMALL);
+    env.deposit(&k, &investor, 1_000_000_000); // 1.0
+
+    // Two decimals: 1.0 would be 100 base units, below the dead shares; the floor of
+    // 1,000 x DEAD_SHARES = 1_000_000 base units (10,000.00) applies instead.
     let mint = env.create_mint(&admin.pubkey(), 2);
     let ix = env.init_pool_ix(&admin.pubkey(), &mint);
     env.send(ix, &admin, &[]);
     let k = PoolKeys::new(&admin.pubkey(), &mint);
-    assert_eq!(env.mint_decimals(&k.share_mint), 2);
-
     let investor = env.funded(10);
     env.mint_to(&mint, &admin, &investor.pubkey(), 1_000_000);
     env.create_ata(&investor.pubkey(), &k.share_mint);
-    let ix = env.deposit_ix(&k, &investor.pubkey(), 999_999); // 9,999.99
+    let ix = env.deposit_ix(&k, &investor.pubkey(), 999_999);
     env.expect_err(ix, &investor, &[], E_FIRST_DEPOSIT_TOO_SMALL);
-    env.deposit(&k, &investor, 1_000_000); // 10,000.00
+    env.deposit(&k, &investor, 1_000_000);
 }
 
 /// Late interest is computed at the second the repayment executes. A client that reads

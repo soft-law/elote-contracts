@@ -179,8 +179,9 @@ returns `None` on a version-1 line, which is how every handler tells the two kin
 
 | constant | value | role |
 |---|---|---|
-| `MIN_FIRST_DEPOSIT` | 1 000 000 | floor on the first deposit, **assumes a 6-decimal asset** |
+| `min_first_deposit(decimals)` | `max(10^decimals, 1 000 × DEAD_SHARES)` | floor on the first deposit: one whole unit of the asset, never below 1 000 000 base units |
 | `DEAD_SHARES` | 1 000 | shares locked forever by the first deposit |
+| `MIN_FIRST_DEPOSIT_DEAD_RATIO` | 1 000 | the first deposit is at least this many dead shares, whatever the decimals |
 | `BPS` | 10 000 | basis points |
 | `MAX_INSTALLMENTS` | 120 | bounds the arrears loop and its compute |
 | `MIN_MAX_MISSED` | 3 | policy: three missed installments before collection |
@@ -212,7 +213,7 @@ price = NAV / share_mint.supply
 `outstanding_principal` is touched in exactly three places: `draw` adds the principal, `repay`
 subtracts `principal_part`, `write_off` subtracts the unpaid principal. Interest never enters it.
 
-**Dead shares.** The first deposit must be at least `MIN_FIRST_DEPOSIT` and `DEAD_SHARES` of the
+**Dead shares.** The first deposit must be at least `min_first_deposit(decimals)` and `DEAD_SHARES` of the
 shares it mints go to the pool-owned `dead_shares` account, which no instruction ever reads
 again. The supply therefore never falls below 1 000, so a donation to the vault cannot push the
 price high enough to round a later deposit down to zero shares (the classic ERC-4626 inflation
@@ -277,8 +278,9 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
   `depositor_asset_account` must have `mint == pool.asset_mint` and `owner == depositor`;
   `depositor_share_account` must have `mint == pool.share_mint` and `owner == depositor`.
 - **Checks, in order:** not paused (`Paused`); `assets > 0` (`WrongAmount`); read
-  `supply` and `NAV` *before any token moves*; if `supply == 0`, `assets >= MIN_FIRST_DEPOSIT`
-  (`FirstDepositTooSmall`); `minted = shares_for_deposit(assets, supply, nav)` (`Overflow`,
+  `supply` and `NAV` *before any token moves*; if `supply == 0`,
+  `assets >= min_first_deposit(share_mint.decimals)` (`FirstDepositTooSmall`; the share mint
+  carries the asset's decimals); `minted = shares_for_deposit(assets, supply, nav)` (`Overflow`,
   which also covers `NAV == 0` with `supply > 0`); `shares = minted - DEAD_SHARES` on a first
   deposit, else `minted`; `shares > 0` (`ZeroShares`); `shares >= min_shares_out`
   (`SlippageExceeded`).
@@ -505,7 +507,7 @@ The review ids refer to the 2026-10-12 review in theOffice.
 | test | behaviour | review |
 |---|---|---|
 | `limit_admin_can_open_a_line_to_itself_for_the_whole_vault` | nothing stops `borrower == admin` or a line for 100% of the vault; trust in the admin is total | P1-1 |
-| `limit_first_deposit_minimum_assumes_six_decimals` | `MIN_FIRST_DEPOSIT` is 1.0 only for a 6-decimal asset; for a 9-decimal asset it is 0.001 | P0-5 |
+| `first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor` | **inverted 2026-10-31**: the minimum is one whole unit of the asset for six or more decimals; below six decimals the floor of 1 000 × `DEAD_SHARES` base units applies, so a two-decimal asset needs 10,000.00 | R-07 delta |
 | `limit_deposit_just_before_a_repayment_shares_the_interest` | interest counts when collected, so a deposit that lands just before a repayment gets the same uplift as one made months earlier | (design) |
 | `limit_redeem_between_collection_and_write_off_exits_at_par` | a line in collection still counts fully in the NAV until the admin writes it off; a holder who redeems in between exits at par and the loss falls on the rest | (design) |
 | `limit_pause_blocks_exit_while_repayments_continue` | while paused, repayments raise the NAV but nobody can redeem | (design) |
