@@ -48,31 +48,44 @@ Two layers, in this order.
    `agreement_hash`, which stays the keccak of the signed master agreement. Zero is rejected as
    today (`lines.rs:78`). Nothing else about the person goes on chain.
 2. **One `Pagare` record per draw.** `draw(amount, document_hash)` creates a PDA
-   `["pagare", line, draw_index]` holding `{document_hash, folio: u32, amount, issued_at,
-   due_at, status, tenedor}`. `document_hash` is the hash of the signed pagaré bytes (plus the
-   schedule annex when separate); `folio` is the issuing system's number, with no personal data;
-   `tenedor` is the public key registered off chain to the legal holder (the SOFOM, fiduciario or
-   SPV), set from the pool configuration at creation. The record is owned by the program and sits
-   under the line: that is the lock. Rent about 0.002 SOL per record, paid by the borrower as the
-   draw's fee payer, refunded on close.
-3. **Attestor co-signature on the draw.** The pool configuration gains `attestor: Pubkey`
-   (the agreements engine's signing key, rotatable by the admin with a new `set_attestor`). A
-   draw requires the attestor's signature over the transaction, which states that the pagaré with
-   `document_hash` was signed by the borrower and conserved with a NOM-151 constancia before any
-   money moved. This is Untangled's validator signature and Centrifuge's identity signature at
-   mint (evm patterns 8 and 2). Without it the borrower could draw against a hash of nothing.
-4. **Lifecycle.**
-   - Repayment covers pagarés oldest first, by `draw_index`; when the cumulative principal and
-     interest repaid cover a pagaré it moves to `Paid`, emits `PagarePaid`, and the record can be
-     closed by anyone with rent to the borrower (LGTOC art. 129: the debtor is entitled to the
-     cancelled título against payment; the cancellation itself happens in the issuing system off
-     chain, the record only says so).
-   - `mark_in_collection` moves every open pagaré to `InCollection`; `write_off` moves them to
-     `WrittenOff` and the records are never closed: cobranza needs them, and Tinlake's
-     return-to-borrower is the pattern to avoid.
-   - `endorse_pagare(endoso_hash, new_tenedor)` is signed by the current tenedor's key and by the
-     admin; it records the hash of the signed endoso (endorsee name, type, place and date live in
-     that document, not on chain) and changes `tenedor`. Before maturity this is an endoso en
+   `["pagare", line, draw_index]` holding only immutable facts plus custody:
+   `{document_hash, amount, issued_at, due_at, draw_index, tenedor, endoso_hash}`.
+   `document_hash` is the hash of the signed pagaré bytes (plus the schedule annex when
+   separate). There is **no folio on chain**: `draw_index` identifies the pagaré and the
+   agreements engine maps index to folio off chain, so no issuing-system number ever appears in
+   instruction data or in an event (evm pattern 13). `tenedor` is copied from the pool's
+   `tenedor` field at creation (item 3). The record is owned by the program and sits under the
+   line: that is the lock. Rent about 0.002 SOL per record, refunded on close; the app's relayer
+   pays it, because SME wallets rarely hold SOL.
+3. **Two new pool fields and the attestor co-signature.** Pool v2 gains `attestor: Pubkey` (the
+   agreements engine's signing key) and `tenedor: Pubkey` (the key of the one legal holder per
+   series: a SOFOM, fiduciario or SPV). `Pool.reserved` has 28 free bytes, so the Pool layout
+   grows by 64 bytes in the same breaking batch as the rest of pool v2, with admin instructions
+   `set_attestor` and `set_tenedor`. A draw requires the attestor's signature over the
+   transaction, which states that the pagaré with `document_hash` was signed by the borrower and
+   conserved with a NOM-151 constancia before any money moved. This is Untangled's validator
+   signature and Centrifuge's identity signature at mint (evm patterns 8 and 2). Without it the
+   borrower could draw against a hash of nothing. **New trusted roles, to be written into
+   `SECURITY.md`'s trust table:** the attestor can block every disbursement by withholding its
+   signature and cannot move funds, with `set_attestor` as the only recovery; the tenedor key can
+   sign endosos and cannot touch the pool. `ARCHITECTURE.md` §8's "no operator role" sentence
+   changes accordingly.
+4. **Lifecycle, with derived status and no account fan-out.** The record never stores a status.
+   `Paid`, `InCollection` and `WrittenOff` are computed by clients from the line's status and the
+   coverage rule: pagarés are covered oldest first by `draw_index`, and pagaré `k` is paid once the
+   line's cumulative principal and interest repaid cover every pagaré up to `k`. So `repay`,
+   `mark_in_collection` and `write_off` take no pagaré accounts and do no loops.
+   - `close_pagare(k)` verifies that coverage at close time, closes the record with rent to the
+     relayer and emits `PagareClosed` (LGTOC art. 129: the debtor is entitled to the cancelled
+     título against payment; the cancellation happens in the issuing system off chain, the close
+     only says so). It fails while the line is `InCollection` or `WrittenOff`, so written-off
+     records are never released: cobranza needs them, and Tinlake's return-to-borrower is the
+     pattern to avoid.
+   - `endorse_pagare(k, endoso_hash, new_tenedor)` is signed by the current tenedor's key and by
+     the admin; it records the hash of the signed endoso (endorsee name, type, place and date live
+     in that document, not on chain) and changes `tenedor`. The admin co-signature makes the
+     Squads vault a gate on every sale of paper, which goes on counsel item 10's list of admin
+     powers. Before maturity this is an endoso en
      propiedad; after it, a cesión, and the debtor notice and RUG registration happen off chain
      (`M-pagares-recovery.md` §2.2). Investor-to-investor trades of series shares never touch a
      pagaré record.
@@ -87,9 +100,10 @@ Two layers, in this order.
    admin, or a judge-facing verifier with a fe de hechos (evm pattern 5; `M-pagares-recovery.md`
    §1.6). No folio, RFC, CURP or document name is ever passed in instruction data or placed in a
    URI, and no identifier is hashed without a salt (evm pattern 13; Credix's mistake).
-6. **Events.** `PagareIssued { pool, line_id, draw_index, document_hash, folio, amount, due_at,
-   tenedor }`, `PagarePaid`, `PagareEndorsed { endoso_hash, from, to }`, and `LineDrawState` as in
-   the tranched plan. Append-only as always.
+6. **Events.** `PagareIssued { pool, line_id, draw_index, document_hash, amount, due_at,
+   tenedor }`, `PagareClosed { pool, line_id, draw_index }`, `PagareEndorsed { pool, line_id,
+   draw_index, endoso_hash, from, to }`, and `LineDrawState` as in the tranched plan. Append-only
+   as always, and no folio in any of them.
 
 ### Layer 2, after the external review: a visible asset per line
 
@@ -115,13 +129,17 @@ permissionless. Series shares never reference a pagaré.
 ## Changes to the tranched plan
 
 - D9 becomes Layer 1 item 2: the per-draw hash is stored in a `Pagare` record, not only emitted.
-- New D14: attestor co-signature on `draw`, `attestor` in the pool configuration, `set_attestor`.
+- New D14: attestor co-signature on `draw`; `attestor` and `tenedor` on the Pool (64 bytes, pool
+  v2 batch; the series-shelf facts table and item 2d say so); `set_attestor`, `set_tenedor`.
 - New D15: `expediente_root` on `CreditLine` (32 bytes more; the v3 growth becomes 51 bytes).
-- New instructions: `endorse_pagare`, `close_pagare`, `set_attestor`. New errors:
-  `AttestorRequired`, `PagareNotPaid`, `NotTenedor`.
-- Tests: a draw without the attestor fails; records are created per draw and paid oldest first;
-  a written-off line keeps its records and `close_pagare` fails; an endoso changes the tenedor and
-  only the tenedor's key may sign it; no instruction accepts a folio or hash of zero.
+- New instructions: `endorse_pagare`, `close_pagare`, `set_attestor`, `set_tenedor`. New errors:
+  `AttestorRequired`, `PagareNotCovered`, `NotTenedor`.
+- Tests: a draw without the attestor fails; records are created per draw with no folio; the
+  coverage rule pays oldest first and `close_pagare` of a later pagaré fails while an earlier one
+  is uncovered; a written-off or in-collection line keeps its records and `close_pagare` fails; an
+  endoso changes the tenedor and only the tenedor's key plus the admin may sign it; no instruction
+  accepts a hash of zero; `repay`, `mark_in_collection` and `write_off` take no pagaré accounts.
+- `SECURITY.md` trust table and `ARCHITECTURE.md` §8 gain the attestor and tenedor roles.
 - Estimate: 1.5 days more on the program and tests, half a day on the agreements engine side to
   produce the salted root and the attestor signature.
 
