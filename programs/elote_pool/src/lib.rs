@@ -91,8 +91,10 @@ pub mod elote_pool {
         instructions::lines::mark_in_collection(ctx)
     }
 
-    /// Recognises the unpaid principal of a line as a loss. Admin only: after the term plus the
-    /// pool's grace, or, for a line in collection, after its oldest missed due date plus grace.
+    /// Recognises the unpaid principal of a line as a loss. Admin only. Allowed on an active line
+    /// once `now > term_end + grace`, and on a line in collection once its oldest missed
+    /// installment is more than `grace` past due (or the term is). It does not wait: the call
+    /// books the loss the moment one of those conditions holds.
     pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
         instructions::lines::write_off(ctx)
     }

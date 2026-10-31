@@ -1,11 +1,12 @@
 //! Credit lines approved from the pool: open, draw, repay, collection and write off.
 //!
 //! A line moves `Approved -> Active -> Repaid | WrittenOff`, and a scheduled line can also move
-//! `Active -> InCollection -> Repaid | WrittenOff`. The pause blocks openings and draws (and,
-//! in `pool.rs`, deposits and redemptions); repayments and `mark_in_collection` always run. On a single-maturity line (version 1)
-//! repayments go to principal first, then to the fixed interest. On a scheduled line (version 2)
-//! they go to late interest, then interest, then principal. Collected interest and late interest
-//! raise the NAV; a written-off principal lowers it once.
+//! `Active -> InCollection -> Repaid | WrittenOff`. The pause blocks openings and draws (and, in
+//! `pool.rs`, deposits and redemptions); `repay`, `mark_in_collection` and `write_off` always
+//! run. On a single-maturity line (version 1) repayments go to principal first, then to the fixed
+//! interest. On a scheduled line (version 2) they go to late interest, then interest, then
+//! principal. Collected interest and late interest raise the NAV; a written-off principal lowers
+//! it once.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
@@ -309,14 +310,12 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
     let (late_part, interest_part, principal_part) = match schedule {
         None => {
             require!(amount <= remaining, PoolError::WrongAmount);
-            // Principal first, then interest.
             let principal_part = amount.min(principal_left);
             (0, amount.checked_sub(principal_part).ok_or(PoolError::Overflow)?, principal_part)
         }
         Some(_) => {
             let late = line_arrears(line, pool, now)?.late_due;
             require!(amount >= late, PoolError::LateInterestUnpaid);
-            // Late interest, then interest, then principal, never more than is due.
             let rest = amount.checked_sub(late).ok_or(PoolError::Overflow)?.min(remaining);
             let interest_part = rest.min(interest_left);
             (late, interest_part, rest.checked_sub(interest_part).ok_or(PoolError::Overflow)?)

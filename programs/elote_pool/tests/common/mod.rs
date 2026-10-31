@@ -2,8 +2,9 @@
 //!
 //! Everything here builds state the way a client would: real instructions, signed by real
 //! keypairs, executed by the compiled `target/deploy/elote_pool.so`. SPL Token and the Associated
-//! Token Account program come from `LiteSVM::new()`, which loads them by default in litesvm 0.9.0
-//! (`spl_token-3.5.0.so`, `spl_associated_token_account-1.1.1.so`).
+//! Token Account program come from `LiteSVM::new()`, which loads them by default in litesvm 0.11.0
+//! (`spl_token-3.5.0.so`, or its p-token build when the `replace_spl_token_with_p_token` feature
+//! is active, and `spl_associated_token_account-1.1.1.so`; see `litesvm/src/programs/mod.rs`).
 
 #![allow(dead_code)]
 

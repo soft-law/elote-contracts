@@ -16,7 +16,7 @@ agreements server and the Meteora launch as submitted).
 
 ## The `elote_pool` program
 
-`elote_pool` is a Solana program (Anchor 1.1.2) for a liquidity pool with a share token.
+`elote_pool` is a Solana program (Anchor 1.2.1) for a liquidity pool with a share token.
 Investors deposit the pool asset and receive shares. The pool admin approves credit lines for
 entrepreneurs from the pool. When borrowers repay, the interest stays in the pool and every share
 is worth more. A recognised loss lowers the value of every share once.

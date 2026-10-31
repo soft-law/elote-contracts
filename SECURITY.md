@@ -43,7 +43,7 @@ No instruction closes a `Pool` or a `CreditLine` account, and no instruction mov
 |---|---|---|
 | Single admin key | Loss or compromise of the key: the vault can be drained (open a line to self, draw), or the pool can be paused forever | Multisig as admin; operator and pauser roles with caps; two-step origination so the borrower signs separately |
 | Admin is immutable | The admin is part of the pool PDA seeds, so it cannot be rotated; a compromised pool must be abandoned and a new one created | Roles account with two-step handover |
-| Pause with no exit | While paused, depositors cannot redeem; repayments still arrive. A lost admin key while paused locks every depositor | Pauser role that cannot unpause, multisig unpause, a written procedure |
+| Pause with no exit | While paused, depositors cannot redeem and borrowers cannot draw an approved line while its term keeps running, so a long pause can let an approved line lapse at `term_end`; repayments still arrive. A lost admin key while paused locks every depositor | Pauser role that cannot unpause, multisig unpause, a written procedure |
 | Single upgrade key | The program can be replaced by one key | Squads multisig as upgrade and IDL authority; verified builds |
 
 ## Known risks by design
