@@ -43,7 +43,7 @@ human's hands or a licence, it says so and names the person.
 | 20 | Concentration cap | **`max_line_bps` at `init_pool`, default 1,000 bps of NAV per line**, enforced at `open_line`. | Nafin caps exposure at 30% per entity and 10% per natural person; the register's P1-1 already flags 100%-of-vault lines. | Phase 1 hardening, tranched plan D13 |
 | 21 | Posture A narrowed | Private placement means **institutional or qualified investors, or a CNBV route (emisora simplificada through a trust)**. The fewer-than-100-persons route of LMV art. 8 fracc. II applies to shares of capital stock only, not to a debt-like participation. | loans-gov-mexico `research-brief-tokenized-securities.md` Finding 3 (textual reading, counsel to confirm). Corrects the identity page's counsel table, republished today. | identity artifact, counsel item 2 |
 | 22 | Loss assumptions for series documents | Base PD 12 to 20% a year, LGD 80 to 90%, expected loss 10 to 18%; stress PD 35%, LGD 95%. No initial grace period; weekly, quincenal or monthly cadence as offered; postponement vouchers as a later parameter. | loans-gov-mexico `M-pagares-recovery.md` §3.7 and `sr/synthesis.md`; first-loss tranches in Goldfinch and Maple were exhausted by off-chain conduct. | series term sheets, tranched plan evidence section |
-| 24 | Expediente token | **The loan's documents become the asset the pool locks, as a program record first and a Metaplex Core asset per line second.** `expediente_root` at opening, one `Pagare` record per draw (hash, folio, amount, dates, status, tenedor key), attestor co-signature on every draw, paid records closable, written-off records kept, endoso recorded by hash with the tenedor's signature. Only salted commitments and hashes on chain; read access follows custody off chain. Token-2022 and Light rejected. | Centrifuge's document NFTs and Tinlake already proved the shape; Huma, Tinlake's unlock and Credix's unsalted hashes show what to avoid; the pagaré research says a token is never the tenedor. `docs/plans/2026-10-31-expediente-token-design.md`. | tranched plan D9, D14, D15; counsel item 16 |
+| 24 | Pagaré token | **The token is the pagaré** (Mario, 2026-10-31: Elote's legal position and innovation). One Metaplex Core asset per disposición, issued by the pool at `draw` with the attestor's signature, held frozen in the pool PDA as the series vehicle's custody, burned against full payment (art. 129), endorsed only through the program to wallets with Elote's SAS attestation, with the endoso log in the asset's `AppData`. The sistema de información is Solana plus the program plus the agreements engine, designated in the pagaré text. Only hashes, salted commitments, amounts, dates and keys on chain; `expediente_root` on the line. Token-2022, Light and a token-less record rejected for the título. | Centrifuge and Tinlake proved the locked document token; Huma, Tinlake's unlock and Credix's unsalted hashes show what to avoid. The pagaré research reads the LGTOC more narrowly; its objections are the items counsel must defend (item 16). `docs/plans/2026-10-31-expediente-token-design.md`. | tranched plan D9, D14, D15; counsel item 16 |
 | 23 | Etherfuse on-chain routes | **Shape A stays REST-only.** The SDK has disabled every user buy and redeem instruction since 3.0.13 ("contact Etherfuse for OTC"); a PDA may hold CETES and may fund an off-ramp by transfer, which keeps shape B possible later through a KYB'd entity, not through on-chain CPIs. | loans-gov-mexico `N-guarantees-etherfuse-liquidity.md` "Corrections" and §B6, §B8; verified in the 3.0.19 bundle. | CETES review |
 
 ## Corrections made today
@@ -111,11 +111,16 @@ Added from the loans-gov-mexico research (2026-10-31):
     whether the contractual designation of the Softlaw system as the "sistema de información"
     (LGTOC arts. 17, 27) is enough while no CNBV rules exist; the art. 5o Bis gate in a juicio
     ejecutivo; and which persona (SOFOM, fiduciario or SPV) is the tenedor, since a PDA cannot be.
-16. Expediente token: whether the on-chain `Pagare` record plus the agreements engine, named in
-    the contract as the "sistema de información", satisfies LGTOC arts. 5o, 5o Bis, 17, 26, 27
-    and 29 for issuance, delivery and endoso; how cancellation of a paid electronic pagaré is
-    evidenced (art. 129); and whether the attestor signature plus a NOM-151 constancia meets tesis
-    2031391 without SAT e.firma (`docs/plans/2026-10-31-expediente-token-design.md`).
+16. Pagaré token, Elote's position to defend: the Core asset issued by the program **is** the
+    electronic pagaré under LGTOC arts. 5o and 5o Bis, with Solana, the program and the agreements
+    engine as the sistema de información designated in the pagaré text. Counsel confirms or
+    corrects: the designation under arts. 17 and 27 without CNBV rules; the signature method so
+    the borrower's signature is attributable (CCom art. 97, tesis 2031391) and whether the attestor
+    plus a NOM-151 constancia suffice with a wallet key; that the series vehicle holding through
+    the pool PDA is the tenedor and how a judge verifies the last holder (art. 39) from the endoso
+    log; burn against payment as the art. 129 cancellation; post-maturity endoso effects and
+    notice; the art. 5o Bis gate in a juicio ejecutivo
+    (`docs/plans/2026-10-31-expediente-token-design.md`).
 
 Decided facts the brief may state for its scope section (from this record and `ARCHITECTURE.md`
 §8): the design is non-custodial throughout, since investors hold series shares and CETES in
