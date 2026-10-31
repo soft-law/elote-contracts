@@ -82,6 +82,8 @@ pub struct InitPool<'info> {
 /// the pool.
 pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16) -> Result<()> {
     require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);
+    // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
+    require!(min_first_deposit(ctx.accounts.asset_mint.decimals).is_some(), PoolError::WrongAccount);
     let pool = &mut ctx.accounts.pool;
     pool.version = POOL_VERSION;
     pool.admin = ctx.accounts.admin.key();
@@ -214,9 +216,7 @@ pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Resul
 
     ctx.accounts.vault.reload()?;
     ctx.accounts.share_mint.reload()?;
-    ctx.accounts.pool.check(ctx.accounts.vault.amount, Some(ctx.accounts.share_mint.supply))?;
-    let nav_after = math::nav(ctx.accounts.vault.amount, ctx.accounts.pool.outstanding_principal)
-        .ok_or(PoolError::Overflow)?;
+    let nav_after = ctx.accounts.pool.check(ctx.accounts.vault.amount, Some(ctx.accounts.share_mint.supply))?;
     emit_cpi!(Deposited {
         pool: ctx.accounts.pool.key(),
         depositor: ctx.accounts.depositor.key(),
@@ -307,9 +307,7 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
 
     ctx.accounts.vault.reload()?;
     ctx.accounts.share_mint.reload()?;
-    ctx.accounts.pool.check(ctx.accounts.vault.amount, Some(ctx.accounts.share_mint.supply))?;
-    let nav_after = math::nav(ctx.accounts.vault.amount, ctx.accounts.pool.outstanding_principal)
-        .ok_or(PoolError::Overflow)?;
+    let nav_after = ctx.accounts.pool.check(ctx.accounts.vault.amount, Some(ctx.accounts.share_mint.supply))?;
     emit_cpi!(Redeemed {
         pool: ctx.accounts.pool.key(),
         holder: ctx.accounts.holder.key(),

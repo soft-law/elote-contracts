@@ -110,16 +110,16 @@ impl Pool {
     /// reloaded after the CPIs: `vault + outstanding_principal` fits a `u64` (the NAV exists),
     /// and, where the share mint is an account of the instruction, its supply is zero (nothing
     /// deposited yet) or at least `DEAD_SHARES` (the dead account is never burned). A failure
-    /// means state the program considers impossible; the transaction is refused.
-    pub fn check(&self, vault_amount: u64, share_supply: Option<u64>) -> Result<()> {
-        require!(
-            vault_amount.checked_add(self.outstanding_principal).is_some(),
-            crate::errors::PoolError::InvariantBroken
-        );
+    /// means state the program considers impossible; the transaction is refused. Returns the
+    /// NAV, so the caller reports the figure it checked.
+    pub fn check(&self, vault_amount: u64, share_supply: Option<u64>) -> Result<u64> {
+        let nav = vault_amount
+            .checked_add(self.outstanding_principal)
+            .ok_or(crate::errors::PoolError::InvariantBroken)?;
         if let Some(supply) = share_supply {
             require!(supply == 0 || supply >= DEAD_SHARES, crate::errors::PoolError::InvariantBroken);
         }
-        Ok(())
+        Ok(nav)
     }
 
     pub fn set_grace_period_seconds(&mut self, seconds: u32) {

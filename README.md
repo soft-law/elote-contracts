@@ -66,7 +66,7 @@ Both accounts keep 32 `reserved` bytes; new parameters live there so the layouts
 | Account | Bytes of `reserved` | Field |
 |---|---|---|
 | `Pool` | 0..4 | `grace_period_seconds`, u32 LE (zero: no grace) |
-| | 4..6 | `max_line_bps`, u16 LE: the largest line as a share of the NAV at `open_line`, 1 to 10,000 |
+| | 4..6 | `max_line_bps`, u16 LE: the largest line as a share of the NAV at `open_line`, 1 to 10,000. Zero on a pool created before the cap existed (the devnet demo pools): such a pool opens no new line |
 | | 6..32 | zero |
 | `CreditLine` v2 | 0..8 | `interval_seconds`, i64 LE |
 | | 8..10 | `installments`, u16 LE |

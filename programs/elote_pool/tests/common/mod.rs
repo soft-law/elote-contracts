@@ -56,8 +56,8 @@ pub const E_BORROWER_IS_ADMIN: u32 = ERR_BASE + 19; // PoolError::BorrowerIsAdmi
 pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + 20; // PoolError::LineTooLarge
 pub const E_INVARIANT_BROKEN: u32 = ERR_BASE + 21; // PoolError::InvariantBroken
 
-/// `state::BPS`.
-pub const BPS: u16 = 10_000;
+/// `state::BPS` as the `u16` that `init_pool` takes.
+pub const BPS: u16 = elote_pool::state::BPS as u16;
 
 /// SPL Token's `TokenError::InsufficientFunds`, surfaced as custom error 1 by a failed CPI.
 pub const SPL_TOKEN_INSUFFICIENT_FUNDS: u32 = 1;

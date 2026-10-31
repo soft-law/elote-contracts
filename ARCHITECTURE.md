@@ -6,8 +6,9 @@ has to change it, audit it or write a client against it. Source of truth is
 `programs/elote_pool/src/`; where this file and the code disagree, the code wins and this file is
 the bug.
 
-State of the code: `main` as of 2026-10-20 (program id `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM`,
-Anchor 1.2.1, Solana 4.1.2, classic SPL Token only, 75 tests).
+State of the code: `main` as of 2026-10-20 plus the Phase 1 hardening branch of 2026-10-31
+(program id `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM`, Anchor 1.2.1, Solana 4.1.2, classic
+SPL Token only, 82 tests).
 
 ## 0. One program, not two: where the loan contract lives
 
@@ -265,9 +266,9 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
   is `init` at `["vault", pool]` for `asset_mint` with `authority = pool`; `dead_shares` is
   `init` at `["dead", pool]` for `share_mint` with `authority = pool`. `asset_mint` must
   deserialise as a classic SPL `Mint`.
-- **Checks:** `1 <= max_line_bps <= 10 000` (`WrongAmount`). Any value of
-  `grace_period_seconds` is accepted, including zero. The asset mint is not inspected further
-  (see §9).
+- **Checks:** `1 <= max_line_bps <= 10 000` (`WrongAmount`); `asset_mint.decimals <= 19`, so
+  that `min_first_deposit` exists (`WrongAccount`). Any value of `grace_period_seconds` is
+  accepted, including zero. The asset mint is not inspected further (see §9).
 - **Writes:** every `Pool` field; `reserved` zeroed then the grace period and `max_line_bps`
   packed in.
 - **CPIs:** the four `init`s (system program + token program) done by Anchor.
@@ -519,7 +520,7 @@ The review ids refer to the 2026-10-12 review in theOffice.
 | test | behaviour | review |
 |---|---|---|
 | `admin_cannot_be_the_borrower_of_its_own_line` | **inverted 2026-10-31**: `open_line` refuses `borrower == admin` (`BorrowerIsAdmin`) | R-01 delta |
-| `a_line_for_the_whole_vault_is_refused_under_the_concentration_cap` | **inverted 2026-10-31**: a line above `max_line_bps` of the NAV fails with `LineTooLarge` (1,000 bps in the test and in production pools; the harness opens its other pools at 10,000 bps, where the cap is inert). The admin can still reach the whole vault through several lines to wallets it controls: the cap bounds one line, not the admin | decision 20, P1-1 |
+| `a_line_for_the_whole_vault_is_refused_under_the_concentration_cap` | **inverted 2026-10-31**: a line above `max_line_bps` of the NAV fails with `LineTooLarge` (1,000 bps in the test and in production pools; the harness opens its other pools at 10,000 bps, where the cap is inert). The admin can still reach the whole vault through several lines to wallets it controls, and the NAV the cap is measured against can be inflated by a deposit in the same transaction: the cap bounds one honestly proposed line, not the admin | decision 20, P1-1 |
 | `first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor` | **inverted 2026-10-31**: the minimum is one whole unit of the asset for six or more decimals; below six decimals the floor of 1 000 × `DEAD_SHARES` base units applies, so a two-decimal asset needs 10,000.00 | R-07 delta |
 | `limit_deposit_just_before_a_repayment_shares_the_interest` | interest counts when collected, so a deposit that lands just before a repayment gets the same uplift as one made months earlier | (design) |
 | `limit_redeem_between_collection_and_write_off_exits_at_par` | a line in collection still counts fully in the NAV until the admin writes it off; a holder who redeems in between exits at par and the loss falls on the rest | (design) |
@@ -550,13 +551,13 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/pool.rs` | LiteSVM | init, first deposit, pricing after interest, redeem liquidity, wrong accounts, pause, dead-shares inflation defence, rounding and slippage floors |
 | `tests/lines.rs` | LiteSVM | open/draw/repay full cycle raises the share price, sponsor co-sign, sponsor pays interest, overpay and wrong status, double draw, write-off lowers the NAV once, bad params, term checks |
 | `tests/schedule.rs` | LiteSVM, clock warped | schedule validation, installments on their due dates, missed count over time, late interest after grace, caps, repayment order, collection after three missed, cure beats collection, write-off timing in both paths |
-| `tests/known_limits.rs` | LiteSVM | the eight limits in §9 |
+| `tests/known_limits.rs` | LiteSVM | the nine tests in §9: six limits still in force and three inverted on 2026-10-31 |
 | `tests/compute.rs` | LiteSVM | arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst measured: 67 688 CU at 120) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 75 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 82 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.

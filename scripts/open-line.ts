@@ -55,6 +55,8 @@ import {
   getElotePoolErrorMessage,
   getOpenLineInstructionAsync,
   isElotePoolError,
+  maxLinePrincipal,
+  poolMaxLineBps,
 } from "../clients/js/src/index.ts";
 
 const DISCLAIMER = "Demo on Solana devnet with test assets. Not an offer of securities.";
@@ -262,6 +264,12 @@ async function main() {
   const [line] = await findLinePda({ pool: poolAddress, lineId });
   const termEnd = BigInt(Math.floor(Date.now() / 1000)) + BigInt(termDays) * DAY;
   const vault = await fetchToken(rpc, pool.vault, { commitment: "confirmed" });
+  // The concentration cap, checked here before signing; LineTooLarge on chain is the backstop.
+  const maxBps = poolMaxLineBps(pool.reserved);
+  const cap = maxLinePrincipal(vault.data.amount + pool.outstandingPrincipal, maxBps);
+  if (principal > cap) {
+    fail(`the principal (${fmt(principal)}) exceeds this pool's largest line: ${maxBps} bps of the NAV, ${fmt(cap)} right now`);
+  }
 
   const instruction = await getOpenLineInstructionAsync({
     admin,

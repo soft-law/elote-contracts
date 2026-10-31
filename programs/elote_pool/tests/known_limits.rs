@@ -1,10 +1,12 @@
 //! Documentation tests: each one pins a known design limit of the program as it is deployed
 //! today. They pass against the current code on purpose. None of them is a bug report; every
-//! limit here is listed under "Known risks by design" in SECURITY.md.
+//! limit still in force here is listed under "Known risks by design" in SECURITY.md.
 //!
 //! When a limit is removed (two-step origination, roles, accrual, a cancel instruction, a
 //! recovery instruction...), the matching test here must be inverted or deleted in the same
-//! change, so the suite always states what the program does, not what it should do.
+//! change, so the suite always states what the program does, not what it should do. Inverted
+//! tests stay in this file, marked "Inverted <date>" in their doc comment, so the history of
+//! what used to be a limit is readable next to what still is (three so far, 2026-10-31).
 
 mod common;
 

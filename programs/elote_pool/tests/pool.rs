@@ -341,3 +341,19 @@ fn init_pool_records_the_line_cap_and_bounds_it() {
         env.expect_err(ix, &admin, &[], E_WRONG_AMOUNT);
     }
 }
+
+/// SPL Token accepts any `decimals` byte. Above 19, `10^decimals` does not fit a `u64`, so no
+/// first deposit could ever meet the minimum; `init_pool` refuses such a mint instead of creating
+/// a pool that can never take a deposit.
+#[test]
+fn init_pool_rejects_a_mint_whose_decimals_make_the_first_deposit_impossible() {
+    let mut env = Env::new();
+    let admin = env.admin.insecure_clone();
+    let mint = env.create_mint(&admin.pubkey(), 20);
+    let ix = env.init_pool_ix(&admin.pubkey(), &mint);
+    env.expect_err(ix, &admin, &[], E_WRONG_ACCOUNT);
+    // Nineteen decimals is the largest the minimum can express.
+    let mint = env.create_mint(&admin.pubkey(), 19);
+    let ix = env.init_pool_ix(&admin.pubkey(), &mint);
+    env.send(ix, &admin, &[]);
+}
