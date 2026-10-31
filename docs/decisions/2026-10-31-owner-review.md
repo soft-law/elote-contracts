@@ -1,0 +1,106 @@
+# Owner review, 2026-10-31
+
+Status: decided. Scope: everything produced for Elote between 2026-10-30 and 2026-10-31, reviewed
+with the advisor model and closed by the acting owner (Claude, on Mario's delegation of
+2026-10-31: "you are the new owner, review everything with advisor"). Where a decision needs a
+human's hands or a licence, it says so and names the person.
+
+## What was reviewed
+
+| Artefact | Where |
+|---|---|
+| KYC/KYB and on-chain identity evaluation (verdict, scorecard, borrower KYB, permissionless scenario, counsel table) | https://claude.ai/artifact/VGUzRWXes1DYau2x1zQA7z (private; share before sending) |
+| Series-shelf contract plan (pool v2, Token-2022, Token ACL) | `docs/plans/2026-10-24-series-shelf-contract-plan.md` |
+| Tranched credit lines plan (line v3) | `docs/plans/2026-10-31-multi-draw-plan.md` |
+| CETES investment product review | `docs/plans/2026-10-31-cetes-investment-product.md` |
+| Credit-line surveys of eight protocols | `docs/research/2026-10-31-credit-lines-*.md` |
+| Proofs of concept: Sumsub, Didit, SAS (ran on devnet), SNS, Etherfuse CETES (unrun) | `poc/` and `poc/README.md` |
+| Program architecture reference | `ARCHITECTURE.md` (582 lines, never committed before today) |
+
+## Decisions
+
+| # | Item | Decision | Rationale or trigger | Lands in |
+|---|---|---|---|---|
+| 1 | KYC/KYB vendor | **Didit** for borrower KYB and for investors of the credit series, starting now. **Sumsub** replaces it for investors only if two facts arrive together: Etherfuse confirms in writing which share service it imports and its `forClientId`, and the Sumsub Custom quote (KYB, KYT, CURP/RFC) is acceptable. | SME borrowers get no Etherfuse reuse with either vendor; Didit's KYB is priced ($2 to $9) and its sandbox is free. The share-token advantage is investor-side and depends on two unverified facts. | identity artifact, softlaw-backend |
+| 2 | KYC for the CETES product | **None of Elote's own.** Etherfuse's personal-organization KYC is the gate; Elote only creates the organization and launches `/idv`. | Etherfuse is the issuer and the regulated counterparty; a second KYC adds drop-off and no control. | CETES review, shape A |
+| 3 | On-chain identity | **SAS attestations under Elote's own credential** (Squads vault authority, rotatable backend signer), schema `jurisdiction` + `verified_at`, no PII. **Thaw gate: Token ACL with the ABL gate in Allow mode**, fed by the backend. The SAS-reading gate is a post-audit upgrade. | Verified 2026-10-30: Token ACL mainnet address and Accretion audit; ABL gate two audits; Moonsong gate says not for production. | series-shelf plan 2c, identity artifact |
+| 4 | SNS | **Dropped from pilot scope.** If a display name is ever wanted, `.sns` only, and only when `stale == false`. | SDK v4 refuses `.sol` on mainnet; no product needs it. | identity artifact |
+| 5 | Investor posture | **A, private placement**, for every series until counsel clears B. C never ships to mainnet. | Withholding needs the holder's RFC; LMV and Ley Fintech questions each force identity back in. | identity artifact, series-shelf plan |
+| 6 | Third-party repayments | **Allowed** (Mario, 2026-10-31). Control: screen the payer of every `LineRepaid` against sanctions lists. | Sponsors, guarantors and relatives pay in practice. | ops runbook |
+| 7 | Sponsor verification | **KYC if a natural person, KYB if an entity** (Mario, 2026-10-31), same flow as borrowers. | A co-signer on the line is a party to it. | identity artifact |
+| 8 | Credit instruments | **Tranched, non-revolving lines**; revolving **deferred**. | Mario, 2026-10-31. | tranched plan |
+| 9 | Interest model | **(a) Interés ordinario per disposición**: annual rate on each tranche from its draw to the last due date, fixed at the draw, split across installments. Interés moratorio stays a separate penalty. `rate_bps` becomes annual on version-3 lines. | Mario's choice relayed by theOffice on 2026-10-31, now owner-confirmed. (b), interest on the saldo insoluto, stays a possible follow-up. | tranched plan D1, Q1 |
+| 10 | Draw window | **Closes at the first due date** on installment lines, at maturity on bullet lines, strictly before the second. | Keeps the installment math exact; Mario's "due date finish all". | tranched plan D3 |
+| 11 | Late interest basis | **Overdue principal only** on version-3 lines, in the same batch; the v2 vector tests change with it. | Charging interest on overdue interest is capitalisation and needs express agreement in Mexico; cheaper to fix pre-mainnet than to defend. | tranched plan D11, `math::arrears` |
+| 12 | Moratorio granularity | **Per second** (the continuous form of a daily rule); the template describes it as daily. | Strictly lower than any whole-period rounding; no math change. | tranched plan Q7 |
+| 13 | Documents per draw | **Contrato at opening + one pagaré per disposición**; `draw` takes the signed pagaré's hash and emits it; only the master hash is stored. | Mario's document set via theOffice. Custody of the electronic título is an agreements-engine item, see counsel list. | tranched plan D9, Q8 |
+| 14 | Other tranched defaults | Repaid-in-full forfeits the remainder; `LineOpened.interest_due` reports 0; no reservation of undrawn commitments; devnet redeployed with pool v2; admin `suspend_draws`. | Plan defaults, now decided. | tranched plan Q2 to Q5, D10 |
+| 15 | Series-shelf open questions | Permissioned from the first mainnet pool: **yes**. Gate: **ABL**. Permanent delegate: **no**. Asset freeze: **accept and record** (MEXe has one, CETES none). Squads: **one multisig, one vault per series**. | See the plan's updated list. | series-shelf plan |
+| 16 | CETES product | **Shape A, distribution as Etherfuse partner** into investors' own wallets; no program change. B (idle yield in a series) parked until pool v2; C dropped. Placeholder partner fee for the sandbox: **50 bps**, a placeholder until the business sets it. | Lightest footprint, where peso yield actually lives. | CETES review |
+| 17 | Repository | **Commit** `ARCHITECTURE.md`, `docs/`, `poc/` on branch `poc/kyc-identity-eval`, local only, no push. | `ARCHITECTURE.md` had no history; the plans are the working record. Pushing is Mario's call. | this commit |
+| 18 | Peso stablecoin | **MEXe stays the candidate pool asset**, pending the production `supported_assets` check. | Unchanged since 2026-10-19; the sandbox PoC closes the check. | series-shelf plan |
+
+## Corrections made today
+
+- The series-shelf plan said the ABL gate has "Allow, Block, Composite and AllowAllEoas" modes;
+  the code has Allow and Block only. Fixed, with the audit facts and the Chinampa reasoning
+  restated for Allow mode.
+- The tranched plan charged each tranche to `term_end`; on a scheduled line the last payment is
+  due at `schedule_end`, which can be earlier. Fixed in D1 and test 2.
+- The scorecard's third row (open series) was recomputed by hand: 3.35 / 3.85 / 2.35 / 1.15.
+- The identity artifact's verdict now says the Sumsub reuse covers investors and sole traders
+  only; SME borrowers do Etherfuse's KYB with either vendor.
+
+## Consolidated questions for licensed counsel
+
+One list, to send once. The legal agent in theOffice has given drafting guidance on 6; the rest
+are new to it.
+
+1. Elote's status under the Ley Fintech: VASP, ITF, or neither; what that implies for KYT, the
+   Travel Rule, and the virtual assets an ITF may operate with.
+2. Series shares as valores under the LMV: which private-offering exemption posture A relies on,
+   and what an open series (posture B) would be.
+3. Withholding: per-holder ISR on series distributions (RFC, CFDI de retenciones), and who
+   withholds on tokenized CETES yield bought through a partner.
+4. Elote's role when distributing CETES: comisionista, promotor, or an intermediary that needs a
+   licence; issuer of record.
+5. Qualified-investor tests vs the provider's accredited-investor steps.
+6. Credit documents: apertura de crédito simple con disposiciones parciales (article cites and
+   the express non-revolving clause); one pagaré per disposición and the custody and conservation
+   of an electronic título; CAT and total-cost disclosure with variable draw dates and the SPEI
+   fee; day count (the program uses a 365-day year); late interest on overdue principal only
+   (decided) and its disclosure; sponsor guarantee form (aval, fiador, obligado solidario);
+   no-subrogation clause for third-party repayment; notice and cure before collection; KYB
+   expectations for a public-sector sponsor.
+7. Data-sharing agreement with Etherfuse if Sumsub share tokens are used.
+8. Personal data: provider processing agreements, and confirmation that an on-chain attestation
+   holding a country code and a timestamp is not personal data under the LFPDPPP.
+
+## Human actions that remain
+
+| Who | Action |
+|---|---|
+| Mario | Create the Etherfuse sandbox business organization and API key; put it in `poc/.env`; run `npm run etherfuse`. This closes the Solana `supported_assets` check open since 2026-10-19. |
+| Mario | Didit sandbox API key and workflow id; Sumsub sandbox app token only if decision 1's trigger fires. A private mainnet RPC URL for the SNS primary-domain lookup is no longer needed (decision 4). |
+| Mario | Ask Etherfuse which share service it imports and its `forClientId`; ask Sumsub for the Custom quote. Both feed decision 1. |
+| Mario | Engage licensed counsel with the list above; set the partner fee with Etherfuse. |
+| Mario | Decide whether to push `poc/kyc-identity-eval` and open the PR. |
+| theOffice | Keep the design on (a); pagaré signing ceremony as described; separate "Interés" and "Interés por atraso" rows. |
+| agreements engine (softlaw-backend) | Electronic pagaré storage and conservation; template variant per the legal agent; `LineDrawState` indexing. |
+
+## Implementation order
+
+1. **Phase 1 hardening** on a fresh branch from `main`: the register items the series-shelf plan
+   already lists (R-11, R-21/R-27, R-24, R-25, decimals-derived `MIN_FIRST_DEPOSIT`, reject
+   `borrower == admin`). Small, no layout change. This is the first code step.
+2. **Pool v2 + line v3, one breaking batch**: Token-2022 interface, asset-mint policy with
+   `asset_freezable` recorded, admin-supplied share mint under Token ACL, `permissioned` flag,
+   dead-shares thaw, `NavUpdated`; tranched lines per the plan (D1 to D11) with late interest on
+   overdue principal only; tests; Codama regen; docs. Then the external review and the devnet
+   redeploy.
+3. **In parallel, no program change**: CETES distribution (backend: organizations, payment
+   accounts, quotes, orders, two webhooks; app: buy, sell, position) and the identity
+   integration in softlaw-backend (Didit webhooks, SAS credential and schema on devnet then
+   mainnet, ABL list operations).
+4. **Mainnet** after the review, with the first CR series permissioned and the ops runbook for
+   revocation (close attestation, remove from the list, freeze accounts) in place.

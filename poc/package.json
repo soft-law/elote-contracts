@@ -1,0 +1,26 @@
+{
+  "name": "elote-kyc-identity-poc",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway proofs of concept for the KYC/KYB and on-chain identity evaluation. Sandbox and devnet only.",
+  "scripts": {
+    "test": "node --test sumsub/*.test.ts didit/*.test.ts",
+    "sumsub": "node --env-file-if-exists=.env sumsub/live.ts",
+    "didit": "node --env-file-if-exists=.env didit/live.ts",
+    "sas": "node --env-file-if-exists=.env sas/flow.ts",
+    "sns": "node --env-file-if-exists=.env sns/resolve.ts",
+    "etherfuse": "node --env-file-if-exists=.env etherfuse/cetes-onramp.ts"
+  },
+  "dependencies": {
+    "@bonfida/spl-name-service": "4.0.1",
+    "@solana/attestation": "2.1.0",
+    "@solana/kit": "8.5.0",
+    "@solana/sysvars": "8.5.0",
+    "@solana/web3.js": "1.98.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}
