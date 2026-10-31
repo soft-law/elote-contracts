@@ -238,7 +238,13 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   extensions and `InterestBearingConfig` on the share mint; `NonTransferable` shares allowed; a
   frozen default state requires a freeze authority; dead-shares thaw per 2e with both paths tested;
   `init_pool` joins `compute.rs`.
-- **Next:** PR 2 steps 3 and 4.
+- **PR 2 step 3 accepted** (admin-supplied share mint; 89 Rust + 7 JS; `init_pool` 43,519 CU
+  classic / 37,136 permissioned). `ShareMintNotAllowed` 6024; the `["shares", pool]` PDA is gone;
+  `init_pool`, `deposit` and `redeem` take `share_token_program`; 2e realised as "the gate's thaw
+  rides in the init transaction" (path 2) or a thaw before the first deposit (path 1); the demo
+  runs on a classic share mint until PR 3. First mainnet pool: Token-2022 frozen-by-default under
+  Token ACL, `PoolFlags.permissioned` as the public fact (runbook, SECURITY.md).
+- **Next:** PR 2 step 4, then pause for the coordinator's go on step 5 (legal brief pending).
 
 ## Points the coordinator still owns
 
