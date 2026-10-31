@@ -311,7 +311,7 @@ amount; the holder retries with fewer shares.
 - **Constraints:** `pool` has `has_one = admin` (`Unauthorized`); `line` is `init` at
   `["line", pool, line_id LE]`, so an existing `line_id` fails at account creation.
 - **Checks, in order:** not paused; `line_id == pool.line_count` (`WrongAccount`);
-  `principal > 0`; `rate_bps <= 10 000`; `term_end > now`; `agreement_hash != [0; 32]` (all
+  `borrower != pool.admin` (`BorrowerIsAdmin`); `principal > 0`; `rate_bps <= 10 000`; `term_end > now`; `agreement_hash != [0; 32]` (all
   `WrongAmount`); if `sponsor` is `Some(k)`, the `sponsor` account must be present and be `k`
   (`SponsorRequired`); `interest_due = principal * rate_bps / 10 000` (`Overflow`); if
   `schedule` is `Some`, `validate_schedule`:
@@ -489,7 +489,7 @@ What must hold between instructions, and which code keeps it:
 
 | role | identified by | can |
 |---|---|---|
-| admin | `Pool.admin`, fixed forever | `open_line` (any size, any borrower, itself included), `write_off` (only when overdue past grace), `set_paused` |
+| admin | `Pool.admin`, fixed forever | `open_line` (any size, any borrower other than itself: `BorrowerIsAdmin`), `write_off` (only when overdue past grace), `set_paused` |
 | borrower | `CreditLine.borrower` | `draw` its own approved line before the term |
 | sponsor | `CreditLine.sponsor` | nothing after co-signing the opening |
 | depositor / holder | any signer with the asset or shares | `deposit`, `redeem` |
@@ -506,7 +506,7 @@ The review ids refer to the 2026-10-12 review in theOffice.
 
 | test | behaviour | review |
 |---|---|---|
-| `limit_admin_can_open_a_line_to_itself_for_the_whole_vault` | nothing stops `borrower == admin` or a line for 100% of the vault; trust in the admin is total | P1-1 |
+| `admin_cannot_be_the_borrower_of_its_own_line` | **inverted 2026-10-31**: `open_line` refuses `borrower == admin` (`BorrowerIsAdmin`). A line for 100% of the vault to another wallet is still possible until the `max_line_bps` cap lands | R-01 delta, P1-1 |
 | `first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor` | **inverted 2026-10-31**: the minimum is one whole unit of the asset for six or more decimals; below six decimals the floor of 1 000 × `DEAD_SHARES` base units applies, so a two-decimal asset needs 10,000.00 | R-07 delta |
 | `limit_deposit_just_before_a_repayment_shares_the_interest` | interest counts when collected, so a deposit that lands just before a repayment gets the same uplift as one made months earlier | (design) |
 | `limit_redeem_between_collection_and_write_off_exits_at_par` | a line in collection still counts fully in the NAV until the admin writes it off; a holder who redeems in between exits at par and the loss falls on the rest | (design) |

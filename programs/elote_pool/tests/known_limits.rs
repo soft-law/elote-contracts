@@ -12,10 +12,11 @@ use common::*;
 use elote_pool::state::LineStatus;
 use solana_signer::Signer;
 
-/// The admin may name itself as the borrower and draw the whole vault. Nothing in the program
-/// bounds a line's principal or separates the admin from borrowers (roadmap: "One admin key").
+/// Inverted 2026-10-31 (R-01 delta). The admin can no longer name itself as the borrower: the
+/// one-key path "open a line to self, draw the vault" is closed. Everything else about the
+/// admin's lending power (any other borrower, no allowlist) still holds; see the trust table.
 #[test]
-fn limit_admin_can_open_a_line_to_itself_for_the_whole_vault() {
+fn admin_cannot_be_the_borrower_of_its_own_line() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 10 * UNIT);
@@ -23,15 +24,11 @@ fn limit_admin_can_open_a_line_to_itself_for_the_whole_vault() {
     let admin = env.admin.insecure_clone();
     env.create_ata(&admin.pubkey(), &k.asset_mint);
 
-    let p = env.line_params(10 * UNIT, 0);
+    let p = env.line_params(UNIT, 0);
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &admin.pubkey(), &p, None);
-    env.send(ix, &admin, &[]);
-    let ix = env.draw_ix(&k, 0, &admin.pubkey());
-    env.send(ix, &admin, &[]);
-
-    assert_eq!(env.token_balance(&k.vault), 0, "the vault is empty");
-    assert_eq!(env.token_balance(&ata(&admin.pubkey(), &k.asset_mint)), 10 * UNIT);
-    assert_eq!(env.line(&k, 0).borrower, admin.pubkey());
+    env.expect_err(ix, &admin, &[], E_BORROWER_IS_ADMIN);
+    assert_eq!(env.pool(&k).line_count, 0);
+    assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
 }
 
 /// Interest counts when it is collected, so a deposit placed just before a known repayment

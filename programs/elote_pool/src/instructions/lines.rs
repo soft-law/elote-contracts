@@ -73,6 +73,7 @@ pub fn open_line(
     let pool = &mut ctx.accounts.pool;
     require!(!pool.paused, PoolError::Paused);
     require!(line_id == pool.line_count, PoolError::WrongAccount);
+    require!(ctx.accounts.borrower.key() != pool.admin, PoolError::BorrowerIsAdmin);
     require!(principal > 0, PoolError::WrongAmount);
     require!(u64::from(rate_bps) <= BPS, PoolError::WrongAmount);
     require!(term_end > now, PoolError::WrongAmount);

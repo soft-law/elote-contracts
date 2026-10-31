@@ -20,7 +20,7 @@ See "Deployments and upgrade authority" in the README for the deployed clusters,
 
 | Role | How it is identified | What it can do |
 |---|---|---|
-| Pool admin | `Pool.admin`, a signer fixed at `init_pool` and part of the pool's address; it cannot be changed | `open_line` (approve a credit line of any size to any borrower, itself included), `write_off` (recognise a loss once the line is overdue past the grace), `set_paused` |
+| Pool admin | `Pool.admin`, a signer fixed at `init_pool` and part of the pool's address; it cannot be changed | `open_line` (approve a credit line of any size to any borrower other than itself), `write_off` (recognise a loss once the line is overdue past the grace), `set_paused` |
 | Borrower | `CreditLine.borrower`, a co-signer of `open_line` | `draw` the whole principal of its approved line before the term ends |
 | Sponsor | `CreditLine.sponsor`, an optional co-signer of `open_line` | Nothing after the opening; it is a recorded party, not an authority |
 | Depositor | Any signer holding the pool asset | `deposit` and `redeem` at the current net asset value, subject to the pause and to the vault's liquidity |
@@ -31,7 +31,7 @@ No instruction closes a `Pool` or a `CreditLine` account, and no instruction mov
 
 ## Trust assumptions
 
-- **The pool admin is trusted with the whole vault.** Depositors lend to whoever the admin approves. There is no cap on a line's principal, no exposure limit, no allowlist of borrowers and no separation between the admin and a borrower. A compromised or dishonest admin can open a line to its own wallet and draw every token in the vault.
+- **The pool admin is trusted with the whole vault.** Depositors lend to whoever the admin approves. There is no cap on a line's principal, no exposure limit and no allowlist of borrowers. `open_line` refuses the admin key as the borrower (`BorrowerIsAdmin`), so the one-key path "open a line to self, draw" is closed, but a compromised or dishonest admin can still open a line to any other wallet it controls and draw every token in the vault.
 - **The upgrade authority is trusted with the program.** Until the authority is a multisig and builds are verified, the deployed program can be replaced by one key.
 - **The pool asset is trusted.** `init_pool` accepts any classic SPL mint. The asset's freeze authority, if any, can freeze the vault; the asset's mint authority can inflate the supply. Token-2022 mints are rejected by the token-program constraint.
 - **Depositors accept first-come-first-served liquidity.** Redemptions are paid from the vault balance only; principal lent out is part of the NAV but is not liquid until it is repaid.
@@ -41,7 +41,7 @@ No instruction closes a `Pool` or a `CreditLine` account, and no instruction mov
 
 | Risk | Effect | Planned mitigation |
 |---|---|---|
-| Single admin key | Loss or compromise of the key: the vault can be drained (open a line to self, draw), or the pool can be paused forever | Multisig as admin; operator and pauser roles with caps; two-step origination so the borrower signs separately |
+| Single admin key | Loss or compromise of the key: the vault can be drained (open a line to a second wallet, draw), or the pool can be paused forever | Multisig as admin; operator and pauser roles with caps; two-step origination so the borrower signs separately |
 | Admin is immutable | The admin is part of the pool PDA seeds, so it cannot be rotated; a compromised pool must be abandoned and a new one created | Roles account with two-step handover |
 | Pause with no exit | While paused, depositors cannot redeem and borrowers cannot draw an approved line while its term keeps running, so a long pause can let an approved line lapse at `term_end`; repayments still arrive. A lost admin key while paused locks every depositor | Pauser role that cannot unpause, multisig unpause, a written procedure |
 | Single upgrade key | The program can be replaced by one key | Squads multisig as upgrade and IDL authority; verified builds |
