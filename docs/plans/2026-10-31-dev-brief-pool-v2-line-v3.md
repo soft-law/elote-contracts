@@ -489,6 +489,13 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   delegate (UpdateAuthority), ImmutableMetadata, Attributes, AddBlocker; cancel thaws as the
   collection authority and burns as owner. CU at 120: draw 82.4k, cancel 44.5k. Push after each
   accepted piece.
+- **Part 1 (b) accepted** (`0facdc4`; 145 Rust + 11 JS): `endorse_pagare` en procuración by the
+  pool (admin + attestor; kind Procuracion only, `EndosoKindInvalid` 6040; endorsee neither zero
+  nor the pool, `EndorseeInvalid` 6041; no procuración in force, `ProcuracionState` 6042);
+  entry appended; owner-managed BurnDelegate approved to the PDA `["procurador", pagare, to]`,
+  added once then approved (flags bit 0); asset stays with the pool, frozen; 34.6k CU. Decided:
+  the sidecar stores `procurador: Pubkey` in its reserved bytes (set by the endoso, cleared by
+  the revocation) so the revocation and the cancellation verify against it.
 
 ## Points the coordinator still owns
 
