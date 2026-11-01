@@ -389,6 +389,19 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   branch accepts the owner or the approved burn delegate. **Decision 28** (per draw, partial
   payments, acceleration at the third missed installment): impact assessment ordered on late
   interest over all remaining principal from `mark_in_collection`, fields, vectors, CU; no code.
+- **6d prework committed** (`fc7feba`, accepted, push authorised; 130 Rust): seven pinned Core
+  tests, the 6d spec in ARCHITECTURE §2.3, traps in SECURITY. Sidecar grows to 279 bytes at 6d;
+  cancel's endorsed branch chooses by Core's owner and relies on Core to refuse anyone but the
+  owner or the approved burn delegate. **Decision 28 accepted as PR 2 step 7**, after the comment
+  cleanup: `accelerated_at: i64` on CreditLine (305 → 313), one-loop arrears formulation (all
+  installments due after the mark, each accruing from max(min(due_k + grace, accelerated_at),
+  late_paid_until), overdue = whole balance), `mark_in_collection` sets the timestamp and
+  prorates `interest_due` to the installments due at the mark (unaccrued ordinary interest
+  forgiven; pending Mario's and counsel's confirmation; forgiven amount added to
+  `LineInCollection`), vectors regenerated in the same commit, client mirror in schedule.ts.
+  CU at 120 roughly unchanged; post-mark repay costs the worst-case figure. **Comment cleanup**
+  ordered as its own commit before step 7 (Mario, 2026-11-01); a separate audit agent reviews
+  the pushed tip in its own worktree, report under `docs/audits/`.
 
 ## Points the coordinator still owns
 
