@@ -480,6 +480,15 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   receipt_hash)` by holder or attestor appends a Recibo entry (kind 11); attestor co-signature is
   the v1 gate on the procurador. Part 1 order: registry chain at draw → procuración → revocation
   → court annotation → cancel branches → backstop → repay entries.
+- **Part 1 (a) accepted** (`ddca633`; 142 Rust + 11 JS): Pagare 353 bytes (`log_root`,
+  `entry_count`, `last_kind`, `flags`, `cancel_receipt_hash`, `requested_at`,
+  `requested_receipt_hash`; status 2 = paid-pending-cancel); twelve entry kinds (Emision 0 …
+  Recibo 11); draw opens the chain with the Emision entry and emits `PagareEntry`; entry hash =
+  sha256(asset ‖ kind ‖ from ‖ to ‖ hash ‖ stated_at ‖ entry_count) (asset first, so two pagarés
+  with the same document hash in the same second have distinct chains); creation set = freeze
+  delegate (UpdateAuthority), ImmutableMetadata, Attributes, AddBlocker; cancel thaws as the
+  collection authority and burns as owner. CU at 120: draw 82.4k, cancel 44.5k. Push after each
+  accepted piece.
 
 ## Points the coordinator still owns
 
