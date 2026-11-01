@@ -96,10 +96,10 @@
     {
       "name": "cancel_pagare",
       "docs": [
-        "Marks pagaré `draw_index` paid against the receipt `receipt_hash` and burns its asset; the",
-        "record is kept. The holder (the admin while the asset is in the pool) and the attestor",
-        "sign; refused until the line's principal repaid covers the pagaré, and in collection or",
-        "after a write-off. Never paused."
+        "Marks pagaré `draw_index` paid against the receipt `receipt_hash`, writes the Terminacion",
+        "entry and burns its asset; the record is kept. The holder (the admin while the asset is in",
+        "the pool) or the procurador of record signs, with the attestor; refused until the line's",
+        "principal repaid covers the pagaré, and in collection or after a write-off. Never paused."
       ],
       "discriminator": [
         90,
@@ -115,7 +115,9 @@
         {
           "name": "holder",
           "docs": [
-            "The pagaré's holder: the admin while the asset is in the pool."
+            "Who extinguishes the title: the holder (the admin while the asset is in the pool) or the",
+            "procurador of record (`Pagare::procurador`, with a procuración in force); checked in the",
+            "handler (`NotHolder`)."
           ],
           "signer": true
         },
@@ -234,6 +236,15 @@
             "The series' collection the asset belongs to."
           ],
           "writable": true
+        },
+        {
+          "name": "procurador_authority",
+          "docs": [
+            "The program address the burn delegate was approved to, `[\"procurador\", pagare, holder]`:",
+            "required on the procurador's branch, where the program signs for it; left out on the",
+            "owner's."
+          ],
+          "optional": true
         },
         {
           "name": "mpl_core_program",

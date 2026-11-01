@@ -1072,7 +1072,15 @@ impl Env {
         receipt_hash: [u8; 32],
     ) -> Instruction {
         let asset = self.pagare(k, line_id, draw_index).asset;
-        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection)
+        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection, None)
+    }
+    /// `cancel_pagare` signed by the procurador of record: `holder` is the procurador and the
+    /// program address `["procurador", pagare, procurador]` is passed as the burn's authority.
+    pub fn cancel_pagare_by_procurador_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, procurador: &Pubkey, payer: &Pubkey, receipt_hash: [u8; 32]) -> Instruction {
+        let line = line_pda(&k.pool, line_id).0;
+        let asset = self.pagare(k, line_id, draw_index).asset;
+        let pda = procurador_pda(&pagare_pda(&line, draw_index).0, procurador).0;
+        self.cancel_pagare_ix_full(k, line_id, draw_index, procurador, payer, receipt_hash, asset, k.collection, Some(pda))
     }
 
     /// As `cancel_pagare_ix`, with the asset and the collection given explicitly.
@@ -1087,6 +1095,7 @@ impl Env {
         receipt_hash: [u8; 32],
         asset: Pubkey,
         collection: Pubkey,
+        procurador_authority: Option<Pubkey>,
     ) -> Instruction {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
@@ -1101,6 +1110,7 @@ impl Env {
                 pagare: pagare_pda(&line, draw_index).0,
                 asset,
                 collection,
+                procurador_authority,
                 mpl_core_program: MPL_CORE_ID,
                 system_program: SYSTEM_PROGRAM_ID,
                 event_authority,

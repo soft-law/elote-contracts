@@ -482,7 +482,7 @@ fn cancel_pagare_is_refused_in_collection_after_write_off_and_without_a_sidecar(
     let line_key = line_pda(&k.pool, line_id).0;
     let attestor = env.attestor.insecure_clone();
     let a = admin.pubkey();
-    let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, pagare_asset_pda(&line_key, 0).0, k.collection);
+    let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, pagare_asset_pda(&line_key, 0).0, k.collection, None);
     env.expect_err(ix, &admin, &[&attestor], E_ACCOUNT_NOT_INITIALIZED);
 }
 
@@ -512,7 +512,7 @@ fn cancel_pagare_requires_the_holder_the_attestor_the_receipt_and_the_right_acco
     env.expect_err(ix, &admin, &[&attestor], E_DOCUMENT_HASH_REQUIRED);
     // Another pagaré's asset, or a stranger's.
     for wrong in [pagare_asset_pda(&line_key, 1).0, solana_pubkey::Pubkey::new_unique()] {
-        let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, wrong, k.collection);
+        let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, wrong, k.collection, None);
         env.expect_err(ix, &admin, &[&attestor], E_WRONG_ACCOUNT);
     }
     // Another pagaré's sidecar for this index.
@@ -522,7 +522,7 @@ fn cancel_pagare_requires_the_holder_the_attestor_the_receipt_and_the_right_acco
     env.expect_err(ix, &admin, &[&attestor], E_CONSTRAINT_SEEDS);
     // A collection that is not the pool's.
     let other = env.create_collection(&k.pool);
-    let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, pagare_asset_pda(&line_key, 0).0, other);
+    let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, pagare_asset_pda(&line_key, 0).0, other, None);
     env.expect_err(ix, &admin, &[&attestor], E_WRONG_ACCOUNT);
 
     // Nothing happened.
@@ -819,4 +819,112 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     env.expect_err(ix, &admin, &[&attestor], E_PAGARE_ALREADY_PAID);
     env.court_annotation(&k, line_id, 1, KIND_CONSTANCIA_JUDICIAL, embargo);
     assert_eq!(env.pagare(&k, line_id, 1).last_kind, KIND_CONSTANCIA_JUDICIAL);
+}
+
+/// The procurador's branch of `cancel_pagare` (LGTOC 35, decision 29): the procurador of record
+/// and the attestor sign, the same receipt and coverage checks apply, the `Terminacion` entry is
+/// written from the procurador, the procuración ends with the title, and the burn goes through the
+/// program address the delegate was approved to. The owner's branch writes the same entry from the
+/// pool, and its extinction ends a procuración in force too.
+#[test]
+fn the_procurador_extinguishes_the_title_through_the_program_address() {
+    use elote_pool::events::PagareEntry;
+    use elote_pool::state::{KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let (_, line_id) = drawn_and_repaid(&mut env, &k, 4 * UNIT, 1_000, &[UNIT, 3 * UNIT]);
+    let line_key = line_pda(&k.pool, line_id).0;
+    let admin = env.admin.insecure_clone();
+    let attestor = env.attestor.insecure_clone();
+    let procurador = env.funded(1);
+    let pr = procurador.pubkey();
+    let relayer = env.funded(1);
+    let r = relayer.pubkey();
+    env.procuracion(&k, line_id, 0, &pr, ENDOSO_HASH);
+
+    // Refusals: a stranger; the procurador on a title it does not hold; no attestor; no receipt;
+    // a program address derived for someone else, or none.
+    let stranger = env.funded(1);
+    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &stranger.pubkey(), &r, RECEIPT_HASH);
+    env.expect_err(ix, &relayer, &[&stranger, &attestor], E_NOT_HOLDER);
+    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 1, &pr, &r, RECEIPT_HASH);
+    env.expect_err(ix, &relayer, &[&procurador, &attestor], E_NOT_HOLDER);
+    let mut ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &pr, &r, RECEIPT_HASH);
+    let i = ix.accounts.iter().position(|m| m.pubkey == attestor.pubkey()).unwrap();
+    ix.accounts[i].pubkey = stranger.pubkey();
+    env.expect_err(ix, &relayer, &[&procurador, &stranger], E_ATTESTOR_REQUIRED);
+    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &pr, &r, [0; 32]);
+    env.expect_err(ix, &relayer, &[&procurador, &attestor], E_DOCUMENT_HASH_REQUIRED);
+    let pagare_key = pagare_pda(&line_key, 0).0;
+    let pda = procurador_pda(&pagare_key, &pr).0;
+    for wrong in [procurador_pda(&pagare_key, &stranger.pubkey()).0, PROGRAM_ID] {
+        let mut ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &pr, &r, RECEIPT_HASH);
+        let i = ix.accounts.iter().position(|m| m.pubkey == pda).unwrap();
+        ix.accounts[i].pubkey = wrong;
+        env.expect_err(ix, &relayer, &[&procurador, &attestor], E_WRONG_ACCOUNT);
+    }
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_OUTSTANDING);
+
+    // The extinction: the entry from the procurador, the mark, the procuración ended, the asset
+    // burnt through the program address, the rent to the payer.
+    let before = env.pagare(&k, line_id, 0);
+    let relayer_before = env.account(&r).lamports;
+    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &pr, &r, RECEIPT_HASH);
+    let meta = env.send(ix, &relayer, &[&procurador, &attestor]);
+    let now = env.now();
+    let after = env.pagare(&k, line_id, 0);
+    let expected = entry_hash(&after.asset, KIND_TERMINACION, &pr, &k.pool, &RECEIPT_HASH, now, 3);
+    assert_eq!((after.status, after.paid_at, after.receipt_hash, after.cancel_receipt_hash), (PAGARE_PAID, now, RECEIPT_HASH, RECEIPT_HASH));
+    assert_eq!(
+        (after.entry_count, after.last_kind, after.flags, after.procurador),
+        (3, KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE, solana_pubkey::Pubkey::default()),
+        "the procuración ends with the title"
+    );
+    assert_eq!(after.log_root, chain(&before.log_root, &expected));
+    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
+    assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count), (KIND_TERMINACION, pr, k.pool, expected, 3));
+    let ev: PagareCancelled = find_event(&meta).expect("PagareCancelled");
+    assert_eq!((ev.holder, ev.receipt_hash, ev.asset), (pr, RECEIPT_HASH, after.asset));
+    let tomb = env.account(&after.asset);
+    assert_eq!((tomb.data.len(), tomb.owner), (1, MPL_CORE_ID), "burnt through the program address");
+    assert!(env.account(&r).lamports > relayer_before, "the rent goes to the payer");
+    assert_eq!(env.collection_state(&k.collection).current_size, 1);
+    // Paid is terminal: the ex-procurador is nobody now (the procuración ended with the title),
+    // and the owner finds the mark.
+    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &pr, &r, RECEIPT_HASH);
+    env.expect_err(ix, &relayer, &[&procurador, &attestor], E_NOT_HOLDER);
+    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_ALREADY_PAID);
+
+    // The owner's branch writes the same entry, from the pool.
+    let before = env.pagare(&k, line_id, 1);
+    let meta = env.cancel_pagare(&k, line_id, 1);
+    let now = env.now();
+    let after = env.pagare(&k, line_id, 1);
+    let expected = entry_hash(&after.asset, KIND_TERMINACION, &k.pool, &k.pool, &RECEIPT_HASH, now, 2);
+    assert_eq!((after.entry_count, after.last_kind, after.cancel_receipt_hash), (2, KIND_TERMINACION, RECEIPT_HASH));
+    assert_eq!(after.log_root, chain(&before.log_root, &expected));
+    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
+    assert_eq!((ev.kind, ev.from, ev.to), (KIND_TERMINACION, k.pool, k.pool));
+
+    // Coverage binds the procurador too, and the owner's extinction ends a procuración in force.
+    let borrower = env.borrower(&k);
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let interest = env.line(&k, line_id).interest_due;
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.repay(&k, line_id, &borrower, UNIT + interest);
+    assert_eq!(env.line(&k, line_id).principal_repaid, UNIT);
+    env.procuracion(&k, line_id, 0, &pr, ENDOSO_HASH);
+    env.procuracion(&k, line_id, 1, &pr, ENDOSO_HASH);
+    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 1, &pr, &r, RECEIPT_HASH);
+    env.expect_err(ix, &relayer, &[&procurador, &attestor], E_PAGARE_NOT_COVERED);
+    env.cancel_pagare(&k, line_id, 0);
+    let p0 = env.pagare(&k, line_id, 0);
+    assert_eq!(
+        (p0.status, p0.flags, p0.procurador, p0.last_kind),
+        (PAGARE_PAID, PAGARE_FLAG_BURN_DELEGATE, solana_pubkey::Pubkey::default(), KIND_TERMINACION)
+    );
+    assert_eq!(env.pagare(&k, line_id, 1).procurador, pr, "the sibling's procuración stands");
 }

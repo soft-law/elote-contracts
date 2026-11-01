@@ -106,6 +106,21 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let cancel = env.cancel_pagare(&k, line_id, 0).compute_units_consumed;
     println!("cancel_pagare at 120 installments: {cancel} CU");
     assert!(cancel < CEILING, "cancel_pagare used {cancel} CU, ceiling {CEILING}");
+    // The procurador's branch, on a second line.
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(50 * UNIT, 1_200, 120, 5_000);
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw(&k, line_id, &borrower);
+    let interest = env.line(&k, line_id).interest_due;
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
+    let procurador = env.funded(1);
+    env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
+    let attestor = env.attestor.insecure_clone();
+    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &procurador.pubkey(), &admin.pubkey(), RECEIPT_HASH);
+    let by_procurador = env.send(ix, &admin, &[&procurador, &attestor]).compute_units_consumed;
+    println!("cancel_pagare by the procurador at 120 installments: {by_procurador} CU");
+    assert!(by_procurador < CEILING, "cancel by the procurador used {by_procurador} CU, ceiling {CEILING}");
 }
 
 /// After the mark every remaining installment is due, so a repayment early in a 120-installment

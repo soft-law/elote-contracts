@@ -10,7 +10,8 @@ use crate::pool_signer;
 use crate::registry;
 use crate::state::{
     seeds, CreditLine, LineStatus, Pagare, Pool, KIND_ANOTACION_JUDICIAL, KIND_CONSTANCIA_JUDICIAL, KIND_PROCURACION,
-    KIND_REVOCACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING, PAGARE_PAID,
+    KIND_REVOCACION, KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING,
+    PAGARE_PAID,
 };
 use crate::events::PagareEntry;
 
@@ -22,8 +23,9 @@ use crate::events::PagareEntry;
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct CancelPagare<'info> {
-    /// The pagaré's holder: the admin while the asset is in the pool.
-    #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
+    /// Who extinguishes the title: the holder (the admin while the asset is in the pool) or the
+    /// procurador of record (`Pagare::procurador`, with a procuración in force); checked in the
+    /// handler (`NotHolder`).
     pub holder: Signer<'info>,
 
     /// Attests the receipt behind `receipt_hash` and that the AppData log was archived.
@@ -66,6 +68,12 @@ pub struct CancelPagare<'info> {
     #[account(mut, address = pool.collection @ PoolError::WrongAccount)]
     pub collection: UncheckedAccount<'info>,
 
+    /// The program address the burn delegate was approved to, `["procurador", pagare, holder]`:
+    /// required on the procurador's branch, where the program signs for it; left out on the
+    /// owner's.
+    /// CHECK: derived and compared in the handler (`WrongAccount`).
+    pub procurador_authority: Option<UncheckedAccount<'info>>,
+
     /// CHECK: the Metaplex Core program, by address.
     #[account(address = mpl_core::ID @ PoolError::WrongAccount)]
     pub mpl_core_program: UncheckedAccount<'info>,
@@ -73,36 +81,81 @@ pub struct CancelPagare<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Checks, all before any write: the pagaré is outstanding (`PagareAlreadyPaid`); `receipt_hash`
-/// is not zero (`DocumentHashRequired`); the line is `Active` or `Repaid` (`LineStatus`: in
-/// collection or written off the títulos stay in force); `principal_repaid >= drawn_through`
-/// (`PagareNotCovered`). Coverage counts principal only, oldest pagaré first: `repay` settles
-/// interest before principal, so when the principal of pagarés `0..=k` is repaid every unit of
-/// interest fixed up to that payment is too, and a título never goes while its principal is owed.
-/// Receipt uniqueness is the engine's and the attestor's, not checked here. Never paused: it
-/// records a payment and moves no funds.
+/// Two branches by the signer: the owner (the admin while the asset is in the pool) or the
+/// procurador of record (`Pagare::procurador` with the procuración in force, else `NotHolder`;
+/// on that branch `procurador_authority` must be the program address the delegate was approved
+/// to, `WrongAccount`). Checks, all before any write: the pagaré is outstanding
+/// (`PagareAlreadyPaid`); `receipt_hash` is not zero (`DocumentHashRequired`); the line is
+/// `Active` or `Repaid` (`LineStatus`: in collection or written off the títulos stay in force);
+/// `principal_repaid >= drawn_through` (`PagareNotCovered`; the payment entries of 6d will mark
+/// the title paid and this rule stands in until then). Coverage counts principal only, oldest
+/// pagaré first: `repay` settles interest before principal, so when the principal of pagarés
+/// `0..=k` is repaid every unit of interest fixed up to that payment is too, and a título never
+/// goes while its principal is owed. Writes the `Terminacion` entry (from the signer's role, to
+/// the pool), the PAGADO mark, `cancel_receipt_hash`, and ends any procuración in force with the
+/// title; then thaws and burns, as the owner or through the procurador's program address. Receipt
+/// uniqueness is the engine's and the attestor's, not checked here. Never paused: it records a
+/// payment and moves no funds.
 pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
     let pagare = &ctx.accounts.pagare;
+    let signer = ctx.accounts.holder.key();
+    let pagare_key = pagare.key();
+    let by_procurador = signer != pool.admin;
+    if by_procurador {
+        require!(signer == pagare.procurador, PoolError::NotHolder);
+        require!(pagare.flags & PAGARE_FLAG_PROCURACION != 0, PoolError::ProcuracionState);
+    }
     require!(pagare.status == PAGARE_OUTSTANDING, PoolError::PagareAlreadyPaid);
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     require!(matches!(line.status, LineStatus::Active | LineStatus::Repaid), PoolError::LineStatus);
     require!(line.principal_repaid >= pagare.drawn_through, PoolError::PagareNotCovered);
+    // The procurador's program address, derived and compared before any write.
+    let authority_bump = if by_procurador {
+        let (pda, bump) = Pubkey::find_program_address(&[seeds::PROCURADOR, pagare_key.as_ref(), signer.as_ref()], ctx.program_id);
+        let given = ctx.accounts.procurador_authority.as_ref().ok_or(PoolError::WrongAccount)?;
+        require_keys_eq!(given.key(), pda, PoolError::WrongAccount);
+        Some(bump)
+    } else {
+        None
+    };
 
     let now = Clock::get()?.unix_timestamp;
+    let pool_key = pool.key();
+    let from = if by_procurador { signer } else { pool_key };
     let pagare = &mut ctx.accounts.pagare;
+    let hash = registry::append(pagare, KIND_TERMINACION, &from, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
     pagare.status = PAGARE_PAID;
     pagare.paid_at = now;
     pagare.receipt_hash = receipt_hash;
+    pagare.cancel_receipt_hash = receipt_hash;
+    // The title's extinction ends a procuración in force; the plugin flag stays as history.
+    pagare.flags &= !PAGARE_FLAG_PROCURACION;
+    pagare.procurador = Pubkey::default();
+    let entry_count = pagare.entry_count;
+    let asset_key = pagare.asset;
 
-    emit_cpi!(PagareCancelled {
-        pool: pool.key(),
+    emit_cpi!(PagareEntry {
+        pool: pool_key,
         line_id: line.line_id,
         draw_index,
-        asset: ctx.accounts.asset.key(),
+        asset: asset_key,
+        kind: KIND_TERMINACION,
+        from,
+        to: pool_key,
+        entry_hash: hash,
+        entry_count,
+        recorded_at: now,
+        stated_at: now,
+    });
+    emit_cpi!(PagareCancelled {
+        pool: pool_key,
+        line_id: line.line_id,
+        draw_index,
+        asset: asset_key,
         receipt_hash,
-        holder: ctx.accounts.holder.key(),
+        holder: signer,
     });
 
     // Last, so a Core refusal leaves nothing half done: the pool PDA thaws the asset as the
@@ -116,13 +169,23 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
         .system_program(&ctx.accounts.system_program.to_account_info())
         .plugin(mpl_core::types::Plugin::PermanentFreezeDelegate(mpl_core::types::PermanentFreezeDelegate { frozen: false }))
         .invoke_signed(pool_signer!(pool))?;
-    mpl_core::instructions::BurnV1CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
-        .asset(&ctx.accounts.asset.to_account_info())
-        .collection(Some(&ctx.accounts.collection.to_account_info()))
-        .payer(&ctx.accounts.payer.to_account_info())
-        .authority(Some(&ctx.accounts.pool.to_account_info()))
-        .system_program(Some(&ctx.accounts.system_program.to_account_info()))
-        .invoke_signed(pool_signer!(pool))?;
+    let core = ctx.accounts.mpl_core_program.to_account_info();
+    let asset_info = ctx.accounts.asset.to_account_info();
+    let collection_info = ctx.accounts.collection.to_account_info();
+    let payer_info = ctx.accounts.payer.to_account_info();
+    let system_info = ctx.accounts.system_program.to_account_info();
+    let pool_info = ctx.accounts.pool.to_account_info();
+    let mut burn = mpl_core::instructions::BurnV1CpiBuilder::new(&core);
+    burn.asset(&asset_info).collection(Some(&collection_info)).payer(&payer_info).system_program(Some(&system_info));
+    match authority_bump {
+        // The owner burns.
+        None => burn.authority(Some(&pool_info)).invoke_signed(pool_signer!(pool))?,
+        // The program signs for the procurador's address, which holds the burn delegate.
+        Some(bump) => {
+            let authority = ctx.accounts.procurador_authority.as_ref().ok_or(PoolError::WrongAccount)?.to_account_info();
+            burn.authority(Some(&authority)).invoke_signed(&[&[seeds::PROCURADOR, pagare_key.as_ref(), signer.as_ref(), &[bump]]])?
+        }
+    };
     Ok(())
 }
 

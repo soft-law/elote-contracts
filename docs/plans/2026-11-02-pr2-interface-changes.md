@@ -123,3 +123,18 @@ generated client derives `findPagarePda` and the `cancelPagare` builder derives 
   line's status and beside a procuración; refused on a burnt title (`Pagare.status == 1`).
 - **Error added:** 6043 `AnnotationKindInvalid`.
 - Compute: about 14 441 CU at 120 installments.
+
+## 6d part 1 (e): the procurador's branch of `cancel_pagare`, the Terminacion entry
+
+- **`cancel_pagare` accounts:** `holder` is now the signer who extinguishes the title, the admin or
+  the procurador of record (`Pagare.procurador`); a new optional account `procurador_authority`
+  follows `collection`: on the procurador's branch the PDA `["procurador", pagare, procurador]`
+  (`WrongAccount` when missing or another), left out (the program id in the Anchor convention) on
+  the owner's. Everything else in the account list and the arguments is unchanged.
+- **Behaviour:** both branches append a `Terminacion` entry (from = the pool or the procurador,
+  to = the pool, hash = `receipt_hash`) and emit `PagareEntry` before `PagareCancelled`
+  (unchanged in shape; its `holder` is the signer); `Pagare.cancel_receipt_hash` is written; a
+  procuración in force ends with the title (`flags` bit 1 cleared, `procurador` zeroed). The
+  coverage rule stays for both branches until the payment entries (g) mark the title paid.
+- **Errors:** `NotHolder` for any signer that is neither the admin nor the recorded procurador.
+- Compute: about 48 557 CU as the owner, 51 994 CU through the procurador's address.

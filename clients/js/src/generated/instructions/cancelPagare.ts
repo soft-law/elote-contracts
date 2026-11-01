@@ -69,6 +69,7 @@ export type CancelPagareInstruction<
   TAccountPagare extends string | AccountMeta<string> = string,
   TAccountAsset extends string | AccountMeta<string> = string,
   TAccountCollection extends string | AccountMeta<string> = string,
+  TAccountProcuradorAuthority extends string | AccountMeta<string> = string,
   TAccountMplCoreProgram extends string | AccountMeta<string> =
     "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
   TAccountSystemProgram extends string | AccountMeta<string> =
@@ -108,6 +109,9 @@ export type CancelPagareInstruction<
       TAccountCollection extends string
         ? WritableAccount<TAccountCollection>
         : TAccountCollection,
+      TAccountProcuradorAuthority extends string
+        ? ReadonlyAccount<TAccountProcuradorAuthority>
+        : TAccountProcuradorAuthority,
       TAccountMplCoreProgram extends string
         ? ReadonlyAccount<TAccountMplCoreProgram>
         : TAccountMplCoreProgram,
@@ -173,6 +177,8 @@ export type CancelPagareAsyncInput<
   TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
   TAccountAsset extends InstructionAccountInput = InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
+  TAccountProcuradorAuthority extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountMplCoreProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput =
@@ -181,7 +187,11 @@ export type CancelPagareAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. */
+  /**
+   * Who extinguishes the title: the holder (the admin while the asset is in the pool) or the
+   * procurador of record (`Pagare::procurador`, with a procuración in force); checked in the
+   * handler (`NotHolder`).
+   */
   holder: TAccountHolder;
   /** Attests the receipt behind `receipt_hash` and that the AppData log was archived. */
   attestor: TAccountAttestor;
@@ -195,6 +205,12 @@ export type CancelPagareAsyncInput<
   asset: TAccountAsset;
   /** The series' collection the asset belongs to. */
   collection: TAccountCollection;
+  /**
+   * The program address the burn delegate was approved to, `["procurador", pagare, holder]`:
+   * required on the procurador's branch, where the program signs for it; left out on the
+   * owner's.
+   */
+  procuradorAuthority?: TAccountProcuradorAuthority;
   mplCoreProgram?: TAccountMplCoreProgram;
   systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
@@ -212,6 +228,7 @@ export async function getCancelPagareInstructionAsync<
   TAccountPagare extends InstructionAccountInput,
   TAccountAsset extends InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput,
+  TAccountProcuradorAuthority extends InstructionAccountInput,
   TAccountMplCoreProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
@@ -227,6 +244,7 @@ export async function getCancelPagareInstructionAsync<
     TAccountPagare,
     TAccountAsset,
     TAccountCollection,
+    TAccountProcuradorAuthority,
     TAccountMplCoreProgram,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -269,6 +287,10 @@ export async function getCancelPagareInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountCollection,
       InstructionAccountInputAddress<TAccountCollection>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountProcuradorAuthority,
+      InstructionAccountInputAddress<TAccountProcuradorAuthority>
     >,
     ResolvedInstructionAccountMeta<
       TAccountMplCoreProgram,
@@ -316,6 +338,11 @@ export async function getCancelPagareInstructionAsync<
       value: input.collection ?? null,
       isSigner: false,
       isWritable: true,
+    },
+    procuradorAuthority: {
+      value: input.procuradorAuthority ?? null,
+      isSigner: false,
+      isWritable: false,
     },
     mplCoreProgram: {
       value: input.mplCoreProgram ?? null,
@@ -391,6 +418,7 @@ export async function getCancelPagareInstructionAsync<
       getAccountMeta("pagare", accounts.pagare),
       getAccountMeta("asset", accounts.asset),
       getAccountMeta("collection", accounts.collection),
+      getAccountMeta("procuradorAuthority", accounts.procuradorAuthority),
       getAccountMeta("mplCoreProgram", accounts.mplCoreProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -435,6 +463,10 @@ export async function getCancelPagareInstructionAsync<
       InstructionAccountInputAddress<TAccountCollection>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountProcuradorAuthority,
+      InstructionAccountInputAddress<TAccountProcuradorAuthority>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountMplCoreProgram,
       InstructionAccountInputAddress<TAccountMplCoreProgram>
     >,
@@ -462,6 +494,8 @@ export type CancelPagareInput<
   TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
   TAccountAsset extends InstructionAccountInput = InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
+  TAccountProcuradorAuthority extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountMplCoreProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput =
@@ -470,7 +504,11 @@ export type CancelPagareInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. */
+  /**
+   * Who extinguishes the title: the holder (the admin while the asset is in the pool) or the
+   * procurador of record (`Pagare::procurador`, with a procuración in force); checked in the
+   * handler (`NotHolder`).
+   */
   holder: TAccountHolder;
   /** Attests the receipt behind `receipt_hash` and that the AppData log was archived. */
   attestor: TAccountAttestor;
@@ -484,6 +522,12 @@ export type CancelPagareInput<
   asset: TAccountAsset;
   /** The series' collection the asset belongs to. */
   collection: TAccountCollection;
+  /**
+   * The program address the burn delegate was approved to, `["procurador", pagare, holder]`:
+   * required on the procurador's branch, where the program signs for it; left out on the
+   * owner's.
+   */
+  procuradorAuthority?: TAccountProcuradorAuthority;
   mplCoreProgram?: TAccountMplCoreProgram;
   systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
@@ -501,6 +545,7 @@ export function getCancelPagareInstruction<
   TAccountPagare extends InstructionAccountInput,
   TAccountAsset extends InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput,
+  TAccountProcuradorAuthority extends InstructionAccountInput,
   TAccountMplCoreProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
@@ -516,6 +561,7 @@ export function getCancelPagareInstruction<
     TAccountPagare,
     TAccountAsset,
     TAccountCollection,
+    TAccountProcuradorAuthority,
     TAccountMplCoreProgram,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -557,6 +603,10 @@ export function getCancelPagareInstruction<
   ResolvedInstructionAccountMeta<
     TAccountCollection,
     InstructionAccountInputAddress<TAccountCollection>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountProcuradorAuthority,
+    InstructionAccountInputAddress<TAccountProcuradorAuthority>
   >,
   ResolvedInstructionAccountMeta<
     TAccountMplCoreProgram,
@@ -603,6 +653,11 @@ export function getCancelPagareInstruction<
       value: input.collection ?? null,
       isSigner: false,
       isWritable: true,
+    },
+    procuradorAuthority: {
+      value: input.procuradorAuthority ?? null,
+      isSigner: false,
+      isWritable: false,
     },
     mplCoreProgram: {
       value: input.mplCoreProgram ?? null,
@@ -657,6 +712,7 @@ export function getCancelPagareInstruction<
       getAccountMeta("pagare", accounts.pagare),
       getAccountMeta("asset", accounts.asset),
       getAccountMeta("collection", accounts.collection),
+      getAccountMeta("procuradorAuthority", accounts.procuradorAuthority),
       getAccountMeta("mplCoreProgram", accounts.mplCoreProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -701,6 +757,10 @@ export function getCancelPagareInstruction<
       InstructionAccountInputAddress<TAccountCollection>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountProcuradorAuthority,
+      InstructionAccountInputAddress<TAccountProcuradorAuthority>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountMplCoreProgram,
       InstructionAccountInputAddress<TAccountMplCoreProgram>
     >,
@@ -725,7 +785,11 @@ export type ParsedCancelPagareInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** The pagaré's holder: the admin while the asset is in the pool. */
+    /**
+     * Who extinguishes the title: the holder (the admin while the asset is in the pool) or the
+     * procurador of record (`Pagare::procurador`, with a procuración in force); checked in the
+     * handler (`NotHolder`).
+     */
     holder: TAccountMetas[0];
     /** Attests the receipt behind `receipt_hash` and that the AppData log was archived. */
     attestor: TAccountMetas[1];
@@ -739,10 +803,16 @@ export type ParsedCancelPagareInstruction<
     asset: TAccountMetas[6];
     /** The series' collection the asset belongs to. */
     collection: TAccountMetas[7];
-    mplCoreProgram: TAccountMetas[8];
-    systemProgram: TAccountMetas[9];
-    eventAuthority: TAccountMetas[10];
-    program: TAccountMetas[11];
+    /**
+     * The program address the burn delegate was approved to, `["procurador", pagare, holder]`:
+     * required on the procurador's branch, where the program signs for it; left out on the
+     * owner's.
+     */
+    procuradorAuthority?: TAccountMetas[8] | undefined;
+    mplCoreProgram: TAccountMetas[9];
+    systemProgram: TAccountMetas[10];
+    eventAuthority: TAccountMetas[11];
+    program: TAccountMetas[12];
   };
   data: CancelPagareInstructionData;
 };
@@ -755,12 +825,12 @@ export function parseCancelPagareInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedCancelPagareInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 12) {
+  if (instruction.accounts.length < 13) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 12,
+        expectedAccountMetas: 13,
       },
     );
   }
@@ -769,6 +839,12 @@ export function parseCancelPagareInstruction<
     const accountMeta = (instruction.accounts as TAccountMetas)[accountIndex]!;
     accountIndex += 1;
     return accountMeta;
+  };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === ELOTE_POOL_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
   };
   return {
     programAddress: instruction.programAddress,
@@ -781,6 +857,7 @@ export function parseCancelPagareInstruction<
       pagare: getNextAccount(),
       asset: getNextAccount(),
       collection: getNextAccount(),
+      procuradorAuthority: getNextOptionalAccount(),
       mplCoreProgram: getNextAccount(),
       systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),

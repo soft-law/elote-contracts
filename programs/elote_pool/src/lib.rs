@@ -133,10 +133,10 @@ pub mod elote_pool {
         instructions::lines::draw(ctx, amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
-    /// Marks pagaré `draw_index` paid against the receipt `receipt_hash` and burns its asset; the
-    /// record is kept. The holder (the admin while the asset is in the pool) and the attestor
-    /// sign; refused until the line's principal repaid covers the pagaré, and in collection or
-    /// after a write-off. Never paused.
+    /// Marks pagaré `draw_index` paid against the receipt `receipt_hash`, writes the Terminacion
+    /// entry and burns its asset; the record is kept. The holder (the admin while the asset is in
+    /// the pool) or the procurador of record signs, with the attestor; refused until the line's
+    /// principal repaid covers the pagaré, and in collection or after a write-off. Never paused.
     pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::cancel_pagare(ctx, draw_index, receipt_hash)
     }
