@@ -6,6 +6,7 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./annotatePayment";
 export * from "./cancelLine";
 export * from "./cancelPagare";
 export * from "./courtAnnotation";

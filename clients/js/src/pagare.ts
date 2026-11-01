@@ -5,8 +5,12 @@
 // seed in `draw` is a field of the line account, so that one is written by hand here and checked
 // against the Solana CLI in `test/pagare.test.ts`.
 import {
+  type AccountMeta,
+  AccountRole,
   type Address,
+  type Instruction,
   type ProgramDerivedAddress,
+  type ReadonlyUint8Array,
   getAddressEncoder,
   getProgramDerivedAddress,
   getU16Encoder,
@@ -59,3 +63,38 @@ export async function drawPagareAccounts(
   return { asset, assetBump, pagare, pagareBump, collection, mplCoreProgram: MPL_CORE_PROGRAM_ADDRESS };
 }
 
+/**
+ * The payment cursor of a line (step 6d), `CreditLine.pagares_paid`: bytes 30..32 of `reserved`,
+ * little endian; the index of the oldest pagaré not yet marked paid by a repayment.
+ */
+export function pagaresPaidOf(reserved: ReadonlyUint8Array | Uint8Array | readonly number[]): number {
+  return reserved[30] | (reserved[31] << 8);
+}
+
+/**
+ * The pagaré records a `repay` must pass as remaining accounts, `[pagaresPaid ..= lastTouched]`,
+ * oldest first: from the line's cursor through the first pagaré whose `drawnThrough` exceeds the
+ * line's `principalRepaid` after the payment, or the last draw when none does; none once the
+ * cursor has passed the last draw or the line never drew. The program refuses any other set
+ * (`PagareAccountsMismatch`). `drawnThrough[i]` is `Pagare.drawnThrough` of draw `i` for every
+ * draw of the line; `principalAfter` is `principalRepaid` plus the payment's principal part (the
+ * program applies late interest, then interest, then principal, never more than is due).
+ */
+export async function repaySidecars(
+  input: { line: Address; pagaresPaid: number; drawnThrough: readonly bigint[]; principalAfter: bigint },
+  config: { programAddress?: Address } = {}
+): Promise<Address[]> {
+  const { line, pagaresPaid, drawnThrough, principalAfter } = input;
+  const out: Address[] = [];
+  for (let drawIndex = pagaresPaid; drawIndex < drawnThrough.length; drawIndex++) {
+    out.push((await findPagarePda({ line, drawIndex }, config))[0]);
+    if (drawnThrough[drawIndex] > principalAfter) break;
+  }
+  return out;
+}
+
+/** The instruction with `addresses` appended as writable, non-signer remaining accounts. */
+export function withRemainingAccounts<T extends Instruction>(instruction: T, addresses: readonly Address[]): T {
+  const extra: AccountMeta[] = addresses.map((address) => ({ address, role: AccountRole.WRITABLE }));
+  return { ...instruction, accounts: [...(instruction.accounts ?? []), ...extra] } as T;
+}

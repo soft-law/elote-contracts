@@ -63,6 +63,11 @@ import {
   getDepositInstructionAsync,
   getDrawInstructionAsync,
   drawPagareAccounts,
+  fetchPagare,
+  findPagarePda,
+  pagaresPaidOf,
+  repaySidecars,
+  withRemainingAccounts,
   getInitPoolInstructionAsync,
   getOpenLineInstructionAsync,
   getRedeemInstructionAsync,
@@ -376,6 +381,24 @@ const borrowerAsset = await ataOf(borrower.address, assetMint.address);
 // The draw mints the pagaré: a Core asset and a sidecar at addresses seeded by the line and the
 // draw index (`CreditLine.draws` before the draw); the admin stands in for the app's relayer as
 // the rent payer.
+// The pagaré records a repayment must pass (step 6d): the line's cursor through the first pagaré
+// the payment's principal leaves uncovered. The program applies late interest, then interest, then
+// principal, never more than is due; `late` is the client's quote of the late interest.
+async function repayRemaining(lineAddress: Address, amount: bigint, late: bigint): Promise<Address[]> {
+  const l = (await fetchCreditLine(rpc, lineAddress, { commitment: "confirmed" })).data;
+  const interestLeft = l.interestDue - l.interestRepaid;
+  const remaining = l.drawn - l.principalRepaid + interestLeft;
+  const afterLate = amount > late ? amount - late : 0n;
+  const rest = afterLate < remaining ? afterLate : remaining;
+  const principalAfter = l.principalRepaid + (rest > interestLeft ? rest - interestLeft : 0n);
+  const drawnThrough: bigint[] = [];
+  for (let drawIndex = 0; drawIndex < l.draws; drawIndex++) {
+    const [pagare] = await findPagarePda({ line: lineAddress, drawIndex });
+    drawnThrough.push((await fetchPagare(rpc, pagare, { commitment: "confirmed" })).data.drawnThrough);
+  }
+  return repaySidecars({ line: lineAddress, pagaresPaid: pagaresPaidOf(l.reserved), drawnThrough, principalAfter });
+}
+
 const pagareAccounts = async (lineAddress: Address, drawIndex: number) => ({
   payer: admin,
   ...(await drawPagareAccounts({ line: lineAddress, drawIndex, collection })),
@@ -400,30 +423,38 @@ await send("draw: 6,000 tMXN (devnet test token, no value) to the borrower, paga
 ]);
 const drawn = await snapshot();
 await send("repay by the borrower: 6,000 tMXN (devnet test token, no value) of principal", borrower, [
-  await getRepayInstructionAsync({
-    payer: borrower,
-    pool,
-    line,
-    assetMint: assetMint.address,
-    shareMint,
-    vault,
-    payerAssetAccount: borrowerAsset,
-    tokenProgram: TOKEN_PROGRAM_ADDRESS,
-    amount: 6_000n * UNIT,
-  }),
+  withRemainingAccounts(
+    await getRepayInstructionAsync({
+      payer: borrower,
+      pool,
+      line,
+      assetMint: assetMint.address,
+      shareMint,
+      vault,
+      payerAssetAccount: borrowerAsset,
+      tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      amount: 6_000n * UNIT,
+      receiptHash: new Uint8Array(32), // the demo has no receipt: "to follow"
+    }),
+    await repayRemaining(line, 6_000n * UNIT, 0n)
+  ),
 ]);
 await send("repay by the sponsor: 720 tMXN (devnet test token, no value) of interest", sponsor, [
-  await getRepayInstructionAsync({
-    payer: sponsor,
-    pool,
-    line,
-    assetMint: assetMint.address,
-    shareMint,
-    vault,
-    payerAssetAccount: await ataOf(sponsor.address, assetMint.address),
-    tokenProgram: TOKEN_PROGRAM_ADDRESS,
-    amount: 720n * UNIT,
-  }),
+  withRemainingAccounts(
+    await getRepayInstructionAsync({
+      payer: sponsor,
+      pool,
+      line,
+      assetMint: assetMint.address,
+      shareMint,
+      vault,
+      payerAssetAccount: await ataOf(sponsor.address, assetMint.address),
+      tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      amount: 720n * UNIT,
+      receiptHash: new Uint8Array(32),
+    }),
+    await repayRemaining(line, 720n * UNIT, 0n)
+  ),
 ]);
 const repaid = await snapshot();
 const status = (await fetchCreditLine(rpc, line, { commitment: "confirmed" })).data.status;
@@ -549,17 +580,21 @@ async function scheduleDemo() {
   const amount = a.overdue + installment + 2n * a.lateDue + 1_000n;
   const lateBefore = s.lateCollected;
   await send("repay: overdue installment, its late interest and the next installment", borrower, [
-    await getRepayInstructionAsync({
-      payer: borrower,
-      pool,
-      line: sLine,
-      assetMint: assetMint.address,
-      shareMint,
-      vault,
-      payerAssetAccount: borrowerAsset,
-      tokenProgram: TOKEN_PROGRAM_ADDRESS,
-      amount,
-    }),
+    withRemainingAccounts(
+      await getRepayInstructionAsync({
+        payer: borrower,
+        pool,
+        line: sLine,
+        assetMint: assetMint.address,
+        shareMint,
+        vault,
+        payerAssetAccount: borrowerAsset,
+        tokenProgram: TOKEN_PROGRAM_ADDRESS,
+        amount,
+        receiptHash: new Uint8Array(32),
+      }),
+      await repayRemaining(sLine, amount, a.lateDue)
+    ),
   ]);
   ({ l, s, a } = await read());
   console.log(`  late interest collected ${fmt(s.lateCollected - lateBefore)}; missed installments now ${a.missed}`);

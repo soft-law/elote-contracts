@@ -47,6 +47,7 @@ import {
   type PoolArgs,
 } from "../accounts";
 import {
+  getAnnotatePaymentInstructionAsync,
   getCancelLineInstructionAsync,
   getCancelPagareInstructionAsync,
   getCourtAnnotationInstructionAsync,
@@ -66,6 +67,7 @@ import {
   getSetPausedInstructionAsync,
   getSuspendDrawsInstructionAsync,
   getWriteOffInstructionAsync,
+  parseAnnotatePaymentInstruction,
   parseCancelLineInstruction,
   parseCancelPagareInstruction,
   parseCourtAnnotationInstruction,
@@ -85,6 +87,7 @@ import {
   parseSetPausedInstruction,
   parseSuspendDrawsInstruction,
   parseWriteOffInstruction,
+  type AnnotatePaymentAsyncInput,
   type CancelLineAsyncInput,
   type CancelPagareAsyncInput,
   type CourtAnnotationAsyncInput,
@@ -94,6 +97,7 @@ import {
   type InitPoolAsyncInput,
   type MarkInCollectionAsyncInput,
   type OpenLineAsyncInput,
+  type ParsedAnnotatePaymentInstruction,
   type ParsedCancelLineInstruction,
   type ParsedCancelPagareInstruction,
   type ParsedCourtAnnotationInstruction,
@@ -205,6 +209,8 @@ export enum ElotePoolEvent {
   PagareCancelled,
   PagareEntry,
   PagareIssued,
+  PagarePayment,
+  PagareReceiptAnnotated,
   PoolCollectionSet,
   PoolConfigured,
   PoolFlags,
@@ -442,6 +448,28 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([43, 167, 85, 90, 99, 142, 175, 203]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.PagarePayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([133, 229, 77, 194, 229, 211, 68, 91]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.PagareReceiptAnnotated;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([230, 60, 239, 27, 171, 112, 123, 10]),
       ),
       0,
@@ -521,6 +549,7 @@ export function identifyElotePoolEvent(
 }
 
 export enum ElotePoolInstruction {
+  AnnotatePayment,
   CancelLine,
   CancelPagare,
   CourtAnnotation,
@@ -546,6 +575,17 @@ export function identifyElotePoolInstruction(
   instruction: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
 ): ElotePoolInstruction {
   const data = "data" in instruction ? instruction.data : instruction;
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([142, 194, 249, 187, 62, 240, 31, 60]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.AnnotatePayment;
+  }
   if (
     containsBytes(
       data,
@@ -765,6 +805,9 @@ export type ParsedElotePoolInstruction<
   TProgram extends string = "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
 > =
   | ({
+      instructionType: ElotePoolInstruction.AnnotatePayment;
+    } & ParsedAnnotatePaymentInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.CancelLine;
     } & ParsedCancelLineInstruction<TProgram>)
   | ({
@@ -827,6 +870,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
 ): ParsedElotePoolInstruction<TProgram> {
   const instructionType = identifyElotePoolInstruction(instruction);
   switch (instructionType) {
+    case ElotePoolInstruction.AnnotatePayment: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.AnnotatePayment,
+        ...parseAnnotatePaymentInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.CancelLine: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -989,6 +1039,11 @@ export type ElotePoolPluginAccounts = {
 };
 
 export type ElotePoolPluginInstructions = {
+  annotatePayment: (
+    input: AnnotatePaymentAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getAnnotatePaymentInstructionAsync> &
+    SelfPlanAndSendFunctions;
   cancelLine: (
     input: CancelLineAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1111,6 +1166,14 @@ export function elotePoolProgram(
           pool: addSelfFetchFunctions(client, getPoolCodec()),
         },
         instructions: {
+          annotatePayment: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getAnnotatePaymentInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
           cancelLine: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,

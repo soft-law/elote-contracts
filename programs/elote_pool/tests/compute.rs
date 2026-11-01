@@ -111,11 +111,11 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let p = env.scheduled_params(50 * UNIT, 1_200, 120, 5_000);
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, line_id, &borrower);
+    let procurador = env.funded(1);
+    env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
     let interest = env.line(&k, line_id).interest_due;
     env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
-    let procurador = env.funded(1);
-    env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
     let attestor = env.attestor.insecure_clone();
     let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &procurador.pubkey(), &admin.pubkey(), RECEIPT_HASH);
     let by_procurador = env.send(ix, &admin, &[&procurador, &attestor]).compute_units_consumed;
@@ -206,4 +206,34 @@ fn arrears_instructions_stay_under_the_ceiling_at_18_and_120_installments() {
             assert!(cu < CEILING, "{name} at {n} installments used {cu} CU, ceiling {CEILING}");
         }
     }
+}
+
+/// The ceiling case of the payment entries: one payment covering six pagarés (the client rule) on
+/// a 120-installment line with every installment missed (late interest on all of them). Eight
+/// measured 107 605 CU with the same code, over the ceiling.
+#[test]
+fn a_payment_covering_six_sidecars_stays_under_the_ceiling() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool_with_grace(0);
+    let investor = env.investor(&k, 200 * UNIT);
+    env.deposit(&k, &investor, 200 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(60 * UNIT, 1_200, 120, 5_000);
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    for _ in 0..6 {
+        env.draw_amount(&k, line_id, &borrower, 10 * UNIT);
+    }
+    let t0 = env.line(&k, line_id).drawn_at;
+    env.warp(t0 + 120 * p.interval() + 1);
+    let line = env.line(&k, line_id);
+    let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
+    let admin = env.admin.insecure_clone();
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), owed);
+    let sidecars = env.payment_sidecars(&k, line_id, owed);
+    assert_eq!(sidecars.len(), 6);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), owed);
+    let cu = env.send(ix, &borrower, &[]).compute_units_consumed;
+    println!("repay covering six sidecars at 120 installments, all missed: {cu} CU");
+    assert_eq!(env.line(&k, line_id).pagares_paid(), 6);
+    assert!(cu < CEILING, "the six-sidecar repay used {cu} CU, ceiling {CEILING}");
 }

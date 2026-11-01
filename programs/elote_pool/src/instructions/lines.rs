@@ -12,13 +12,15 @@ use crate::errors::PoolError;
 use crate::events::{
     LateInterestCollected, LineCancelled, LineDrawState, LineDrawn, LineDrawsSuspended, LineInCollection, LineOpened,
     LineRepaid, LineScheduled, LineSponsorRole, LineTermsSet, LineWrittenOff, NavUpdated, PagareEntry, PagareIssued,
+    PagarePayment, PaymentEntry,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
 use crate::pool_signer;
 use crate::registry;
 use crate::state::{
-    seeds, CreditLine, LineStatus, Pagare, Pool, Schedule, ScheduleParams, BPS, KIND_EMISION, LINE_VERSION, MAX_DRAWS,
-    MAX_INSTALLMENTS, MIN_MAX_MISSED, PAGARE_OUTSTANDING, SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
+    seeds, CreditLine, LineStatus, Pagare, Pool, Schedule, ScheduleParams, BPS, KIND_ABONO, KIND_EMISION, KIND_PAGADO,
+    LINE_VERSION, MAX_DRAWS, MAX_INSTALLMENTS, MIN_MAX_MISSED, PAGARE_OUTSTANDING, PAGARE_PAID_PENDING_CANCEL,
+    SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
 };
 
 // -----------------------------------------------------------------------------------------------
@@ -639,7 +641,17 @@ pub struct Repay<'info> {
 /// moves nothing (audit F-01).
 ///
 /// Never blocked by the pause: a borrower can always pay.
-pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
+/// The payment entries (art. 130, step 6d): the remaining accounts are the sidecars
+/// `[pagares_paid ..= last_touched]`, oldest first, each a program-owned `Pagare` naming this line
+/// and its index (what only `draw` writes, at the seeds address), where `last_touched` is the first
+/// pagaré whose `drawn_through` the payment leaves above `principal_repaid`, or the last draw;
+/// anything else is `PagareAccountsMismatch`, and a line
+/// whose cursor has passed its last draw (or never drew) passes none. Each covered pagaré gets a
+/// `Pagado` entry, `PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash` (the PAGADO mark at
+/// the moment of payment; only the burn waits) and the cursor moves past it; the uncovered one
+/// gets an `Abono`. `receipt_hash` is the payer's and unverified; zero means "receipt to follow"
+/// (`annotate_payment` attaches it later).
+pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash: [u8; 32]) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
@@ -670,6 +682,37 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
         .checked_add(interest_part)
         .and_then(|v| v.checked_add(principal_part))
         .ok_or(PoolError::Overflow)?;
+    let principal_before = line.principal_repaid;
+    let principal_after = principal_before.checked_add(principal_part).ok_or(PoolError::Overflow)?;
+
+    // The sidecars, exactly `[pagares_paid ..= last_touched]`, loaded and verified before any write.
+    let line_key = line.key();
+    let cursor = line.pagares_paid();
+    let draws = line.draws;
+    let sidecars = ctx.remaining_accounts;
+    if cursor >= draws {
+        require!(sidecars.is_empty(), PoolError::PagareAccountsMismatch);
+    } else {
+        require!(!sidecars.is_empty(), PoolError::PagareAccountsMismatch);
+    }
+    let mut touched: Vec<Account<'info, Pagare>> = Vec::with_capacity(sidecars.len());
+    for (i, info) in sidecars.iter().enumerate() {
+        let idx = u16::try_from(i).ok().and_then(|i| cursor.checked_add(i)).ok_or(PoolError::PagareAccountsMismatch)?;
+        require!(idx < draws, PoolError::PagareAccountsMismatch);
+        // Owned by the program with the `Pagare` discriminator (`try_from`), naming this line and
+        // this index: only `draw` writes such an account, at `["pagare", line, index]`, so these
+        // three facts identify the sidecar without recomputing its address (1 500 CU a piece).
+        let sidecar = Account::<Pagare>::try_from(info).map_err(|_| PoolError::PagareAccountsMismatch)?;
+        require!(
+            sidecar.line == line_key && sidecar.draw_index == idx && sidecar.status == PAGARE_OUTSTANDING,
+            PoolError::PagareAccountsMismatch
+        );
+        let covered = sidecar.drawn_through <= principal_after;
+        let last = i + 1 == sidecars.len();
+        // An uncovered pagaré ends the set; a covered one that ends it must be the last draw.
+        require!(if covered { !last || idx.saturating_add(1) == draws } else { last }, PoolError::PagareAccountsMismatch);
+        touched.push(sidecar);
+    }
 
     if transfer > 0 {
         token::transfer_checked(
@@ -714,6 +757,45 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
     if remaining_after == 0 && !can_draw {
         line.status = LineStatus::Repaid;
         line.closed_at = now;
+    }
+
+    // The payment entries, oldest first; the cursor moves past every pagaré marked paid.
+    let payer_key = ctx.accounts.payer.key();
+    let pool_key = pool.key();
+    let line_id = line.line_id;
+    let mut entries: Vec<PaymentEntry> = Vec::with_capacity(touched.len());
+    let mut floor = principal_before;
+    for sidecar in touched.iter_mut() {
+        let covered = sidecar.drawn_through <= principal_after;
+        let kind = if covered { KIND_PAGADO } else { KIND_ABONO };
+        let ceiling = sidecar.drawn_through.min(principal_after);
+        let principal_applied = ceiling.saturating_sub(floor);
+        floor = floor.max(ceiling);
+        let hash = registry::append(sidecar, kind, &payer_key, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
+        if covered {
+            sidecar.status = PAGARE_PAID_PENDING_CANCEL;
+            sidecar.paid_at = now;
+            sidecar.receipt_hash = receipt_hash;
+            line.set_pagares_paid(sidecar.draw_index.checked_add(1).ok_or(PoolError::Overflow)?);
+        }
+        emit_cpi!(PagareEntry {
+            pool: pool_key,
+            line_id,
+            draw_index: sidecar.draw_index,
+            asset: sidecar.asset,
+            kind,
+            from: payer_key,
+            to: pool_key,
+            entry_hash: hash,
+            entry_count: sidecar.entry_count,
+            recorded_at: now,
+            stated_at: now,
+        });
+        entries.push(PaymentEntry { draw_index: sidecar.draw_index, kind, entry_count: sidecar.entry_count, principal_applied });
+        sidecar.exit(ctx.program_id)?;
+    }
+    if !entries.is_empty() {
+        emit_cpi!(PagarePayment { pool: pool_key, line_id, payer: payer_key, receipt_hash, late_part, interest_part, principal_part, entries });
     }
 
     ctx.accounts.vault.reload()?;

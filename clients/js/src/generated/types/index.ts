@@ -7,4 +7,5 @@
  */
 
 export * from "./lineStatus";
+export * from "./paymentEntry";
 export * from "./scheduleParams";

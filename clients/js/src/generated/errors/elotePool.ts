@@ -107,6 +107,8 @@ export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x179b; // 6043
 export const ELOTE_POOL_ERROR__CANCEL_DELAY_TOO_SHORT = 0x179c; // 6044
 /** CancellationPending: A cancellation request is already pending on this pagaré */
 export const ELOTE_POOL_ERROR__CANCELLATION_PENDING = 0x179d; // 6045
+/** EntryNotFound: The referenced registry entry does not exist */
+export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x179e; // 6046
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED
@@ -124,6 +126,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED
   | typeof ELOTE_POOL_ERROR__ENDORSEE_INVALID
   | typeof ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID
+  | typeof ELOTE_POOL_ERROR__ENTRY_NOT_FOUND
   | typeof ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
@@ -174,6 +177,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed pagaré's hash is required`,
     [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing or is the pool itself`,
     [ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID]: `This kind of endoso is not one the program records, or not in this version`,
+    [ELOTE_POOL_ERROR__ENTRY_NOT_FOUND]: `The referenced registry entry does not exist`,
     [ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED]: `The expediente root is required`,
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,

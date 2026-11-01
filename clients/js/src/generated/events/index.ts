@@ -26,6 +26,8 @@ export * from "./navUpdated";
 export * from "./pagareCancelled";
 export * from "./pagareEntry";
 export * from "./pagareIssued";
+export * from "./pagarePayment";
+export * from "./pagareReceiptAnnotated";
 export * from "./poolCollectionSet";
 export * from "./poolConfigured";
 export * from "./poolFlags";

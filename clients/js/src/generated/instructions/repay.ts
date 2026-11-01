@@ -110,15 +110,20 @@ export type RepayInstruction<
 export type RepayInstructionData = {
   discriminator: ReadonlyUint8Array;
   amount: bigint;
+  receiptHash: ReadonlyUint8Array;
 };
 
-export type RepayInstructionDataArgs = { amount: number | bigint };
+export type RepayInstructionDataArgs = {
+  amount: number | bigint;
+  receiptHash: ReadonlyUint8Array;
+};
 
 export function getRepayInstructionDataEncoder(): FixedSizeEncoder<RepayInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["amount", getU64Encoder()],
+      ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: REPAY_DISCRIMINATOR }),
   );
@@ -128,6 +133,7 @@ export function getRepayInstructionDataDecoder(): FixedSizeDecoder<RepayInstruct
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["amount", getU64Decoder()],
+    ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
 
@@ -170,6 +176,7 @@ export type RepayAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   amount: RepayInstructionDataArgs["amount"];
+  receiptHash: RepayInstructionDataArgs["receiptHash"];
 };
 
 export async function getRepayInstructionAsync<
@@ -408,6 +415,7 @@ export type RepayInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   amount: RepayInstructionDataArgs["amount"];
+  receiptHash: RepayInstructionDataArgs["receiptHash"];
 };
 
 export function getRepayInstruction<

@@ -5,8 +5,15 @@
 // CLI (`solana find-program-derived-address <program> string:pagare pubkey:<line> u16le:<n>`).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { address } from "@solana/kit";
-import { MPL_CORE_PROGRAM_ADDRESS, drawPagareAccounts, findPagareAssetPda } from "../src/pagare";
+import { AccountRole, address } from "@solana/kit";
+import {
+  MPL_CORE_PROGRAM_ADDRESS,
+  drawPagareAccounts,
+  findPagareAssetPda,
+  pagaresPaidOf,
+  repaySidecars,
+  withRemainingAccounts,
+} from "../src/pagare";
 import { findPagarePda } from "../src/generated";
 
 const line = address("11111111111111111111111111111112");
@@ -37,4 +44,34 @@ test("drawPagareAccounts assembles the draw's pagaré accounts and bumps for the
 
 test("the Metaplex Core program address is the one the program pins", () => {
   assert.equal(MPL_CORE_PROGRAM_ADDRESS, "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
+});
+
+test("pagaresPaidOf reads the payment cursor from bytes 30..32 of the line's reserved bytes", () => {
+  const reserved = new Uint8Array(32);
+  assert.equal(pagaresPaidOf(reserved), 0);
+  reserved[30] = 0x34;
+  reserved[31] = 0x12;
+  assert.equal(pagaresPaidOf(reserved), 0x1234);
+});
+
+test("repaySidecars selects the records from the cursor through the first pagaré left uncovered", async () => {
+  const drawnThrough = [100n, 200n, 400n];
+  const s = (...i: number[]) => Promise.all(i.map(async (drawIndex) => (await findPagarePda({ line, drawIndex }))[0]));
+  // Interest only: the cursor's pagaré alone, as an Abono.
+  assert.deepEqual(await repaySidecars({ line, pagaresPaid: 0, drawnThrough, principalAfter: 0n }), await s(0));
+  // The first pagaré paid and half of the next: both.
+  assert.deepEqual(await repaySidecars({ line, pagaresPaid: 0, drawnThrough, principalAfter: 150n }), await s(0, 1));
+  // From the cursor through the last draw when the payment covers everything.
+  assert.deepEqual(await repaySidecars({ line, pagaresPaid: 1, drawnThrough, principalAfter: 400n }), await s(1, 2));
+  // Nothing left to mark: none.
+  assert.deepEqual(await repaySidecars({ line, pagaresPaid: 3, drawnThrough, principalAfter: 400n }), []);
+});
+
+test("withRemainingAccounts appends writable, non-signer accounts to an instruction", () => {
+  const other = address("11111111111111111111111111111113");
+  const ix = { programAddress: line, accounts: [{ address: line, role: AccountRole.READONLY }], data: new Uint8Array() };
+  const out = withRemainingAccounts(ix, [other]);
+  assert.equal(out.accounts.length, 2);
+  assert.deepEqual(out.accounts[1], { address: other, role: AccountRole.WRITABLE });
+  assert.equal(ix.accounts.length, 1, "the input is not changed");
 });

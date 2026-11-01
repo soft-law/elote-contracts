@@ -175,7 +175,7 @@ when they were added. They are read and written only through `Pool::grace_period
 | 189 | 8 | `opened_at` | |
 | 197 | 8 | `drawn_at` | time of the first tranche; informational since decision 25 |
 | 205 | 8 | `closed_at` | set by the repayment that clears the line or by `write_off` |
-| 213 | 32 | `reserved` | zero on a bullet line; the packed `Schedule` on a scheduled line |
+| 213 | 32 | `reserved` | zero on a bullet line; the packed `Schedule` (bytes 0..30) on a scheduled line; bytes 30..32: `pagares_paid` (u16 LE, step 6d), the index of the oldest pagaré not yet marked paid by a repayment |
 | 245 | 1 | `bump` | |
 | 246 | 8 | `drawn` | line v3: principal transferred so far, `<= principal`, never decreases |
 | 254 | 2 | `draws` | line v3: tranches so far, `<= MAX_DRAWS` (64) |
@@ -357,8 +357,11 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
   payment brings `principal_repaid` to `drawn_through` of pagaré `k`, that sidecar's entry is of
   kind `Pagado` and sets `status = PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash`: the
   receipt and the PAGADO mark exist at the moment of payment, and only the burn waits. Decided
-  (2026-11-02): the entries are written inside `repay`, which gains a `receipt_hash` argument and
-  takes the touched sidecars as remaining accounts, oldest first by `drawn_through`.
+  (2026-11-02) and built: the entries are written inside `repay`, which gains a `receipt_hash`
+  argument and takes the touched sidecars as remaining accounts, oldest first by `drawn_through`;
+  the entry's `from` is the payer, its `to` the pool, and the payment's split with one
+  `(draw_index, kind, entry_count, principal_applied)` per sidecar goes in the sibling event
+  `PagarePayment`, since `PagareEntry` has no amounts (§5.6).
   Completeness: the line carries a cursor, `pagares_paid: u16`, in `CreditLine.reserved` bytes
   30..32 (free: the `Schedule` packs 0..30 and never writes them; zero on a bullet line like the
   rest), the index of the oldest pagaré not yet marked paid. `repay` on a line with draws requires
@@ -374,32 +377,36 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
   payer-supplied and unverifiable (no attestor signs a repayment). It stays the entry's receipt
   field; zero is allowed and means "receipt to follow". The repair path is
   `annotate_payment(draw_index, entry_count, receipt_hash)`, signed by the holder or the attestor,
-  which appends a `Recibo` entry referencing the payment entry's `entry_count` (the 14 093 CU
-  shape), so the engine attaches the real receipt when the payer's hash is wrong or missing. The
+  which appends a `Recibo` entry referencing the payment entry's `entry_count` (the reference
+  goes in the sibling event `PagareReceiptAnnotated`; the chain binds the receipt's hash, §5.20),
+  so the engine attaches the real receipt when the payer's hash is wrong or missing. The
   engine's own `repay` calls always carry the right hash; third-party payments get a `Recibo`
   entry afterwards. Measured at
   22 539 CU early in a 120-installment schedule, 27 531 with one sidecar, 32 497 with two, about
   5 000 CU per sidecar; in the ceiling case (every installment missed, `repay` at 56 569) about
-  eight sidecars fit under 100 000. Client rule: a payment that would touch more than eight
-  sidecars is split into several `repay` calls, each under the ceiling; the program refuses
+  eight sidecars fit under 100 000; built, six do (§5.6). Client rule: a payment that would touch
+  more than six sidecars is split into several `repay` calls, each under the ceiling; the program refuses
   nothing on that count beyond the compute limit itself. Engine rule: the receipt (amount, date,
   pagaré, payer) is prepared before the transaction and its hash goes in the argument; its NOM-151
   constancia is obtained after confirmation, and a failed transaction voids the receipt. This shape
   is valid under the mandate the pagaré text carries ("el tenedor autoriza al sistema de
   información a asentar los abonos"), since art. 130 puts the annotation on the holder; the
   template carries that clause. A separate `annotate_payment` instruction (14 093 CU per sidecar,
-  atomic only as far as the client bundles it) was measured and is not built.
+  atomic only as far as the client bundles it) was measured and is not built; the repair path
+  `annotate_payment` is. Built figures: 66 217 CU for `repay` with one sidecar at 120
+  installments, 95 612 CU for the ceiling case, six sidecars with every installment missed (eight
+  measured 107 605 CU, over the ceiling).
 - `cancel_pagare(draw_index, receipt_hash)`, in the pool: requires `status ==
-  PAGARE_PAID_PENDING_CANCEL` (the payment entry already marked it paid; until the payment
-  entries land the coverage rule stands in, so nothing is burnable earlier than today), the
-  coverage rule, the holder (the admin) and the attestor; stores `cancel_receipt_hash` (the final
+  PAGARE_PAID_PENDING_CANCEL` (the payment entry already marked it paid, which replaces the
+  coverage rule: `repay` marks oldest first, so the rule's order is kept), the holder (the admin)
+  and the attestor; stores `cancel_receipt_hash` (the final
   receipt may differ from the payment's; both are kept), appends a `Terminacion` entry (from the
   pool, to the pool) before the burn, sets `status = PAGARE_PAID`, ends any procuración in force
-  with the title, thaws (as the collection's authority) and burns as the owner. 48 570 CU.
+  with the title, thaws (as the collection's authority) and burns as the owner. 48 559 CU.
   Procurador branch: the procurador of record (`Pagare.procurador`, else `NotHolder`), the
   attestor, the same receipt and coverage checks, the `Terminacion` entry from the procurador,
   then thaw and `BurnV1` with the PDA `["procurador", pagare, procurador]` as authority, passed
-  as `procurador_authority` and signed by the program. 52 021 CU. The attestor co-signs because
+  as `procurador_authority` and signed by the program. 55 010 CU. The attestor co-signs because
   it certifies the receipt archive, not the holder's act.
 - Backstop, so the debtor is never left without receipt or title if the attestor fails (LGTOC 17,
   129; research prefers it to rotation, which is slow; rotation under C14 stays the primary
@@ -735,12 +742,21 @@ repays through `repay` like anyone else).
   (`tests/compute.rs`; the ceiling is 100 000, so some 17 000 CU of room remain before clients
   would need a compute-budget request; the attributes are the lever if it comes to that).
 
-### 5.6 `repay(amount: u64)`
+### 5.6 `repay(amount: u64, receipt_hash: [u8; 32])`
 
 - **Signers:** `payer`, anyone. The event records who paid.
 - **Constraints:** `line` has `has_one = pool`; `asset_mint` and `share_mint` (read-only) and
   `vault` match the pool; `payer_asset_account` has the pool's asset mint and is owned by the
-  payer.
+  payer. **Remaining accounts (step 6d):** the sidecars `[pagares_paid ..= last_touched]`,
+  writable, oldest first, where `pagares_paid` is the line's cursor (`reserved[30..32]`) and
+  `last_touched` the first pagaré whose `drawn_through` exceeds `principal_repaid` after this
+  payment, or the last draw when none does; each is loaded as a `Pagare` (program-owned, with the discriminator) and its
+  `line`, `draw_index` and outstanding status checked: only `draw` writes such an account, at the
+  seeds address, so those facts identify the sidecar without recomputing its address (1 500 CU
+  each). Anything else (none when one is due, one when none is due, a gap, a repeat,
+  another line's, too many or too few) is `PagareAccountsMismatch`, before any write. A line whose
+  cursor has passed its last draw, or that never drew (the closing repayment), passes none. The
+  client computes the set as `clients/js/src/pagare.ts::repaySidecars` does.
 - **Checks:** `status` is `Active` or `InCollection` (`LineStatus`); `remaining = (drawn -
   principal_repaid) + (interest_due - interest_repaid)`; `amount > 0`; `late =
   arrears(now).late_due` on a scheduled line, 0 on a bullet line; `amount >= late`
@@ -766,9 +782,24 @@ repays through `repay` like anyone else).
   charged twice. **When `late` is zero the watermark does not move** (R-11): the accrual that
   rounded down to zero keeps running, so a borrower cannot erase it by paying one unit every
   few seconds; if `remaining` reaches zero and the line can no longer draw, `status = Repaid` and
-  `closed_at = now`.
+  `closed_at = now`. **The payment entries (art. 130):** one entry per sidecar passed, oldest
+  first, from the payer to the pool over `receipt_hash` (the payer's, unverified; zero means
+  "receipt to follow", repaired by `annotate_payment`): `Pagado` where `drawn_through <=
+  principal_repaid` after the payment, which also sets `status = PAGARE_PAID_PENDING_CANCEL`,
+  `paid_at = now` and `receipt_hash` (the PAGADO mark at the moment of payment; only the burn
+  waits for `cancel_pagare`) and moves the cursor past it; `Abono` on the one left uncovered.
+  Every payment on a line with a pagaré not yet marked writes at least that `Abono`, interest
+  and late interest included.
 - **Events:** `LateInterestCollected` (only when `late > 0`), then `LineRepaid` (and `NavUpdated` last) with
-  `remaining` after this payment (without late interest) and `nav_after`.
+  `remaining` after this payment (without late interest) and `nav_after`; then one `PagareEntry`
+  per entry and, when any was written, `PagarePayment` (`payer`, `receipt_hash`, the split
+  `late_part`, `interest_part`, `principal_part`, and `entries`: one `(draw_index, kind,
+  entry_count, principal_applied)` per sidecar, `principal_applied` being the part of this
+  payment's principal that fell on that pagaré's range).
+- **Compute:** 66 217 CU with one sidecar at 120 installments; 95 612 CU in the ceiling case,
+  six sidecars marked paid with every installment missed (`tests/compute.rs`; eight measured
+  107 605 CU with the same code, about 5 900 CU per sidecar). Client rule: a payment that would
+  touch more than six sidecars is split into several `repay` calls.
 
 Because `late_due` is computed at execution time, a client that quotes it a few seconds
 earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad the quote
@@ -883,14 +914,15 @@ the payment must outlive the título.
   (`PagareAlreadyPaid`: paid is terminal and the asset is gone); `receipt_hash != [0; 32]`
   (`DocumentHashRequired`); `line.status` is `Active` or `Repaid` (`LineStatus`: in collection or
   written off the títulos stay in force for the collection; a line in collection that pays in
-  full is `Repaid` and its pagarés cancel then); the coverage rule, `principal_repaid >=
-  pagare.drawn_through` (`PagareNotCovered`). `drawn_through` is the line's drawn after the
-  tranche, so the rule is one comparison and repayments cover the pagarés oldest first: a later
-  pagaré cannot be cancelled while an earlier one is uncovered, and among covered ones the order
-  is free. Interest covers nothing by itself: `repay` settles interest before principal, so when
-  the principal of pagarés `0..=k` is repaid every unit of interest fixed up to that payment is
-  too, and a título is never extinguished while any of its principal is owed (a payment the size
-  of the pagaré on a line whose interest equals its principal covers nothing). The program does not
+  full is `Repaid` and its pagarés cancel then); the PAGADO mark a repayment wrote,
+  `status == PAGARE_PAID_PENDING_CANCEL` (`PagareNotCovered` while outstanding). The mark replaces
+  the coverage rule of the first version and keeps its order: `repay` marks the pagarés oldest
+  first as its principal reaches each `drawn_through` (`drawn_through` is the line's drawn after
+  the tranche), so a later pagaré is never marked while an earlier one is uncovered, and among
+  marked ones the cancellation order is free. Interest covers nothing by itself: `repay` settles
+  interest before principal, so when the principal of pagarés `0..=k` is repaid every unit of
+  interest fixed up to that payment is too, and a título is never extinguished while any of its
+  principal is owed. The program does not
   check that the receipt differs from other receipts: the engine issues one per pagaré and the
   attestor's signature is the guard. Not blocked by the pause: it records a payment and moves no funds.
 - **Backstop (no attestor account):** accepted only on the owner's branch when a request is
@@ -899,8 +931,8 @@ the payment must outlive the título.
   as above apply. See `request_cancellation` (§5.18).
 - **Writes:** the `Terminacion` entry appended to the sidecar's chain (from the signer's role,
   the pool or the procurador, to the pool, over `receipt_hash`); the "PAGADO" mark on the
-  sidecar, `status = PAGARE_PAID`, `paid_at = now`, `receipt_hash` (both until the payment
-  entries of 6d write them at the payment), `cancel_receipt_hash = receipt_hash`; a pending request cleared (`cancel_after = 0`,
+  sidecar, `status = PAGARE_PAID` (the payment's `paid_at` and `receipt_hash` stay as the
+  repayment wrote them), `cancel_receipt_hash = receipt_hash`; a pending request cleared (`cancel_after = 0`,
   `requested_receipt_hash` zeroed); a procuración
   in force ends with the title (`flags` bit 1 cleared, `procurador` zeroed; bit 0 stays as the
   plugin's history). Nothing else changes and the account is never closed (its rent stays locked,
@@ -918,7 +950,7 @@ the payment must outlive the título.
   has its key, so the burn happens only here); the collection, `payer`, the system program. Core leaves a one-byte `Uninitialized`
   tombstone at the address (so it cannot be re-created as an asset) and sends the rest of the
   rent to `payer`; the collection's `current_size` drops by one and `num_minted` stays.
-- **Compute:** 48 570 CU as the owner and 52 021 CU through the procurador's address on a
+- **Compute:** 48 559 CU as the owner and 55 010 CU through the procurador's address on a
   120-installment line (`tests/compute.rs`; the thaw is about 17 000 of it); no arrears loop runs.
 
 ### 5.14 `endorse_pagare(draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32])`
@@ -999,16 +1031,17 @@ title if the attestor fails.
 - **Signers:** `holder` (`pool.admin` while the asset is in the pool, `NotHolder`), alone.
 - **Constraints:** as `court_annotation`: `pool`, `line` (`has_one = pool`), `pagare` (seeds,
   `has_one = line`); no asset or Core account.
-- **Checks:** the same as `cancel_pagare` (outstanding, `receipt_hash != 0`, line `Active` or
-  `Repaid`, coverage), so a request cannot be filed before the title is paid; no request pending
+- **Checks:** the same as `cancel_pagare` (not burnt, `receipt_hash != 0`, line `Active` or
+  `Repaid`, the PAGADO mark `PAGARE_PAID_PENDING_CANCEL`), so a request cannot be filed before
+  the title is paid; no request pending
   (`cancel_after == 0`, else `CancellationPending`: a second request overwrites nothing).
 - **Writes:** the `SolicitudCancelacion` entry (from = to = the pool, over `receipt_hash`);
   `cancel_after = now + pool.cancel_delay_seconds` (the delay in force at the request: a later
   `set_cancel_delay` never moves a pending deadline, the cheaper of the two ways to guarantee
   it, no extra field); `requested_receipt_hash = receipt_hash`. Any cancellation clears both.
 - **Events:** `PagareEntry`.
-- **Compute:** 14 144 CU at 120 installments (`tests/compute.rs`); the holder's cancellation
-  alone 48 296 CU.
+- **Compute:** 14 142 CU at 120 installments (`tests/compute.rs`); the holder's cancellation
+  alone 48 285 CU.
 
 ### 5.19 `set_cancel_delay(cancel_delay_seconds: u32)`
 
@@ -1017,6 +1050,22 @@ title if the attestor fails.
   `CancelDelayTooShort`).
 - **Writes:** `Pool.reserved[8..12]`. Applies to requests filed from now on; a pending request
   keeps the deadline it stored. **Events:** `CancelDelaySet`.
+
+### 5.20 `annotate_payment(draw_index: u16, entry_count: u16, receipt_hash: [u8; 32])`
+
+The repair path of the payment entries: a `repay` carries the payer's receipt hash, which a third
+party may leave zero or wrong; the holder or the attestor attaches the real receipt afterwards.
+
+- **Signers:** `annotator`, `pool.admin` or `pool.attestor` (`Unauthorized`).
+- **Constraints:** `pool`, `line` (`has_one = pool`), `pagare` (seeds, `has_one = line`); no
+  asset or Core account.
+- **Checks:** `receipt_hash != 0` (`DocumentHashRequired`); `1 <= entry_count <=
+  pagare.entry_count` (`EntryNotFound`): the referenced entry exists. The chain keeps no kinds of
+  past entries, so that it is a payment entry is the engine's to check. Any title status,
+  burnt included: the sidecar persists and a receipt may arrive late.
+- **Writes:** the `Recibo` entry (from the annotator, to the pool, over `receipt_hash`).
+- **Events:** `PagareEntry`, then `PagareReceiptAnnotated` (`draw_index`, `entry_count` of the
+  Recibo, `payment_entry_count` referenced, `receipt_hash`).
 
 ## 6. Installments, arrears and late interest (`math.rs`)
 
@@ -1188,7 +1237,7 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/schedule.rs` | LiteSVM, clock warped | schedule validation, installments on their due dates, missed count over time, late interest after grace, caps, repayment order, collection after three missed, cure beats collection, write-off timing in both paths |
 | `tests/known_limits.rs` | LiteSVM | the nine tests in §9: six limits still in force and three inverted on 2026-10-31 |
 | `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
-| `tests/pagare.rs` | LiteSVM + the pinned Core binary | the registry's issuance entry, the endoso en procuración (entry, flags, the procurador recorded, the burn delegate on the program PDA, the refusals), its revocation, the court annotations (on a live, a written-off and a burnt title) and the procurador's extinction through the program address (both branches' Terminacion entry); the backstop (the cancel delay parameter, the request, the holder alone after the deadline); one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
+| `tests/pagare.rs` | LiteSVM + the pinned Core binary | the registry's issuance entry, the endoso en procuración (entry, flags, the procurador recorded, the burn delegate on the program PDA, the refusals), its revocation, the court annotations (on a live, a written-off and a burnt title) and the procurador's extinction through the program address (both branches' Terminacion entry); the backstop (the cancel delay parameter, the request, the holder alone after the deadline); the payment entries (Abono and Pagado, the cursor, the exact sidecar set, the PAGADO mark required by cancel_pagare, annotate_payment); one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
 | `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins, costs about 4 200 CU and does not stop adapters; AppData is written by its fixed data authority and removed by the collection's authority; an Owner-held AppData authority follows the asset through `TransferV1` and a write replaces the data; owner-managed delegates are the owner's to add (AddBlocker or not), approve and revoke, reset to `Owner` on transfer, and the approved burn delegate burns a thawed asset; a burn delegate approved to a program address refuses the procurador's own key |
 | `tests/audit.rs` | LiteSVM | the regression tests of the 2026-11-01 audit (`docs/audits/`): F-01 a third-party repayment does not close a line that can still draw, F-02 a collection with plugins or minted assets is refused, F-03 the collection period from the mark, F-05 the attestor is neither the admin nor a borrower |
 | `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (44 544 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 82 574 CU at 120, deterministic, of which the Core CPI is about 37 000; `repay` 57 008, `mark_in_collection` 34 366, `write_off` 47 896 at 120 with every installment missed and the collection period run, so every installment takes the accrual branch; after an early mark, `repay` 48 181 and `write_off` 47 897) |
@@ -1196,7 +1245,7 @@ Other points outside the test file, from the same review and from the Etherfuse 
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 150 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 155 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.

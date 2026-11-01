@@ -96,6 +96,7 @@ pub const E_PROCURACION_STATE: u32 = ERR_BASE + 42; // PoolError::ProcuracionSta
 pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + 43; // PoolError::AnnotationKindInvalid
 pub const E_CANCEL_DELAY_TOO_SHORT: u32 = ERR_BASE + 44; // PoolError::CancelDelayTooShort
 pub const E_CANCELLATION_PENDING: u32 = ERR_BASE + 45; // PoolError::CancellationPending
+pub const E_ENTRY_NOT_FOUND: u32 = ERR_BASE + 46; // PoolError::EntryNotFound
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
@@ -1303,24 +1304,71 @@ impl Env {
         self.expect_err(ix, payer, &[&attestor], code);
     }
 
+    /// The sidecars a `repay` of `amount` must pass, `[pagares_paid ..= last_touched]`, computed
+    /// as the program does: the payment's principal part, then every pagaré from the cursor through
+    /// the first one it leaves uncovered (or the last draw); none once the cursor has passed the
+    /// last draw or the line never drew.
+    pub fn payment_sidecars(&self, k: &PoolKeys, line_id: u64, amount: u64) -> Vec<Pubkey> {
+        let line = self.line(k, line_id);
+        let cursor = line.pagares_paid();
+        if cursor >= line.draws {
+            return vec![];
+        }
+        let late = if line.schedule().is_some() { self.arrears(k, line_id).late_due } else { 0 };
+        let interest_left = line.interest_due - line.interest_repaid;
+        let remaining = (line.drawn - line.principal_repaid) + interest_left;
+        let rest = amount.saturating_sub(late).min(remaining);
+        let principal_after = line.principal_repaid + (rest - rest.min(interest_left));
+        let line_key = line_pda(&k.pool, line_id).0;
+        let mut out = Vec::new();
+        for idx in cursor..line.draws {
+            out.push(pagare_pda(&line_key, idx).0);
+            if self.pagare(k, line_id, idx).drawn_through > principal_after {
+                break;
+            }
+        }
+        out
+    }
+    /// `repay(amount, RECEIPT_HASH)` with the sidecars the payment touches as remaining accounts.
     pub fn repay_ix(&self, k: &PoolKeys, line_id: u64, payer: &Pubkey, amount: u64) -> Instruction {
+        let sidecars = self.payment_sidecars(k, line_id, amount);
+        self.repay_ix_full(k, line_id, payer, amount, RECEIPT_HASH, &sidecars)
+    }
+    /// `repay(amount, receipt_hash)` with the remaining accounts given explicitly.
+    pub fn repay_ix_full(&self, k: &PoolKeys, line_id: u64, payer: &Pubkey, amount: u64, receipt_hash: [u8; 32], sidecars: &[Pubkey]) -> Instruction {
         let (event_authority, program) = event_metas();
+        let mut accounts = elote_pool::accounts::Repay {
+            payer: *payer,
+            pool: k.pool,
+            line: line_pda(&k.pool, line_id).0,
+            asset_mint: k.asset_mint,
+            share_mint: k.share_mint,
+            vault: k.vault,
+            payer_asset_account: k.asset_ata(payer),
+            token_program: k.asset_program,
+            event_authority,
+            program,
+        }
+        .to_account_metas(None);
+        accounts.extend(sidecars.iter().map(|s| anchor_lang::solana_program::instruction::AccountMeta::new(*s, false)));
+        Instruction { program_id: PROGRAM_ID, accounts, data: elote_pool::instruction::Repay { amount, receipt_hash }.data() }
+    }
+    /// `annotate_payment(draw_index, entry_count, receipt_hash)` by `annotator`.
+    pub fn annotate_payment_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, annotator: &Pubkey, entry_count: u16, receipt_hash: [u8; 32]) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::Repay {
-                payer: *payer,
+            accounts: elote_pool::accounts::AnnotatePayment {
+                annotator: *annotator,
                 pool: k.pool,
-                line: line_pda(&k.pool, line_id).0,
-                asset_mint: k.asset_mint,
-                share_mint: k.share_mint,
-                vault: k.vault,
-                payer_asset_account: k.asset_ata(payer),
-                token_program: k.asset_program,
+                line,
+                pagare: pagare_pda(&line, draw_index).0,
                 event_authority,
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::Repay { amount }.data(),
+            data: elote_pool::instruction::AnnotatePayment { draw_index, entry_count, receipt_hash }.data(),
         }
     }
 

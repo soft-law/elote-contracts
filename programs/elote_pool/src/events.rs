@@ -267,3 +267,40 @@ pub struct PoolPaused {
     pub pool: Pubkey,
     pub paused: bool,
 }
+
+/// One payment entry a `repay` wrote: the pagaré, the entry's kind (`Abono` or `Pagado`), its
+/// position in that sidecar's chain, and the part of the payment's principal that fell on it.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+pub struct PaymentEntry {
+    pub draw_index: u16,
+    pub kind: u8,
+    pub entry_count: u16,
+    pub principal_applied: u64,
+}
+
+/// The payment entries of one `repay` (art. 130): the payer's receipt hash (zero means "receipt
+/// to follow"), the payment's split and one `PaymentEntry` per sidecar touched, oldest first.
+/// Emitted after the `PagareEntry` of each entry.
+#[event]
+pub struct PagarePayment {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub payer: Pubkey,
+    pub receipt_hash: [u8; 32],
+    pub late_part: u64,
+    pub interest_part: u64,
+    pub principal_part: u64,
+    pub entries: Vec<PaymentEntry>,
+}
+
+/// A `Recibo` entry written by `annotate_payment`: the receipt attached to the payment entry
+/// `payment_entry_count` of the pagaré's chain, as entry `entry_count`.
+#[event]
+pub struct PagareReceiptAnnotated {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub draw_index: u16,
+    pub entry_count: u16,
+    pub payment_entry_count: u16,
+    pub receipt_hash: [u8; 32],
+}

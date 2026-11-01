@@ -159,3 +159,31 @@ generated client derives `findPagarePda` and the `cancelPagare` builder derives 
   deadline rather than the request time (the request's time is in its `PagareEntry`); zero when
   no request is pending. Clients show "cancelable alone from <cancel_after>".
 - Compute: about 14 144 CU for the request, 48 296 CU for the cancellation alone.
+
+## 6d part 1 (g): the payment entries in `repay`, the PAGADO mark, `annotate_payment`
+
+- **`repay` gains a second argument**, `receipt_hash: [u8; 32]` (the payer's receipt; zero
+  allowed, "receipt to follow"), **and remaining accounts:** the pagaré sidecars
+  `[pagares_paid ..= last_touched]`, writable, oldest first: from the line's cursor
+  (`CreditLine.reserved[30..32]`, u16 LE, new) through the first pagaré whose `drawn_through`
+  exceeds `principal_repaid` after the payment, or the last draw; none once the cursor has passed
+  the last draw or the line never drew. Anything else is `PagareAccountsMismatch` (6039). The
+  client helper `repaySidecars` in `clients/js/src/pagare.ts` computes the set (`pagaresPaidOf`
+  reads the cursor; `withRemainingAccounts` appends them to the instruction).
+- **Sidecar writes by `repay`:** each touched sidecar gets a `PagareEntry` (kind `Abono` 5 or
+  `Pagado` 9, from = payer, to = pool, hash = receipt_hash); a `Pagado` sets `status = 2`
+  (`PAGARE_PAID_PENDING_CANCEL`), `paid_at` and `receipt_hash`. **New event** `PagarePayment`
+  after them: payer, receipt_hash, late_part, interest_part, principal_part, `entries: Vec<{
+  draw_index, kind, entry_count, principal_applied }>` (type `PaymentEntry`).
+- **`cancel_pagare` and `request_cancellation`:** require `Pagare.status == 2` in place of the
+  coverage rule (`PagareNotCovered` while 0, `PagareAlreadyPaid` when 1). `cancel_pagare` no
+  longer writes `paid_at` or `receipt_hash` (the repayment did); it writes `status = 1` and
+  `cancel_receipt_hash`.
+- **New instruction** `annotate_payment(draw_index: u16, entry_count: u16, receipt_hash: [u8;
+  32])`: signer `annotator` (admin or attestor), accounts `pool`, `line`, `pagare`. Appends a
+  `Recibo` entry (11, from = annotator, to = pool) and emits `PagareEntry` then the **new event**
+  `PagareReceiptAnnotated { pool, line_id, draw_index, entry_count, payment_entry_count,
+  receipt_hash }`. Error added: 6046 `EntryNotFound`.
+- Compute: about 66 217 CU for a repay with one sidecar at 120 installments; 95 612 CU for six
+  sidecars with every installment missed (the client splits beyond six; eight measured 107 605 CU,
+  over the ceiling).

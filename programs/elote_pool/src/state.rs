@@ -455,6 +455,15 @@ impl CreditLine {
         (s.installments > 0).then_some(s)
     }
 
+    /// The payment cursor (step 6d): the index of the oldest pagaré not yet marked paid, in
+    /// `reserved` bytes 30..32 (u16 LE), which the `Schedule` never writes; zero on a bullet line
+    /// like the rest. `repay` requires the sidecars `[pagares_paid ..= last_touched]` and moves it.
+    pub fn pagares_paid(&self) -> u16 {
+        u16::from_le_bytes([self.reserved[30], self.reserved[31]])
+    }
+    pub fn set_pagares_paid(&mut self, n: u16) {
+        self.reserved[30..32].copy_from_slice(&n.to_le_bytes());
+    }
     pub fn set_schedule(&mut self, s: &Schedule) {
         s.pack(&mut self.reserved);
     }

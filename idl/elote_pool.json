@@ -7,6 +7,142 @@
   },
   "instructions": [
     {
+      "name": "annotate_payment",
+      "docs": [
+        "Attaches a receipt to a payment entry of pagaré `draw_index`: appends a Recibo entry over",
+        "`receipt_hash`, referencing entry `entry_count` of the pagaré's chain. The holder or the",
+        "attestor signs; the repair path when a payer's hash was zero or wrong."
+      ],
+      "discriminator": [
+        142,
+        194,
+        249,
+        187,
+        62,
+        240,
+        31,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "annotator",
+          "docs": [
+            "The holder (the admin while the asset is in the pool) or the attestor."
+          ],
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          },
+          "relations": [
+            "pagare"
+          ]
+        },
+        {
+          "name": "pagare",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "arg",
+                "path": "draw_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_index",
+          "type": "u16"
+        },
+        {
+          "name": "entry_count",
+          "type": "u16"
+        },
+        {
+          "name": "receipt_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "cancel_line",
       "docs": [
         "Clears an approved commitment nobody drew. Admin only; refused once anything was drawn."
@@ -1573,6 +1709,15 @@
         {
           "name": "amount",
           "type": "u64"
+        },
+        {
+          "name": "receipt_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -2616,6 +2761,32 @@
       ]
     },
     {
+      "name": "PagarePayment",
+      "discriminator": [
+        43,
+        167,
+        85,
+        90,
+        99,
+        142,
+        175,
+        203
+      ]
+    },
+    {
+      "name": "PagareReceiptAnnotated",
+      "discriminator": [
+        133,
+        229,
+        77,
+        194,
+        229,
+        211,
+        68,
+        91
+      ]
+    },
+    {
       "name": "PoolCollectionSet",
       "discriminator": [
         230,
@@ -2937,6 +3108,11 @@
       "code": 6045,
       "name": "CancellationPending",
       "msg": "A cancellation request is already pending on this pagaré"
+    },
+    {
+      "code": 6046,
+      "name": "EntryNotFound",
+      "msg": "The referenced registry entry does not exist"
     }
   ],
   "types": [
@@ -4004,6 +4180,131 @@
           {
             "name": "holder",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PagarePayment",
+      "docs": [
+        "The payment entries of one `repay` (art. 130): the payer's receipt hash (zero means \"receipt",
+        "to follow\"), the payment's split and one `PaymentEntry` per sidecar touched, oldest first.",
+        "Emitted after the `PagareEntry` of each entry."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "receipt_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "late_part",
+            "type": "u64"
+          },
+          {
+            "name": "interest_part",
+            "type": "u64"
+          },
+          {
+            "name": "principal_part",
+            "type": "u64"
+          },
+          {
+            "name": "entries",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "PaymentEntry"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PagareReceiptAnnotated",
+      "docs": [
+        "A `Recibo` entry written by `annotate_payment`: the receipt attached to the payment entry",
+        "`payment_entry_count` of the pagaré's chain, as entry `entry_count`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "draw_index",
+            "type": "u16"
+          },
+          {
+            "name": "entry_count",
+            "type": "u16"
+          },
+          {
+            "name": "payment_entry_count",
+            "type": "u16"
+          },
+          {
+            "name": "receipt_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentEntry",
+      "docs": [
+        "One payment entry a `repay` wrote: the pagaré, the entry's kind (`Abono` or `Pagado`), its",
+        "position in that sidecar's chain, and the part of the payment's principal that fell on it."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "draw_index",
+            "type": "u16"
+          },
+          {
+            "name": "kind",
+            "type": "u8"
+          },
+          {
+            "name": "entry_count",
+            "type": "u16"
+          },
+          {
+            "name": "principal_applied",
+            "type": "u64"
           }
         ]
       }

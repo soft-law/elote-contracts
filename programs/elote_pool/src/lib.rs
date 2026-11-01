@@ -180,8 +180,15 @@ pub mod elote_pool {
     /// Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then
     /// interest, then principal, and never more than is due. Anyone may pay. A full repayment
     /// closes the line and forfeits the undrawn remainder.
-    pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
-        instructions::lines::repay(ctx, amount)
+    pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash: [u8; 32]) -> Result<()> {
+        instructions::lines::repay(ctx, amount, receipt_hash)
+    }
+
+    /// Attaches a receipt to a payment entry of pagaré `draw_index`: appends a Recibo entry over
+    /// `receipt_hash`, referencing entry `entry_count` of the pagaré's chain. The holder or the
+    /// attestor signs; the repair path when a payer's hash was zero or wrong.
+    pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u16, receipt_hash: [u8; 32]) -> Result<()> {
+        instructions::pagare::annotate_payment(ctx, draw_index, entry_count, receipt_hash)
     }
 
     /// Moves a scheduled line to collection once `max_missed` installments are missed and the
