@@ -500,6 +500,11 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   entry_hash)` by the holder alone; Revocacion entry to the recorded procurador; flags bit 1
   cleared, `procurador` (offset 213) zeroed; delegate returned to Owner, plugin kept so the next
   procuración approves. CU at 120: revoke 36.8k, procuración approve path 40.3k, add path 33.2k.
+- **Part 1 (d) accepted** (`90ae42c`; 147 Rust + 11 JS): `court_annotation(draw_index, kind,
+  document_hash)`, holder + attestor, kinds 6 and 7 only (`AnnotationKindInvalid` 6043), any line
+  status, refused only on a burnt title (`status == PAGARE_PAID`); entry from = to = pool; 14.4k
+  CU. (e) next: cancel's procurador branch, both branches keep the coverage check until (g),
+  both append a Terminacion entry before the burn.
 
 ## Points the coordinator still owns
 
