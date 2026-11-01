@@ -297,7 +297,15 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `clients/js/src/pagare.ts`. **Decided:** add `PermanentBurnDelegate` (pool PDA) at creation so
   cancellation is one `BurnV1` whatever the holder; `draw` takes `asset_bump` and `pagare_bump`
   as arguments, verified with `create_program_address`, so its CU is deterministic (~82.5k at
-  120) instead of 82k to 87k with an unbounded tail. 6c next; 6d and the verifier still gated.
+  120) instead of 82k to 87k with an unbounded tail.
+- **2026-11-01, legal brief draft received.** Mapping in
+  `docs/plans/2026-11-01-pagare-token-legal-conditions.md`. Sent to the developer before 6c:
+  `cancel_pagare(k, receipt_hash)` signed by the holder (admin while in the pool) and the attestor,
+  sidecar kept as the persistent PAGADO mark (`paid_at`, `receipt_hash`, status), burn last,
+  `PagareCancelled` with the receipt hash; `draw` gains `cert_fingerprint` and `signature_method`;
+  neutral asset and collection names; the new attestor co-signs `set_attestor`; 6d prework: verify
+  whether Core's permanent plugin authorities can be reassigned at endoso (C9). 6d and the verifier
+  still gated; per-installment vs per-draw pagaré (C19/C20) open with counsel and Mario.
 
 ## Points the coordinator still owns
 
