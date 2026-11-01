@@ -63,6 +63,9 @@ pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + 20; // PoolError::LineTooLarge
 pub const E_INVARIANT_BROKEN: u32 = ERR_BASE + 21; // PoolError::InvariantBroken
 pub const E_ASSET_MINT_NOT_ALLOWED: u32 = ERR_BASE + 22; // PoolError::AssetMintNotAllowed
 pub const E_SHARE_MINT_NOT_ALLOWED: u32 = ERR_BASE + 23; // PoolError::ShareMintNotAllowed
+pub const E_ATTESTOR_REQUIRED: u32 = ERR_BASE + 24; // PoolError::AttestorRequired
+pub const E_AVAILABILITY_ENDED: u32 = ERR_BASE + 25; // PoolError::AvailabilityEnded
+pub const E_TOO_MANY_DRAWS: u32 = ERR_BASE + 26; // PoolError::TooManyDraws
 
 /// Token-2022's `TokenError::AccountFrozen`, surfaced as custom error 17 by a failed CPI.
 pub const SPL_TOKEN_ACCOUNT_FROZEN: u32 = 17;
@@ -170,8 +173,30 @@ pub struct LineParams {
     pub term_end: i64,
     pub agreement_hash: [u8; 32],
     pub sponsor: Option<Pubkey>,
+    pub sponsor_role: u8,
     pub schedule: Option<elote_pool::state::ScheduleParams>,
+    pub expediente_root: [u8; 32],
 }
+
+impl LineParams {
+    /// The installment interval of a scheduled line (panics on a bullet line).
+    pub fn interval(&self) -> i64 {
+        self.schedule.expect("scheduled line").interval_seconds
+    }
+
+    /// The first due date of a scheduled line.
+    pub fn first_due_at(&self) -> i64 {
+        self.schedule.expect("scheduled line").first_due_at
+    }
+}
+
+/// `SECONDS_PER_YEAR` as the `i64` the clock uses.
+pub const YEAR: i64 = elote_pool::state::SECONDS_PER_YEAR as i64;
+
+/// The fixed expediente root the tests open lines with.
+pub const EXPEDIENTE_ROOT: [u8; 32] = [0xe7; 32];
+/// The fixed pagaré hash the tests draw with.
+pub const DOCUMENT_HASH: [u8; 32] = [0xd0; 32];
 
 pub struct Env {
     pub svm: LiteSVM,
@@ -706,6 +731,7 @@ impl Env {
                 admin: *admin,
                 borrower: *borrower,
                 sponsor: sponsor_account,
+                attestor: self.attestor.pubkey(),
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
                 vault: k.vault,
@@ -721,44 +747,57 @@ impl Env {
                 term_end: p.term_end,
                 agreement_hash: p.agreement_hash,
                 sponsor: p.sponsor,
+                sponsor_role: p.sponsor_role,
                 schedule: p.schedule,
+                expediente_root: p.expediente_root,
             }
             .data(),
         }
     }
 
-    /// Default terms: `principal` at `rate_bps`, 30 days, a fixed agreement hash, no sponsor.
+    /// Default terms of a bullet line: `principal` at an annual `rate_bps` for exactly one year
+    /// (so a line drawn in full right away owes `principal * rate_bps / BPS` of interest), a
+    /// fixed agreement hash and expediente root, no sponsor.
     pub fn line_params(&self, principal: u64, rate_bps: u16) -> LineParams {
         LineParams {
             principal,
             rate_bps,
-            term_end: self.now() + 30 * 24 * 3600,
+            term_end: self.now() + YEAR,
             agreement_hash: AGREEMENT_HASH,
             sponsor: None,
+            sponsor_role: elote_pool::state::SPONSOR_PROMOTER,
             schedule: None,
+            expediente_root: EXPEDIENTE_ROOT,
         }
     }
 
-    /// Terms of a scheduled line: `installments` monthly installments (30 days), a term that ends
-    /// exactly at the last due date if the line is drawn now, and the demo policy of three missed
-    /// installments before collection.
+    /// Terms of a scheduled line: `installments` equal installments spanning exactly one year
+    /// (interval `YEAR / installments`, exact for 3, 4, 6, 12, 18 and 120), the first due date one
+    /// interval from now, a term that ends one year from now, and the demo policy of three missed
+    /// installments before collection. Drawn in full right away, the line owes
+    /// `principal * rate_bps / BPS` of interest, the same figure as the old flat rate.
     pub fn scheduled_params(&self, principal: u64, rate_bps: u16, installments: u16, late_bps: u16) -> LineParams {
+        let interval = YEAR / i64::from(installments);
         LineParams {
             principal,
             rate_bps,
-            term_end: self.now() + i64::from(installments) * MONTH,
+            term_end: self.now() + i64::from(installments) * interval,
             agreement_hash: AGREEMENT_HASH,
             sponsor: None,
+            sponsor_role: elote_pool::state::SPONSOR_PROMOTER,
             schedule: Some(elote_pool::state::ScheduleParams {
-                interval_seconds: MONTH,
+                first_due_at: self.now() + interval,
+                interval_seconds: interval,
                 installments,
                 late_bps,
                 max_missed: 3,
             }),
+            expediente_root: EXPEDIENTE_ROOT,
         }
     }
 
-    /// Opens the next line of the pool, signed by the admin, the borrower and (if named) the sponsor.
+    /// Opens the next line of the pool, signed by the admin, the borrower, the attestor and (if
+    /// named) the sponsor.
     pub fn open_line_with(
         &mut self,
         k: &PoolKeys,
@@ -767,9 +806,10 @@ impl Env {
         sponsor: Option<&Keypair>,
     ) -> (u64, TransactionMetadata) {
         let admin = self.admin.insecure_clone();
+        let attestor = self.attestor.insecure_clone();
         let line_id = self.pool(k).line_count;
         let ix = self.open_line_ix(k, &admin.pubkey(), line_id, &borrower.pubkey(), p, sponsor.map(|s| s.pubkey()));
-        let mut extra: Vec<&Keypair> = vec![borrower];
+        let mut extra: Vec<&Keypair> = vec![borrower, &attestor];
         if let Some(s) = sponsor {
             extra.push(s);
         }
@@ -789,12 +829,15 @@ impl Env {
         kp
     }
 
-    pub fn draw_ix(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey) -> Instruction {
+    /// A tranche of `amount` against the fixed test pagaré hash, signed by the borrower and the
+    /// attestor (the attestor is added by `draw`/`draw_amount`; `draw_ix` only names it).
+    pub fn draw_ix_amount(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey, amount: u64, document_hash: [u8; 32]) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::Draw {
                 borrower: *borrower,
+                attestor: self.attestor.pubkey(),
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
                 asset_mint: k.asset_mint,
@@ -805,14 +848,42 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::Draw {}.data(),
+            data: elote_pool::instruction::Draw { amount, document_hash }.data(),
         }
     }
 
+    /// A draw of everything still available on the line.
+    pub fn draw_ix(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey) -> Instruction {
+        let line = self.line(k, line_id);
+        self.draw_ix_amount(k, line_id, borrower, line.principal - line.drawn, DOCUMENT_HASH)
+    }
+
+    /// Draws everything still available; signed by the borrower and the attestor.
     pub fn draw(&mut self, k: &PoolKeys, line_id: u64, borrower: &Keypair) -> elote_pool::events::LineDrawn {
         let ix = self.draw_ix(k, line_id, &borrower.pubkey());
-        let meta = self.send(ix, borrower, &[]);
+        let attestor = self.attestor.insecure_clone();
+        let meta = self.send(ix, borrower, &[&attestor]);
         find_event(&meta).expect("LineDrawn event")
+    }
+
+    /// Draws one tranche of `amount`; signed by the borrower and the attestor.
+    pub fn draw_amount(&mut self, k: &PoolKeys, line_id: u64, borrower: &Keypair, amount: u64) -> elote_pool::events::LineDrawState {
+        let ix = self.draw_ix_amount(k, line_id, &borrower.pubkey(), amount, DOCUMENT_HASH);
+        let attestor = self.attestor.insecure_clone();
+        let meta = self.send(ix, borrower, &[&attestor]);
+        find_event(&meta).expect("LineDrawState event")
+    }
+
+    /// Sends `ix` signed by `payer` and the attestor; for the draw instructions built by hand.
+    pub fn send_with_attestor(&mut self, ix: Instruction, payer: &Keypair) -> TransactionMetadata {
+        let attestor = self.attestor.insecure_clone();
+        self.send(ix, payer, &[&attestor])
+    }
+
+    /// Asserts a draw instruction fails with `code` once the attestor has signed too.
+    pub fn expect_err_with_attestor(&mut self, ix: Instruction, payer: &Keypair, code: u32) {
+        let attestor = self.attestor.insecure_clone();
+        self.expect_err(ix, payer, &[&attestor], code);
     }
 
     pub fn repay_ix(&self, k: &PoolKeys, line_id: u64, payer: &Pubkey, amount: u64) -> Instruction {
@@ -880,14 +951,14 @@ impl Env {
         let line = self.line(k, line_id);
         let s = line.schedule().expect("scheduled line");
         let terms = elote_pool::math::ScheduleTerms {
-            total: line.principal + line.interest_due,
-            anchor: line.drawn_at,
+            total: line.drawn + line.interest_due,
+            anchor: line.anchor().expect("anchor"),
             interval: s.interval_seconds,
             installments: s.installments,
             late_bps: s.late_bps,
             grace: self.pool(k).grace_period_seconds(),
             late_paid_until: s.late_paid_until,
-            principal: line.principal,
+            principal: line.drawn,
             late_collected: s.late_collected,
         };
         elote_pool::math::arrears(&terms, line.principal_repaid + line.interest_repaid, self.now()).expect("arrears")

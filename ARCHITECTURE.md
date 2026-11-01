@@ -140,31 +140,37 @@ when they were added. They are read and written only through `Pool::grace_period
 (`max_line_principal(nav)` applies the cap), and the JS client mirrors the reads in
 `clients/js/src/schedule.ts` (`poolGracePeriodSeconds`, `poolMaxLineBps`, `maxLinePrincipal`).
 
-### 2.2 `CreditLine` (246 bytes)
+### 2.2 `CreditLine` (305 bytes; 246 before line v3)
 
 | offset | size | field | notes |
 |---|---|---|---|
 | 0 | 8 | discriminator | |
-| 8 | 1 | `version` | 1 single maturity, 2 installment schedule |
+| 8 | 1 | `version` | 3 for every line the program opens (bullet or scheduled); 1 and 2 no longer deserialize |
 | 9 | 32 | `pool` | |
 | 41 | 8 | `line_id` | |
 | 49 | 32 | `borrower` | co-signer of `open_line`; the only key allowed to `draw` |
 | 81 | 33 | `sponsor` | `Option<Pubkey>`: 1 tag byte + 32 |
 | 114 | 32 | `agreement_hash` | hash of the signed credit agreement; never zero |
-| 146 | 8 | `principal` | |
-| 154 | 2 | `rate_bps` | ≤ 10 000 |
-| 156 | 8 | `interest_due` | `principal * rate_bps / 10 000`, fixed at opening |
+| 146 | 8 | `principal` | the approved commitment; `available = principal - drawn` |
+| 154 | 2 | `rate_bps` | annual, ≤ 10 000; charged per tranche from its draw to the last due date |
+| 156 | 8 | `interest_due` | Σ over tranches of `amount * rate_bps * (last_due - drawn) / (10 000 * SECONDS_PER_YEAR)`; 0 at opening, changes only at a draw |
 | 164 | 8 | `term_end` | unix seconds |
 | 172 | 8 | `principal_repaid` | |
 | 180 | 8 | `interest_repaid` | |
 | 188 | 1 | `status` | `LineStatus` |
 | 189 | 8 | `opened_at` | |
-| 197 | 8 | `drawn_at` | 0 until drawn; the anchor of every due date |
+| 197 | 8 | `drawn_at` | time of the first tranche; informational since decision 25 |
 | 205 | 8 | `closed_at` | set by the repayment that clears the line or by `write_off` |
-| 213 | 32 | `reserved` | zero on version 1; the packed `Schedule` on version 2 |
+| 213 | 32 | `reserved` | zero on a bullet line; the packed `Schedule` on a scheduled line |
 | 245 | 1 | `bump` | |
+| 246 | 8 | `drawn` | line v3: principal transferred so far, `<= principal`, never decreases |
+| 254 | 2 | `draws` | line v3: tranches so far, `<= MAX_DRAWS` (64) |
+| 256 | 8 | `availability_end` | line v3: last instant a draw is accepted (strict): `first_due_at` or `term_end`; `suspend_draws` brings it to now |
+| 264 | 8 | `first_due_at` | line v3: the first due date from the signed contract; 0 on a bullet line |
+| 272 | 1 | `sponsor_role` | line v3: 0 promoter, 1 guarantor (decision 19); recorded, not enforced |
+| 273 | 32 | `expediente_root` | line v3: salted merkle root of the credit file; never zero |
 
-`Schedule` packing inside `reserved` (version 2 only):
+`Schedule` packing inside `reserved` (scheduled lines only):
 
 | bytes | field | type |
 |---|---|---|
@@ -179,7 +185,10 @@ when they were added. They are read and written only through `Pool::grace_period
 
 The first four fields are the terms and never change after `open_line`; `late_collected` and
 `late_paid_until` are the only mutable bytes and only `repay` writes them. `CreditLine::schedule()`
-returns `None` on a version-1 line, which is how every handler tells the two kinds apart.
+returns `None` when `installments` is zero (a bullet line), which is how every handler tells the
+two kinds apart. `CreditLine::anchor()` (`first_due_at - interval`) is the single place the
+calendar is anchored, and `last_due()` (the last due date, or `term_end` on a bullet line) is the
+instant every tranche's interest runs to.
 
 ### 2.3 Constants (`state.rs`)
 
@@ -334,10 +343,11 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
 A redemption while principal is out and the vault is thin fails rather than paying a partial
 amount; the holder retries with fewer shares.
 
-### 5.4 `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, schedule)`
+### 5.4 `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, sponsor_role, schedule, expediente_root)`
 
-- **Signers:** `admin` (pays rent for the line), `borrower`, and `sponsor` when one is named
-  in the arguments (`Option<Signer>`).
+- **Signers:** `admin` (pays rent for the line), `borrower`, `attestor` (D16: must equal
+  `pool.attestor`, `AttestorRequired`), and `sponsor` when one is named in the arguments
+  (`Option<Signer>`).
 - **Constraints:** `pool` has `has_one = admin` (`Unauthorized`); `line` is `init` at
   `["line", pool, line_id LE]`, so an existing `line_id` fails at account creation; `vault`
   is read-only and must be `pool.vault` (`WrongAccount`), for the NAV the cap is measured
@@ -346,61 +356,76 @@ amount; the holder retries with fewer shares.
   `borrower != pool.admin` (`BorrowerIsAdmin`); `principal > 0` (`WrongAmount`);
   `principal <= (vault.amount + outstanding_principal) * max_line_bps / 10 000`
   (`LineTooLarge`; the NAV counts principal lent out, and an empty pool opens no line);
-  `rate_bps <= 10 000`; `term_end > now`; `agreement_hash != [0; 32]` (all `WrongAmount`); if
-  `sponsor` is `Some(k)`, the `sponsor` account must be present and be `k`
-  (`SponsorRequired`); `interest_due = principal * rate_bps / 10 000` (`Overflow`); if
-  `schedule` is `Some`, `validate_schedule`:
-  `1 <= installments <= 120`, `interval_seconds > 0`, `late_bps <= 10 000`,
-  `3 <= max_missed <= installments`, `principal + interest_due >= installments` (one unit per
-  installment) — all `InvalidSchedule`; and `now + installments * interval <= term_end`
-  (`ScheduleEndsAfterTerm`), re-checked at the draw.
-- **Writes:** every `CreditLine` field; `status = Approved`; `version` 1 or 2; the schedule
-  packed into `reserved` with `late_collected = 0`, `late_paid_until = 0`;
-  `pool.line_count += 1`.
+  `rate_bps <= 10 000`; `term_end > now`; `agreement_hash != [0; 32]`;
+  `expediente_root != [0; 32]`; `sponsor_role <= 1` (all `WrongAmount`); if `sponsor` is
+  `Some(k)`, the `sponsor` account must be present and be `k` (`SponsorRequired`); if
+  `schedule` is `Some`, `validate_schedule`: `1 <= installments <= 120`,
+  `interval_seconds > 0`, `late_bps <= 10 000`, `3 <= max_missed <= installments`,
+  `first_due_at > now` (all `InvalidSchedule`);
+  `last_due = first_due_at + (installments - 1) * interval <= term_end`
+  (`ScheduleEndsAfterTerm`); and `principal + tranche_interest(principal, rate_bps, last_due -
+  now) >= installments`, one unit per installment if the whole commitment were drawn now
+  (`InvalidSchedule`). Nothing about the dates is re-checked at the draw: the calendar is the
+  contract's (decision 25).
+- **Writes:** every `CreditLine` field; `status = Approved`; `version = 3`; `interest_due = 0`;
+  `drawn = 0`, `draws = 0`; `first_due_at` (0 on a bullet line); `availability_end =
+  first_due_at` on a scheduled line, `term_end` on a bullet line (D3); `sponsor_role`,
+  `expediente_root`; the schedule packed into `reserved` with `late_collected = 0`,
+  `late_paid_until = 0`; `pool.line_count += 1`.
 - **CPIs:** none that move tokens.
-- **Events:** `LineOpened`, then `LineScheduled` on a version-2 line.
+- **Events:** `LineOpened` (with `interest_due = 0`), then `LineScheduled` on a scheduled line,
+  then `LineTermsSet` (`first_due_at`, `availability_end`, `expediente_root`) and
+  `LineSponsorRole`.
 
 The borrower's signature is what binds the on-chain line to a person who agreed to the
-`agreement_hash`; the sponsor's signature records a public programme's endorsement and grants
-no authority afterwards (a sponsor repays through `repay` like anyone else).
+`agreement_hash`; the attestor's signature is the agreements engine stating that the signed
+agreement exists and matches the arguments; the sponsor's signature records which kind of
+promise it made (`sponsor_role`, decision 19) and grants no authority afterwards (a sponsor
+repays through `repay` like anyone else).
 
-### 5.5 `draw()`
+### 5.5 `draw(amount: u64, document_hash: [u8; 32])`
 
-- **Signers:** `borrower`.
+- **Signers:** `borrower` and `attestor` (D14: the engine attests the pagaré behind
+  `document_hash` was signed and is conserved; no money moves without it).
 - **Constraints:** `line` has `has_one = pool` and `has_one = borrower` (`Unauthorized`);
-  `asset_mint` (read-only) and `vault` match the pool; `borrower_asset_account` has the pool's asset mint and is owned by
-  the borrower.
-- **Checks, in order:** not paused; `status == Approved` (`LineStatus`); `now <= term_end`
-  (`TermEnded`); on a scheduled line, `now + installments * interval <= term_end`
-  (`ScheduleEndsAfterTerm`): due dates count from the draw, so a late draw could otherwise push
-  the last installment past the term; `principal <= vault.amount` (`InsufficientLiquidity`).
-- **CPIs:** `transfer` the whole principal vault → borrower (pool signs). Partial draws do not
-  exist.
-- **Writes:** `pool.outstanding_principal += principal`; `line.status = Active`;
-  `line.drawn_at = now`.
-- **Events:** `LineDrawn` with `outstanding_after`.
+  `asset_mint` (read-only) and `vault` match the pool; `borrower_asset_account` has the pool's
+  asset mint and is owned by the borrower.
+- **Checks, in order (D8: all before any write):** not paused; `status` is `Approved` or
+  `Active` (`LineStatus`); `0 < amount <= principal - drawn` (`WrongAmount`);
+  `now < availability_end`, strictly (`AvailabilityEnded`: an installment counts as due at the
+  second it falls due); on a scheduled line `drawn + interest_due >= installments` after the
+  tranche (`InvalidSchedule`, D3b); `draws < MAX_DRAWS` (`TooManyDraws`); `amount <=
+  vault.amount` (`InsufficientLiquidity`); `document_hash != [0; 32]` (`WrongAmount`).
+- **CPIs:** `transfer_checked` the tranche vault → borrower (pool signs).
+- **Writes:** `pool.outstanding_principal += amount`; `line.drawn += amount`; `line.draws += 1`;
+  `line.interest_due += amount * rate_bps * (last_due - now) / (10 000 * SECONDS_PER_YEAR)`
+  (D1: fixed at the draw, rounded down once per tranche); on the first tranche `status =
+  Active` and `drawn_at = now`.
+- **Events:** `LineDrawn` with the tranche as `amount` and `outstanding_after`, then
+  `LineDrawState` (`drawn`, `available`, `interest_due`, `availability_end`, `document_hash`).
+  The pagaré hash is in the event only; the Core asset and its sidecar come with step 6.
 
 ### 5.6 `repay(amount: u64)`
 
 - **Signers:** `payer`, anyone. The event records who paid.
-- **Constraints:** `line` has `has_one = pool`; `asset_mint` (read-only) and `vault` match the
-  pool; `payer_asset_account` has the pool's asset mint and is owned by the payer.
-- **Common checks:** status accepted (`Active` for version 1; `Active` or `InCollection` for
-  version 2, `LineStatus`); `remaining = (principal - principal_repaid) + (interest_due -
-  interest_repaid)`; `amount > 0`.
-- **Version 1 (single maturity):** `amount <= remaining` (`WrongAmount`: overpayment is
-  rejected); `principal_part = min(amount, principal_left)`, `interest_part = amount -
-  principal_part`. Principal first, then interest.
-- **Version 2 (scheduled):** `late = arrears(now).late_due`; `amount >= late`
+- **Constraints:** `line` has `has_one = pool`; `asset_mint` and `share_mint` (read-only) and
+  `vault` match the pool; `payer_asset_account` has the pool's asset mint and is owned by the
+  payer.
+- **Checks:** `status` is `Active` or `InCollection` (`LineStatus`); `remaining = (drawn -
+  principal_repaid) + (interest_due - interest_repaid)`; `amount > 0`; `late =
+  arrears(now).late_due` on a scheduled line, 0 on a bullet line; `amount >= late`
   (`LateInterestUnpaid`); `rest = min(amount - late, remaining)`; `interest_part = min(rest,
-  interest_left)`; `principal_part = rest - interest_part`. Late interest first, then interest,
-  then principal. **The transfer is `late + interest_part + principal_part`, which can be less
-  than `amount`:** a scheduled line never takes more than is due and the surplus stays in the
-  payer's account (`tests/schedule.rs::late_interest_is_capped_and_overpayment_stays_with_the_payer`).
-- **CPIs:** one `transfer` payer → vault (payer signs) for the computed total.
+  interest_left)`; `principal_part = rest - interest_part`. One order for every line since
+  line v3: late interest, then interest, then principal. **The transfer is `late +
+  interest_part + principal_part`, which can be less than `amount`:** no line takes more than
+  is due and the surplus stays in the payer's account
+  (`tests/schedule.rs::late_interest_is_capped_and_overpayment_stays_with_the_payer`,
+  `tests/lines.rs::repay_clamps_overpayment_and_rejects_wrong_status`). A full repayment
+  closes the line and the undrawn remainder lapses with it (D5).
+- **CPIs:** one `transfer_checked` payer → vault (payer signs) for the computed total.
 - **Writes:** `pool.outstanding_principal -= principal_part`;
   `pool.interest_collected += interest_part` (late interest is *not* counted here);
-  `line.principal_repaid`, `line.interest_repaid`; on version 2, when `late > 0`,
+  `line.principal_repaid`, `line.interest_repaid`; on a scheduled line, when `late > 0`,
   `late_collected += late` and `late_paid_until = now`, which stops the same seconds being
   charged twice. **When `late` is zero the watermark does not move** (R-11): the accrual that
   rounded down to zero keeps running, so a borrower cannot erase it by paying one unit every
@@ -420,8 +445,8 @@ earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad th
 - **Checks, in order:** the line has a schedule (`NotScheduled`); `status == Active`
   (`LineStatus`); `arrears(now)`; `k = covered + max_missed <= installments`
   (`NotEnoughMissed`: with `covered` installments paid, the `max_missed`-th missed one is
-  installment `k`); `now > drawn_at + k * interval + grace` (`NotEnoughMissed`: the grace of
-  the last missed installment has run).
+  installment `k`); `now > anchor + k * interval + grace`, with `anchor = first_due_at -
+  interval` (`NotEnoughMissed`: the grace of the last missed installment has run).
 - **Writes:** `status = InCollection`. Nothing else: collection does not accelerate the
   balance, the remaining installments keep their due dates.
 - **Events:** `LineInCollection` with `missed` and `remaining` (principal + interest, no late
@@ -436,7 +461,8 @@ earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad th
   (`arrears(now).first_missed_due` is `Some(due)` and `now > due + grace`)
   (`WriteOffTooEarly`); a cured line has no `first_missed_due`, so only the term can release it.
   Any other status: `LineStatus`.
-- **Writes:** `loss = principal - principal_repaid`; `pool.outstanding_principal -= loss`;
+- **Writes:** `loss = drawn - principal_repaid` (an approved line never drawn has nothing to
+  book and is not written off: `LineStatus`); `pool.outstanding_principal -= loss`;
   `pool.written_off += loss`; `status = WrittenOff`; `closed_at = now`.
 - **CPIs:** none. No tokens move; the NAV drops by `loss` because `outstanding_principal` does.
 - **Events:** `LineWrittenOff` with `loss` and `nav_after`, then `NavUpdated`.
@@ -534,9 +560,12 @@ What must hold between instructions, and which code keeps it:
 4. Only `draw` and `redeem` move tokens out of the vault, both signed by the pool PDA, both to
    an account whose owner signed the instruction (the borrower of an admin-approved line, the
    holder burning shares).
-5. `principal_repaid <= principal` and `interest_repaid <= interest_due`: version 1 rejects
-   overpayment, version 2 clamps to `remaining`.
-6. `late_collected <= principal` on a version-2 line, by the lifetime cap in `arrears`.
+5. `drawn <= principal` and `drawn` never decreases; `principal_repaid <= drawn` and
+   `interest_repaid <= interest_due`: every line clamps to `remaining`.
+   `pool.outstanding_principal == Σ (drawn - principal_repaid)` over `Active` and
+   `InCollection` lines. `interest_due` is the sum of the per-tranche figures fixed at each
+   draw and changes only at a draw.
+6. `late_collected <= drawn` on a scheduled line, by the lifetime cap in `arrears`.
 7. Every arithmetic step is `checked_*` or in `u128`; a `None` becomes `Overflow` and the
    transaction fails. `tests/math_props.rs` fuzzes the pure functions with `proptest`.
 8. Events are append-only: fields of an existing event never change; new facts arrive as new
@@ -547,7 +576,7 @@ What must hold between instructions, and which code keeps it:
 | role | identified by | can |
 |---|---|---|
 | admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `set_paused`, `set_attestor` |
-| attestor | `Pool.attestor`, set at `init_pool`, rotated by `set_attestor` | recorded in pool v2 step 4; from step 5 it co-signs `open_line` and `draw` (and `endorse_pagare` in step 6), so it can block every opening, draw and endoso and move nothing |
+| attestor | `Pool.attestor`, set at `init_pool`, rotated by `set_attestor` | co-signs `open_line` and `draw` (and `endorse_pagare` in step 6), so it can block every opening, draw and endoso and move nothing |
 | share-mint freeze authority | the freeze authority of the admin-supplied share mint (Token ACL's `MintConfig` in production); not recorded by the program | thaw or freeze share accounts, the dead account included: admits and bars investors |
 | borrower | `CreditLine.borrower` | `draw` its own approved line before the term |
 | sponsor | `CreditLine.sponsor` | nothing after co-signing the opening |
@@ -587,6 +616,10 @@ Other points outside the test file, from the same review and from the Etherfuse 
   and `transfer_checked` everywhere, and every money instruction takes the asset mint read-only
   for its decimals. `tests/pool.rs::a_pool_on_a_token_2022_asset_runs_the_full_cycle` runs the
   whole cycle on a Token-2022 asset.
+- Closed 2026-11-01 (line v3, register R-10): the version-1 "principal first, reject
+  overpayment" branch is gone. Every line repays late interest, then interest, then principal and
+  clamps overpayment, so a line with principal left always has interest left too and a
+  zero-loss write-off can no longer forfeit the interest.
 - Missed installments are counted from amounts paid, not from due dates: a borrower who pays
   one installment of principal and one of interest in a different order is still "covered"
   by amount (review STR-1 discusses counting by due date).

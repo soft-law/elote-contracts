@@ -32,9 +32,20 @@ pub const BPS: u64 = 10_000;
 /// Pool v2 (2026-10-31): token interface, asset and share mint policies, `attestor` and
 /// `collection`. Version 1 pools (the devnet demo) do not deserialize under this layout.
 pub const POOL_VERSION: u8 = 2;
-pub const LINE_VERSION: u8 = 1;
-/// Version of a line opened with an installment schedule (see [`Schedule`]).
-pub const LINE_VERSION_SCHEDULED: u8 = 2;
+/// Line v3 (2026-10-31, multi-draw plan and decision 25): every line the program opens, bullet
+/// or scheduled. Tranched draws, an annual `rate_bps` charged per tranche, a payment calendar
+/// fixed by the signed contract (`first_due_at`), one repayment order (late interest, interest,
+/// principal) with clamped overpayment. Version 1 and 2 lines do not deserialize under this
+/// layout.
+pub const LINE_VERSION: u8 = 3;
+/// Upper bound on the tranches of one line.
+pub const MAX_DRAWS: u16 = 64;
+/// `CreditLine::sponsor_role`: a public sponsor that refers, trains and shares data, with no
+/// payment obligation (decision 19).
+pub const SPONSOR_PROMOTER: u8 = 0;
+/// `CreditLine::sponsor_role`: a private sponsor (or development banking through a SOFOM) with
+/// full liability. The program enforces nothing on it; it is the on-chain record of the promise.
+pub const SPONSOR_GUARANTOR: u8 = 1;
 /// Upper bound on the installments of one line, so the arrears computation is bounded.
 pub const MAX_INSTALLMENTS: u16 = 120;
 /// The fewest missed installments a schedule may set before collection: the owner's policy is
@@ -198,19 +209,24 @@ pub struct CreditLine {
     pub sponsor: Option<Pubkey>,
     /// Hash of the signed credit agreement.
     pub agreement_hash: [u8; 32],
+    /// The approved commitment; `available = principal - drawn`.
     pub principal: u64,
-    /// Fixed interest on the principal.
+    /// Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
+    /// the last due date (decision 9).
     pub rate_bps: u16,
-    /// `principal * rate_bps / BPS`, fixed at opening.
+    /// Ordinary interest charged so far: the sum over tranches of
+    /// `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its
+    /// draw. Zero at opening; it changes only at a draw.
     pub interest_due: u64,
     pub term_end: i64,
     pub principal_repaid: u64,
     pub interest_repaid: u64,
     pub status: LineStatus,
     pub opened_at: i64,
+    /// Time of the first draw; informational since decision 25 (the calendar is `first_due_at`).
     pub drawn_at: i64,
     pub closed_at: i64,
-    /// Zero on a version-1 line (single maturity). On a version-2 line, the installment schedule,
+    /// Zero on a bullet line (single maturity). On a scheduled line, the installment schedule,
     /// read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:
     ///
     /// | bytes  | field              | type    | meaning                                         |
@@ -225,14 +241,33 @@ pub struct CreditLine {
     /// | 30..32 | unused             | zero    |                                                 |
     pub reserved: [u8; 32],
     pub bump: u8,
+    // Line v3 (multi-draw plan, decisions 12, 15 and 25): appended after `bump` so every earlier
+    // offset holds.
+    /// Principal transferred to the borrower so far; `drawn <= principal`, never decreases.
+    pub drawn: u64,
+    /// Number of tranches drawn; at most `MAX_DRAWS`.
+    pub draws: u16,
+    /// Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
+    /// `term_end` on a bullet line, fixed at opening; `suspend_draws` brings it to now.
+    pub availability_end: i64,
+    /// The first due date, from the signed contract; installment `k` is due at
+    /// `first_due_at + (k - 1) * interval`. Zero on a bullet line.
+    pub first_due_at: i64,
+    /// `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named.
+    pub sponsor_role: u8,
+    /// Salted merkle root of the credit file in the agreements engine (decision 15 of the pagaré
+    /// design). A commitment: no document, name or folio is derivable from it.
+    pub expediente_root: [u8; 32],
 }
 
 /// Installment terms requested by `open_line`; fixed for the life of the line.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ScheduleParams {
-    /// Seconds between due dates; installment `k` is due at `drawn_at + k * interval_seconds`.
+    /// The first due date (unix seconds), from the signed contract; must be after the opening.
+    pub first_due_at: i64,
+    /// Seconds between due dates; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`.
     pub interval_seconds: i64,
-    /// `principal + interest_due` is paid in this many installments.
+    /// `drawn + interest_due` is paid in this many installments.
     pub installments: u16,
     /// Annual late interest rate on overdue amounts, in basis points.
     pub late_bps: u16,
@@ -284,13 +319,41 @@ impl Schedule {
 }
 
 impl CreditLine {
-    /// The installment schedule of a version-2 line; `None` for a single-maturity line.
+    /// The installment schedule of a scheduled line; `None` for a bullet line (whose `reserved`
+    /// bytes are all zero, so `installments == 0`).
     pub fn schedule(&self) -> Option<Schedule> {
-        (self.version == LINE_VERSION_SCHEDULED).then(|| Schedule::unpack(&self.reserved))
+        let s = Schedule::unpack(&self.reserved);
+        (s.installments > 0).then_some(s)
     }
 
     pub fn set_schedule(&mut self, s: &Schedule) {
         s.pack(&mut self.reserved);
+    }
+
+    /// The instant one interval before the first due date, from which `math` counts the
+    /// installments (`anchor + k * interval`): the single place the calendar is anchored
+    /// (decision 25). `None` on a bullet line.
+    pub fn anchor(&self) -> Option<i64> {
+        let s = self.schedule()?;
+        self.first_due_at.checked_sub(s.interval_seconds)
+    }
+
+    /// When the last payment is owed: the last due date,
+    /// `first_due_at + (installments - 1) * interval`, on a scheduled line; `term_end` on a bullet
+    /// line. Each tranche's interest runs from its draw to this instant (D1).
+    pub fn last_due(&self) -> Option<i64> {
+        match self.schedule() {
+            Some(s) => s
+                .interval_seconds
+                .checked_mul(i64::from(s.installments).checked_sub(1)?)
+                .and_then(|span| self.first_due_at.checked_add(span)),
+            None => Some(self.term_end),
+        }
+    }
+
+    /// `principal - drawn`.
+    pub fn available(&self) -> Option<u64> {
+        self.principal.checked_sub(self.drawn)
     }
 }
 

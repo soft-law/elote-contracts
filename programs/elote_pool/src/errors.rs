@@ -52,4 +52,10 @@ pub enum PoolError {
     AssetMintNotAllowed,
     #[msg("The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions")]
     ShareMintNotAllowed,
+    #[msg("The pool's attestor must sign")]
+    AttestorRequired,
+    #[msg("The draw window of this line has closed")]
+    AvailabilityEnded,
+    #[msg("The line has reached its maximum number of draws")]
+    TooManyDraws,
 }

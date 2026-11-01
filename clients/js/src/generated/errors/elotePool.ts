@@ -63,9 +63,17 @@ export const ELOTE_POOL_ERROR__INVARIANT_BROKEN = 0x1785; // 6021
 export const ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED = 0x1786; // 6022
 /** ShareMintNotAllowed: The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions */
 export const ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED = 0x1787; // 6023
+/** AttestorRequired: The pool's attestor must sign */
+export const ELOTE_POOL_ERROR__ATTESTOR_REQUIRED = 0x1788; // 6024
+/** AvailabilityEnded: The draw window of this line has closed */
+export const ELOTE_POOL_ERROR__AVAILABILITY_ENDED = 0x1789; // 6025
+/** TooManyDraws: The line has reached its maximum number of draws */
+export const ELOTE_POOL_ERROR__TOO_MANY_DRAWS = 0x178a; // 6026
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
+  | typeof ELOTE_POOL_ERROR__ATTESTOR_REQUIRED
+  | typeof ELOTE_POOL_ERROR__AVAILABILITY_ENDED
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_ADMIN
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
@@ -84,6 +92,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__SPONSOR_REQUIRED
   | typeof ELOTE_POOL_ERROR__TERM_ENDED
   | typeof ELOTE_POOL_ERROR__TERM_NOT_ENDED
+  | typeof ELOTE_POOL_ERROR__TOO_MANY_DRAWS
   | typeof ELOTE_POOL_ERROR__UNAUTHORIZED
   | typeof ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY
   | typeof ELOTE_POOL_ERROR__WRONG_ACCOUNT
@@ -94,6 +103,8 @@ let elotePoolErrorMessages: Record<ElotePoolError, string> | undefined;
 if (process.env["NODE_ENV"] !== "production") {
   elotePoolErrorMessages = {
     [ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED]: `The asset mint carries a Token-2022 extension the pool does not accept`,
+    [ELOTE_POOL_ERROR__ATTESTOR_REQUIRED]: `The pool's attestor must sign`,
+    [ELOTE_POOL_ERROR__AVAILABILITY_ENDED]: `The draw window of this line has closed`,
     [ELOTE_POOL_ERROR__BORROWER_IS_ADMIN]: `The pool admin cannot be the borrower`,
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
@@ -112,6 +123,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__SPONSOR_REQUIRED]: `The sponsor named on this line must sign`,
     [ELOTE_POOL_ERROR__TERM_ENDED]: `The term has ended`,
     [ELOTE_POOL_ERROR__TERM_NOT_ENDED]: `The term has not ended`,
+    [ELOTE_POOL_ERROR__TOO_MANY_DRAWS]: `The line has reached its maximum number of draws`,
     [ELOTE_POOL_ERROR__UNAUTHORIZED]: `Only the pool admin may do this`,
     [ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY]: `A line in collection is written off only after its oldest missed due date plus grace, or after the term plus grace`,
     [ELOTE_POOL_ERROR__WRONG_ACCOUNT]: `Wrong mint or token account`,

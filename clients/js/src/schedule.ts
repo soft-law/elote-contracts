@@ -5,8 +5,8 @@
 const BPS = 10_000n;
 /** The year that annualizes `late_bps`: 365 days. */
 export const SECONDS_PER_YEAR = 31_536_000n;
-/** `CreditLine.version` of a line with an installment schedule. */
-export const LINE_VERSION_SCHEDULED = 2;
+/** `CreditLine.version` of every line the program opens since line v3 (bullet or scheduled). */
+export const LINE_VERSION = 3;
 
 type Bytes = ArrayLike<number>;
 
@@ -62,13 +62,17 @@ export type Schedule = {
   latePaidUntil: bigint;
 };
 
-/** `CreditLine.reserved` of a version-2 line; `null` for a single-maturity line. */
+/**
+ * `CreditLine.reserved` of a scheduled line; `null` for a bullet line (whose reserved bytes are
+ * all zero, so `installments` is 0) or a line of another version.
+ */
 export function decodeSchedule(line: {
   version: number;
   reserved: Bytes;
 }): Schedule | null {
-  if (line.version !== LINE_VERSION_SCHEDULED) return null;
+  if (line.version !== LINE_VERSION) return null;
   const v = view(line.reserved);
+  if (v.getUint16(8, true) === 0) return null;
   return {
     intervalSeconds: v.getBigInt64(0, true),
     installments: v.getUint16(8, true),
@@ -95,28 +99,35 @@ export type Arrears = {
 const min = (a: bigint, b: bigint) => (a < b ? a : b);
 const max = (a: bigint, b: bigint) => (a > b ? a : b);
 
-/** Arrears of a drawn scheduled line at `now` (unix seconds), as `math::arrears` computes them. */
+/**
+ * Arrears of a drawn scheduled line at `now` (unix seconds), as `math::arrears` computes them.
+ * The installments repay `drawn + interestDue` on the contract's calendar: installment `k` is
+ * due at `firstDueAt + (k - 1) * interval` (decision 25), and late interest accrues on the
+ * principal share (`drawn`) of what is overdue (decision 11).
+ */
 export function lineArrears(
   line: {
-    principal: bigint;
+    drawn: bigint;
     interestDue: bigint;
     principalRepaid: bigint;
     interestRepaid: bigint;
-    drawnAt: bigint;
+    firstDueAt: bigint;
   },
   s: Schedule,
   graceSeconds: bigint,
   now: bigint
 ): Arrears {
-  const total = line.principal + line.interestDue;
+  const total = line.drawn + line.interestDue;
   const paid = line.principalRepaid + line.interestRepaid;
   const n = BigInt(s.installments);
   const base = total / n;
   const cumulative = (k: bigint) => (k >= n ? total : base * k);
+  // One interval before the first due date: the anchor `math::arrears` counts from.
+  const anchor = line.firstDueAt - s.intervalSeconds;
   const due =
-    s.intervalSeconds <= 0n || now <= line.drawnAt
+    s.intervalSeconds <= 0n || now <= anchor
       ? 0n
-      : min(n, (now - line.drawnAt) / s.intervalSeconds);
+      : min(n, (now - anchor) / s.intervalSeconds);
   const covered = paid >= total ? n : min(n - 1n, paid / base);
   const lateCap =
     s.lateBps === 0
@@ -129,8 +140,8 @@ export function lineArrears(
   for (let k = covered + 1n; k <= due; k++) {
     const part = cumulative(k) - max(paid, cumulative(k - 1n));
     // Late interest accrues on the principal share of each part only (decision 11).
-    const partPrincipal = (part * line.principal) / total;
-    const dueAt = line.drawnAt + k * s.intervalSeconds;
+    const partPrincipal = (part * line.drawn) / total;
+    const dueAt = anchor + k * s.intervalSeconds;
     firstMissedDue ??= dueAt;
     const start = max(dueAt + graceSeconds, s.latePaidUntil);
     if (now > start) weighted += partPrincipal * min(now - start, lateCap);
@@ -140,7 +151,7 @@ export function lineArrears(
   // Capped at the overdue principal for this settlement and at the principal over the line's
   // life. The program refuses `lateCollected > principal` with Overflow; the mirror clamps the
   // lifetime room at zero rather than reporting a negative figure.
-  const lifetimeLeft = max(0n, line.principal - s.lateCollected);
+  const lifetimeLeft = max(0n, line.drawn - s.lateCollected);
   const lateDue = min(
     min(
       overduePrincipal,

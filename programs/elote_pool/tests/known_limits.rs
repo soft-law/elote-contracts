@@ -27,8 +27,9 @@ fn admin_cannot_be_the_borrower_of_its_own_line() {
     env.create_ata(&admin.pubkey(), &k.asset_mint);
 
     let p = env.line_params(UNIT, 0);
+    let attestor = env.attestor.insecure_clone();
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &admin.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[], E_BORROWER_IS_ADMIN);
+    env.expect_err(ix, &admin, &[&attestor], E_BORROWER_IS_ADMIN);
     assert_eq!(env.pool(&k).line_count, 0);
     assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
 }
@@ -49,8 +50,9 @@ fn a_line_for_the_whole_vault_is_refused_under_the_concentration_cap() {
 
     let borrower = env.borrower(&k);
     let p = env.line_params(10 * UNIT, 0);
+    let attestor = env.attestor.insecure_clone();
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&borrower], E_LINE_TOO_LARGE);
+    env.expect_err(ix, &admin, &[&borrower, &attestor], E_LINE_TOO_LARGE);
     assert_eq!(env.pool(&k).line_count, 0);
     assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
 }
@@ -97,7 +99,7 @@ fn limit_redeem_between_collection_and_write_off_exits_at_par() {
     env.draw(&k, line_id, &borrower);
 
     // Three installments missed: anyone moves the line to collection. NAV is still 20.0.
-    env.warp(env.now() + 3 * MONTH + 1);
+    env.warp(env.now() + 3 * p.interval() + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &quick, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
@@ -239,7 +241,7 @@ fn limit_late_interest_is_settled_at_execution_time_so_clients_must_pad() {
     env.draw(&k, line_id, &borrower);
 
     // One installment missed for a while: late interest is accruing.
-    env.warp(env.now() + MONTH + 1_000);
+    env.warp(env.now() + p.interval() + 1_000);
     let quoted = env.arrears(&k, line_id).late_due;
     assert!(quoted > 0);
     // The transaction lands a minute later: the quote is stale by a few base units.

@@ -23,9 +23,11 @@ import {
 
 /** Installment terms requested by `open_line`; fixed for the life of the line. */
 export type ScheduleParams = {
-  /** Seconds between due dates; installment `k` is due at `drawn_at + k * interval_seconds`. */
+  /** The first due date (unix seconds), from the signed contract; must be after the opening. */
+  firstDueAt: bigint;
+  /** Seconds between due dates; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`. */
   intervalSeconds: bigint;
-  /** `principal + interest_due` is paid in this many installments. */
+  /** `drawn + interest_due` is paid in this many installments. */
   installments: number;
   /** Annual late interest rate on overdue amounts, in basis points. */
   lateBps: number;
@@ -34,9 +36,11 @@ export type ScheduleParams = {
 };
 
 export type ScheduleParamsArgs = {
-  /** Seconds between due dates; installment `k` is due at `drawn_at + k * interval_seconds`. */
+  /** The first due date (unix seconds), from the signed contract; must be after the opening. */
+  firstDueAt: number | bigint;
+  /** Seconds between due dates; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`. */
   intervalSeconds: number | bigint;
-  /** `principal + interest_due` is paid in this many installments. */
+  /** `drawn + interest_due` is paid in this many installments. */
   installments: number;
   /** Annual late interest rate on overdue amounts, in basis points. */
   lateBps: number;
@@ -46,6 +50,7 @@ export type ScheduleParamsArgs = {
 
 export function getScheduleParamsEncoder(): FixedSizeEncoder<ScheduleParamsArgs> {
   return getStructEncoder([
+    ["firstDueAt", getI64Encoder()],
     ["intervalSeconds", getI64Encoder()],
     ["installments", getU16Encoder()],
     ["lateBps", getU16Encoder()],
@@ -55,6 +60,7 @@ export function getScheduleParamsEncoder(): FixedSizeEncoder<ScheduleParamsArgs>
 
 export function getScheduleParamsDecoder(): FixedSizeDecoder<ScheduleParams> {
   return getStructDecoder([
+    ["firstDueAt", getI64Decoder()],
     ["intervalSeconds", getI64Decoder()],
     ["installments", getU16Decoder()],
     ["lateBps", getU16Decoder()],

@@ -27,7 +27,7 @@ fn compute_units(installments: u16) -> [(&'static str, u64); 3] {
     env.draw(&k, line_id, &borrower);
 
     // Past the last due date: every installment is missed and late interest has run on each.
-    env.warp(env.now() + i64::from(installments) * MONTH + 1);
+    env.warp(env.now() + i64::from(installments) * p.interval() + 1);
     let late = env.arrears(&k, line_id).late_due;
     assert!(late > 0);
     let admin = env.admin.insecure_clone();
@@ -54,6 +54,26 @@ fn init_pool_stays_under_the_ceiling_with_and_without_extensions() {
     println!("init_pool, classic asset and plain shares: {plain} CU");
     println!("init_pool, classic asset and permissioned shares: {permissioned} CU");
     assert!(plain < CEILING && permissioned < CEILING, "init_pool used {plain} / {permissioned} CU, ceiling {CEILING}");
+}
+
+/// `draw` on a 120-installment line: the payability check and the tranche interest add a few
+/// multiplications; the Metaplex Core CPI of step 6 lands here too.
+#[test]
+fn draw_stays_under_the_ceiling_at_120_installments() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool_with_grace(0);
+    let investor = env.investor(&k, 200 * UNIT);
+    env.deposit(&k, &investor, 200 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(100 * UNIT, 1_200, 120, 5_000);
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 40 * UNIT, DOCUMENT_HASH);
+    let first = env.send_with_attestor(ix, &borrower).compute_units_consumed;
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 60 * UNIT, DOCUMENT_HASH);
+    let second = env.send_with_attestor(ix, &borrower).compute_units_consumed;
+    println!("draw, first tranche at 120 installments: {first} CU");
+    println!("draw, second tranche at 120 installments: {second} CU");
+    assert!(first < CEILING && second < CEILING, "draw used {first} / {second} CU, ceiling {CEILING}");
 }
 
 #[test]

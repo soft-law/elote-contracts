@@ -136,11 +136,14 @@ export enum ElotePoolEvent {
   AttestorSet,
   Deposited,
   LateInterestCollected,
+  LineDrawState,
   LineDrawn,
   LineInCollection,
   LineOpened,
   LineRepaid,
   LineScheduled,
+  LineSponsorRole,
+  LineTermsSet,
   LineWrittenOff,
   NavUpdated,
   PoolCollectionSet,
@@ -188,6 +191,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.LateInterestCollected;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([81, 134, 178, 53, 221, 181, 252, 207]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LineDrawState;
   }
   if (
     containsBytes(
@@ -243,6 +257,28 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.LineScheduled;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([201, 233, 0, 139, 122, 200, 182, 151]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LineSponsorRole;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([200, 26, 190, 102, 134, 52, 122, 240]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LineTermsSet;
   }
   if (
     containsBytes(

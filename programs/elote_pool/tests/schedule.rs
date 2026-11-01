@@ -4,7 +4,8 @@ mod common;
 
 use common::*;
 use elote_pool::events::{
-    LateInterestCollected, LineInCollection, LineOpened, LineRepaid, LineScheduled, LineWrittenOff,
+    LateInterestCollected, LineInCollection, LineOpened, LineRepaid, LineScheduled, LineSponsorRole, LineTermsSet,
+    LineWrittenOff,
 };
 use elote_pool::state::{LineStatus, Schedule, ScheduleParams};
 use solana_keypair::Keypair;
@@ -28,24 +29,36 @@ fn open_scheduled_line_records_the_schedule() {
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
 
-    // 6.0 at 12%: 6.72 in six monthly installments, 50% a year late interest.
+    // 6.0 at 12% a year, six installments spanning a year: 6.72 once drawn in full at once; 50%
+    // a year late interest. Nothing is owed at the opening (interest is fixed per tranche).
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let (line_id, meta) = env.open_line_with(&k, &borrower, &p, None);
     let ev: LineOpened = find_event(&meta).expect("LineOpened");
-    assert_eq!((ev.line_id, ev.principal, ev.interest_due), (line_id, 6 * UNIT, 720_000));
+    assert_eq!((ev.line_id, ev.principal, ev.interest_due), (line_id, 6 * UNIT, 0));
+    let ev: LineTermsSet = find_event(&meta).expect("LineTermsSet");
+    assert_eq!(
+        (ev.line_id, ev.first_due_at, ev.availability_end, ev.expediente_root),
+        (line_id, p.first_due_at(), p.first_due_at(), EXPEDIENTE_ROOT)
+    );
+    let ev: LineSponsorRole = find_event(&meta).expect("LineSponsorRole");
+    assert_eq!((ev.line_id, ev.sponsor, ev.role), (line_id, None, 0));
     let ev: LineScheduled = find_event(&meta).expect("LineScheduled");
     assert_eq!(
         (ev.pool, ev.line_id, ev.interval_seconds, ev.installments, ev.late_bps, ev.max_missed),
-        (k.pool, line_id, MONTH, 6, 5_000, 3)
+        (k.pool, line_id, p.interval(), 6, 5_000, 3)
     );
 
     let line = env.line(&k, line_id);
-    assert_eq!(line.version, 2, "scheduled lines are version 2");
+    assert_eq!(line.version, 3, "every line is version 3");
+    assert_eq!((line.first_due_at, line.availability_end), (p.first_due_at(), p.first_due_at()));
+    assert_eq!((line.drawn, line.draws, line.interest_due), (0, 0, 0));
+    assert_eq!(line.anchor(), Some(p.first_due_at() - p.interval()));
+    assert_eq!(line.last_due(), Some(p.first_due_at() + 5 * p.interval()));
     let s = line.schedule().expect("schedule");
     assert_eq!(
         s,
         Schedule {
-            interval_seconds: MONTH,
+            interval_seconds: p.interval(),
             installments: 6,
             late_bps: 5_000,
             max_missed: 3,
@@ -56,20 +69,23 @@ fn open_scheduled_line_records_the_schedule() {
     );
     // The byte layout of `reserved`.
     let r = line.reserved;
-    assert_eq!(&r[0..8], &MONTH.to_le_bytes());
+    assert_eq!(&r[0..8], &p.interval().to_le_bytes());
     assert_eq!(&r[8..10], &6u16.to_le_bytes());
     assert_eq!(&r[10..12], &5_000u16.to_le_bytes());
     assert_eq!((r[12], r[13]), (3, 0));
     assert_eq!(&r[14..32], &[0u8; 18]);
 
-    // A line without a schedule keeps version 1, zero reserved bytes and no LineScheduled event.
+    // A bullet line is version 3 too: zero reserved bytes, no schedule, no LineScheduled event,
+    // its draw window open until the term.
     let p1 = env.line_params(UNIT, 1_000);
     let (v1, meta) = env.open_line_with(&k, &borrower, &p1, None);
     assert!(find_event::<LineScheduled>(&meta).is_none());
     let line = env.line(&k, v1);
-    assert_eq!(line.version, 1);
+    assert_eq!(line.version, 3);
     assert_eq!(line.reserved, [0u8; 32]);
     assert_eq!(line.schedule(), None);
+    assert_eq!((line.first_due_at, line.availability_end), (0, p1.term_end));
+    assert_eq!((line.anchor(), line.last_due()), (None, Some(p1.term_end)));
 }
 
 #[test]
@@ -78,6 +94,7 @@ fn open_rejects_invalid_schedules() {
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
     let admin = env.admin.insecure_clone();
+    let attestor = env.attestor.insecure_clone();
     let good = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let with = |f: &dyn Fn(&mut ScheduleParams)| {
         let mut p = good;
@@ -91,17 +108,18 @@ fn open_rejects_invalid_schedules() {
         ("zero installments", with(&|s| s.installments = 0), E_INVALID_SCHEDULE),
         ("above the maximum", with(&|s| s.installments = 121), E_INVALID_SCHEDULE),
         ("zero interval", with(&|s| s.interval_seconds = 0), E_INVALID_SCHEDULE),
-        ("negative interval", with(&|s| s.interval_seconds = -MONTH), E_INVALID_SCHEDULE),
+        ("negative interval", with(&|s| s.interval_seconds = -good.interval()), E_INVALID_SCHEDULE),
         ("late rate above 100%", with(&|s| s.late_bps = 10_001), E_INVALID_SCHEDULE),
         ("zero max missed", with(&|s| s.max_missed = 0), E_INVALID_SCHEDULE),
         ("max missed below the three-month policy", with(&|s| s.max_missed = 2), E_INVALID_SCHEDULE),
         ("max missed above installments", with(&|s| s.max_missed = 7), E_INVALID_SCHEDULE),
-        ("one second past the term", with(&|s| s.interval_seconds = MONTH + 1), E_SCHEDULE_ENDS_AFTER_TERM),
+        ("one second past the term", with(&|s| s.interval_seconds = good.interval() + 1), E_SCHEDULE_ENDS_AFTER_TERM),
+        ("first due date not after the opening", with(&|s| s.first_due_at = good.first_due_at() - good.interval()), E_INVALID_SCHEDULE),
         ("span overflow", with(&|s| s.interval_seconds = i64::MAX), E_OVERFLOW),
     ];
     for (name, p, code) in cases {
         let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-        match env.try_send(ix, &admin, &[&borrower]) {
+        match env.try_send(ix, &admin, &[&borrower, &attestor]) {
             Ok(_) => panic!("{name}: accepted"),
             Err(e) => assert_eq!(custom_error_code(&e.err), Some(code), "{name}"),
         }
@@ -112,38 +130,51 @@ fn open_rejects_invalid_schedules() {
     p.principal = 3;
     p.rate_bps = 0;
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&borrower], E_INVALID_SCHEDULE);
+    env.expect_err(ix, &admin, &[&borrower, &attestor], E_INVALID_SCHEDULE);
     assert_eq!(env.pool(&k).line_count, 0);
 
     // The edges are accepted: three installments with max_missed == installments, 100% late
-    // rate, last due date exactly at the term.
+    // rate, a wider interval whose last due date stays within the term; and the last due date
+    // exactly at the term (six installments, first due one interval in, last at the term).
     let p = with(&|s| {
         s.installments = 3;
         s.max_missed = 3;
         s.late_bps = 10_000;
-        s.interval_seconds = 2 * MONTH;
+        s.interval_seconds = 2 * good.interval();
     });
     open(&mut env, &k, &borrower, &p);
     let p = with(&|s| s.max_missed = 6);
+    assert_eq!(p.first_due_at() + 5 * p.interval(), p.term_end, "last due date at the term");
     open(&mut env, &k, &borrower, &p);
     assert_eq!(env.pool(&k).line_count, 2);
 }
 
+/// D3 and decision 25: the draw window closes at the first due date, strictly, because an
+/// installment counts as due at the second it falls due. The dates are fixed by the contract, so
+/// nothing about them is re-checked at the draw.
 #[test]
-fn draw_rejects_a_schedule_that_would_end_after_the_term() {
+fn the_draw_window_closes_at_the_first_due_date_exactly() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
-    // The term ends exactly at the last due date if drawn now.
-    let p = env.scheduled_params(UNIT, 1_200, 6, 5_000);
-    let late = open(&mut env, &k, &borrower, &p);
-    let on_time = open(&mut env, &k, &borrower, &p);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
 
-    env.draw(&k, on_time, &borrower);
-    env.warp(env.now() + 1);
-    let ix = env.draw_ix(&k, late, &borrower.pubkey());
-    env.expect_err(ix, &borrower, &[], E_SCHEDULE_ENDS_AFTER_TERM);
-    assert_eq!(env.line(&k, late).status, LineStatus::Approved);
+    // One second before the first due date a tranche is accepted.
+    env.warp(p.first_due_at() - 1);
+    let ev = env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
+    assert_eq!((ev.drawn, ev.available, ev.availability_end), (3 * UNIT, 3 * UNIT, p.first_due_at()));
+    // Interest runs from the draw to the last due date: 3.0 at 12% for 5 intervals plus one second.
+    let seconds = (p.first_due_at() + 5 * p.interval() - (p.first_due_at() - 1)) as u128;
+    assert_eq!(ev.interest_due as u128, 3_000_000u128 * 1_200 * seconds / (10_000 * YEAR as u128));
+
+    // At the first due date the window is closed, whatever is still available.
+    env.warp(p.first_due_at());
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
+    let line = env.line(&k, line_id);
+    assert_eq!((line.drawn, line.status), (3 * UNIT, LineStatus::Active));
+    assert_eq!(env.arrears(&k, line_id).due, 1, "and the first installment is due");
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -175,7 +206,7 @@ fn installments_paid_on_their_due_dates_add_up_and_close_the_line() {
     let p = env.scheduled_params(1_000_003, 0, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 0);
     for i in 1..=6u16 {
-        env.warp(t0 + i64::from(i) * MONTH);
+        env.warp(t0 + i64::from(i) * p.interval());
         let a = env.arrears(&k, line_id);
         assert_eq!((a.due, a.missed, a.late_due), (i, 1, 0), "due at its date, no late interest yet");
         let amount = if i == 6 { 166_668 } else { 166_667 };
@@ -198,7 +229,7 @@ fn missed_installments_grow_over_time() {
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 0);
     let (_, line_id, t0) = drawn(&mut env, &k, &p, 0);
     let mut seen = vec![];
-    for t in [t0, t0 + MONTH - 1, t0 + MONTH, t0 + 2 * MONTH + 5, t0 + 3 * MONTH, t0 + 10 * MONTH] {
+    for t in [t0, t0 + p.interval() - 1, t0 + p.interval(), t0 + 2 * p.interval() + 5, t0 + 3 * p.interval(), t0 + 10 * p.interval()] {
         env.warp(t);
         seen.push(env.arrears(&k, line_id).missed);
     }
@@ -216,14 +247,14 @@ fn late_interest_accrues_after_grace_and_is_collected_first() {
     let nav0 = env.nav(&k);
 
     // Within the grace period the installment is missed but accrues nothing.
-    env.warp(t0 + MONTH + i64::from(grace));
+    env.warp(t0 + p.interval() + i64::from(grace));
     let a = env.arrears(&k, line_id);
     assert_eq!((a.missed, a.overdue, a.late_due), (1, 1_120_000, 0));
 
     // 1% of a year after grace, on the principal share of the 1.12 installment (1.0; decision 11,
     // no interest on overdue interest): 1.0 * 100% * 0.01 = 0.01.
     let year = elote_pool::state::SECONDS_PER_YEAR as i64;
-    env.warp(t0 + MONTH + i64::from(grace) + year / 100);
+    env.warp(t0 + p.interval() + i64::from(grace) + year / 100);
     assert_eq!(env.arrears(&k, line_id).overdue_principal, UNIT);
     assert_eq!(env.arrears(&k, line_id).late_due, 10_000);
 
@@ -267,7 +298,7 @@ fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
     // in all, of which 0.999998 is principal: three shares each rounded down), which binds
     // before the lifetime cap of 1.0.
     let late = 999_998;
-    env.warp(t0 + 3 * MONTH + 20 * elote_pool::state::SECONDS_PER_YEAR as i64);
+    env.warp(t0 + 3 * p.interval() + 20 * elote_pool::state::SECONDS_PER_YEAR as i64);
     let a = env.arrears(&k, line_id);
     assert_eq!((a.overdue, a.overdue_principal, a.late_due), (total, late, late));
 
@@ -284,8 +315,12 @@ fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
     assert_eq!(line.schedule().unwrap().late_collected, late);
 }
 
+/// One repayment order for every line since line v3: late interest, then interest, then
+/// principal, and never more than is due. The version-1 "principal first, reject overpayment"
+/// branch is gone, which also closes register R-10 (a zero-loss write-off can no longer forfeit
+/// the interest, since a line with principal left always has interest left too).
 #[test]
-fn repayment_order_scheduled_is_interest_first_single_maturity_is_principal_first() {
+fn repayment_order_is_interest_first_and_clamps_overpayment_on_every_line() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let p2 = env.scheduled_params(4 * UNIT, 1_000, 4, 10_000);
@@ -297,15 +332,16 @@ fn repayment_order_scheduled_is_interest_first_single_maturity_is_principal_firs
     let ev = env.repay(&k, v2, &b, 500_000);
     assert_eq!((ev.interest_part, ev.principal_part), (400_000, 100_000));
     let ev = env.repay(&k, v1, &b, 500_000);
-    assert_eq!((ev.interest_part, ev.principal_part), (0, 500_000));
+    assert_eq!((ev.interest_part, ev.principal_part), (400_000, 100_000), "a bullet line too");
 
-    // A single-maturity line still rejects more than remains; a scheduled one takes what is due.
-    let ix = env.repay_ix(&k, v1, &b.pubkey(), 3_900_001);
-    env.expect_err(ix, &b, &[], E_WRONG_AMOUNT);
+    // Both take what is due and leave the surplus with the payer.
     let before = borrower_balance(&env, &k, &b);
+    let ev = env.repay(&k, v1, &b, 4 * UNIT);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (0, 3_900_000, 0));
     let ev = env.repay(&k, v2, &b, 4 * UNIT);
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (0, 3_900_000, 0));
-    assert_eq!(before - borrower_balance(&env, &k, &b), 3_900_000);
+    assert_eq!(before - borrower_balance(&env, &k, &b), 2 * 3_900_000);
+    assert_eq!(env.line(&k, v1).status, LineStatus::Repaid);
     assert_eq!(env.line(&k, v2).status, LineStatus::Repaid);
 }
 
@@ -317,18 +353,18 @@ fn mark_in_collection_after_three_missed_installments() {
     let (_, line_id, t0) = drawn(&mut env, &k, &p, 0);
     let keeper = env.funded(1);
 
-    env.warp(t0 + 3 * MONTH - 1);
+    env.warp(t0 + 3 * p.interval() - 1);
     assert_eq!(env.arrears(&k, line_id).missed, 2);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.expect_err(ix, &keeper, &[], E_NOT_ENOUGH_MISSED);
     // At the third due date it is missed, but collection waits until that second has passed.
-    env.warp(t0 + 3 * MONTH);
+    env.warp(t0 + 3 * p.interval());
     assert_eq!(env.arrears(&k, line_id).missed, 3);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.expect_err(ix, &keeper, &[], E_NOT_ENOUGH_MISSED);
 
     // Anyone may call it after that, also while the pool is paused: it only records facts.
-    env.warp(t0 + 3 * MONTH + 1);
+    env.warp(t0 + 3 * p.interval() + 1);
     env.set_paused(&k, true);
     let ix = env.mark_in_collection_ix(&k, line_id);
     let meta = env.send(ix, &keeper, &[]);
@@ -355,7 +391,7 @@ fn a_cure_confirmed_first_wins_over_collection() {
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 0);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
-    env.warp(t0 + 3 * MONTH);
+    env.warp(t0 + 3 * p.interval());
     env.repay(&k, line_id, &b, 1_120_000);
     let keeper = env.funded(1);
     let ix = env.mark_in_collection_ix(&k, line_id);
@@ -369,7 +405,7 @@ fn a_line_in_collection_still_accepts_repayments_and_closes_when_repaid() {
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
-    env.warp(t0 + 3 * MONTH + 10);
+    env.warp(t0 + 3 * p.interval() + 10);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
 
@@ -395,6 +431,7 @@ fn late_interest_on_the_maximum_installments_stays_within_the_compute_budget() {
     let day = 24 * 3600;
     let mut p = env.scheduled_params(UNIT, 0, 120, 10_000);
     p.schedule.as_mut().unwrap().interval_seconds = day;
+    p.schedule.as_mut().unwrap().first_due_at = env.now() + day;
     p.term_end = env.now() + 120 * day;
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
     env.warp(t0 + 200 * day);
@@ -422,13 +459,13 @@ fn write_off_in_collection_only_after_the_oldest_missed_due_date_plus_grace() {
     let nav0 = env.nav(&k);
 
     // An active scheduled line before its term is not written off, even with missed installments.
-    env.warp(t0 + 3 * MONTH);
+    env.warp(t0 + 3 * p.interval());
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.expect_err(ix, &admin, &[], E_TERM_NOT_ENDED);
 
     // Collection once the third missed installment's grace has run. The oldest missed installment
-    // fell due at t0 + MONTH, so its grace has run too and the admin may write off now.
-    env.warp(t0 + 3 * MONTH + i64::from(grace) + 1);
+    // fell due at t0 + p.interval(), so its grace has run too and the admin may write off now.
+    env.warp(t0 + 3 * p.interval() + i64::from(grace) + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
     let ix = env.write_off_ix(&k, line_id, &b.pubkey());
@@ -453,13 +490,13 @@ fn collection_waits_for_the_grace_of_the_third_missed_installment() {
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
 
     // One installment paid: the next three fall due at t0 + 2, 3 and 4 months.
-    env.warp(t0 + MONTH);
+    env.warp(t0 + p.interval());
     env.repay(&k, line_id, &b, 1_120_000);
-    env.warp(t0 + 4 * MONTH + i64::from(grace));
+    env.warp(t0 + 4 * p.interval() + i64::from(grace));
     assert_eq!(env.arrears(&k, line_id).missed, 3);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.expect_err(ix, &b, &[], E_NOT_ENOUGH_MISSED);
-    env.warp(t0 + 4 * MONTH + i64::from(grace) + 1);
+    env.warp(t0 + 4 * p.interval() + i64::from(grace) + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
@@ -478,7 +515,7 @@ fn a_cured_line_in_collection_is_not_written_off_until_it_misses_again() {
     let admin = env.admin.insecure_clone();
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
-    env.warp(t0 + 3 * MONTH + i64::from(grace) + 1);
+    env.warp(t0 + 3 * p.interval() + i64::from(grace) + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
 
@@ -490,10 +527,10 @@ fn a_cured_line_in_collection_is_not_written_off_until_it_misses_again() {
     env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
 
     // The fourth installment falls due at t0 + 4 months and is missed: grace runs 10 more days.
-    env.warp(t0 + 4 * MONTH + i64::from(grace));
+    env.warp(t0 + 4 * p.interval() + i64::from(grace));
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
-    env.warp(t0 + 4 * MONTH + i64::from(grace) + 1);
+    env.warp(t0 + 4 * p.interval() + i64::from(grace) + 1);
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.send(ix, &admin, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
@@ -538,7 +575,7 @@ fn late_interest_over_the_life_of_a_line_never_exceeds_its_principal() {
     // 1.0 at 10%: 1.1 in three installments; 50% a year late interest.
     let p = env.scheduled_params(UNIT, 1_000, 3, 5_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 3 * UNIT);
-    env.warp(t0 + 3 * MONTH);
+    env.warp(t0 + 3 * p.interval());
 
     // The borrower pays only the late interest, once a year: the arrears never shrink, the
     // watermark moves, and each settlement charges up to the overdue amount again.
@@ -575,6 +612,7 @@ fn late_interest_caps_each_overdue_part_separately() {
     // 9.0 at 0% in three installments every two years; 33.33% a year late interest.
     let mut p = env.scheduled_params(3 * part, 0, 3, 3_333);
     p.schedule.as_mut().unwrap().interval_seconds = 2 * year;
+    p.schedule.as_mut().unwrap().first_due_at = env.now() + 2 * year;
     p.term_end = env.now() + 6 * year;
     let pool_cash = 20 * UNIT;
     let a = env.investor(&k, pool_cash);
@@ -619,13 +657,13 @@ fn a_repayment_that_settles_no_late_interest_leaves_the_watermark_where_it_was()
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
 
-    env.warp(t0 + MONTH + 30);
+    env.warp(t0 + p.interval() + 30);
     assert_eq!(env.arrears(&k, line_id).late_due, 0, "30 s of accrual round to zero");
     let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1);
     let meta = env.send(ix, &b, &[]);
     assert!(find_event::<LateInterestCollected>(&meta).is_none());
 
-    env.warp(t0 + MONTH + 70);
+    env.warp(t0 + p.interval() + 70);
     assert_eq!(env.arrears(&k, line_id).late_due, 1, "70 s since the due date, not 40 s since the last payment");
     let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1);
     let meta = env.send(ix, &b, &[]);

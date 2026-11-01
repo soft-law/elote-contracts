@@ -27,14 +27,6 @@ pub fn assets_for_redeem(shares: u64, supply: u64, nav: u64) -> Option<u64> {
         .and_then(|v| u64::try_from(v).ok())
 }
 
-/// Fixed interest on `principal` at `rate_bps` (versions 1 and 2: a flat rate for the term).
-pub fn interest_due(principal: u64, rate_bps: u16) -> Option<u64> {
-    (principal as u128)
-        .checked_mul(rate_bps as u128)?
-        .checked_div(BPS as u128)
-        .and_then(|v| u64::try_from(v).ok())
-}
-
 /// Ordinary interest on a tranche of `amount` outstanding for `seconds` at an annual `rate_bps`
 /// (version 3, decision 9): `amount * rate_bps * seconds / (10_000 * SECONDS_PER_YEAR)`, rounded
 /// down once per tranche.
@@ -248,14 +240,6 @@ mod tests {
         assert_eq!(assets_for_redeem(u64::MAX, u64::MAX, u64::MAX), Some(u64::MAX));
         assert_eq!(shares_for_deposit(u64::MAX, u64::MAX, 1), None, "result above u64");
         assert_eq!(nav(u64::MAX, 1), None);
-    }
-
-    #[test]
-    fn interest_is_rounded_down() {
-        assert_eq!(interest_due(4_000_000, 1_000), Some(400_000));
-        assert_eq!(interest_due(6_000_000_000, 1_200), Some(720_000_000));
-        assert_eq!(interest_due(9_999, 1), Some(0));
-        assert_eq!(interest_due(u64::MAX, 10_000), Some(u64::MAX));
     }
 
     // -- installments: ported from the old `missed_payments` cases ------------------------------

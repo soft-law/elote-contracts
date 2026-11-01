@@ -104,12 +104,50 @@ pub struct LineScheduled {
     pub max_missed: u8,
 }
 
+/// Emitted by `open_line` after `LineOpened` (and `LineScheduled`): the facts of a version-3
+/// opening that the earlier events cannot carry. `first_due_at` is zero on a bullet line.
+#[event]
+pub struct LineTermsSet {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub first_due_at: i64,
+    pub availability_end: i64,
+    pub expediente_root: [u8; 32],
+}
+
+/// Emitted by `open_line` after `LineTermsSet`: which kind of promise the sponsor made
+/// (decision 19, D12). `role` is `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; emitted with
+/// `sponsor == None` and role 0 when no sponsor is named.
+#[event]
+pub struct LineSponsorRole {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub sponsor: Option<Pubkey>,
+    pub role: u8,
+}
+
+/// One tranche. Since line v3 `amount` is the tranche, not the whole principal, and `draw`
+/// emits it once per tranche, so indexers that sum it keep working.
 #[event]
 pub struct LineDrawn {
     pub pool: Pubkey,
     pub line_id: u64,
     pub amount: u64,
     pub outstanding_after: u64,
+}
+
+/// Emitted by `draw` after `LineDrawn`: the line after the tranche and the hash of the signed
+/// pagaré of this disposición (D9, decision 13). The hash is not stored on the line.
+#[event]
+pub struct LineDrawState {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub amount: u64,
+    pub drawn: u64,
+    pub available: u64,
+    pub interest_due: u64,
+    pub availability_end: i64,
+    pub document_hash: [u8; 32],
 }
 
 #[event]

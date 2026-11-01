@@ -37,10 +37,13 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
   account owned by the pool, which nothing can move. The supply never falls below that floor, so a
   donation to the vault cannot round later deposits down to nothing. `deposit` and `redeem` also
   take a minimum the caller accepts (`min_shares_out`, `min_assets_out`).
-- **Credit lines from the pool.** Each line records the borrower, the principal, a fixed rate,
-  the term and the hash of the signed credit agreement. A single-maturity line takes repayments
-  to principal first, then to interest. Anyone may repay on the borrower's behalf; the payer is
-  recorded in the event.
+- **Credit lines from the pool.** Each line records the borrower, the approved commitment, an
+  annual rate, the term, the hash of the signed credit agreement and a commitment to the credit
+  file. The borrower draws the commitment in tranches while the draw window is open, each
+  tranche against a signed pagaré and with the attestor's co-signature; interest on a tranche is
+  fixed at the draw, proportional to the time to the last due date. Repayments go to late
+  interest, then interest, then principal, and never take more than is due. Anyone may repay on
+  the borrower's behalf; the payer is recorded in the event.
 - **Installments, arrears and late interest.** A line can instead be repaid in installments
   (see [Installments and collection](#installments-and-collection)). Missed installments are
   computed from what was repaid, late interest accrues on overdue amounts after the pool's grace
@@ -58,7 +61,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 | share token | a mint the admin creates and hands to `init_pool` | classic SPL Token or Token-2022 with the asset's decimals, mint authority = the pool PDA, supply 0, no extension that takes or hides value; frozen by default (Token-2022 `DefaultAccountState`) for a permissioned series under Token ACL |
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
 | dead shares | PDA token account `["dead", pool]`, owned by the pool PDA | the 1,000 shares locked by the first deposit |
-| `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | terms, agreement hash, repayments, status, installment schedule (version 2) |
+| `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | terms, agreement hash and expediente root, what was drawn and repaid, status, the draw window and the first due date, the installment schedule (scheduled lines) |
 
 Both accounts keep 32 `reserved` bytes; new parameters live there so the layouts do not change.
 `clients/js/src/schedule.ts` reads them and computes arrears exactly as the program does.
@@ -79,7 +82,9 @@ Both accounts keep 32 `reserved` bytes; new parameters live there so the layouts
 | | 22..30 | `late_paid_until`, i64 LE: late interest is settled up to this time |
 | | 30..32 | zero |
 
-A version-1 line (single maturity) has all 32 bytes at zero.
+A bullet line (single maturity) has all 32 bytes at zero. Every line is version 3; the fields
+added by line v3 (`drawn`, `draws`, `availability_end`, `first_due_at`, `sponsor_role`,
+`expediente_root`) follow `bump`.
 
 ## Instructions
 
@@ -88,9 +93,9 @@ A version-1 line (single maturity) has all 32 bytes at zero.
 | `init_pool(grace_period_seconds, max_line_bps, attestor)` | admin | creates the pool, its vault and its dead-shares account around an asset mint and an admin-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the attestor (the agreements engine's key) and the series' Metaplex Core collection; the grace period and the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) are fixed for the life of the pool |
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit is at least 1.0 and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
-| `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, schedule)` | admin, borrower, sponsor if named | approves the next line; moves no money; the borrower is not the admin and `principal <= NAV * max_line_bps / 10_000` (reads the vault); `schedule` (optional) makes it an installment line |
-| `draw` | borrower | the whole principal goes from the vault to the borrower, before the term ends (and, for an installment line, early enough for the last installment to fall due within the term) |
-| `repay(amount)` | anyone | single maturity: principal first, then interest. Installments: late interest, then interest, then principal, never more than is due. The line closes when nothing remains. Never paused |
+| `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, sponsor_role, schedule, expediente_root)` | admin, borrower, attestor, sponsor if named | approves the next line as a commitment of `principal` at an annual `rate_bps`; moves no money; the borrower is not the admin and `principal <= NAV * max_line_bps / 10_000` (reads the vault); `schedule` (optional, with the contract's `first_due_at`) makes it an installment line; the draw window closes at `first_due_at`, or at `term_end` on a bullet line |
+| `draw(amount, document_hash)` | borrower, attestor | one tranche from the vault to the borrower while the window is open (strictly before it closes), at most what is still available, against the signed pagaré's hash; interest on the tranche, at the annual rate to the last due date, is fixed here |
+| `repay(amount)` | anyone | late interest (which `amount` must cover), then interest, then principal, never more than is due; what is owed is what was drawn plus the interest fixed at each draw. The line closes when nothing remains and the undrawn remainder lapses. Never paused |
 | `mark_in_collection` | anyone | moves an installment line to `InCollection` once `max_missed` installments are missed and the grace period of the last of them has run. Never paused |
 | `write_off` | admin | after the term plus grace, or for a line in collection after its oldest missed due date plus grace, the unpaid principal is recognised as a loss |
 | `set_paused(paused)` | admin | pause switch for deposits, redemptions, openings and draws |
@@ -101,13 +106,17 @@ Error codes start at 6000 in the order of `PoolError` in `programs/elote_pool/sr
 ## Installments and collection
 
 `open_line` takes an optional `ScheduleParams { interval_seconds, installments, late_bps, max_missed }`.
-Without it the line is a single-maturity line (version 1) and nothing below applies.
+Without it the line is a bullet line (single maturity) and nothing below applies.
 
-- **Schedule.** Installment `k` falls due at `drawn_at + k * interval_seconds`. Each installment is
-  `(principal + interest_due) / installments`, rounded down; the last one carries the remainder, so they
-  add up exactly. Limits: 1 to 120 installments, a positive interval, `late_bps <= 10_000`,
-  `3 <= max_missed <= installments` (the owner's policy is three months of arrears before collection), at least one unit per installment, and the last due date no later
-  than `term_end` (checked at opening and again at the draw).
+- **Schedule.** The calendar comes from the signed contract (decision 25): installment `k` falls
+  due at `first_due_at + (k - 1) * interval_seconds`, whenever the tranches were drawn. Each
+  installment is `(drawn + interest_due) / installments`, rounded down; the last one carries the
+  remainder, so they add up exactly, and a later tranche before the first due date raises every
+  installment. Limits: 1 to 120 installments, a positive interval, `late_bps <= 10_000`,
+  `3 <= max_missed <= installments` (the owner's policy is three months of arrears before
+  collection), `first_due_at` after the opening, the last due date no later than `term_end`, and
+  at least one unit per installment both for the whole commitment at the opening and for what is
+  drawn after each tranche.
 - **Missed installments** are computed, never stored: installments fallen due minus installments fully
   covered by the principal and interest repaid. At its due second an installment already counts as due.
   The pool's grace period does not change the count.
@@ -130,7 +139,7 @@ Without it the line is a single-maturity line (version 1) and nothing below appl
   `late_collected`, not in the pool's `interest_collected`.
 - **Repayment order** on an installment line: late interest, then interest, then principal.
 - **Collection.** Once `max_missed` installments are missed (at least three, three months of arrears)
-  and the grace period of the last of them has run (`now > drawn_at + (covered + max_missed) * interval
+  and the grace period of the last of them has run (`now > first_due_at + (covered + max_missed - 1) * interval
   + grace`, with `covered` installments paid), anyone may call `mark_in_collection`, which moves the line
   to `InCollection`. Collection does not accelerate the balance: the remaining installments keep their
   due dates. Repayments are
@@ -274,11 +283,12 @@ solana-test-validator --reset \
 is held locally, so the borrower's draw and repayments can be rehearsed in the app:
 `npx tsx scripts/open-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path> --principal <tMXN>`,
 with `--rate-bps` (1200), `--term-days` (90), `--sponsor-keypair` and `--agreement-hash` (the demo's
-placeholder if absent). `--installments <n> --interval-days <n>` open a scheduled line (version 2),
-with `--late-rate-bps` (10000) and `--max-missed` (3, the program's minimum, so at least three
-installments); due dates count from the draw, so `--term-days` must exceed installments times
-interval. The admin (`ELOTE_ADMIN_KEYPAIR` or `.demo-keys/admin.json`) and the borrower sign the
-same transaction. The script checks the pool's admin and pause state, then prints the line id and
+placeholder if absent). `--installments <n> --interval-days <n>` open a scheduled line, with
+`--late-rate-bps` (10000) and `--max-missed` (3, the program's minimum, so at least three
+installments); the script puts the first due date one interval from now, standing in for the
+contract's calendar, so `--term-days` must be at least installments times interval. The admin
+(`ELOTE_ADMIN_KEYPAIR` or `.demo-keys/admin.json`) and the borrower sign the same transaction;
+the admin also stands in for the attestor until PR 3 wires the agreements engine's key. The script checks the pool's admin and pause state, then prints the line id and
 address, the terms, the signature and an explorer link; program errors are shown by code and name.
 
 `scripts/key-to-base58.ts <keypair.json>` prints the base58 form of a keypair file's secret bytes,

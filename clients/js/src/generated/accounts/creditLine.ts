@@ -72,20 +72,29 @@ export type CreditLine = {
   sponsor: Option<Address>;
   /** Hash of the signed credit agreement. */
   agreementHash: ReadonlyUint8Array;
+  /** The approved commitment; `available = principal - drawn`. */
   principal: bigint;
-  /** Fixed interest on the principal. */
+  /**
+   * Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
+   * the last due date (decision 9).
+   */
   rateBps: number;
-  /** `principal * rate_bps / BPS`, fixed at opening. */
+  /**
+   * Ordinary interest charged so far: the sum over tranches of
+   * `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its
+   * draw. Zero at opening; it changes only at a draw.
+   */
   interestDue: bigint;
   termEnd: bigint;
   principalRepaid: bigint;
   interestRepaid: bigint;
   status: LineStatus;
   openedAt: bigint;
+  /** Time of the first draw; informational since decision 25 (the calendar is `first_due_at`). */
   drawnAt: bigint;
   closedAt: bigint;
   /**
-   * Zero on a version-1 line (single maturity). On a version-2 line, the installment schedule,
+   * Zero on a bullet line (single maturity). On a scheduled line, the installment schedule,
    * read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:
    *
    * | bytes  | field              | type    | meaning                                         |
@@ -101,6 +110,27 @@ export type CreditLine = {
    */
   reserved: ReadonlyUint8Array;
   bump: number;
+  /** Principal transferred to the borrower so far; `drawn <= principal`, never decreases. */
+  drawn: bigint;
+  /** Number of tranches drawn; at most `MAX_DRAWS`. */
+  draws: number;
+  /**
+   * Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
+   * `term_end` on a bullet line, fixed at opening; `suspend_draws` brings it to now.
+   */
+  availabilityEnd: bigint;
+  /**
+   * The first due date, from the signed contract; installment `k` is due at
+   * `first_due_at + (k - 1) * interval`. Zero on a bullet line.
+   */
+  firstDueAt: bigint;
+  /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
+  sponsorRole: number;
+  /**
+   * Salted merkle root of the credit file in the agreements engine (decision 15 of the pagaré
+   * design). A commitment: no document, name or folio is derivable from it.
+   */
+  expedienteRoot: ReadonlyUint8Array;
 };
 
 export type CreditLineArgs = {
@@ -112,20 +142,29 @@ export type CreditLineArgs = {
   sponsor: OptionOrNullable<Address | HasAddress>;
   /** Hash of the signed credit agreement. */
   agreementHash: ReadonlyUint8Array;
+  /** The approved commitment; `available = principal - drawn`. */
   principal: number | bigint;
-  /** Fixed interest on the principal. */
+  /**
+   * Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
+   * the last due date (decision 9).
+   */
   rateBps: number;
-  /** `principal * rate_bps / BPS`, fixed at opening. */
+  /**
+   * Ordinary interest charged so far: the sum over tranches of
+   * `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its
+   * draw. Zero at opening; it changes only at a draw.
+   */
   interestDue: number | bigint;
   termEnd: number | bigint;
   principalRepaid: number | bigint;
   interestRepaid: number | bigint;
   status: LineStatusArgs;
   openedAt: number | bigint;
+  /** Time of the first draw; informational since decision 25 (the calendar is `first_due_at`). */
   drawnAt: number | bigint;
   closedAt: number | bigint;
   /**
-   * Zero on a version-1 line (single maturity). On a version-2 line, the installment schedule,
+   * Zero on a bullet line (single maturity). On a scheduled line, the installment schedule,
    * read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:
    *
    * | bytes  | field              | type    | meaning                                         |
@@ -141,6 +180,27 @@ export type CreditLineArgs = {
    */
   reserved: ReadonlyUint8Array;
   bump: number;
+  /** Principal transferred to the borrower so far; `drawn <= principal`, never decreases. */
+  drawn: number | bigint;
+  /** Number of tranches drawn; at most `MAX_DRAWS`. */
+  draws: number;
+  /**
+   * Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
+   * `term_end` on a bullet line, fixed at opening; `suspend_draws` brings it to now.
+   */
+  availabilityEnd: number | bigint;
+  /**
+   * The first due date, from the signed contract; installment `k` is due at
+   * `first_due_at + (k - 1) * interval`. Zero on a bullet line.
+   */
+  firstDueAt: number | bigint;
+  /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
+  sponsorRole: number;
+  /**
+   * Salted merkle root of the credit file in the agreements engine (decision 15 of the pagaré
+   * design). A commitment: no document, name or folio is derivable from it.
+   */
+  expedienteRoot: ReadonlyUint8Array;
 };
 
 /** Gets the encoder for {@link CreditLineArgs} account data. */
@@ -166,6 +226,12 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
       ["closedAt", getI64Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 32)],
       ["bump", getU8Encoder()],
+      ["drawn", getU64Encoder()],
+      ["draws", getU16Encoder()],
+      ["availabilityEnd", getI64Encoder()],
+      ["firstDueAt", getI64Encoder()],
+      ["sponsorRole", getU8Encoder()],
+      ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: CREDIT_LINE_DISCRIMINATOR }),
   );
@@ -193,6 +259,12 @@ export function getCreditLineDecoder(): Decoder<CreditLine> {
     ["closedAt", getI64Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 32)],
     ["bump", getU8Decoder()],
+    ["drawn", getU64Decoder()],
+    ["draws", getU16Decoder()],
+    ["availabilityEnd", getI64Decoder()],
+    ["firstDueAt", getI64Decoder()],
+    ["sponsorRole", getU8Decoder()],
+    ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
 

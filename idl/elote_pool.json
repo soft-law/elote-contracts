@@ -112,8 +112,9 @@
     {
       "name": "draw",
       "docs": [
-        "Pays the whole principal of an approved line from the vault to the borrower, before the",
-        "term ends."
+        "Draws a tranche of `amount` from the vault to the borrower while the draw window is open,",
+        "against the signed pagaré whose hash is `document_hash`. The borrower and the attestor",
+        "sign. Interest on the tranche, at the annual rate to the last due date, is fixed here."
       ],
       "discriminator": [
         61,
@@ -132,6 +133,14 @@
           "relations": [
             "line"
           ]
+        },
+        {
+          "name": "attestor",
+          "docs": [
+            "The pool's attestor (D14): the agreements engine attests that the pagaré behind",
+            "`document_hash` was signed by the borrower and is conserved. No money moves without it."
+          ],
+          "signer": true
         },
         {
           "name": "pool",
@@ -213,7 +222,21 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "document_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "init_pool",
@@ -458,9 +481,11 @@
     {
       "name": "open_line",
       "docs": [
-        "Approves credit line `line_id` (the next in sequence) for `borrower`; a named sponsor",
-        "co-signs. With `schedule`, the line is repaid in installments (version 2); without it, at a",
-        "single maturity (version 1). Moves no money."
+        "Approves credit line `line_id` (the next in sequence): a commitment of `principal` to",
+        "`borrower` at an annual `rate_bps`, drawable in tranches until the first due date (or the",
+        "term on a bullet line). The admin, the borrower, the attestor and a named sponsor sign.",
+        "With `schedule`, the line is repaid in installments on the contract's calendar; without",
+        "it, at `term_end`. Moves no money."
       ],
       "discriminator": [
         99,
@@ -492,6 +517,14 @@
           ],
           "signer": true,
           "optional": true
+        },
+        {
+          "name": "attestor",
+          "docs": [
+            "The pool's attestor (D16): the agreements engine attests that the signed agreement behind",
+            "`agreement_hash` exists and matches the arguments."
+          ],
+          "signer": true
         },
         {
           "name": "pool",
@@ -595,6 +628,10 @@
           }
         },
         {
+          "name": "sponsor_role",
+          "type": "u8"
+        },
+        {
           "name": "schedule",
           "type": {
             "option": {
@@ -602,6 +639,15 @@
                 "name": "ScheduleParams"
               }
             }
+          }
+        },
+        {
+          "name": "expediente_root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
           }
         }
       ]
@@ -708,9 +754,9 @@
     {
       "name": "repay",
       "docs": [
-        "Repays up to `amount` of a drawn line. Anyone may pay. A single-maturity line takes",
-        "principal first, then interest; a scheduled line takes late interest (which `amount` must",
-        "cover), then interest, then principal, and never more than is due."
+        "Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then",
+        "interest, then principal, and never more than is due. Anyone may pay. A full repayment",
+        "closes the line and forfeits the undrawn remainder."
       ],
       "discriminator": [
         234,
@@ -1126,6 +1172,19 @@
       ]
     },
     {
+      "name": "LineDrawState",
+      "discriminator": [
+        81,
+        134,
+        178,
+        53,
+        221,
+        181,
+        252,
+        207
+      ]
+    },
+    {
       "name": "LineDrawn",
       "discriminator": [
         100,
@@ -1188,6 +1247,32 @@
         193,
         27,
         134
+      ]
+    },
+    {
+      "name": "LineSponsorRole",
+      "discriminator": [
+        201,
+        233,
+        0,
+        139,
+        122,
+        200,
+        182,
+        151
+      ]
+    },
+    {
+      "name": "LineTermsSet",
+      "discriminator": [
+        200,
+        26,
+        190,
+        102,
+        134,
+        52,
+        122,
+        240
       ]
     },
     {
@@ -1428,6 +1513,21 @@
       "code": 6023,
       "name": "ShareMintNotAllowed",
       "msg": "The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions"
+    },
+    {
+      "code": 6024,
+      "name": "AttestorRequired",
+      "msg": "The pool's attestor must sign"
+    },
+    {
+      "code": 6025,
+      "name": "AvailabilityEnded",
+      "msg": "The draw window of this line has closed"
+    },
+    {
+      "code": 6026,
+      "name": "TooManyDraws",
+      "msg": "The line has reached its maximum number of draws"
     }
   ],
   "types": [
@@ -1494,19 +1594,25 @@
           },
           {
             "name": "principal",
+            "docs": [
+              "The approved commitment; `available = principal - drawn`."
+            ],
             "type": "u64"
           },
           {
             "name": "rate_bps",
             "docs": [
-              "Fixed interest on the principal."
+              "Annual ordinary interest rate, in basis points, charged on each tranche from its draw to",
+              "the last due date (decision 9)."
             ],
             "type": "u16"
           },
           {
             "name": "interest_due",
             "docs": [
-              "`principal * rate_bps / BPS`, fixed at opening."
+              "Ordinary interest charged so far: the sum over tranches of",
+              "`amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its",
+              "draw. Zero at opening; it changes only at a draw."
             ],
             "type": "u64"
           },
@@ -1536,6 +1642,9 @@
           },
           {
             "name": "drawn_at",
+            "docs": [
+              "Time of the first draw; informational since decision 25 (the calendar is `first_due_at`)."
+            ],
             "type": "i64"
           },
           {
@@ -1545,7 +1654,7 @@
           {
             "name": "reserved",
             "docs": [
-              "Zero on a version-1 line (single maturity). On a version-2 line, the installment schedule,",
+              "Zero on a bullet line (single maturity). On a scheduled line, the installment schedule,",
               "read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:",
               "",
               "| bytes  | field              | type    | meaning                                         |",
@@ -1569,6 +1678,56 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "drawn",
+            "docs": [
+              "Principal transferred to the borrower so far; `drawn <= principal`, never decreases."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "draws",
+            "docs": [
+              "Number of tranches drawn; at most `MAX_DRAWS`."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "availability_end",
+            "docs": [
+              "Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,",
+              "`term_end` on a bullet line, fixed at opening; `suspend_draws` brings it to now."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "first_due_at",
+            "docs": [
+              "The first due date, from the signed contract; installment `k` is due at",
+              "`first_due_at + (k - 1) * interval`. Zero on a bullet line."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "sponsor_role",
+            "docs": [
+              "`SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "expediente_root",
+            "docs": [
+              "Salted merkle root of the credit file in the agreements engine (decision 15 of the pagaré",
+              "design). A commitment: no document, name or folio is derivable from it."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -1630,7 +1789,60 @@
       }
     },
     {
+      "name": "LineDrawState",
+      "docs": [
+        "Emitted by `draw` after `LineDrawn`: the line after the tranche and the hash of the signed",
+        "pagaré of this disposición (D9, decision 13). The hash is not stored on the line."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "drawn",
+            "type": "u64"
+          },
+          {
+            "name": "available",
+            "type": "u64"
+          },
+          {
+            "name": "interest_due",
+            "type": "u64"
+          },
+          {
+            "name": "availability_end",
+            "type": "i64"
+          },
+          {
+            "name": "document_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "LineDrawn",
+      "docs": [
+        "One tranche. Since line v3 `amount` is the tranche, not the whole principal, and `draw`",
+        "emits it once per tranche, so indexers that sum it keep working."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -1804,6 +2016,37 @@
       }
     },
     {
+      "name": "LineSponsorRole",
+      "docs": [
+        "Emitted by `open_line` after `LineTermsSet`: which kind of promise the sponsor made",
+        "(decision 19, D12). `role` is `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; emitted with",
+        "`sponsor == None` and role 0 when no sponsor is named."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "sponsor",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "role",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "LineStatus",
       "type": {
         "kind": "enum",
@@ -1822,6 +2065,43 @@
           },
           {
             "name": "InCollection"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineTermsSet",
+      "docs": [
+        "Emitted by `open_line` after `LineOpened` (and `LineScheduled`): the facts of a version-3",
+        "opening that the earlier events cannot carry. `first_due_at` is zero on a bullet line."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "first_due_at",
+            "type": "i64"
+          },
+          {
+            "name": "availability_end",
+            "type": "i64"
+          },
+          {
+            "name": "expediente_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -2155,16 +2435,23 @@
         "kind": "struct",
         "fields": [
           {
+            "name": "first_due_at",
+            "docs": [
+              "The first due date (unix seconds), from the signed contract; must be after the opening."
+            ],
+            "type": "i64"
+          },
+          {
             "name": "interval_seconds",
             "docs": [
-              "Seconds between due dates; installment `k` is due at `drawn_at + k * interval_seconds`."
+              "Seconds between due dates; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`."
             ],
             "type": "i64"
           },
           {
             "name": "installments",
             "docs": [
-              "`principal + interest_due` is paid in this many installments."
+              "`drawn + interest_due` is paid in this many installments."
             ],
             "type": "u16"
           },

@@ -1,0 +1,331 @@
+//! Tranched draws on a line (multi-draw plan D1 to D9, decision 25): partial draws until the
+//! first due date, interest proportional to time per tranche, the schedule re-amortising what is
+//! drawn, and the line's states around the tranches.
+
+mod common;
+
+use common::*;
+use elote_pool::events::LineDrawState;
+use elote_pool::state::LineStatus;
+use solana_keypair::Keypair;
+use solana_signer::Signer;
+
+/// A pool with one investor who deposited `assets` and `grace` seconds of grace.
+fn pool_with(env: &mut Env, assets: u64, grace: u32) -> PoolKeys {
+    let (k, _) = env.setup_pool_with_grace(grace);
+    let a = env.investor(&k, assets);
+    env.deposit(&k, &a, assets);
+    k
+}
+
+fn open(env: &mut Env, k: &PoolKeys, borrower: &Keypair, p: &LineParams) -> u64 {
+    env.open_line_with(k, borrower, p, None).0
+}
+
+/// `amount * rate_bps * seconds / (BPS * YEAR)`, the program's tranche interest, spelled out.
+fn interest(amount: u64, rate_bps: u64, seconds: i64) -> u64 {
+    (amount as u128 * rate_bps as u128 * seconds as u128 / (10_000 * YEAR as u128)) as u64
+}
+
+/// Plan test 1: two tranches add up to the commitment, a third is refused, and the pool's
+/// outstanding principal and NAV move per tranche.
+#[test]
+fn two_tranches_sum_to_the_commitment_and_a_third_is_refused() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 0);
+    let line_id = open(&mut env, &k, &borrower, &p);
+
+    let ev = env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
+    assert_eq!((ev.amount, ev.drawn, ev.available), (3 * UNIT, 3 * UNIT, UNIT));
+    assert_eq!(env.pool(&k).outstanding_principal, 3 * UNIT);
+    assert_eq!(env.nav(&k), 10 * UNIT, "a draw moves no value");
+    assert_eq!(env.token_balance(&k.vault), 7 * UNIT);
+
+    let ev = env.draw_amount(&k, line_id, &borrower, UNIT);
+    assert_eq!((ev.drawn, ev.available), (4 * UNIT, 0));
+    assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT);
+    assert_eq!(env.token_balance(&k.asset_ata(&borrower.pubkey())), 4 * UNIT);
+
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_WRONG_AMOUNT);
+    assert_eq!(env.line(&k, line_id).draws, 2);
+}
+
+/// Plan test 2 (D1): a tranche drawn with half the time left owes half the interest of one drawn
+/// at the start, to the unit; a half-drawn line repaid in full needs exactly drawn + Σ interest.
+#[test]
+fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let t0 = env.now();
+
+    let first = env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    assert_eq!(first.interest_due, 200_000, "2.0 at 10% for the whole year");
+    env.warp(t0 + YEAR / 2);
+    let second = env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    assert_eq!(second.interest_due - first.interest_due, 100_000, "the same amount for half the time");
+    assert_eq!(env.line(&k, line_id).interest_due, 300_000);
+
+    // Repaid in full: exactly 4.0 + 0.3, no more is taken.
+    let admin = env.admin.insecure_clone();
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), UNIT);
+    let before = env.token_balance(&k.asset_ata(&borrower.pubkey()));
+    let ev = env.repay(&k, line_id, &borrower, 5 * UNIT);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (300_000, 4 * UNIT, 0));
+    assert_eq!(before - env.token_balance(&k.asset_ata(&borrower.pubkey())), 4_300_000);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+}
+
+/// Plan test 2, second half: on a scheduled line whose last due date is before `term_end`, the
+/// tranche accrues to the last due date, not to the term.
+#[test]
+fn tranche_interest_runs_to_the_last_due_date_not_the_term() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let borrower = env.borrower(&k);
+    let mut p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    p.term_end += YEAR; // the term outlives the calendar by a year
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let last_due = p.first_due_at() + 5 * p.interval();
+    assert!(last_due < p.term_end);
+
+    let ev = env.draw_amount(&k, line_id, &borrower, 6 * UNIT);
+    assert_eq!(ev.interest_due, interest(6 * UNIT, 1_200, last_due - env.now()));
+    assert_eq!(ev.interest_due, 720_000, "to the last due date, exactly a year away");
+    assert_ne!(ev.interest_due, interest(6 * UNIT, 1_200, p.term_end - env.now()));
+}
+
+/// Plan test 3 (D4): a second tranche before the first due date raises every installment; the
+/// arrears before and after are what `math::arrears` predicts.
+#[test]
+fn a_second_tranche_raises_every_installment() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+
+    env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
+    let line = env.line(&k, line_id);
+    let total_one = line.drawn + line.interest_due;
+    assert_eq!(total_one, 3_360_000, "3.0 plus 0.36 of interest");
+    env.warp(p.first_due_at());
+    let a = env.arrears(&k, line_id);
+    assert_eq!((a.due, a.overdue), (1, total_one / 6));
+
+    // A second tranche is refused now (the window closed at the first due date), so open another
+    // line to see the installments stretch before its first due date.
+    let p2 = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    let second = open(&mut env, &k, &borrower, &p2);
+    env.draw_amount(&k, second, &borrower, 3 * UNIT);
+    env.warp(p2.first_due_at() - 1);
+    env.draw_amount(&k, second, &borrower, 3 * UNIT);
+    let line = env.line(&k, second);
+    // The second tranche accrued for one second less than a whole-year tranche would.
+    let expected_total = 6 * UNIT + 360_000 + interest(3 * UNIT, 1_200, p2.first_due_at() + 5 * p2.interval() - (p2.first_due_at() - 1));
+    assert_eq!(line.drawn + line.interest_due, expected_total);
+    env.warp(p2.first_due_at());
+    let a = env.arrears(&k, second);
+    assert_eq!((a.due, a.overdue), (1, expected_total / 6), "every installment is now a sixth of the larger total");
+}
+
+/// Plan test 4 (D3b): a tranche that would leave an installment below one unit is refused; the
+/// tranche that brings `drawn + interest_due` to the installment count is accepted and repays.
+#[test]
+fn a_tranche_may_not_leave_the_schedule_unpayable() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(UNIT, 0, 12, 5_000); // 0%: no interest helps the count
+    let line_id = open(&mut env, &k, &borrower, &p);
+
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 5, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_INVALID_SCHEDULE);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 11, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_INVALID_SCHEDULE);
+    env.draw_amount(&k, line_id, &borrower, 12);
+    assert_eq!(env.arrears(&k, line_id).due, 0);
+    env.warp(p.first_due_at());
+    assert_eq!(env.arrears(&k, line_id).overdue, 1, "one unit per installment");
+    let ev = env.repay(&k, line_id, &borrower, 12);
+    assert_eq!((ev.principal_part, ev.remaining), (12, 0));
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+}
+
+/// Plan test 5: weekly, quincenal and monthly calendars each run a full cycle with two tranches,
+/// three partial payments and one installment missed past the grace; `mark_in_collection`
+/// behaves as before.
+#[test]
+fn weekly_quincenal_and_monthly_calendars_run_a_full_cycle() {
+    for interval in [7 * 86_400i64, 15 * 86_400, 30 * 86_400] {
+        let mut env = Env::new();
+        let grace = 86_400u32;
+        let k = pool_with(&mut env, 20 * UNIT, grace);
+        let borrower = env.borrower(&k);
+        let n = 6u16;
+        let mut p = env.scheduled_params(6 * UNIT, 1_200, n, 5_000);
+        let first_due = env.now() + interval;
+        p.schedule.as_mut().unwrap().interval_seconds = interval;
+        p.schedule.as_mut().unwrap().first_due_at = first_due;
+        p.term_end = first_due + i64::from(n) * interval;
+        let line_id = open(&mut env, &k, &borrower, &p);
+        let last_due = first_due + i64::from(n - 1) * interval;
+
+        // Two tranches: at the opening and half-way to the first due date.
+        let t0 = env.now();
+        env.draw_amount(&k, line_id, &borrower, 4 * UNIT);
+        env.warp(t0 + interval / 2);
+        env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+        let line = env.line(&k, line_id);
+        let expected_interest = interest(4 * UNIT, 1_200, last_due - t0) + interest(2 * UNIT, 1_200, last_due - (t0 + interval / 2));
+        assert_eq!(line.interest_due, expected_interest, "interval {interval}");
+        let total = line.drawn + line.interest_due;
+        let installment = total / u64::from(n);
+        let admin = env.admin.insecure_clone();
+        env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 2 * UNIT);
+
+        // Three partial payments on the first due date add up to the first installment.
+        env.warp(first_due);
+        assert_eq!(env.arrears(&k, line_id).missed, 1);
+        for part in [installment / 3, installment / 3, installment - 2 * (installment / 3)] {
+            env.repay(&k, line_id, &borrower, part);
+        }
+        let a = env.arrears(&k, line_id);
+        assert_eq!((a.covered, a.missed, a.late_due), (1, 0, 0), "interval {interval}");
+
+        // Then nothing: the second, third and fourth are missed; collection waits for the grace
+        // of the fourth (covered 1 + max_missed 3), as on any scheduled line.
+        let fourth_due = first_due + 3 * interval;
+        env.warp(fourth_due + i64::from(grace));
+        let keeper = env.funded(1);
+        let ix = env.mark_in_collection_ix(&k, line_id);
+        env.expect_err(ix, &keeper, &[], E_NOT_ENOUGH_MISSED);
+        env.warp(fourth_due + i64::from(grace) + 1);
+        let a = env.arrears(&k, line_id);
+        assert_eq!(a.missed, 3);
+        assert!(a.late_due > 0, "late interest ran on the principal share of the second and third");
+        let ix = env.mark_in_collection_ix(&k, line_id);
+        env.send(ix, &keeper, &[]);
+        assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
+    }
+}
+
+/// Plan test 6: no tranche while in collection, while paused, or after the window; a tranche
+/// larger than the vault fails and succeeds after a deposit.
+#[test]
+fn tranches_are_refused_in_collection_paused_or_after_the_window() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let investor = env.investor(&k, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+
+    env.set_paused(&k, true);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_PAUSED);
+    env.set_paused(&k, false);
+
+    // 5.0 of the 6.0 drawn, 5.0 left in the vault: a 6.0 tranche on a second line is bigger than
+    // the vault until a deposit arrives.
+    env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
+    let p2 = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    let second = open(&mut env, &k, &borrower, &p2);
+    let ix = env.draw_ix_amount(&k, second, &borrower.pubkey(), 6 * UNIT, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_INSUFFICIENT_LIQUIDITY);
+    env.deposit(&k, &investor, 10 * UNIT);
+    env.draw_amount(&k, second, &borrower, 6 * UNIT);
+
+    // After the window: the first line's first due date has passed, with 1.0 still available.
+    env.warp(p.first_due_at());
+    assert_eq!(env.line(&k, line_id).available(), Some(UNIT));
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
+
+    // In collection (three installments missed past the grace of the third): no tranche either,
+    // and the window check does not even matter.
+    env.warp(p.first_due_at() + 2 * p.interval() + 1);
+    let keeper = env.funded(1);
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.send(ix, &keeper, &[]);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
+}
+
+/// Plan test 7 (D5): full repayment of a half-drawn line closes it and forfeits the rest; a
+/// further draw fails with `LineStatus`.
+#[test]
+fn full_repayment_of_a_half_drawn_line_closes_it() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    let admin = env.admin.insecure_clone();
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 200_000);
+
+    let ev = env.repay(&k, line_id, &borrower, 2_200_000);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (200_000, 2 * UNIT, 0));
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.drawn, line.principal), (LineStatus::Repaid, 2 * UNIT, 4 * UNIT));
+    assert!(env.now() < line.availability_end, "the window was still open");
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
+    assert_eq!(env.pool(&k).outstanding_principal, 0);
+}
+
+/// Plan test 8: the write-off of a half-drawn line books `drawn - repaid`, and `MAX_DRAWS`
+/// tranches are the limit.
+#[test]
+fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let borrower = env.borrower(&k);
+    let admin = env.admin.insecure_clone();
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    env.repay(&k, line_id, &borrower, 700_000); // 0.2 of interest, 0.5 of principal
+    env.warp(p.term_end + 1);
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    let meta = env.send(ix, &admin, &[]);
+    let ev: elote_pool::events::LineWrittenOff = find_event(&meta).unwrap();
+    assert_eq!(ev.loss, 1_500_000);
+    assert_eq!(env.pool(&k).written_off, 1_500_000);
+    assert_eq!(env.pool(&k).outstanding_principal, 0);
+
+    // Sixty-four tranches of one unit; the sixty-fifth is refused.
+    let p = env.line_params(100, 0);
+    let many = open(&mut env, &k, &borrower, &p);
+    for _ in 0..64 {
+        env.draw_amount(&k, many, &borrower, 1);
+    }
+    assert_eq!(env.line(&k, many).draws, 64);
+    let ix = env.draw_ix_amount(&k, many, &borrower.pubkey(), 1, DOCUMENT_HASH);
+    env.expect_err_with_attestor(ix, &borrower, E_TOO_MANY_DRAWS);
+    assert_eq!(env.line(&k, many).available(), Some(36));
+}
+
+/// D9: the pagaré hash travels in the event; a zero hash is refused like a zero agreement hash.
+#[test]
+fn a_draw_carries_its_document_hash_and_refuses_a_zero_one() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, [0; 32]);
+    env.expect_err_with_attestor(ix, &borrower, E_WRONG_AMOUNT);
+    let hash = [0x5a; 32];
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, hash);
+    let meta = env.send_with_attestor(ix, &borrower);
+    let ev: LineDrawState = find_event(&meta).unwrap();
+    assert_eq!(ev.document_hash, hash);
+}

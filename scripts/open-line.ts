@@ -137,9 +137,19 @@ if ((installments === undefined) !== (intervalDays === undefined)) {
 if (installments === undefined && (arg("late-rate-bps") !== undefined || arg("max-missed") !== undefined)) {
   fail("--late-rate-bps and --max-missed apply to a scheduled line only (add --installments and --interval-days)");
 }
+// Line v3: the calendar comes from the signed contract (decision 25). This script stands in for
+// the agreements engine and puts the first due date one interval from now; a real opening passes
+// the contract's date.
+const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
 const schedule =
   installments !== undefined && intervalDays !== undefined
-    ? { intervalSeconds: BigInt(intervalDays) * DAY, installments, lateBps, maxMissed }
+    ? {
+        firstDueAt: nowSeconds + BigInt(intervalDays) * DAY,
+        intervalSeconds: BigInt(intervalDays) * DAY,
+        installments,
+        lateBps,
+        maxMissed,
+      }
     : null;
 if (schedule) {
   if (schedule.installments < schedule.maxMissed) {
@@ -148,13 +158,10 @@ if (schedule) {
         `${MIN_MAX_MISSED} <= max-missed <= installments`
     );
   }
-  // The last due date is checked at the opening and again at the draw, counted from the draw.
+  // The last due date (first due date + (installments - 1) intervals) must fall within the term.
   const spanDays = intervalDays! * installments!;
-  if (termDays <= spanDays) {
-    fail(
-      `the schedule spans ${spanDays} days from the draw, so --term-days must be more than ${spanDays} ` +
-        `(leave room for the draw, for example ${spanDays + 30})`
-    );
+  if (termDays < spanDays) {
+    fail(`the calendar ends ${spanDays} days from now, so --term-days must be at least ${spanDays}`);
   }
 }
 
@@ -271,10 +278,14 @@ async function main() {
     fail(`the principal (${fmt(principal)}) exceeds this pool's largest line: ${maxBps} bps of the NAV, ${fmt(cap)} right now`);
   }
 
+  // Line v3 (decisions 12, 15, 16): the attestor co-signs (the admin stands in for the agreements
+  // engine here), the sponsor's role is recorded, and the expediente root is a salted commitment
+  // to the credit file (the agreement hash stands in for it; PR 3 wires the real one).
   const instruction = await getOpenLineInstructionAsync({
     admin,
     borrower,
     ...(sponsor ? { sponsor } : {}),
+    attestor: admin,
     pool: poolAddress,
     line,
     vault: pool.vault,
@@ -284,7 +295,9 @@ async function main() {
     termEnd,
     agreementHash: hash,
     sponsorArg: sponsor ? sponsor.address : null,
+    sponsorRole: 0,
     schedule,
+    expedienteRoot: hash,
   });
   const { value: blockhash } = await rpc.getLatestBlockhash({ commitment: "confirmed" }).send();
   const message = pipe(
@@ -324,11 +337,12 @@ async function main() {
     `borrower    ${opened.borrower}`,
     `sponsor     ${opened.sponsor.__option === "Some" ? opened.sponsor.value : "none"}`,
     `principal   ${fmt(opened.principal)} tMXN`,
-    `rate        ${opened.rateBps} bps (interest ${fmt(opened.interestDue)} tMXN)`,
+    `rate        ${opened.rateBps} bps a year, charged per tranche at the draw (interest so far ${fmt(opened.interestDue)} tMXN)`,
     `term        ${termDays} days, ends ${new Date(Number(opened.termEnd) * 1000).toISOString()}`,
-    `version     ${opened.version}${s ? " (scheduled)" : " (single maturity)"}`,
+    `draws until ${new Date(Number(opened.availabilityEnd) * 1000).toISOString()}`,
+    `version     ${opened.version}${s ? " (scheduled)" : " (bullet)"}`,
     s
-      ? `schedule    ${s.installments} installments every ${s.intervalSeconds / DAY} days from the draw, late interest ${s.lateBps} bps a year, collection after ${s.maxMissed} missed`
+      ? `schedule    ${s.installments} installments every ${s.intervalSeconds / DAY} days from ${new Date(Number(opened.firstDueAt) * 1000).toISOString()}, late interest ${s.lateBps} bps a year, collection after ${s.maxMissed} missed`
       : `schedule    none`,
     `status      ${LineStatus[opened.status]}`,
     `signature   ${signature}`,

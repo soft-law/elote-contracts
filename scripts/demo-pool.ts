@@ -353,6 +353,7 @@ await send("open_line", admin, [
     admin,
     borrower,
     ...(withSponsor ? { sponsor } : {}),
+    attestor: admin, // the admin stands in for the agreements engine's key in the demo
     pool,
     line,
     vault,
@@ -362,19 +363,24 @@ await send("open_line", admin, [
     termEnd,
     agreementHash: hash,
     sponsorArg: withSponsor ? sponsor.address : null,
+    sponsorRole: 0,
     schedule: null,
+    expedienteRoot: hash, // a placeholder commitment; PR 3 wires the real salted root
   }),
 ]);
 const borrowerAsset = await ataOf(borrower.address, assetMint.address);
 await send("draw: 6,000 tMXN (devnet test token, no value) to the borrower", borrower, [
   await getDrawInstructionAsync({
     borrower,
+    attestor: admin,
     pool,
     line,
     assetMint: assetMint.address,
     vault,
     borrowerAssetAccount: borrowerAsset,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    amount: 6_000n * UNIT,
+    documentHash: hash, // the signed pagaré's hash; the agreement hash stands in
   }),
 ]);
 const drawn = await snapshot();
@@ -457,12 +463,16 @@ async function scheduleDemo() {
   console.log(`\nInstallment line: 600 ${ASSET} at 12%, ${installments} installments ${label}, late interest 100% a year, collection after 3 missed`);
   const { lineCount: id } = (await fetchPool(rpc, pool, { commitment: "confirmed" })).data;
   const [sLine] = await findLinePda({ pool, lineId: id });
-  // Due dates count from the draw; leave two minutes for it.
-  const sTermEnd = (await chainNow()) + BigInt(installments) * intervalSeconds + 120n;
+  // The calendar comes from the contract (decision 25): the first installment one interval from
+  // now, the draw window open until then.
+  const sNow = await chainNow();
+  const firstDueAt = sNow + intervalSeconds;
+  const sTermEnd = firstDueAt + BigInt(installments) * intervalSeconds;
   await send("open_line with a schedule", admin, [
     await getOpenLineInstructionAsync({
       admin,
       borrower,
+      attestor: admin,
       pool,
       line: sLine,
       vault,
@@ -472,18 +482,23 @@ async function scheduleDemo() {
       termEnd: sTermEnd,
       agreementHash: hash,
       sponsorArg: null,
-      schedule: { intervalSeconds, installments, lateBps: 10_000, maxMissed: 3 },
+      sponsorRole: 0,
+      schedule: { firstDueAt, intervalSeconds, installments, lateBps: 10_000, maxMissed: 3 },
+      expedienteRoot: hash,
     }),
   ]);
   await send("draw: 600 tMXN (devnet test token, no value) to the borrower", borrower, [
     await getDrawInstructionAsync({
       borrower,
+      attestor: admin,
       pool,
       line: sLine,
       assetMint: assetMint.address,
       vault,
       borrowerAssetAccount: borrowerAsset,
       tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      amount: principal,
+      documentHash: hash,
     }),
   ]);
 
@@ -495,11 +510,11 @@ async function scheduleDemo() {
     return { l, s, now, a: lineArrears(l, s, grace, now) };
   };
   let { l, s } = await read();
-  const installment = (l.principal + l.interestDue) / BigInt(installments);
-  console.log(`  installment ${fmt(installment)}; first due at ${l.drawnAt + intervalSeconds} (draw ${l.drawnAt} + interval)`);
+  const installment = (l.drawn + l.interestDue) / BigInt(installments);
+  console.log(`  installment ${fmt(installment)}; first due at ${l.firstDueAt} (from the contract, one interval after the opening)`);
 
   // Let the first installment go unpaid past its due date and the grace period.
-  const target = l.drawnAt + intervalSeconds + grace + 10n;
+  const target = l.firstDueAt + grace + 10n;
   if (target - (await chainNow()) > 600n) {
     console.log(`  the first installment falls due in ${intervalSeconds} s: run with --interval-seconds 20 on a local validator to see arrears`);
     return;

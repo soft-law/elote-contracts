@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  LINE_VERSION_SCHEDULED,
+  LINE_VERSION,
   decodeSchedule,
   lineArrears,
   maxLinePrincipal,
@@ -46,11 +46,12 @@ test("lineArrears agrees with math::arrears on every vector", () => {
   vectors.forEach((v, i) => {
     const a = lineArrears(
       {
-        principal: BigInt(v.principal),
+        drawn: BigInt(v.principal),
         interestDue: BigInt(v.total) - BigInt(v.principal),
         principalRepaid: BigInt(v.paid),
         interestRepaid: 0n,
-        drawnAt: BigInt(v.anchor),
+        // The vectors anchor the calendar one interval before the first due date.
+        firstDueAt: BigInt(v.anchor) + BigInt(v.interval),
       },
       {
         intervalSeconds: BigInt(v.interval),
@@ -99,18 +100,15 @@ test("decodeSchedule reads the packed CreditLine.reserved layout", () => {
   dv.setUint8(13, 0); // flags
   dv.setBigUint64(14, 1_234n, true); // late_collected
   dv.setBigInt64(22, 1_700_000_000n, true); // late_paid_until
-  assert.deepEqual(
-    decodeSchedule({ version: LINE_VERSION_SCHEDULED, reserved }),
-    {
-      intervalSeconds: 2_592_000n,
-      installments: 6,
-      lateBps: 5_000,
-      maxMissed: 3,
-      flags: 0,
-      lateCollected: 1_234n,
-      latePaidUntil: 1_700_000_000n,
-    }
-  );
+  assert.deepEqual(decodeSchedule({ version: LINE_VERSION, reserved }), {
+    intervalSeconds: 2_592_000n,
+    installments: 6,
+    lateBps: 5_000,
+    maxMissed: 3,
+    flags: 0,
+    lateCollected: 1_234n,
+    latePaidUntil: 1_700_000_000n,
+  });
   assert.equal(decodeSchedule({ version: 1, reserved }), null);
 });
 
@@ -158,11 +156,11 @@ test("lateDue is never negative when lateCollected exceeds the principal (R-24)"
   // The program refuses this state with Overflow; the mirror must report 0, not a negative figure.
   const a = lineArrears(
     {
-      principal: 600n,
+      drawn: 600n,
       interestDue: 0n,
       principalRepaid: 0n,
       interestRepaid: 0n,
-      drawnAt: 1_000n,
+      firstDueAt: 1_100n,
     },
     {
       intervalSeconds: 100n,

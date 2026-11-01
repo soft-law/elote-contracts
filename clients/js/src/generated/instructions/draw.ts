@@ -15,6 +15,8 @@ import {
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
+  getU64Decoder,
+  getU64Encoder,
   getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
@@ -54,6 +56,7 @@ export function getDrawDiscriminatorBytes(): ReadonlyUint8Array {
 export type DrawInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountBorrower extends string | AccountMeta<string> = string,
+  TAccountAttestor extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountAssetMint extends string | AccountMeta<string> = string,
@@ -73,6 +76,10 @@ export type DrawInstruction<
         ? ReadonlySignerAccount<TAccountBorrower> &
             AccountSignerMeta<TAccountBorrower>
         : TAccountBorrower,
+      TAccountAttestor extends string
+        ? ReadonlySignerAccount<TAccountAttestor> &
+            AccountSignerMeta<TAccountAttestor>
+        : TAccountAttestor,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -101,13 +108,24 @@ export type DrawInstruction<
     ]
   >;
 
-export type DrawInstructionData = { discriminator: ReadonlyUint8Array };
+export type DrawInstructionData = {
+  discriminator: ReadonlyUint8Array;
+  amount: bigint;
+  documentHash: ReadonlyUint8Array;
+};
 
-export type DrawInstructionDataArgs = {};
+export type DrawInstructionDataArgs = {
+  amount: number | bigint;
+  documentHash: ReadonlyUint8Array;
+};
 
 export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["amount", getU64Encoder()],
+      ["documentHash", fixEncoderSize(getBytesEncoder(), 32)],
+    ]),
     (value) => ({ ...value, discriminator: DRAW_DISCRIMINATOR }),
   );
 }
@@ -115,6 +133,8 @@ export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructio
 export function getDrawInstructionDataDecoder(): FixedSizeDecoder<DrawInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["amount", getU64Decoder()],
+    ["documentHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
 
@@ -130,6 +150,7 @@ export function getDrawInstructionDataCodec(): FixedSizeCodec<
 
 export type DrawAsyncInput<
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
+  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
@@ -143,6 +164,11 @@ export type DrawAsyncInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   borrower: TAccountBorrower;
+  /**
+   * The pool's attestor (D14): the agreements engine attests that the pagaré behind
+   * `document_hash` was signed by the borrower and is conserved. No money moves without it.
+   */
+  attestor: TAccountAttestor;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for its decimals (`transfer_checked`). */
@@ -152,10 +178,13 @@ export type DrawAsyncInput<
   tokenProgram?: TAccountTokenProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  amount: DrawInstructionDataArgs["amount"];
+  documentHash: DrawInstructionDataArgs["documentHash"];
 };
 
 export async function getDrawInstructionAsync<
   TAccountBorrower extends InstructionSignerInput,
+  TAccountAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput,
@@ -168,6 +197,7 @@ export async function getDrawInstructionAsync<
 >(
   input: DrawAsyncInput<
     TAccountBorrower,
+    TAccountAttestor,
     TAccountPool,
     TAccountLine,
     TAccountAssetMint,
@@ -186,6 +216,10 @@ export async function getDrawInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
       InstructionAccountInputAddress<TAccountBorrower>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAttestor,
+      InstructionAccountInputAddress<TAccountAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -239,6 +273,11 @@ export async function getDrawInstructionAsync<
       isSigner: true,
       isWritable: false,
     },
+    attestor: {
+      value: input.attestor ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     assetMint: {
@@ -273,6 +312,9 @@ export async function getDrawInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
@@ -292,6 +334,7 @@ export async function getDrawInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("borrower", accounts.borrower),
+      getAccountMeta("attestor", accounts.attestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("assetMint", accounts.assetMint),
@@ -301,13 +344,19 @@ export async function getDrawInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getDrawInstructionDataEncoder().encode({}),
+    data: getDrawInstructionDataEncoder().encode(
+      args as DrawInstructionDataArgs,
+    ),
     programAddress,
   } as DrawInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
       InstructionAccountInputAddress<TAccountBorrower>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAttestor,
+      InstructionAccountInputAddress<TAccountAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -346,6 +395,7 @@ export async function getDrawInstructionAsync<
 
 export type DrawInput<
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
+  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
@@ -359,6 +409,11 @@ export type DrawInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   borrower: TAccountBorrower;
+  /**
+   * The pool's attestor (D14): the agreements engine attests that the pagaré behind
+   * `document_hash` was signed by the borrower and is conserved. No money moves without it.
+   */
+  attestor: TAccountAttestor;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for its decimals (`transfer_checked`). */
@@ -368,10 +423,13 @@ export type DrawInput<
   tokenProgram?: TAccountTokenProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  amount: DrawInstructionDataArgs["amount"];
+  documentHash: DrawInstructionDataArgs["documentHash"];
 };
 
 export function getDrawInstruction<
   TAccountBorrower extends InstructionSignerInput,
+  TAccountAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput,
@@ -384,6 +442,7 @@ export function getDrawInstruction<
 >(
   input: DrawInput<
     TAccountBorrower,
+    TAccountAttestor,
     TAccountPool,
     TAccountLine,
     TAccountAssetMint,
@@ -401,6 +460,10 @@ export function getDrawInstruction<
   ResolvedInstructionAccountMeta<
     TAccountBorrower,
     InstructionAccountInputAddress<TAccountBorrower>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountAttestor,
+    InstructionAccountInputAddress<TAccountAttestor>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -453,6 +516,11 @@ export function getDrawInstruction<
       isSigner: true,
       isWritable: false,
     },
+    attestor: {
+      value: input.attestor ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     assetMint: {
@@ -487,6 +555,9 @@ export function getDrawInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
@@ -500,6 +571,7 @@ export function getDrawInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("borrower", accounts.borrower),
+      getAccountMeta("attestor", accounts.attestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("assetMint", accounts.assetMint),
@@ -509,13 +581,19 @@ export function getDrawInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getDrawInstructionDataEncoder().encode({}),
+    data: getDrawInstructionDataEncoder().encode(
+      args as DrawInstructionDataArgs,
+    ),
     programAddress,
   } as DrawInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
       InstructionAccountInputAddress<TAccountBorrower>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAttestor,
+      InstructionAccountInputAddress<TAccountAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -559,15 +637,20 @@ export type ParsedDrawInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     borrower: TAccountMetas[0];
-    pool: TAccountMetas[1];
-    line: TAccountMetas[2];
+    /**
+     * The pool's attestor (D14): the agreements engine attests that the pagaré behind
+     * `document_hash` was signed by the borrower and is conserved. No money moves without it.
+     */
+    attestor: TAccountMetas[1];
+    pool: TAccountMetas[2];
+    line: TAccountMetas[3];
     /** Read for its decimals (`transfer_checked`). */
-    assetMint: TAccountMetas[3];
-    vault: TAccountMetas[4];
-    borrowerAssetAccount: TAccountMetas[5];
-    tokenProgram: TAccountMetas[6];
-    eventAuthority: TAccountMetas[7];
-    program: TAccountMetas[8];
+    assetMint: TAccountMetas[4];
+    vault: TAccountMetas[5];
+    borrowerAssetAccount: TAccountMetas[6];
+    tokenProgram: TAccountMetas[7];
+    eventAuthority: TAccountMetas[8];
+    program: TAccountMetas[9];
   };
   data: DrawInstructionData;
 };
@@ -580,12 +663,12 @@ export function parseDrawInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedDrawInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 9) {
+  if (instruction.accounts.length < 10) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 9,
+        expectedAccountMetas: 10,
       },
     );
   }
@@ -599,6 +682,7 @@ export function parseDrawInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       borrower: getNextAccount(),
+      attestor: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       assetMint: getNextAccount(),

@@ -25,6 +25,8 @@ import {
   getU16Encoder,
   getU64Decoder,
   getU64Encoder,
+  getU8Decoder,
+  getU8Encoder,
   getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
@@ -79,6 +81,7 @@ export type OpenLineInstruction<
   TAccountAdmin extends string | AccountMeta<string> = string,
   TAccountBorrower extends string | AccountMeta<string> = string,
   TAccountSponsor extends string | AccountMeta<string> = string,
+  TAccountAttestor extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
@@ -104,6 +107,10 @@ export type OpenLineInstruction<
         ? ReadonlySignerAccount<TAccountSponsor> &
             AccountSignerMeta<TAccountSponsor>
         : TAccountSponsor,
+      TAccountAttestor extends string
+        ? ReadonlySignerAccount<TAccountAttestor> &
+            AccountSignerMeta<TAccountAttestor>
+        : TAccountAttestor,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -134,7 +141,9 @@ export type OpenLineInstructionData = {
   termEnd: bigint;
   agreementHash: ReadonlyUint8Array;
   sponsor: Option<Address>;
+  sponsorRole: number;
   schedule: Option<ScheduleParams>;
+  expedienteRoot: ReadonlyUint8Array;
 };
 
 export type OpenLineInstructionDataArgs = {
@@ -144,7 +153,9 @@ export type OpenLineInstructionDataArgs = {
   termEnd: number | bigint;
   agreementHash: ReadonlyUint8Array;
   sponsor: OptionOrNullable<Address | HasAddress>;
+  sponsorRole: number;
   schedule: OptionOrNullable<ScheduleParamsArgs>;
+  expedienteRoot: ReadonlyUint8Array;
 };
 
 export function getOpenLineInstructionDataEncoder(): Encoder<OpenLineInstructionDataArgs> {
@@ -157,7 +168,9 @@ export function getOpenLineInstructionDataEncoder(): Encoder<OpenLineInstruction
       ["termEnd", getI64Encoder()],
       ["agreementHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["sponsor", getOptionEncoder(getAddressEncoder())],
+      ["sponsorRole", getU8Encoder()],
       ["schedule", getOptionEncoder(getScheduleParamsEncoder())],
+      ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: OPEN_LINE_DISCRIMINATOR }),
   );
@@ -172,7 +185,9 @@ export function getOpenLineInstructionDataDecoder(): Decoder<OpenLineInstruction
     ["termEnd", getI64Decoder()],
     ["agreementHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["sponsor", getOptionDecoder(getAddressDecoder())],
+    ["sponsorRole", getU8Decoder()],
     ["schedule", getOptionDecoder(getScheduleParamsDecoder())],
+    ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
 
@@ -190,6 +205,7 @@ export type OpenLineAsyncInput<
   TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
   TAccountSponsor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
@@ -203,6 +219,11 @@ export type OpenLineAsyncInput<
   borrower: TAccountBorrower;
   /** The sponsor named in the arguments; required (and signing) when one is named. */
   sponsor?: TAccountSponsor;
+  /**
+   * The pool's attestor (D16): the agreements engine attests that the signed agreement behind
+   * `agreement_hash` exists and matches the arguments.
+   */
+  attestor: TAccountAttestor;
   pool: TAccountPool;
   line?: TAccountLine;
   /** Read for the NAV the concentration cap is measured against. */
@@ -216,13 +237,16 @@ export type OpenLineAsyncInput<
   termEnd: OpenLineInstructionDataArgs["termEnd"];
   agreementHash: OpenLineInstructionDataArgs["agreementHash"];
   sponsorArg: OpenLineInstructionDataArgs["sponsor"];
+  sponsorRole: OpenLineInstructionDataArgs["sponsorRole"];
   schedule: OpenLineInstructionDataArgs["schedule"];
+  expedienteRoot: OpenLineInstructionDataArgs["expedienteRoot"];
 };
 
 export async function getOpenLineInstructionAsync<
   TAccountAdmin extends InstructionSignerInput,
   TAccountBorrower extends InstructionSignerInput,
   TAccountSponsor extends InstructionSignerInput,
+  TAccountAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
@@ -235,6 +259,7 @@ export async function getOpenLineInstructionAsync<
     TAccountAdmin,
     TAccountBorrower,
     TAccountSponsor,
+    TAccountAttestor,
     TAccountPool,
     TAccountLine,
     TAccountVault,
@@ -259,6 +284,10 @@ export async function getOpenLineInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountSponsor,
       InstructionAccountInputAddress<TAccountSponsor>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAttestor,
+      InstructionAccountInputAddress<TAccountAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -307,6 +336,11 @@ export async function getOpenLineInstructionAsync<
     },
     sponsor: {
       value: input.sponsor ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
+    attestor: {
+      value: input.attestor ?? null,
       isSigner: true,
       isWritable: false,
     },
@@ -370,6 +404,7 @@ export async function getOpenLineInstructionAsync<
       getAccountMeta("admin", accounts.admin),
       getAccountMeta("borrower", accounts.borrower),
       getAccountMeta("sponsor", accounts.sponsor),
+      getAccountMeta("attestor", accounts.attestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("vault", accounts.vault),
@@ -394,6 +429,10 @@ export async function getOpenLineInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountSponsor,
       InstructionAccountInputAddress<TAccountSponsor>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAttestor,
+      InstructionAccountInputAddress<TAccountAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -426,6 +465,7 @@ export type OpenLineInput<
   TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
   TAccountSponsor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
@@ -439,6 +479,11 @@ export type OpenLineInput<
   borrower: TAccountBorrower;
   /** The sponsor named in the arguments; required (and signing) when one is named. */
   sponsor?: TAccountSponsor;
+  /**
+   * The pool's attestor (D16): the agreements engine attests that the signed agreement behind
+   * `agreement_hash` exists and matches the arguments.
+   */
+  attestor: TAccountAttestor;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for the NAV the concentration cap is measured against. */
@@ -452,13 +497,16 @@ export type OpenLineInput<
   termEnd: OpenLineInstructionDataArgs["termEnd"];
   agreementHash: OpenLineInstructionDataArgs["agreementHash"];
   sponsorArg: OpenLineInstructionDataArgs["sponsor"];
+  sponsorRole: OpenLineInstructionDataArgs["sponsorRole"];
   schedule: OpenLineInstructionDataArgs["schedule"];
+  expedienteRoot: OpenLineInstructionDataArgs["expedienteRoot"];
 };
 
 export function getOpenLineInstruction<
   TAccountAdmin extends InstructionSignerInput,
   TAccountBorrower extends InstructionSignerInput,
   TAccountSponsor extends InstructionSignerInput,
+  TAccountAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
@@ -471,6 +519,7 @@ export function getOpenLineInstruction<
     TAccountAdmin,
     TAccountBorrower,
     TAccountSponsor,
+    TAccountAttestor,
     TAccountPool,
     TAccountLine,
     TAccountVault,
@@ -494,6 +543,10 @@ export function getOpenLineInstruction<
   ResolvedInstructionAccountMeta<
     TAccountSponsor,
     InstructionAccountInputAddress<TAccountSponsor>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountAttestor,
+    InstructionAccountInputAddress<TAccountAttestor>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -544,6 +597,11 @@ export function getOpenLineInstruction<
       isSigner: true,
       isWritable: false,
     },
+    attestor: {
+      value: input.attestor ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
@@ -586,6 +644,7 @@ export function getOpenLineInstruction<
       getAccountMeta("admin", accounts.admin),
       getAccountMeta("borrower", accounts.borrower),
       getAccountMeta("sponsor", accounts.sponsor),
+      getAccountMeta("attestor", accounts.attestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("vault", accounts.vault),
@@ -610,6 +669,10 @@ export function getOpenLineInstruction<
     ResolvedInstructionAccountMeta<
       TAccountSponsor,
       InstructionAccountInputAddress<TAccountSponsor>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAttestor,
+      InstructionAccountInputAddress<TAccountAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -648,13 +711,18 @@ export type ParsedOpenLineInstruction<
     borrower: TAccountMetas[1];
     /** The sponsor named in the arguments; required (and signing) when one is named. */
     sponsor?: TAccountMetas[2] | undefined;
-    pool: TAccountMetas[3];
-    line: TAccountMetas[4];
+    /**
+     * The pool's attestor (D16): the agreements engine attests that the signed agreement behind
+     * `agreement_hash` exists and matches the arguments.
+     */
+    attestor: TAccountMetas[3];
+    pool: TAccountMetas[4];
+    line: TAccountMetas[5];
     /** Read for the NAV the concentration cap is measured against. */
-    vault: TAccountMetas[5];
-    systemProgram: TAccountMetas[6];
-    eventAuthority: TAccountMetas[7];
-    program: TAccountMetas[8];
+    vault: TAccountMetas[6];
+    systemProgram: TAccountMetas[7];
+    eventAuthority: TAccountMetas[8];
+    program: TAccountMetas[9];
   };
   data: OpenLineInstructionData;
 };
@@ -667,12 +735,12 @@ export function parseOpenLineInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedOpenLineInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 9) {
+  if (instruction.accounts.length < 10) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 9,
+        expectedAccountMetas: 10,
       },
     );
   }
@@ -694,6 +762,7 @@ export function parseOpenLineInstruction<
       admin: getNextAccount(),
       borrower: getNextAccount(),
       sponsor: getNextOptionalAccount(),
+      attestor: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       vault: getNextAccount(),

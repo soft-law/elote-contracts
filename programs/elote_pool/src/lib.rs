@@ -63,9 +63,11 @@ pub mod elote_pool {
         instructions::pool::redeem(ctx, shares, min_assets_out)
     }
 
-    /// Approves credit line `line_id` (the next in sequence) for `borrower`; a named sponsor
-    /// co-signs. With `schedule`, the line is repaid in installments (version 2); without it, at a
-    /// single maturity (version 1). Moves no money.
+    /// Approves credit line `line_id` (the next in sequence): a commitment of `principal` to
+    /// `borrower` at an annual `rate_bps`, drawable in tranches until the first due date (or the
+    /// term on a bullet line). The admin, the borrower, the attestor and a named sponsor sign.
+    /// With `schedule`, the line is repaid in installments on the contract's calendar; without
+    /// it, at `term_end`. Moves no money.
     #[allow(clippy::too_many_arguments)]
     pub fn open_line(
         ctx: Context<OpenLine>,
@@ -75,20 +77,34 @@ pub mod elote_pool {
         term_end: i64,
         agreement_hash: [u8; 32],
         sponsor: Option<Pubkey>,
+        sponsor_role: u8,
         schedule: Option<ScheduleParams>,
+        expediente_root: [u8; 32],
     ) -> Result<()> {
-        instructions::lines::open_line(ctx, line_id, principal, rate_bps, term_end, agreement_hash, sponsor, schedule)
+        instructions::lines::open_line(
+            ctx,
+            line_id,
+            principal,
+            rate_bps,
+            term_end,
+            agreement_hash,
+            sponsor,
+            sponsor_role,
+            schedule,
+            expediente_root,
+        )
     }
 
-    /// Pays the whole principal of an approved line from the vault to the borrower, before the
-    /// term ends.
-    pub fn draw(ctx: Context<Draw>) -> Result<()> {
-        instructions::lines::draw(ctx)
+    /// Draws a tranche of `amount` from the vault to the borrower while the draw window is open,
+    /// against the signed pagaré whose hash is `document_hash`. The borrower and the attestor
+    /// sign. Interest on the tranche, at the annual rate to the last due date, is fixed here.
+    pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32]) -> Result<()> {
+        instructions::lines::draw(ctx, amount, document_hash)
     }
 
-    /// Repays up to `amount` of a drawn line. Anyone may pay. A single-maturity line takes
-    /// principal first, then interest; a scheduled line takes late interest (which `amount` must
-    /// cover), then interest, then principal, and never more than is due.
+    /// Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then
+    /// interest, then principal, and never more than is due. Anyone may pay. A full repayment
+    /// closes the line and forfeits the undrawn remainder.
     pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
         instructions::lines::repay(ctx, amount)
     }

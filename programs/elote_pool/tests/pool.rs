@@ -601,7 +601,7 @@ fn nav_updated_follows_every_money_instruction() {
     let borrower = env.borrower(&k);
     let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000);
     let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
-    let meta = env.send(ix, &borrower, &[]);
+    let meta = env.send_with_attestor(ix, &borrower);
     assert!(find_event::<NavUpdated>(&meta).is_none(), "a draw moves no value: vault down, outstanding up");
 
     // Principal plus the 0.4 of interest: the NAV rises, the supply does not.
