@@ -148,6 +148,12 @@ pub mod elote_pool {
         instructions::pagare::endorse_pagare(ctx, draw_index, kind, to, endoso_hash)
     }
 
+    /// Revokes the procuración in force on pagaré `draw_index` (LGTOC 41): appends the revocation
+    /// entry over the signed revocation's hash and takes the delegate back. The holder alone signs.
+    pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entry_hash: [u8; 32]) -> Result<()> {
+        instructions::pagare::revoke_procuracion(ctx, draw_index, entry_hash)
+    }
+
     /// Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then
     /// interest, then principal, and never more than is due. Anyone may pay. A full repayment
     /// closes the line and forfeits the undrawn remainder.

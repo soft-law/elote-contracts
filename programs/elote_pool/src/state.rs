@@ -356,8 +356,9 @@ pub struct Pagare {
     /// outstanding.
     pub receipt_hash: [u8; 32],
     pub bump: u8,
-    /// Room for later facts without a layout change.
-    pub reserved: [u8; 32],
+    /// The procurador of the endoso en procuración in force (`flags` bit 1); the zero key when
+    /// there is none. Set by `endorse_pagare`, cleared by `revoke_procuracion`.
+    pub procurador: Pubkey,
     /// The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first.
     pub log_root: [u8; 32],
     /// Entries in the chain; the issuance entry is 1.

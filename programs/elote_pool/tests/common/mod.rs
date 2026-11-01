@@ -1136,6 +1136,30 @@ impl Env {
         }
     }
 
+    /// `revoke_procuracion(draw_index, entry_hash)` by `holder` as payer too.
+    pub fn revoke_procuracion_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, entry_hash: [u8; 32]) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::RevokeProcuracion {
+                holder: *holder,
+                payer: *holder,
+                pool: k.pool,
+                line,
+                pagare: pagare_pda(&line, draw_index).0,
+                asset: self.pagare(k, line_id, draw_index).asset,
+                collection: k.collection,
+                mpl_core_program: MPL_CORE_ID,
+                system_program: SYSTEM_PROGRAM_ID,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::RevokeProcuracion { draw_index, entry_hash }.data(),
+        }
+    }
+
     /// An endoso en procuración of pagaré `draw_index` to `procurador`, signed by the admin and the attestor.
     pub fn procuracion(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, procurador: &Pubkey, endoso_hash: [u8; 32]) -> TransactionMetadata {
         let admin = self.admin.insecure_clone();

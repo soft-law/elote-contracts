@@ -508,7 +508,7 @@ pub fn draw(
         paid_at: 0,
         receipt_hash: [0; 32],
         bump: pagare_bump,
-        reserved: [0; 32],
+        procurador: Pubkey::default(),
         log_root: [0; 32],
         entry_count: 0,
         last_kind: 0,

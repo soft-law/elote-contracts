@@ -89,8 +89,11 @@ export type Pagare = {
    */
   receiptHash: ReadonlyUint8Array;
   bump: number;
-  /** Room for later facts without a layout change. */
-  reserved: ReadonlyUint8Array;
+  /**
+   * The procurador of the endoso en procuración in force (`flags` bit 1); the zero key when
+   * there is none. Set by `endorse_pagare`, cleared by `revoke_procuracion`.
+   */
+  procurador: Address;
   /** The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first. */
   logRoot: ReadonlyUint8Array;
   /** Entries in the chain; the issuance entry is 1. */
@@ -143,8 +146,11 @@ export type PagareArgs = {
    */
   receiptHash: ReadonlyUint8Array;
   bump: number;
-  /** Room for later facts without a layout change. */
-  reserved: ReadonlyUint8Array;
+  /**
+   * The procurador of the endoso en procuración in force (`flags` bit 1); the zero key when
+   * there is none. Set by `endorse_pagare`, cleared by `revoke_procuracion`.
+   */
+  procurador: Address | HasAddress;
   /** The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first. */
   logRoot: ReadonlyUint8Array;
   /** Entries in the chain; the issuance entry is 1. */
@@ -180,7 +186,7 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["paidAt", getI64Encoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["bump", getU8Encoder()],
-      ["reserved", fixEncoderSize(getBytesEncoder(), 32)],
+      ["procurador", getAddressEncoder()],
       ["logRoot", fixEncoderSize(getBytesEncoder(), 32)],
       ["entryCount", getU16Encoder()],
       ["lastKind", getU8Encoder()],
@@ -211,7 +217,7 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["paidAt", getI64Decoder()],
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["bump", getU8Decoder()],
-    ["reserved", fixDecoderSize(getBytesDecoder(), 32)],
+    ["procurador", getAddressDecoder()],
     ["logRoot", fixDecoderSize(getBytesDecoder(), 32)],
     ["entryCount", getU16Decoder()],
     ["lastKind", getU8Decoder()],

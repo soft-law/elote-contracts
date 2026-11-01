@@ -95,7 +95,20 @@ generated client derives `findPagarePda` and the `cancelPagare` builder derives 
   owner-managed `BurnDelegate` whose authority is the PDA `["procurador", pagare, to]` (helper to
   come in `pagare.ts`); nothing else moves.
 - **Sidecar `flags`:** bit 0 = the `BurnDelegate` plugin exists on the asset; bit 1 = a procuración
-  is in force. Clients read bit 1 to show "en procuración".
+  is in force. Clients read bit 1 to show "en procuración" and `Pagare.procurador` (the former
+  `reserved` bytes at offset 213, same size) for who may collect; the zero key when none.
 - **Errors added:** 6039 `PagareAccountsMismatch` (reserved for the repay entries), 6040
   `EndosoKindInvalid`, 6041 `EndorseeInvalid`, 6042 `ProcuracionState`.
 - Compute: about 34 600 CU at 120 installments.
+
+## 6d part 1 (c): `revoke_procuracion`, and the procurador on the sidecar
+
+- **New instruction** `revoke_procuracion(draw_index: u16, entry_hash: [u8; 32])`. Signers: holder (the
+  admin while the asset is in the pool), payer. Accounts as `endorse_pagare` without the attestor.
+  `entry_hash` is the signed revocation's hash. Appends entry `Revocacion` (from = the pool, to =
+  the recorded procurador), emits `PagareEntry`, clears `flags` bit 1 and `Pagare.procurador`; the
+  asset's `BurnDelegate` returns to authority `Owner` and stays. Errors: `DocumentHashRequired`,
+  `ProcuracionState` (6042) when nothing is in force.
+- **`Pagare.procurador: Pubkey`** at offset 213 (the former `reserved` bytes, same size): the
+  procurador of the procuración in force, the zero key when none. Set by `endorse_pagare`, cleared
+  here. Clients show it as who may collect today.

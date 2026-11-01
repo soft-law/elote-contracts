@@ -154,6 +154,13 @@ fn procuracion_stays_under_the_ceiling() {
     let cu = env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH).compute_units_consumed;
     println!("endorse_pagare (procuracion, plugin added) at 120 installments: {cu} CU");
     assert!(cu < CEILING, "procuracion used {cu} CU, ceiling {CEILING}");
+    let admin = env.admin.insecure_clone();
+    let ix = env.revoke_procuracion_ix(&k, line_id, 0, &admin.pubkey(), [0x7e; 32]);
+    let revoke = env.send(ix, &admin, &[]).compute_units_consumed;
+    println!("revoke_procuracion at 120 installments: {revoke} CU");
+    let again = env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH).compute_units_consumed;
+    println!("endorse_pagare (procuracion, plugin approved) at 120 installments: {again} CU");
+    assert!(revoke < CEILING && again < CEILING);
 }
 
 #[test]

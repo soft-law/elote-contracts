@@ -57,6 +57,7 @@ import {
   getOpenLineInstructionAsync,
   getRedeemInstructionAsync,
   getRepayInstructionAsync,
+  getRevokeProcuracionInstructionAsync,
   getSetAttestorInstructionAsync,
   getSetCollectionPeriodInstructionAsync,
   getSetPausedInstructionAsync,
@@ -72,6 +73,7 @@ import {
   parseOpenLineInstruction,
   parseRedeemInstruction,
   parseRepayInstruction,
+  parseRevokeProcuracionInstruction,
   parseSetAttestorInstruction,
   parseSetCollectionPeriodInstruction,
   parseSetPausedInstruction,
@@ -95,6 +97,7 @@ import {
   type ParsedOpenLineInstruction,
   type ParsedRedeemInstruction,
   type ParsedRepayInstruction,
+  type ParsedRevokeProcuracionInstruction,
   type ParsedSetAttestorInstruction,
   type ParsedSetCollectionPeriodInstruction,
   type ParsedSetPausedInstruction,
@@ -102,6 +105,7 @@ import {
   type ParsedWriteOffInstruction,
   type RedeemAsyncInput,
   type RepayAsyncInput,
+  type RevokeProcuracionAsyncInput,
   type SetAttestorAsyncInput,
   type SetCollectionPeriodAsyncInput,
   type SetPausedAsyncInput,
@@ -503,6 +507,7 @@ export enum ElotePoolInstruction {
   OpenLine,
   Redeem,
   Repay,
+  RevokeProcuracion,
   SetAttestor,
   SetCollectionPeriod,
   SetPaused,
@@ -628,6 +633,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([139, 183, 251, 198, 206, 163, 91, 183]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.RevokeProcuracion;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([95, 11, 236, 157, 234, 146, 163, 237]),
       ),
       0,
@@ -719,6 +735,9 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.Repay;
     } & ParsedRepayInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.RevokeProcuracion;
+    } & ParsedRevokeProcuracionInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.SetAttestor;
     } & ParsedSetAttestorInstruction<TProgram>)
   | ({
@@ -807,6 +826,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.Repay,
         ...parseRepayInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.RevokeProcuracion: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.RevokeProcuracion,
+        ...parseRevokeProcuracionInstruction(instruction),
       };
     }
     case ElotePoolInstruction.SetAttestor: {
@@ -919,6 +945,11 @@ export type ElotePoolPluginInstructions = {
     input: MakeOptional<RepayAsyncInput, "payer">,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRepayInstructionAsync> & SelfPlanAndSendFunctions;
+  revokeProcuracion: (
+    input: MakeOptional<RevokeProcuracionAsyncInput, "payer">,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getRevokeProcuracionInstructionAsync> &
+    SelfPlanAndSendFunctions;
   setAttestor: (
     input: SetAttestorAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1060,6 +1091,17 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getRepayInstructionAsync(
+                { ...input, payer: input.payer ?? client.payer },
+                {
+                  programAddress:
+                    instructionConfig?.programAddress ?? config.programAddress,
+                },
+              ),
+            ),
+          revokeProcuracion: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getRevokeProcuracionInstructionAsync(
                 { ...input, payer: input.payer ?? client.payer },
                 {
                   programAddress:

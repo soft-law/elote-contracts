@@ -9,8 +9,8 @@ use crate::events::PagareCancelled;
 use crate::pool_signer;
 use crate::registry;
 use crate::state::{
-    seeds, CreditLine, LineStatus, Pagare, Pool, KIND_PROCURACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION,
-    PAGARE_OUTSTANDING, PAGARE_PAID,
+    seeds, CreditLine, LineStatus, Pagare, Pool, KIND_PROCURACION, KIND_REVOCACION, PAGARE_FLAG_BURN_DELEGATE,
+    PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING, PAGARE_PAID,
 };
 use crate::events::PagareEntry;
 
@@ -211,6 +211,7 @@ pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to
     let pagare = &mut ctx.accounts.pagare;
     let entry_hash = registry::append(pagare, kind, &pool_key, &to, &endoso_hash, now).ok_or(PoolError::Overflow)?;
     pagare.flags |= PAGARE_FLAG_BURN_DELEGATE | PAGARE_FLAG_PROCURACION;
+    pagare.procurador = to;
     let entry_count = pagare.entry_count;
     let asset_key = pagare.asset;
 
@@ -251,6 +252,103 @@ pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to
         from: pool_key,
         to,
         entry_hash,
+        entry_count,
+        recorded_at: now,
+        stated_at: now,
+    });
+    Ok(())
+}
+
+// -----------------------------------------------------------------------------------------------
+// revoke_procuracion
+// -----------------------------------------------------------------------------------------------
+
+#[event_cpi]
+#[derive(Accounts)]
+#[instruction(draw_index: u16)]
+pub struct RevokeProcuracion<'info> {
+    /// The pagaré's holder: the admin while the asset is in the pool. The owner alone revokes.
+    #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
+    pub holder: Signer<'info>,
+
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account(
+        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+    )]
+    pub pool: Account<'info, Pool>,
+
+    #[account(
+        seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
+        bump = line.bump,
+        has_one = pool @ PoolError::WrongAccount,
+    )]
+    pub line: Account<'info, CreditLine>,
+
+    #[account(
+        mut,
+        seeds = [seeds::PAGARE, line.key().as_ref(), &draw_index.to_le_bytes()],
+        bump = pagare.bump,
+        has_one = line @ PoolError::WrongAccount,
+    )]
+    pub pagare: Account<'info, Pagare>,
+
+    /// CHECK: must be `pagare.asset`; the Core program checks the rest.
+    #[account(mut, address = pagare.asset @ PoolError::WrongAccount)]
+    pub asset: UncheckedAccount<'info>,
+
+    /// CHECK: must be `pool.collection`; the Core program checks the rest.
+    #[account(mut, address = pool.collection @ PoolError::WrongAccount)]
+    pub collection: UncheckedAccount<'info>,
+
+    /// CHECK: the Metaplex Core program, by address.
+    #[account(address = mpl_core::ID @ PoolError::WrongAccount)]
+    pub mpl_core_program: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+/// The revocation of the procuración in force (LGTOC 41): the owner alone, over the signed
+/// revocation's hash (`DocumentHashRequired`); refused when none is in force (`ProcuracionState`).
+/// Appends the `Revocacion` entry (from the pool, to the recorded procurador), clears the flag and
+/// the procurador, and `RevokePluginAuthorityV1` puts the `BurnDelegate` back to `Owner`; the
+/// plugin stays, so the next procuración approves it.
+pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entry_hash: [u8; 32]) -> Result<()> {
+    use mpl_core::instructions::RevokePluginAuthorityV1CpiBuilder;
+    use mpl_core::types::PluginType;
+    require!(entry_hash != [0u8; 32], PoolError::DocumentHashRequired);
+    let pagare = &ctx.accounts.pagare;
+    require!(pagare.flags & PAGARE_FLAG_PROCURACION != 0, PoolError::ProcuracionState);
+    let now = Clock::get()?.unix_timestamp;
+    let pool_key = ctx.accounts.pool.key();
+    let to = pagare.procurador;
+    let pagare = &mut ctx.accounts.pagare;
+    let hash = registry::append(pagare, KIND_REVOCACION, &pool_key, &to, &entry_hash, now).ok_or(PoolError::Overflow)?;
+    pagare.flags &= !PAGARE_FLAG_PROCURACION;
+    pagare.procurador = Pubkey::default();
+    let entry_count = pagare.entry_count;
+    let asset_key = pagare.asset;
+
+    let pool = &ctx.accounts.pool;
+    RevokePluginAuthorityV1CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
+        .asset(&ctx.accounts.asset.to_account_info())
+        .collection(Some(&ctx.accounts.collection.to_account_info()))
+        .payer(&ctx.accounts.payer.to_account_info())
+        .authority(Some(&ctx.accounts.pool.to_account_info()))
+        .system_program(&ctx.accounts.system_program.to_account_info())
+        .plugin_type(PluginType::BurnDelegate)
+        .invoke_signed(pool_signer!(pool))?;
+    emit_cpi!(PagareEntry {
+        pool: pool_key,
+        line_id: ctx.accounts.line.line_id,
+        draw_index,
+        asset: asset_key,
+        kind: KIND_REVOCACION,
+        from: pool_key,
+        to,
+        entry_hash: hash,
         entry_count,
         recorded_at: now,
         stated_at: now,

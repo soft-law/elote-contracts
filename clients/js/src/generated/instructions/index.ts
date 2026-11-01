@@ -16,6 +16,7 @@ export * from "./markInCollection";
 export * from "./openLine";
 export * from "./redeem";
 export * from "./repay";
+export * from "./revokeProcuracion";
 export * from "./setAttestor";
 export * from "./setCollectionPeriod";
 export * from "./setPaused";

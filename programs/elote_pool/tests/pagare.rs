@@ -340,8 +340,8 @@ fn cancel_pagare_marks_the_sidecar_paid_and_burns_the_asset() {
         (before.line, before.draw_index, before.asset, before.pagare_hash, before.amount, before.issued_at, before.due_at)
     );
     assert_eq!(
-        (after.drawn_through, after.cert_fingerprint, after.signature_method, after.bump, after.reserved),
-        (before.drawn_through, before.cert_fingerprint, before.signature_method, before.bump, before.reserved)
+        (after.drawn_through, after.cert_fingerprint, after.signature_method, after.bump, after.procurador),
+        (before.drawn_through, before.cert_fingerprint, before.signature_method, before.bump, before.procurador)
     );
     assert_eq!(env.account(&sidecar_key).lamports, sidecar_lamports, "the PAGADO mark is never closed");
     // The asset: burnt. Core leaves a one-byte `Uninitialized` tombstone (so the address cannot be
@@ -619,6 +619,7 @@ fn an_endoso_en_procuracion_appends_the_entry_and_lends_the_burn_to_a_program_ad
     assert_eq!((after.entry_count, after.last_kind, after.flags), (2, KIND_PROCURACION, PAGARE_FLAG_BURN_DELEGATE | PAGARE_FLAG_PROCURACION));
     assert_eq!(after.log_root, chain(&before.log_root, &expected));
     assert_eq!((after.status, after.asset, after.drawn_through), (before.status, before.asset, before.drawn_through), "nothing else moves");
+    assert_eq!((before.procurador, after.procurador), (solana_pubkey::Pubkey::default(), procurador.pubkey()), "the sidecar names the procurador");
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
     assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count, ev.recorded_at, ev.stated_at), (KIND_PROCURACION, k.pool, procurador.pubkey(), expected, 2, now, now));
     // The asset: still the pool's, still frozen, with a BurnDelegate held by the program PDA.
@@ -677,4 +678,60 @@ fn endorse_pagare_refuses_other_kinds_bad_endorsees_and_the_wrong_signers() {
     env.send(ix, &admin, &[]);
     let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, procurador.pubkey(), ENDOSO_HASH);
     env.expect_err(ix, &admin, &[&attestor], E_LINE_STATUS);
+}
+
+/// The revocation of a procuración (LGTOC 41): the owner alone appends the revocation entry and
+/// takes the burn delegate back to `Owner`; the in-force flag clears, the plugin flag stays, and a
+/// later procuración approves the existing plugin instead of adding it.
+#[test]
+fn revoke_procuracion_appends_the_entry_and_takes_the_delegate_back() {
+    use elote_pool::events::PagareEntry;
+    use elote_pool::state::{KIND_PROCURACION, KIND_REVOCACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let admin = env.admin.insecure_clone();
+    let procurador = env.funded(1);
+    let a = admin.pubkey();
+    let revocation = [0x7e; 32];
+
+    // Nothing to revoke yet.
+    let ix = env.revoke_procuracion_ix(&k, line_id, 0, &a, revocation);
+    env.expect_err(ix, &admin, &[], E_PROCURACION_STATE);
+
+    env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
+    let before = env.pagare(&k, line_id, 0);
+    // The owner alone; a zero hash and a stranger are refused.
+    let ix = env.revoke_procuracion_ix(&k, line_id, 0, &a, [0; 32]);
+    env.expect_err(ix, &admin, &[], E_DOCUMENT_HASH_REQUIRED);
+    let ix = env.revoke_procuracion_ix(&k, line_id, 0, &borrower.pubkey(), revocation);
+    env.expect_err(ix, &borrower, &[], E_NOT_HOLDER);
+    let ix = env.revoke_procuracion_ix(&k, line_id, 0, &a, revocation);
+    let meta = env.send(ix, &admin, &[]);
+    let now = env.now();
+    let after = env.pagare(&k, line_id, 0);
+    let expected = entry_hash(&after.asset, KIND_REVOCACION, &k.pool, &procurador.pubkey(), &revocation, now, 3);
+    assert_eq!((after.entry_count, after.last_kind, after.flags), (3, KIND_REVOCACION, PAGARE_FLAG_BURN_DELEGATE));
+    assert_eq!(after.procurador, solana_pubkey::Pubkey::default(), "nobody collects now");
+    assert_eq!(after.log_root, chain(&before.log_root, &expected));
+    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
+    assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count), (KIND_REVOCACION, k.pool, procurador.pubkey(), expected, 3));
+    let asset = env.asset_state(&after.asset);
+    let burn = asset.plugin_list.burn_delegate.as_ref().expect("the plugin stays");
+    assert_eq!(burn.base.authority.authority_type, AuthorityType::Owner);
+    // Revoking twice is refused; a new procuración to another procurador approves the existing plugin.
+    let ix = env.revoke_procuracion_ix(&k, line_id, 0, &a, revocation);
+    env.expect_err(ix, &admin, &[], E_PROCURACION_STATE);
+    let other = env.funded(1);
+    env.procuracion(&k, line_id, 0, &other.pubkey(), [0x5f; 32]);
+    let again = env.pagare(&k, line_id, 0);
+    assert_eq!((again.entry_count, again.last_kind, again.flags), (4, KIND_PROCURACION, PAGARE_FLAG_BURN_DELEGATE | PAGARE_FLAG_PROCURACION));
+    assert_eq!(again.procurador, other.pubkey());
+    let (pda, _) = procurador_pda(&pagare_pda(&line_pda(&k.pool, line_id).0, 0).0, &other.pubkey());
+    let asset = env.asset_state(&again.asset);
+    let burn = asset.plugin_list.burn_delegate.as_ref().unwrap();
+    assert_eq!(burn.base.authority.address, Some(pda));
 }
