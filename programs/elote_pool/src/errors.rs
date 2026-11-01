@@ -92,4 +92,8 @@ pub enum PoolError {
     ProcuracionState,
     #[msg("This kind is not a court annotation")]
     AnnotationKindInvalid,
+    #[msg("The cancel delay is below the seven-day floor")]
+    CancelDelayTooShort,
+    #[msg("A cancellation request is already pending on this pagaré")]
+    CancellationPending,
 }

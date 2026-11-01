@@ -143,7 +143,7 @@ filters.
 | 185 | 8 | `written_off` | informative running total |
 | 193 | 8 | `line_count` | next `line_id` |
 | 201 | 1 | `paused` | |
-| 202 | 32 | `reserved` | bytes 12..16: `collection_period_seconds` (u32 LE, step 8); bytes 8..12 reserved for `cancel_delay_seconds` (step 6d); bytes 0..4: `grace_period_seconds` (u32 LE); bytes 4..6: `max_line_bps` (u16 LE); byte 6: `permissioned` flag; byte 7: `asset_controls` bits (0 freeze authority, 1 Pausable); rest zero |
+| 202 | 32 | `reserved` | bytes 12..16: `collection_period_seconds` (u32 LE, step 8); bytes 8..12: `cancel_delay_seconds` (u32 LE, step 6d, the backstop's wait from a cancellation request); bytes 0..4: `grace_period_seconds` (u32 LE); bytes 4..6: `max_line_bps` (u16 LE); byte 6: `permissioned` flag; byte 7: `asset_controls` bits (0 freeze authority, 1 Pausable); rest zero |
 | 234 | 1 | `bump` | |
 | 235 | 32 | `attestor` | pool v2: the agreements engine's key; co-signs openings, draws and endosos; rotated by `set_attestor` |
 | 267 | 32 | `collection` | pool v2: the series' Metaplex Core collection the pagaré assets are minted into; admin-created, validated at `init_pool` (owner, `CollectionV1`, update authority = pool) |
@@ -237,7 +237,7 @@ rent is a cost of every draw.
 | 279 | 1 | `last_kind` | `KIND_*` of the last entry |
 | 280 | 1 | `flags` | bit 0: the asset carries an owner-managed `BurnDelegate` (a later procuración approves instead of adds); bit 1: an endoso en procuración is in force |
 | 281 | 32 | `cancel_receipt_hash` | the final receipt `cancel_pagare` was given; zero until the burn |
-| 313 | 8 | `requested_at` | the backstop's request time; zero otherwise |
+| 313 | 8 | `cancel_after` | the backstop's deadline: the request time plus the pool's cancel delay at the request; zero when no request is pending (any cancellation clears it) |
 | 321 | 32 | `requested_receipt_hash` | the receipt hash of that request |
 
 The Core asset is created in the same instruction with: owner = pool PDA (the vehicle's custody);
@@ -324,7 +324,7 @@ and is shown by the verifier as "transferencia sin asiento", never described in 
 "not an endoso" (art. 25 risk; template side); the class of the last entry is shown.
 
 **Sidecar layout at 6d.** To today's 245 bytes: `log_root` 32, `entry_count` 2, `last_kind` 1,
-`flags` 1, `cancel_receipt_hash` 32, `requested_at` 8, `requested_receipt_hash` 32: 353 bytes,
+`flags` 1, `cancel_receipt_hash` 32, `cancel_after` 8, `requested_receipt_hash` 32: 353 bytes,
 the 32 reserved bytes kept (321 without them). `status` gains a value: 0 `PAGARE_OUTSTANDING`,
 1 `PAGARE_PAID` (burnt), 2 `PAGARE_PAID_PENDING_CANCEL` (paid, the burn still owed). The layout
 table above is updated in the 6d commit; only `draw` creates sidecars and no mainnet pool exists.
@@ -395,21 +395,24 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
   coverage rule, the holder (the admin) and the attestor; stores `cancel_receipt_hash` (the final
   receipt may differ from the payment's; both are kept), appends a `Terminacion` entry (from the
   pool, to the pool) before the burn, sets `status = PAGARE_PAID`, ends any procuración in force
-  with the title, thaws (as the collection's authority) and burns as the owner. 48 557 CU.
+  with the title, thaws (as the collection's authority) and burns as the owner. 48 570 CU.
   Procurador branch: the procurador of record (`Pagare.procurador`, else `NotHolder`), the
   attestor, the same receipt and coverage checks, the `Terminacion` entry from the procurador,
   then thaw and `BurnV1` with the PDA `["procurador", pagare, procurador]` as authority, passed
-  as `procurador_authority` and signed by the program. 51 994 CU. The attestor co-signs because
+  as `procurador_authority` and signed by the program. 52 021 CU. The attestor co-signs because
   it certifies the receipt archive, not the holder's act.
 - Backstop, so the debtor is never left without receipt or title if the attestor fails (LGTOC 17,
   129; research prefers it to rotation, which is slow; rotation under C14 stays the primary
   recovery): `request_cancellation(draw_index, receipt_hash)` by the holder appends a
-  `SolicitudCancelacion` entry and sets `requested_at = now` and `requested_receipt_hash`; once
-  `now > requested_at + pool.cancel_delay_seconds` (a new pool parameter in `Pool.reserved`
-  bytes 8..12, set by `init_pool` with a floor of seven days and changed only by the admin, with
-  an event) and the attestor has not co-signed, `cancel_pagare` accepts
-  the holder alone with the same `receipt_hash` and the same checks. One small instruction and
-  one branch; built in part 1. In v1 the holder is the pool, so the backstop is the admin
+  `SolicitudCancelacion` entry (under the same checks as the cancellation, so no request precedes
+  the payment; one at a time, `CancellationPending`) and fixes the deadline, `cancel_after = now
+  + pool.cancel_delay_seconds` (a pool parameter in `Pool.reserved` bytes 8..12, set by
+  `init_pool` with a floor of seven days and changed only by the admin with `set_cancel_delay`,
+  with an event; the request stores its deadline, so a change never moves one pending), with
+  `requested_receipt_hash`; once `now > cancel_after` and without the attestor, `cancel_pagare`
+  accepts the holder alone with the same `receipt_hash` and the same checks (the procurador
+  never qualifies alone). Any cancellation clears the request. One small instruction and one
+  branch; built in part 1. In v1 the holder is the pool, so the backstop is the admin
   cancelling alone after the delay.
 
 **Specified, not built in v1 (A-compatible).**
@@ -560,7 +563,7 @@ all. A full decoder run against an attacker-chosen account of the right owner ca
 the program aborts (an asset passed as the collection did exactly that in development); a fixed
 read fails closed. For the pagaré assets the program trusts its own sidecar and the CPIs.
 
-### 5.1 `init_pool(grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey, collection_period_seconds: u32)`
+### 5.1 `init_pool(grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey, collection_period_seconds: u32, cancel_delay_seconds: u32)`
 
 - **Signers:** `admin` (also pays rent).
 - **Constraints:** `pool` is `init` at `["pool", admin, asset_mint]`; `share_mint` is an
@@ -586,7 +589,8 @@ read fails closed. For the pagaré assets the program trusts its own sidecar and
   recorded. `attestor != Pubkey::default()` (`WrongAccount`) and `attestor != admin`
   (`AttestorIsAdmin`, audit F-05: the two-signature model must not collapse into one key). Any
   value of `grace_period_seconds` is accepted, including zero; `collection_period_seconds >=
-  30 days` (`CollectionPeriodTooShort`, audit F-03). The `collection` account must be a bare
+  30 days` (`CollectionPeriodTooShort`, audit F-03); `cancel_delay_seconds >= 7 days`
+  (`CancelDelayTooShort`, step 6d). The `collection` account must be a bare
   Metaplex Core collection the pool controls (`validate_collection`: owned by the Core program,
   key `CollectionV1`, update authority = the pool PDA, the account exactly the base record with
   no plugin header after it, `num_minted == 0` and `current_size == 0`; `CollectionNotAllowed`).
@@ -594,8 +598,8 @@ read fails closed. For the pagaré assets the program trusts its own sidecar and
   delegate would reach every pagaré (audit F-02). Every read is at a fixed offset or bounded by a
   length read first; the strings are never decoded.
 - **Writes:** every `Pool` field (`version = 2`, `attestor`, `collection`); `reserved` zeroed
-  then the grace period, `max_line_bps`, `permissioned`, `asset_controls` and the collection
-  period packed in. On a
+  then the grace period, `max_line_bps`, `permissioned`, `asset_controls`, the collection
+  period and the cancel delay packed in. On a
   permissioned share mint the dead account is born frozen: the freeze authority thaws it in this
   transaction or before the first deposit, or the first deposit fails inside Token-2022
   (`AccountFrozen`).
@@ -859,7 +863,8 @@ the payment must outlive the título.
 
 - **Signers:** `holder`, who extinguishes the title: the pagaré's holder, which while the asset
   is in the pool is `pool.admin`, the vehicle's signer, or the procurador of record,
-  `Pagare.procurador` with the procuración in force (any other signer: `NotHolder`); `attestor` (`AttestorRequired`: the engine attests the FEA-signed receipt
+  `Pagare.procurador` with the procuración in force (any other signer: `NotHolder`); `attestor`, optional (`AttestorRequired` when absent unless the backstop
+  below applies: the engine attests the FEA-signed receipt
   behind `receipt_hash` exists and is conserved, and that it archived the asset's AppData log
   under NOM-151 before asking for the burn); `payer`, any signer, which receives the asset's rent
   from the Core program (the relayer that funded it at the draw, as a rule).
@@ -888,10 +893,15 @@ the payment must outlive the título.
   of the pagaré on a line whose interest equals its principal covers nothing). The program does not
   check that the receipt differs from other receipts: the engine issues one per pagaré and the
   attestor's signature is the guard. Not blocked by the pause: it records a payment and moves no funds.
+- **Backstop (no attestor account):** accepted only on the owner's branch when a request is
+  pending (`cancel_after != 0`), its deadline has passed (`now > cancel_after`) and
+  `receipt_hash` equals `requested_receipt_hash`; otherwise `AttestorRequired`. The same checks
+  as above apply. See `request_cancellation` (§5.18).
 - **Writes:** the `Terminacion` entry appended to the sidecar's chain (from the signer's role,
   the pool or the procurador, to the pool, over `receipt_hash`); the "PAGADO" mark on the
   sidecar, `status = PAGARE_PAID`, `paid_at = now`, `receipt_hash` (both until the payment
-  entries of 6d write them at the payment), `cancel_receipt_hash = receipt_hash`; a procuración
+  entries of 6d write them at the payment), `cancel_receipt_hash = receipt_hash`; a pending request cleared (`cancel_after = 0`,
+  `requested_receipt_hash` zeroed); a procuración
   in force ends with the title (`flags` bit 1 cleared, `procurador` zeroed; bit 0 stays as the
   plugin's history). Nothing else changes and the account is never closed (its rent stays locked,
   a cost of every draw).
@@ -908,7 +918,7 @@ the payment must outlive the título.
   has its key, so the burn happens only here); the collection, `payer`, the system program. Core leaves a one-byte `Uninitialized`
   tombstone at the address (so it cannot be re-created as an asset) and sends the rest of the
   rent to `payer`; the collection's `current_size` drops by one and `num_minted` stays.
-- **Compute:** 48 557 CU as the owner and 51 994 CU through the procurador's address on a
+- **Compute:** 48 570 CU as the owner and 52 021 CU through the procurador's address on a
   120-installment line (`tests/compute.rs`; the thaw is about 17 000 of it); no arrears loop runs.
 
 ### 5.14 `endorse_pagare(draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32])`
@@ -980,6 +990,33 @@ A court's act on the title, recorded by the holder with the attestor's co-signat
   `CollectionPeriodTooShort`).
 - **Writes:** `Pool.reserved[12..16]`. Applies to every line from its next `write_off` check,
   marked or not. **Events:** `CollectionPeriodSet`.
+
+### 5.18 `request_cancellation(draw_index: u16, receipt_hash: [u8; 32])`
+
+The backstop on the attestor (LGTOC 17 and 129): the debtor is never left without receipt or
+title if the attestor fails.
+
+- **Signers:** `holder` (`pool.admin` while the asset is in the pool, `NotHolder`), alone.
+- **Constraints:** as `court_annotation`: `pool`, `line` (`has_one = pool`), `pagare` (seeds,
+  `has_one = line`); no asset or Core account.
+- **Checks:** the same as `cancel_pagare` (outstanding, `receipt_hash != 0`, line `Active` or
+  `Repaid`, coverage), so a request cannot be filed before the title is paid; no request pending
+  (`cancel_after == 0`, else `CancellationPending`: a second request overwrites nothing).
+- **Writes:** the `SolicitudCancelacion` entry (from = to = the pool, over `receipt_hash`);
+  `cancel_after = now + pool.cancel_delay_seconds` (the delay in force at the request: a later
+  `set_cancel_delay` never moves a pending deadline, the cheaper of the two ways to guarantee
+  it, no extra field); `requested_receipt_hash = receipt_hash`. Any cancellation clears both.
+- **Events:** `PagareEntry`.
+- **Compute:** 14 144 CU at 120 installments (`tests/compute.rs`); the holder's cancellation
+  alone 48 296 CU.
+
+### 5.19 `set_cancel_delay(cancel_delay_seconds: u32)`
+
+- **Signers:** `admin` (`has_one = admin`, `Unauthorized`).
+- **Checks:** `cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS` (7 days;
+  `CancelDelayTooShort`).
+- **Writes:** `Pool.reserved[8..12]`. Applies to requests filed from now on; a pending request
+  keeps the deadline it stored. **Events:** `CancelDelaySet`.
 
 ## 6. Installments, arrears and late interest (`math.rs`)
 
@@ -1151,7 +1188,7 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/schedule.rs` | LiteSVM, clock warped | schedule validation, installments on their due dates, missed count over time, late interest after grace, caps, repayment order, collection after three missed, cure beats collection, write-off timing in both paths |
 | `tests/known_limits.rs` | LiteSVM | the nine tests in §9: six limits still in force and three inverted on 2026-10-31 |
 | `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
-| `tests/pagare.rs` | LiteSVM + the pinned Core binary | the registry's issuance entry, the endoso en procuración (entry, flags, the procurador recorded, the burn delegate on the program PDA, the refusals), its revocation, the court annotations (on a live, a written-off and a burnt title) and the procurador's extinction through the program address (both branches' Terminacion entry); one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
+| `tests/pagare.rs` | LiteSVM + the pinned Core binary | the registry's issuance entry, the endoso en procuración (entry, flags, the procurador recorded, the burn delegate on the program PDA, the refusals), its revocation, the court annotations (on a live, a written-off and a burnt title) and the procurador's extinction through the program address (both branches' Terminacion entry); the backstop (the cancel delay parameter, the request, the holder alone after the deadline); one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
 | `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins, costs about 4 200 CU and does not stop adapters; AppData is written by its fixed data authority and removed by the collection's authority; an Owner-held AppData authority follows the asset through `TransferV1` and a write replaces the data; owner-managed delegates are the owner's to add (AddBlocker or not), approve and revoke, reset to `Owner` on transfer, and the approved burn delegate burns a thawed asset; a burn delegate approved to a program address refuses the procurador's own key |
 | `tests/audit.rs` | LiteSVM | the regression tests of the 2026-11-01 audit (`docs/audits/`): F-01 a third-party repayment does not close a line that can still draw, F-02 a collection with plugins or minted assets is refused, F-03 the collection period from the mark, F-05 the attestor is neither the admin nor a borrower |
 | `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (44 544 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 82 574 CU at 120, deterministic, of which the Core CPI is about 37 000; `repay` 57 008, `mark_in_collection` 34 366, `write_off` 47 896 at 120 with every installment missed and the collection period run, so every installment takes the accrual branch; after an early mark, `repay` 48 181 and `write_off` 47 897) |
@@ -1159,7 +1196,7 @@ Other points outside the test file, from the same review and from the Etherfuse 
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 148 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 150 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.

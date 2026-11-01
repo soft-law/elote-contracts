@@ -514,7 +514,7 @@ pub fn draw(
         last_kind: 0,
         flags: 0,
         cancel_receipt_hash: [0; 32],
-        requested_at: 0,
+        cancel_after: 0,
         requested_receipt_hash: [0; 32],
     };
     // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.

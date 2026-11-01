@@ -10,8 +10,8 @@ use crate::pool_signer;
 use crate::registry;
 use crate::state::{
     seeds, CreditLine, LineStatus, Pagare, Pool, KIND_ANOTACION_JUDICIAL, KIND_CONSTANCIA_JUDICIAL, KIND_PROCURACION,
-    KIND_REVOCACION, KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING,
-    PAGARE_PAID,
+    KIND_REVOCACION, KIND_SOLICITUD_CANCELACION, KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION,
+    PAGARE_OUTSTANDING, PAGARE_PAID,
 };
 use crate::events::PagareEntry;
 
@@ -28,9 +28,10 @@ pub struct CancelPagare<'info> {
     /// handler (`NotHolder`).
     pub holder: Signer<'info>,
 
-    /// Attests the receipt behind `receipt_hash` and that the AppData log was archived.
-    #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
-    pub attestor: Signer<'info>,
+    /// Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional
+    /// for the backstop: left out, the holder cancels alone only after a recorded request's
+    /// deadline, with the requested receipt (`AttestorRequired` otherwise).
+    pub attestor: Option<Signer<'info>>,
 
     /// Receives the asset's rent from the Core program. Any signer.
     #[account(mut)]
@@ -84,8 +85,11 @@ pub struct CancelPagare<'info> {
 /// Two branches by the signer: the owner (the admin while the asset is in the pool) or the
 /// procurador of record (`Pagare::procurador` with the procuración in force, else `NotHolder`;
 /// on that branch `procurador_authority` must be the program address the delegate was approved
-/// to, `WrongAccount`). Checks, all before any write: the pagaré is outstanding
-/// (`PagareAlreadyPaid`); `receipt_hash` is not zero (`DocumentHashRequired`); the line is
+/// to, `WrongAccount`). The attestor co-signs or, on the owner's branch alone, a recorded
+/// request's deadline has passed and `receipt_hash` is the requested one (the backstop on the
+/// attestor, LGTOC 17 and 129; `AttestorRequired` otherwise). Checks, all before any write: the
+/// pagaré is outstanding (`PagareAlreadyPaid`); `receipt_hash` is not zero
+/// (`DocumentHashRequired`); the line is
 /// `Active` or `Repaid` (`LineStatus`: in collection or written off the títulos stay in force);
 /// `principal_repaid >= drawn_through` (`PagareNotCovered`; the payment entries of 6d will mark
 /// the title paid and this rule stands in until then). Coverage counts principal only, oldest
@@ -111,6 +115,20 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     require!(matches!(line.status, LineStatus::Active | LineStatus::Repaid), PoolError::LineStatus);
     require!(line.principal_repaid >= pagare.drawn_through, PoolError::PagareNotCovered);
+    let now = Clock::get()?.unix_timestamp;
+    // The attestor, or the backstop: the holder alone, once a recorded request's deadline has
+    // passed, with the requested receipt.
+    match ctx.accounts.attestor.as_ref() {
+        Some(attestor) => {
+            require_keys_eq!(attestor.key(), pool.attestor, PoolError::AttestorRequired);
+        }
+        None => {
+            require!(
+                !by_procurador && pagare.cancel_after != 0 && now > pagare.cancel_after && receipt_hash == pagare.requested_receipt_hash,
+                PoolError::AttestorRequired
+            );
+        }
+    }
     // The procurador's program address, derived and compared before any write.
     let authority_bump = if by_procurador {
         let (pda, bump) = Pubkey::find_program_address(&[seeds::PROCURADOR, pagare_key.as_ref(), signer.as_ref()], ctx.program_id);
@@ -121,7 +139,6 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
         None
     };
 
-    let now = Clock::get()?.unix_timestamp;
     let pool_key = pool.key();
     let from = if by_procurador { signer } else { pool_key };
     let pagare = &mut ctx.accounts.pagare;
@@ -130,6 +147,9 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
     pagare.paid_at = now;
     pagare.receipt_hash = receipt_hash;
     pagare.cancel_receipt_hash = receipt_hash;
+    // Any cancellation clears a pending request.
+    pagare.cancel_after = 0;
+    pagare.requested_receipt_hash = [0; 32];
     // The title's extinction ends a procuración in force; the plugin flag stays as history.
     pagare.flags &= !PAGARE_FLAG_PROCURACION;
     pagare.procurador = Pubkey::default();
@@ -476,6 +496,78 @@ pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8
         draw_index,
         asset: pagare.asset,
         kind,
+        from: pool_key,
+        to: pool_key,
+        entry_hash: hash,
+        entry_count: pagare.entry_count,
+        recorded_at: now,
+        stated_at: now,
+    });
+    Ok(())
+}
+
+// -----------------------------------------------------------------------------------------------
+// request_cancellation
+// -----------------------------------------------------------------------------------------------
+
+#[event_cpi]
+#[derive(Accounts)]
+#[instruction(draw_index: u16)]
+pub struct RequestCancellation<'info> {
+    /// The pagaré's holder: the admin while the asset is in the pool.
+    #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
+    pub holder: Signer<'info>,
+
+    #[account(
+        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+    )]
+    pub pool: Account<'info, Pool>,
+
+    #[account(
+        seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
+        bump = line.bump,
+        has_one = pool @ PoolError::WrongAccount,
+    )]
+    pub line: Account<'info, CreditLine>,
+
+    #[account(
+        mut,
+        seeds = [seeds::PAGARE, line.key().as_ref(), &draw_index.to_le_bytes()],
+        bump = pagare.bump,
+        has_one = line @ PoolError::WrongAccount,
+    )]
+    pub pagare: Account<'info, Pagare>,
+}
+
+/// The backstop's request (LGTOC 17, 129): the holder records, over the receipt's hash, that the
+/// title is to be cancelled, under the same checks as the cancellation itself, so no request
+/// precedes the payment; one at a time (`CancellationPending`). Appends the
+/// `SolicitudCancelacion` entry and fixes the deadline, `cancel_after = now +
+/// pool.cancel_delay_seconds`, which a later change of the delay never moves. Any cancellation
+/// clears the request.
+pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
+    let pool = &ctx.accounts.pool;
+    let line = &ctx.accounts.line;
+    let pagare = &ctx.accounts.pagare;
+    require!(pagare.status == PAGARE_OUTSTANDING, PoolError::PagareAlreadyPaid);
+    require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
+    require!(matches!(line.status, LineStatus::Active | LineStatus::Repaid), PoolError::LineStatus);
+    require!(line.principal_repaid >= pagare.drawn_through, PoolError::PagareNotCovered);
+    require!(pagare.cancel_after == 0, PoolError::CancellationPending);
+    let now = Clock::get()?.unix_timestamp;
+    let deadline = now.checked_add(i64::from(pool.cancel_delay_seconds())).ok_or(PoolError::Overflow)?;
+    let pool_key = pool.key();
+    let pagare = &mut ctx.accounts.pagare;
+    let hash = registry::append(pagare, KIND_SOLICITUD_CANCELACION, &pool_key, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
+    pagare.cancel_after = deadline;
+    pagare.requested_receipt_hash = receipt_hash;
+    emit_cpi!(PagareEntry {
+        pool: pool_key,
+        line_id: line.line_id,
+        draw_index,
+        asset: pagare.asset,
+        kind: KIND_SOLICITUD_CANCELACION,
         from: pool_key,
         to: pool_key,
         entry_hash: hash,

@@ -105,7 +105,7 @@ export type Pagare = {
   /** Hash of the final receipt `cancel_pagare` was given; zero until the burn. */
   cancelReceiptHash: ReadonlyUint8Array;
   /** When the holder requested a cancellation without the attestor (the backstop); zero otherwise. */
-  requestedAt: bigint;
+  cancelAfter: bigint;
   /** The receipt hash of that request. */
   requestedReceiptHash: ReadonlyUint8Array;
 };
@@ -162,7 +162,7 @@ export type PagareArgs = {
   /** Hash of the final receipt `cancel_pagare` was given; zero until the burn. */
   cancelReceiptHash: ReadonlyUint8Array;
   /** When the holder requested a cancellation without the attestor (the backstop); zero otherwise. */
-  requestedAt: number | bigint;
+  cancelAfter: number | bigint;
   /** The receipt hash of that request. */
   requestedReceiptHash: ReadonlyUint8Array;
 };
@@ -192,7 +192,7 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["lastKind", getU8Encoder()],
       ["flags", getU8Encoder()],
       ["cancelReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["requestedAt", getI64Encoder()],
+      ["cancelAfter", getI64Encoder()],
       ["requestedReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
@@ -223,7 +223,7 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["lastKind", getU8Decoder()],
     ["flags", getU8Decoder()],
     ["cancelReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["requestedAt", getI64Decoder()],
+    ["cancelAfter", getI64Decoder()],
     ["requestedReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }

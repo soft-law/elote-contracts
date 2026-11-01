@@ -138,3 +138,24 @@ generated client derives `findPagarePda` and the `cancelPagare` builder derives 
   coverage rule stays for both branches until the payment entries (g) mark the title paid.
 - **Errors:** `NotHolder` for any signer that is neither the admin nor the recorded procurador.
 - Compute: about 48 557 CU as the owner, 51 994 CU through the procurador's address.
+
+## 6d part 1 (f): the backstop (`request_cancellation`, `cancel_delay_seconds`, the holder alone)
+
+- **`init_pool` gains a fifth argument**, `cancel_delay_seconds: u32`, after
+  `collection_period_seconds`; floor seven days (`CancelDelayTooShort`, 6044). Stored in
+  `Pool.reserved[8..12]` (u32 LE); event `CancelDelaySet { pool, cancel_delay_seconds }` at init.
+- **New instruction** `set_cancel_delay(cancel_delay_seconds: u32)`, admin only, same floor, same
+  event. Accounts: `admin`, `pool`.
+- **New instruction** `request_cancellation(draw_index: u16, receipt_hash: [u8; 32])`. Signer:
+  holder (the admin while the asset is in the pool). Accounts: `pool`, `line`, `pagare`. The same
+  checks as `cancel_pagare`; refused while a request is pending (`CancellationPending`, 6045).
+  Appends entry `SolicitudCancelacion` (from = to = the pool) and emits `PagareEntry`; sets
+  `Pagare.cancel_after = now + cancel_delay_seconds` and `requested_receipt_hash`.
+- **`cancel_pagare`:** the `attestor` account is optional (the program id in its slot, Anchor's
+  convention, means absent). Absent, the call succeeds only on the owner's branch when
+  `cancel_after != 0`, `now > cancel_after` and `receipt_hash == requested_receipt_hash`; else
+  `AttestorRequired`. Every cancellation zeroes `cancel_after` and `requested_receipt_hash`.
+- **Sidecar field renamed:** offset 313, 8 bytes, `requested_at` is now `cancel_after`, the
+  deadline rather than the request time (the request's time is in its `PagareEntry`); zero when
+  no request is pending. Clients show "cancelable alone from <cancel_after>".
+- Compute: about 14 144 CU for the request, 48 296 CU for the cancellation alone.

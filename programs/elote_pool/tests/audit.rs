@@ -198,7 +198,7 @@ fn f03_write_off_waits_for_the_pools_collection_period_from_the_mark() {
     // Below the floor, the pool is not created and the period is not changed.
     let asset_mint = env.create_mint(&admin.pubkey(), 6);
     let k = env.pool_keys_for(&asset_mint);
-    let ix = env.init_pool_ix_full(&k, 0, BPS, env.attestor.pubkey(), COLLECTION_PERIOD - 1);
+    let ix = env.init_pool_ix_full(&k, 0, BPS, env.attestor.pubkey(), COLLECTION_PERIOD - 1, CANCEL_DELAY);
     env.expect_err(ix, &admin, &[], E_COLLECTION_PERIOD_TOO_SHORT);
     let (k, meta) = env.setup_pool();
     let ev: CollectionPeriodSet = find_event(&meta).expect("CollectionPeriodSet");

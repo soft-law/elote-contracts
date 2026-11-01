@@ -48,14 +48,22 @@ pub mod elote_pool {
         max_line_bps: u16,
         attestor: Pubkey,
         collection_period_seconds: u32,
+        cancel_delay_seconds: u32,
     ) -> Result<()> {
-        instructions::pool::init_pool(ctx, grace_period_seconds, max_line_bps, attestor, collection_period_seconds)
+        instructions::pool::init_pool(ctx, grace_period_seconds, max_line_bps, attestor, collection_period_seconds, cancel_delay_seconds)
     }
 
     /// Sets the seconds a line in collection waits, from its mark, before it can be written off.
     /// Admin only; refused below the 30-day floor.
     pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_period_seconds: u32) -> Result<()> {
         instructions::pool::set_collection_period(ctx, collection_period_seconds)
+    }
+
+    /// Sets the backstop's wait, in seconds, from a cancellation request before the holder may
+    /// cancel a pagaré without the attestor; never below seven days. Admin only. A request fixes
+    /// its own deadline, so a change never moves one pending.
+    pub fn set_cancel_delay(ctx: Context<SetCancelDelay>, cancel_delay_seconds: u32) -> Result<()> {
+        instructions::pool::set_cancel_delay(ctx, cancel_delay_seconds)
     }
 
     /// Replaces the pool's attestor. The admin and the new attestor sign.
@@ -159,6 +167,14 @@ pub mod elote_pool {
     /// hash. The holder and the attestor sign; nothing moves.
     pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::court_annotation(ctx, draw_index, kind, document_hash)
+    }
+
+    /// Records the holder's request to cancel pagaré `draw_index` against the receipt
+    /// `receipt_hash`, the backstop on the attestor: the same checks as the cancellation itself,
+    /// one request at a time; after the pool's cancel delay the holder may cancel alone with the
+    /// same receipt.
+    pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
+        instructions::pagare::request_cancellation(ctx, draw_index, receipt_hash)
     }
 
     /// Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then

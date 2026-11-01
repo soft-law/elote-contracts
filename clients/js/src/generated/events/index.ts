@@ -7,6 +7,7 @@
  */
 
 export * from "./attestorSet";
+export * from "./cancelDelaySet";
 export * from "./collectionPeriodSet";
 export * from "./deposited";
 export * from "./lateInterestCollected";

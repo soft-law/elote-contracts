@@ -42,6 +42,14 @@ pub struct CollectionPeriodSet {
     pub collection_period_seconds: u32,
 }
 
+/// The pool's cancel delay, at `init_pool` and after every `set_cancel_delay`: the backstop's wait
+/// from a cancellation request before the holder may cancel alone.
+#[event]
+pub struct CancelDelaySet {
+    pub pool: Pubkey,
+    pub cancel_delay_seconds: u32,
+}
+
 /// The pool's attestor, at `init_pool` and after every `set_attestor`.
 #[event]
 pub struct AttestorSet {

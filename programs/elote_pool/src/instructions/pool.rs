@@ -8,13 +8,13 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    AttestorSet, CollectionPeriodSet, Deposited, NavUpdated, PoolCollectionSet, PoolConfigured, PoolFlags, PoolInitialized,
+    AttestorSet, CancelDelaySet, CollectionPeriodSet, Deposited, NavUpdated, PoolCollectionSet, PoolConfigured, PoolFlags, PoolInitialized,
     PoolLineCapSet, PoolPaused, Redeemed,
 };
 use crate::math;
 use crate::state::{
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
-    MIN_COLLECTION_PERIOD_SECONDS, POOL_VERSION,
+    MIN_CANCEL_DELAY_SECONDS, MIN_COLLECTION_PERIOD_SECONDS, POOL_VERSION,
 };
 
 /// Signs CPIs as the pool PDA.
@@ -216,7 +216,8 @@ fn validate_collection(collection: &AccountInfo, pool: &Pubkey) -> Result<()> {
 }
 
 /// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the life of
-/// the pool; `collection_period_seconds` (at least `MIN_COLLECTION_PERIOD_SECONDS`) can be
+/// the pool; `collection_period_seconds` (at least `MIN_COLLECTION_PERIOD_SECONDS`) and
+/// `cancel_delay_seconds` (at least `MIN_CANCEL_DELAY_SECONDS`, the backstop's wait) can be
 /// changed by the admin.
 pub fn init_pool(
     ctx: Context<InitPool>,
@@ -224,9 +225,11 @@ pub fn init_pool(
     max_line_bps: u16,
     attestor: Pubkey,
     collection_period_seconds: u32,
+    cancel_delay_seconds: u32,
 ) -> Result<()> {
     require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);
     require!(collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
+    require!(cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS, PoolError::CancelDelayTooShort);
     // The zero key could never co-sign: a pool with it would open no line. The admin as attestor
     // would collapse the two-signature model into one key (audit F-05).
     require!(attestor != Pubkey::default(), PoolError::WrongAccount);
@@ -254,6 +257,7 @@ pub fn init_pool(
     pool.set_asset_controls(controls);
     pool.set_permissioned(permissioned);
     pool.set_collection_period_seconds(collection_period_seconds);
+    pool.set_cancel_delay_seconds(cancel_delay_seconds);
     pool.bump = ctx.bumps.pool;
     pool.attestor = attestor;
     pool.collection = ctx.accounts.collection.key();
@@ -270,6 +274,7 @@ pub fn init_pool(
     emit_cpi!(AttestorSet { pool: pool.key(), attestor });
     emit_cpi!(PoolCollectionSet { pool: pool.key(), collection: pool.collection });
     emit_cpi!(CollectionPeriodSet { pool: pool.key(), collection_period_seconds });
+    emit_cpi!(CancelDelaySet { pool: pool.key(), cancel_delay_seconds });
     Ok(())
 }
 
@@ -591,5 +596,33 @@ pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     pool.attestor = attestor;
     emit_cpi!(AttestorSet { pool: pool.key(), attestor });
+    Ok(())
+}
+
+// -----------------------------------------------------------------------------------------------
+// set_cancel_delay
+// -----------------------------------------------------------------------------------------------
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct SetCancelDelay<'info> {
+    pub admin: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+        has_one = admin @ PoolError::Unauthorized,
+    )]
+    pub pool: Account<'info, Pool>,
+}
+
+/// Admin only; refused below `MIN_CANCEL_DELAY_SECONDS`. A request fixes its own deadline
+/// (`Pagare::cancel_after`), so the change applies to requests filed from now on.
+pub fn set_cancel_delay(ctx: Context<SetCancelDelay>, cancel_delay_seconds: u32) -> Result<()> {
+    require!(cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS, PoolError::CancelDelayTooShort);
+    let pool = &mut ctx.accounts.pool;
+    pool.set_cancel_delay_seconds(cancel_delay_seconds);
+    emit_cpi!(CancelDelaySet { pool: pool.key(), cancel_delay_seconds });
     Ok(())
 }

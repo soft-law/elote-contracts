@@ -290,6 +290,7 @@ await send("init_pool", admin, [
     maxLineBps,
     attestor,
     collectionPeriodSeconds: 30 * 86_400,
+    cancelDelaySeconds: 7 * 86_400,
   }),
 ]);
 console.log(

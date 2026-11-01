@@ -124,9 +124,12 @@
         {
           "name": "attestor",
           "docs": [
-            "Attests the receipt behind `receipt_hash` and that the AppData log was archived."
+            "Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional",
+            "for the backstop: left out, the holder cancels alone only after a recorded request's",
+            "deadline, with the requested receipt (`AttestorRequired` otherwise)."
           ],
-          "signer": true
+          "signer": true,
+          "optional": true
         },
         {
           "name": "payer",
@@ -1096,6 +1099,10 @@
         {
           "name": "collection_period_seconds",
           "type": "u32"
+        },
+        {
+          "name": "cancel_delay_seconds",
+          "type": "u32"
         }
       ]
     },
@@ -1570,6 +1577,139 @@
       ]
     },
     {
+      "name": "request_cancellation",
+      "docs": [
+        "Records the holder's request to cancel pagaré `draw_index` against the receipt",
+        "`receipt_hash`, the backstop on the attestor: the same checks as the cancellation itself,",
+        "one request at a time; after the pool's cancel delay the holder may cancel alone with the",
+        "same receipt."
+      ],
+      "discriminator": [
+        143,
+        22,
+        73,
+        35,
+        219,
+        217,
+        185,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "holder",
+          "docs": [
+            "The pagaré's holder: the admin while the asset is in the pool."
+          ],
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          },
+          "relations": [
+            "pagare"
+          ]
+        },
+        {
+          "name": "pagare",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "arg",
+                "path": "draw_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_index",
+          "type": "u16"
+        },
+        {
+          "name": "receipt_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "revoke_procuracion",
       "docs": [
         "Revokes the procuración in force on pagaré `draw_index` (LGTOC 41): appends the revocation",
@@ -1786,6 +1926,72 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "set_cancel_delay",
+      "docs": [
+        "Sets the backstop's wait, in seconds, from a cancellation request before the holder may",
+        "cancel a pagaré without the attestor; never below seven days. Admin only. A request fixes",
+        "its own deadline, so a change never moves one pending."
+      ],
+      "discriminator": [
+        53,
+        80,
+        113,
+        24,
+        133,
+        44,
+        234,
+        105
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "cancel_delay_seconds",
+          "type": "u32"
+        }
+      ]
     },
     {
       "name": "set_collection_period",
@@ -2160,6 +2366,19 @@
         42,
         189,
         23
+      ]
+    },
+    {
+      "name": "CancelDelaySet",
+      "discriminator": [
+        146,
+        233,
+        222,
+        189,
+        194,
+        124,
+        225,
+        90
       ]
     },
     {
@@ -2708,6 +2927,16 @@
       "code": 6043,
       "name": "AnnotationKindInvalid",
       "msg": "This kind is not a court annotation"
+    },
+    {
+      "code": 6044,
+      "name": "CancelDelayTooShort",
+      "msg": "The cancel delay is below the seven-day floor"
+    },
+    {
+      "code": 6045,
+      "name": "CancellationPending",
+      "msg": "A cancellation request is already pending on this pagaré"
     }
   ],
   "types": [
@@ -2726,6 +2955,26 @@
           {
             "name": "attestor",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CancelDelaySet",
+      "docs": [
+        "The pool's cancel delay, at `init_pool` and after every `set_cancel_delay`: the backstop's wait",
+        "from a cancellation request before the holder may cancel alone."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "cancel_delay_seconds",
+            "type": "u32"
           }
         ]
       }
@@ -3585,7 +3834,7 @@
             }
           },
           {
-            "name": "requested_at",
+            "name": "cancel_after",
             "docs": [
               "When the holder requested a cancellation without the attestor (the backstop); zero otherwise."
             ],
@@ -3837,13 +4086,13 @@
               "| 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |",
               "| 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |",
               "| 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |",
-              "| 8..12   | unused                 | zero     | reserved for `cancel_delay_seconds` (step 6d) |",
+              "| 8..12   | `cancel_delay_seconds` | u32 LE   | the backstop's wait from a cancellation request |",
               "| 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |",
               "| 16..32  | unused                 | zero     |                                           |",
               "",
               "Read and written only through the accessors below (`grace_period_seconds`,",
-              "`max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds` and their",
-              "setters)."
+              "`max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds`,",
+              "`cancel_delay_seconds` and their setters)."
             ],
             "type": {
               "array": [

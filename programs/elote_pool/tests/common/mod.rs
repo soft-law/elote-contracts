@@ -94,6 +94,8 @@ pub const E_ENDOSO_KIND_INVALID: u32 = ERR_BASE + 40; // PoolError::EndosoKindIn
 pub const E_ENDORSEE_INVALID: u32 = ERR_BASE + 41; // PoolError::EndorseeInvalid
 pub const E_PROCURACION_STATE: u32 = ERR_BASE + 42; // PoolError::ProcuracionState
 pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + 43; // PoolError::AnnotationKindInvalid
+pub const E_CANCEL_DELAY_TOO_SHORT: u32 = ERR_BASE + 44; // PoolError::CancelDelayTooShort
+pub const E_CANCELLATION_PENDING: u32 = ERR_BASE + 45; // PoolError::CancellationPending
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
@@ -116,6 +118,7 @@ pub const UNIT: u64 = 1_000_000;
 pub const MONTH: i64 = 30 * 24 * 3600;
 /// The collection period every pool of the harness is created with: the 30-day floor.
 pub const COLLECTION_PERIOD: u32 = elote_pool::state::MIN_COLLECTION_PERIOD_SECONDS;
+pub const CANCEL_DELAY: u32 = elote_pool::state::MIN_CANCEL_DELAY_SECONDS;
 
 // -----------------------------------------------------------------------------------------------
 // PDAs: the seed layouts of `state::seeds`.
@@ -581,7 +584,7 @@ impl Env {
 
     /// `init_pool` naming `attestor` instead of the env's.
     pub fn init_pool_ix_with_attestor(&self, k: &PoolKeys, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey) -> Instruction {
-        self.init_pool_ix_full(k, grace_period_seconds, max_line_bps, attestor, COLLECTION_PERIOD)
+        self.init_pool_ix_full(k, grace_period_seconds, max_line_bps, attestor, COLLECTION_PERIOD, CANCEL_DELAY)
     }
 
     /// `init_pool` with every argument explicit.
@@ -592,6 +595,7 @@ impl Env {
         max_line_bps: u16,
         attestor: Pubkey,
         collection_period_seconds: u32,
+        cancel_delay_seconds: u32,
     ) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
@@ -611,7 +615,16 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::InitPool { grace_period_seconds, max_line_bps, attestor, collection_period_seconds }.data(),
+            data: elote_pool::instruction::InitPool { grace_period_seconds, max_line_bps, attestor, collection_period_seconds, cancel_delay_seconds }.data(),
+        }
+    }
+
+    pub fn set_cancel_delay_ix(&self, k: &PoolKeys, admin: &Pubkey, seconds: u32) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::SetCancelDelay { admin: *admin, pool: k.pool, event_authority, program }.to_account_metas(None),
+            data: elote_pool::instruction::SetCancelDelay { cancel_delay_seconds: seconds }.data(),
         }
     }
 
@@ -1072,7 +1085,30 @@ impl Env {
         receipt_hash: [u8; 32],
     ) -> Instruction {
         let asset = self.pagare(k, line_id, draw_index).asset;
-        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection, None)
+        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection, None, Some(self.attestor.pubkey()))
+    }
+    /// `cancel_pagare` by the holder alone, the backstop: no attestor account.
+    pub fn cancel_pagare_alone_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, payer: &Pubkey, receipt_hash: [u8; 32]) -> Instruction {
+        let asset = self.pagare(k, line_id, draw_index).asset;
+        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection, None, None)
+    }
+    /// `request_cancellation(draw_index, receipt_hash)` by `holder`.
+    pub fn request_cancellation_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, receipt_hash: [u8; 32]) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::RequestCancellation {
+                holder: *holder,
+                pool: k.pool,
+                line,
+                pagare: pagare_pda(&line, draw_index).0,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::RequestCancellation { draw_index, receipt_hash }.data(),
+        }
     }
     /// `cancel_pagare` signed by the procurador of record: `holder` is the procurador and the
     /// program address `["procurador", pagare, procurador]` is passed as the burn's authority.
@@ -1080,7 +1116,7 @@ impl Env {
         let line = line_pda(&k.pool, line_id).0;
         let asset = self.pagare(k, line_id, draw_index).asset;
         let pda = procurador_pda(&pagare_pda(&line, draw_index).0, procurador).0;
-        self.cancel_pagare_ix_full(k, line_id, draw_index, procurador, payer, receipt_hash, asset, k.collection, Some(pda))
+        self.cancel_pagare_ix_full(k, line_id, draw_index, procurador, payer, receipt_hash, asset, k.collection, Some(pda), Some(self.attestor.pubkey()))
     }
 
     /// As `cancel_pagare_ix`, with the asset and the collection given explicitly.
@@ -1096,6 +1132,7 @@ impl Env {
         asset: Pubkey,
         collection: Pubkey,
         procurador_authority: Option<Pubkey>,
+        attestor: Option<Pubkey>,
     ) -> Instruction {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
@@ -1103,7 +1140,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::CancelPagare {
                 holder: *holder,
-                attestor: self.attestor.pubkey(),
+                attestor,
                 payer: *payer,
                 pool: k.pool,
                 line,

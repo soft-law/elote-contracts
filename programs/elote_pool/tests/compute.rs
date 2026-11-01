@@ -121,6 +121,21 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let by_procurador = env.send(ix, &admin, &[&procurador, &attestor]).compute_units_consumed;
     println!("cancel_pagare by the procurador at 120 installments: {by_procurador} CU");
     assert!(by_procurador < CEILING, "cancel by the procurador used {by_procurador} CU, ceiling {CEILING}");
+    // The backstop, on a third line: the request, then the holder alone after the delay.
+    let borrower = env.borrower(&k);
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw(&k, line_id, &borrower);
+    let interest = env.line(&k, line_id).interest_due;
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
+    let ix = env.request_cancellation_ix(&k, line_id, 0, &admin.pubkey(), RECEIPT_HASH);
+    let request = env.send(ix, &admin, &[]).compute_units_consumed;
+    println!("request_cancellation at 120 installments: {request} CU");
+    env.warp(env.now() + i64::from(CANCEL_DELAY) + 1);
+    let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &admin.pubkey(), &admin.pubkey(), RECEIPT_HASH);
+    let alone = env.send(ix, &admin, &[]).compute_units_consumed;
+    println!("cancel_pagare by the holder alone at 120 installments: {alone} CU");
+    assert!(request < CEILING && alone < CEILING);
 }
 
 /// After the mark every remaining installment is due, so a repayment early in a 120-installment

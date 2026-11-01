@@ -193,8 +193,12 @@ export type CancelPagareAsyncInput<
    * handler (`NotHolder`).
    */
   holder: TAccountHolder;
-  /** Attests the receipt behind `receipt_hash` and that the AppData log was archived. */
-  attestor: TAccountAttestor;
+  /**
+   * Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional
+   * for the backstop: left out, the holder cancels alone only after a recorded request's
+   * deadline, with the requested receipt (`AttestorRequired` otherwise).
+   */
+  attestor?: TAccountAttestor;
   /** Receives the asset's rent from the Core program. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
@@ -510,8 +514,12 @@ export type CancelPagareInput<
    * handler (`NotHolder`).
    */
   holder: TAccountHolder;
-  /** Attests the receipt behind `receipt_hash` and that the AppData log was archived. */
-  attestor: TAccountAttestor;
+  /**
+   * Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional
+   * for the backstop: left out, the holder cancels alone only after a recorded request's
+   * deadline, with the requested receipt (`AttestorRequired` otherwise).
+   */
+  attestor?: TAccountAttestor;
   /** Receives the asset's rent from the Core program. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
@@ -791,8 +799,12 @@ export type ParsedCancelPagareInstruction<
      * handler (`NotHolder`).
      */
     holder: TAccountMetas[0];
-    /** Attests the receipt behind `receipt_hash` and that the AppData log was archived. */
-    attestor: TAccountMetas[1];
+    /**
+     * Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional
+     * for the backstop: left out, the holder cancels alone only after a recorded request's
+     * deadline, with the requested receipt (`AttestorRequired` otherwise).
+     */
+    attestor?: TAccountMetas[1] | undefined;
     /** Receives the asset's rent from the Core program. Any signer. */
     payer: TAccountMetas[2];
     pool: TAccountMetas[3];
@@ -850,7 +862,7 @@ export function parseCancelPagareInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       holder: getNextAccount(),
-      attestor: getNextAccount(),
+      attestor: getNextOptionalAccount(),
       payer: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),

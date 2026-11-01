@@ -89,13 +89,13 @@ pub struct Pool {
     /// | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
     /// | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
     /// | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
-    /// | 8..12   | unused                 | zero     | reserved for `cancel_delay_seconds` (step 6d) |
+    /// | 8..12   | `cancel_delay_seconds` | u32 LE   | the backstop's wait from a cancellation request |
     /// | 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |
     /// | 16..32  | unused                 | zero     |                                           |
     ///
     /// Read and written only through the accessors below (`grace_period_seconds`,
-    /// `max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds` and their
-    /// setters).
+    /// `max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds`,
+    /// `cancel_delay_seconds` and their setters).
     pub reserved: [u8; 32],
     pub bump: u8,
     // Appended after `bump`, so the earlier offsets hold.
@@ -200,6 +200,17 @@ impl Pool {
     pub fn set_collection_period_seconds(&mut self, seconds: u32) {
         self.reserved[12..16].copy_from_slice(&seconds.to_le_bytes());
     }
+    /// Seconds from a cancellation request before the holder may cancel alone (the backstop on
+    /// the attestor, step 6d); at least `MIN_CANCEL_DELAY_SECONDS`, changed by the admin with
+    /// `set_cancel_delay`. A request fixes its own deadline, so a change never moves one pending.
+    pub fn cancel_delay_seconds(&self) -> u32 {
+        let mut b = [0u8; 4];
+        b.copy_from_slice(&self.reserved[8..12]);
+        u32::from_le_bytes(b)
+    }
+    pub fn set_cancel_delay_seconds(&mut self, seconds: u32) {
+        self.reserved[8..12].copy_from_slice(&seconds.to_le_bytes());
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]
@@ -298,6 +309,9 @@ pub const PAGARE_PAID: u8 = 1;
 /// `Pagare::status`: paid (the payment entry reached its `drawn_through`), the burn still owed.
 pub const PAGARE_PAID_PENDING_CANCEL: u8 = 2;
 
+/// The floor of `Pool::cancel_delay_seconds`: seven days (step 6d, the backstop on the attestor).
+pub const MIN_CANCEL_DELAY_SECONDS: u32 = 7 * 86_400;
+
 /// `Pagare::flags` bit: the asset carries an owner-managed `BurnDelegate` plugin, so a later
 /// procuración approves its authority instead of adding the plugin again.
 pub const PAGARE_FLAG_BURN_DELEGATE: u8 = 1 << 0;
@@ -370,7 +384,7 @@ pub struct Pagare {
     /// Hash of the final receipt `cancel_pagare` was given; zero until the burn.
     pub cancel_receipt_hash: [u8; 32],
     /// When the holder requested a cancellation without the attestor (the backstop); zero otherwise.
-    pub requested_at: i64,
+    pub cancel_after: i64,
     /// The receipt hash of that request.
     pub requested_receipt_hash: [u8; 32],
 }

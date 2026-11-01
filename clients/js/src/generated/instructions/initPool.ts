@@ -129,6 +129,7 @@ export type InitPoolInstructionData = {
   maxLineBps: number;
   attestor: Address;
   collectionPeriodSeconds: number;
+  cancelDelaySeconds: number;
 };
 
 export type InitPoolInstructionDataArgs = {
@@ -136,6 +137,7 @@ export type InitPoolInstructionDataArgs = {
   maxLineBps: number;
   attestor: Address | HasAddress;
   collectionPeriodSeconds: number;
+  cancelDelaySeconds: number;
 };
 
 export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolInstructionDataArgs> {
@@ -146,6 +148,7 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
       ["maxLineBps", getU16Encoder()],
       ["attestor", getAddressEncoder()],
       ["collectionPeriodSeconds", getU32Encoder()],
+      ["cancelDelaySeconds", getU32Encoder()],
     ]),
     (value) => ({ ...value, discriminator: INIT_POOL_DISCRIMINATOR }),
   );
@@ -158,6 +161,7 @@ export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolIn
     ["maxLineBps", getU16Decoder()],
     ["attestor", getAddressDecoder()],
     ["collectionPeriodSeconds", getU32Decoder()],
+    ["cancelDelaySeconds", getU32Decoder()],
   ]);
 }
 
@@ -223,6 +227,7 @@ export type InitPoolAsyncInput<
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
   attestor: InitPoolInstructionDataArgs["attestor"];
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
+  cancelDelaySeconds: InitPoolInstructionDataArgs["cancelDelaySeconds"];
 };
 
 export async function getInitPoolInstructionAsync<
@@ -561,6 +566,7 @@ export type InitPoolInput<
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
   attestor: InitPoolInstructionDataArgs["attestor"];
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
+  cancelDelaySeconds: InitPoolInstructionDataArgs["cancelDelaySeconds"];
 };
 
 export function getInitPoolInstruction<
