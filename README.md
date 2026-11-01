@@ -63,7 +63,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
 | dead shares | PDA token account `["dead", pool]`, owned by the pool PDA | the 1,000 shares locked by the first deposit |
 | `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | terms, agreement hash and expediente root, what was drawn and repaid, status, the draw window and the first due date, the installment schedule (scheduled lines), when the balance was accelerated |
-| `Pagare` | PDA `["pagare", line, draw_index (u16 LE)]` | the program's record of one draw's pagaré: the asset's address, the signed pagaré's hash and how it was signed, the amount and the line's drawn total through it, when it was issued and when it is due, and once paid the "PAGADO" mark (status, paid_at, the receipt's hash); never closed; no folio |
+| `Pagare` | PDA `["pagare", line, draw_index (u16 LE)]` | the program's record of one draw's pagaré: the asset's address, the signed pagaré's hash and how it was signed, the amount and the line's drawn total through it, when it was issued and when it is due, the registry (an append-only hash chain of entries whose content is in the `PagareEntry` events), and once paid the "PAGADO" mark (status, paid_at, the receipt hashes); never closed; no folio |
 | pagaré asset | PDA `["pagare_asset", line, draw_index (u16 LE)]`, owned by the Metaplex Core program | the pagaré token itself (decision 24): a Core asset in the series' collection, held frozen by the pool PDA, with permanent freeze, transfer and burn delegates held by the pool PDA, immutable metadata, locked attributes (hash, amount, currency, dates, line, draw index) and an empty `AppData` section for the endoso log |
 
 All three program accounts keep 32 `reserved` bytes; new parameters live there so the layouts do not change (`Pagare`'s are zero for now).
@@ -178,6 +178,7 @@ change fields; new information comes as new events.
 | `LineDrawn` | `draw`, once per tranche | pool, line_id, amount (the tranche), outstanding_after |
 | `LineDrawState` | `draw`, after `LineDrawn` | pool, line_id, amount, drawn, available, interest_due, availability_end, document_hash (the signed pagaré's) |
 | `PagareIssued` | `draw`, after `LineDrawState` | pool, line_id, draw_index, asset (the Core asset), pagare_hash, amount, due_at, holder (the pool PDA) |
+| `PagareEntry` | `draw` (the issuance entry) and every instruction that appends to a pagaré's registry | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
 | `PagareCancelled` | `cancel_pagare`, before the burn | pool, line_id, draw_index, asset, receipt_hash, holder (the key that extinguished it; no AppData length: the engine archives the log off chain before the burn) |
 | `LineDrawsSuspended` | `suspend_draws` | pool, line_id, available_forfeited |
 | `LineCancelled` | `cancel_line` | pool, line_id |

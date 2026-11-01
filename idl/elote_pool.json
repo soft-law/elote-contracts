@@ -1894,6 +1894,19 @@
       ]
     },
     {
+      "name": "PagareEntry",
+      "discriminator": [
+        230,
+        171,
+        88,
+        109,
+        205,
+        129,
+        75,
+        162
+      ]
+    },
+    {
       "name": "PagareIssued",
       "discriminator": [
         114,
@@ -3002,7 +3015,8 @@
           {
             "name": "receipt_hash",
             "docs": [
-              "Hash of the FEA-signed receipt `cancel_pagare` was given (LGTOC 129); zero while outstanding."
+              "Hash of the receipt the payment entry that marked it paid carried (LGTOC 129); zero while",
+              "outstanding."
             ],
             "type": {
               "array": [
@@ -3019,6 +3033,70 @@
             "name": "reserved",
             "docs": [
               "Room for later facts without a layout change."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "log_root",
+            "docs": [
+              "The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "entry_count",
+            "docs": [
+              "Entries in the chain; the issuance entry is 1."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "last_kind",
+            "docs": [
+              "`KIND_*` of the last entry."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "flags",
+            "docs": [
+              "`PAGARE_FLAG_*` bits."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "cancel_receipt_hash",
+            "docs": [
+              "Hash of the final receipt `cancel_pagare` was given; zero until the burn."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "requested_at",
+            "docs": [
+              "When the holder requested a cancellation without the attestor (the backstop); zero otherwise."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "requested_receipt_hash",
+            "docs": [
+              "The receipt hash of that request."
             ],
             "type": {
               "array": [
@@ -3068,6 +3146,68 @@
           {
             "name": "holder",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PagareEntry",
+      "docs": [
+        "One entry of a pagaré's registry (LGTOC 8 fr. VI, 13, 130): the full content the sidecar's",
+        "hash chain commits to. `stated_at` is the date the entry states (the signed message's date for",
+        "a late entry), `recorded_at` the slot's time."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "draw_index",
+            "type": "u16"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "kind",
+            "type": "u8"
+          },
+          {
+            "name": "from",
+            "type": "pubkey"
+          },
+          {
+            "name": "to",
+            "type": "pubkey"
+          },
+          {
+            "name": "entry_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "entry_count",
+            "type": "u16"
+          },
+          {
+            "name": "recorded_at",
+            "type": "i64"
+          },
+          {
+            "name": "stated_at",
+            "type": "i64"
           }
         ]
       }

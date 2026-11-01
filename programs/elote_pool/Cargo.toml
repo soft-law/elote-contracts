@@ -33,6 +33,8 @@ anchor-spl = { version = "=1.2.1", default-features = false, features = ["solana
 # same solana-program 3.x and borsh 1.x line as anchor-lang 1.2.1, so its CPI builders are used
 # directly. The program binary the tests run is `tests/fixtures/mpl_core_program-0.15.3.so`.
 mpl-core = "0.12.1"
+# The registry's hash chain (sha256 syscall).
+solana-sha256-hasher = "3"
 
 # LiteSVM integration tests (programs/elote_pool/tests/).
 #

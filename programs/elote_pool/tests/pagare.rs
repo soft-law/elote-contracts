@@ -8,7 +8,7 @@ mod common;
 use common::*;
 use elote_pool::events::{PagareCancelled, PagareIssued};
 use elote_pool::state::LineStatus;
-use mpl_core::types::{ExternalPluginAdapterSchema, Key, UpdateAuthority};
+use mpl_core::types::{Key, UpdateAuthority};
 use mpl_core::{AuthorityType, BaseAuthority};
 use anchor_lang::Space;
 use solana_keypair::Keypair;
@@ -115,13 +115,18 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     assert_eq!(asset.base.update_authority, UpdateAuthority::Collection(k.collection));
     assert_eq!(env.collection_state(&k.collection).update_authority, k.pool);
 
-    // Permanent freeze delegate: frozen, authority = the pool PDA.
+    // Permanent freeze delegate: frozen, authority = UpdateAuthority (the collection, so the pool
+    // PDA), which a later version relinquishes with one approve.
     let freeze = asset.plugin_list.permanent_freeze_delegate.as_ref().expect("PermanentFreezeDelegate");
     assert!(freeze.permanent_freeze_delegate.frozen);
-    pool_authority(&freeze.base.authority);
-    // Permanent transfer delegate: authority = the pool PDA.
-    let transfer = asset.plugin_list.permanent_transfer_delegate.as_ref().expect("PermanentTransferDelegate");
-    pool_authority(&transfer.base.authority);
+    assert_eq!(freeze.base.authority.authority_type, AuthorityType::UpdateAuthority);
+    // No transfer or burn delegate: the pool is the owner while the asset is in the pool, and only
+    // the program signs for it.
+    assert!(asset.plugin_list.permanent_transfer_delegate.is_none());
+    assert!(asset.plugin_list.permanent_burn_delegate.is_none());
+    // AddBlocker, nobody's: the collection's authority cannot add plugins later.
+    let blocker = asset.plugin_list.add_blocker.as_ref().expect("AddBlocker");
+    assert_eq!(blocker.base.authority.authority_type, AuthorityType::None);
     // Immutable metadata, nobody's.
     let immutable = asset.plugin_list.immutable_metadata.as_ref().expect("ImmutableMetadata");
     assert_eq!(immutable.base.authority.authority_type, AuthorityType::None);
@@ -154,19 +159,11 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     assert!(asset.plugin_list.freeze_delegate.is_none());
     assert!(asset.plugin_list.transfer_delegate.is_none());
     assert!(asset.plugin_list.burn_delegate.is_none());
-    // Permanent burn delegate: authority = the pool PDA, so `cancel_pagare` is one `BurnV1`
-    // whatever the holder (decision of 2026-11-01).
-    let burn = asset.plugin_list.permanent_burn_delegate.as_ref().expect("PermanentBurnDelegate");
-    pool_authority(&burn.base.authority);
     assert!(asset.plugin_list.update_delegate.is_none());
-    // One empty AppData section, binary, data authority = the pool PDA.
+    // No external adapter: the registry lives in the sidecar.
     let adapters = &asset.external_plugin_adapter_list;
-    assert_eq!(adapters.app_data.len(), 1);
-    let app = &adapters.app_data[0];
-    assert_eq!(app.base.data_authority, mpl_core::types::PluginAuthority::Address { address: k.pool });
-    assert_eq!(app.base.schema, ExternalPluginAdapterSchema::Binary);
-    assert_eq!(app.data_len, 0);
-    assert!(adapters.lifecycle_hooks.is_empty() && adapters.oracles.is_empty() && adapters.data_sections.is_empty());
+    assert!(adapters.app_data.is_empty() && adapters.lifecycle_hooks.is_empty() && adapters.oracles.is_empty() && adapters.data_sections.is_empty());
+    let _ = pool_authority;
 }
 
 /// `drawn_through` of pagaré `k` is the line's `drawn` after tranche `k`, monotonic across `k`: the
@@ -532,4 +529,65 @@ fn cancel_pagare_requires_the_holder_the_attestor_the_receipt_and_the_right_acco
     assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_OUTSTANDING);
     assert_eq!(env.asset_state(&pagare_asset_pda(&line_key, 0).0).base.owner, k.pool);
     assert_eq!(env.collection_state(&k.collection).current_size, 2);
+}
+
+// -----------------------------------------------------------------------------------------------
+// the registry (6d part 1)
+// -----------------------------------------------------------------------------------------------
+
+/// The registry's hash: `sha256(asset || kind || from || to || hash || stated_at LE || entry_count LE)`.
+fn entry_hash(asset: &solana_pubkey::Pubkey, kind: u8, from: &solana_pubkey::Pubkey, to: &solana_pubkey::Pubkey, hash: &[u8; 32], stated_at: i64, count: u16) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(asset.as_ref());
+    h.update([kind]);
+    h.update(from.as_ref());
+    h.update(to.as_ref());
+    h.update(hash);
+    h.update(stated_at.to_le_bytes());
+    h.update(count.to_le_bytes());
+    h.finalize().into()
+}
+
+fn chain(root: &[u8; 32], entry: &[u8; 32]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(root);
+    h.update(entry);
+    h.finalize().into()
+}
+
+/// Every draw opens the pagaré's registry with the issuance entry: the sidecar's chain has one
+/// entry, kind `Emision`, from and to the pool, over the pagaré's hash, and the event carries its
+/// full content so the chain can be replayed off chain.
+#[test]
+fn a_draw_writes_the_issuance_entry_of_the_registry() {
+    use elote_pool::events::PagareEntry;
+    use elote_pool::state::{Pagare, KIND_EMISION};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    assert_eq!(8 + Pagare::INIT_SPACE, 353, "245 before the registry");
+
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    let meta = env.send_with_attestor(ix, &borrower);
+    let now = env.now();
+    let sidecar = env.pagare(&k, line_id, 0);
+    let expected = entry_hash(&sidecar.asset, KIND_EMISION, &k.pool, &k.pool, &DOCUMENT_HASH, now, 1);
+    assert_eq!((sidecar.entry_count, sidecar.last_kind, sidecar.flags), (1, KIND_EMISION, 0));
+    assert_eq!(sidecar.log_root, chain(&[0; 32], &expected), "genesis: the issuance entry over an empty root");
+    assert_eq!((sidecar.cancel_receipt_hash, sidecar.requested_at, sidecar.requested_receipt_hash), ([0; 32], 0, [0; 32]));
+    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
+    assert_eq!(
+        (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.kind, ev.from, ev.to),
+        (k.pool, line_id, 0, sidecar.asset, KIND_EMISION, k.pool, k.pool)
+    );
+    assert_eq!((ev.entry_hash, ev.entry_count, ev.recorded_at, ev.stated_at), (expected, 1, now, now));
+    // A second pagaré starts its own chain.
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let second = env.pagare(&k, line_id, 1);
+    assert_eq!(second.entry_count, 1);
+    assert_ne!(second.log_root, sidecar.log_root);
 }

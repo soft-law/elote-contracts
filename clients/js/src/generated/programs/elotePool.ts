@@ -182,6 +182,7 @@ export enum ElotePoolEvent {
   LineWrittenOff,
   NavUpdated,
   PagareCancelled,
+  PagareEntry,
   PagareIssued,
   PoolCollectionSet,
   PoolConfigured,
@@ -382,6 +383,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.PagareCancelled;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([230, 171, 88, 109, 205, 129, 75, 162]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.PagareEntry;
   }
   if (
     containsBytes(

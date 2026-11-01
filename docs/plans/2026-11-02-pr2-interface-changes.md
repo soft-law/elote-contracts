@@ -63,3 +63,23 @@ line that never drew.
 against `test/arrears-vectors.json` (421 cases). `pagare.ts`: `MPL_CORE_PROGRAM_ADDRESS`,
 `findPagareAssetPda`, `drawPagareAccounts` (asset, sidecar and both bumps for the next draw). The
 generated client derives `findPagarePda` and the `cancelPagare` builder derives the sidecar itself.
+
+## 6d part 1 (a): the registry and the final creation set
+
+- **`Pagare` grows to 353 bytes** (from 245): `log_root: [u8; 32]`, `entry_count: u16`, `last_kind: u8`,
+  `flags: u8`, `cancel_receipt_hash: [u8; 32]`, `requested_at: i64`, `requested_receipt_hash: [u8; 32]`
+  appended after `reserved`. Sidecars created before this commit (devnet only) do not deserialize.
+  `status` gains the value 2, `PAGARE_PAID_PENDING_CANCEL`.
+- **The registry.** Every pagaré has an append-only hash chain in its sidecar: `log_root =
+  sha256(log_root || entry_hash)` with `entry_hash = sha256(asset || kind || from || to || hash ||
+  stated_at LE || entry_count LE)`. The entry's full content is the new event `PagareEntry { pool,
+  line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at }`;
+  an indexer replays the events to rebuild and verify the chain. Kinds: 0 Emision, 1 Propiedad,
+  2 Procuracion, 3 Revocacion, 4 Terminacion, 5 Abono, 6 AnotacionJudicial, 7 ConstanciaJudicial,
+  8 EndosoTardio, 9 Pagado, 10 SolicitudCancelacion, 11 Recibo. `draw` writes entry 1 (Emision,
+  from = to = the pool PDA, hash = the pagaré's hash) and emits `PagareEntry` after `PagareIssued`.
+- **The asset's plugin set changed.** The pagaré asset now carries `PermanentFreezeDelegate`
+  (authority `UpdateAuthority`), `ImmutableMetadata`, `Attributes` and `AddBlocker`; no
+  `PermanentTransferDelegate`, no `PermanentBurnDelegate`, no `AppData` adapter. Anything that read
+  the AppData adapter reads the sidecar's registry and the `PagareEntry` events instead.
+- `cancel_pagare` is unchanged in its interface; it now thaws before burning.

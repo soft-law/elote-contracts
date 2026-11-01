@@ -23,6 +23,7 @@ export * from "./lineTermsSet";
 export * from "./lineWrittenOff";
 export * from "./navUpdated";
 export * from "./pagareCancelled";
+export * from "./pagareEntry";
 export * from "./pagareIssued";
 export * from "./poolCollectionSet";
 export * from "./poolConfigured";

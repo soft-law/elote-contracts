@@ -292,6 +292,28 @@ pub const PAGARE_OUTSTANDING: u8 = 0;
 /// `Pagare::status`: paid and extinguished by `cancel_pagare` (the asset is burnt; the sidecar
 /// stays as the "PAGADO" record with the receipt's hash).
 pub const PAGARE_PAID: u8 = 1;
+/// `Pagare::status`: paid (the payment entry reached its `drawn_through`), the burn still owed.
+pub const PAGARE_PAID_PENDING_CANCEL: u8 = 2;
+
+/// `Pagare::flags` bit: the asset carries an owner-managed `BurnDelegate` plugin, so a later
+/// procuración approves its authority instead of adding the plugin again.
+pub const PAGARE_FLAG_BURN_DELEGATE: u8 = 1 << 0;
+
+/// Registry entry kinds (`Pagare::last_kind`, `PagareEntry::kind`); an unknown kind is refused.
+pub const KIND_EMISION: u8 = 0;
+pub const KIND_PROPIEDAD: u8 = 1;
+pub const KIND_PROCURACION: u8 = 2;
+pub const KIND_REVOCACION: u8 = 3;
+pub const KIND_TERMINACION: u8 = 4;
+pub const KIND_ABONO: u8 = 5;
+pub const KIND_ANOTACION_JUDICIAL: u8 = 6;
+pub const KIND_CONSTANCIA_JUDICIAL: u8 = 7;
+pub const KIND_ENDOSO_TARDIO: u8 = 8;
+pub const KIND_PAGADO: u8 = 9;
+pub const KIND_SOLICITUD_CANCELACION: u8 = 10;
+pub const KIND_RECIBO: u8 = 11;
+/// The highest kind the program knows.
+pub const KIND_MAX: u8 = KIND_RECIBO;
 
 /// The program's record of one pagaré, the sidecar of the Core asset `draw` mints (C22). It holds
 /// no folio and nothing personal, and is never closed: after `cancel_pagare` it stays as the
@@ -324,11 +346,26 @@ pub struct Pagare {
     pub status: u8,
     /// When `cancel_pagare` marked it paid; zero while outstanding.
     pub paid_at: i64,
-    /// Hash of the FEA-signed receipt `cancel_pagare` was given (LGTOC 129); zero while outstanding.
+    /// Hash of the receipt the payment entry that marked it paid carried (LGTOC 129); zero while
+    /// outstanding.
     pub receipt_hash: [u8; 32],
     pub bump: u8,
     /// Room for later facts without a layout change.
     pub reserved: [u8; 32],
+    /// The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first.
+    pub log_root: [u8; 32],
+    /// Entries in the chain; the issuance entry is 1.
+    pub entry_count: u16,
+    /// `KIND_*` of the last entry.
+    pub last_kind: u8,
+    /// `PAGARE_FLAG_*` bits.
+    pub flags: u8,
+    /// Hash of the final receipt `cancel_pagare` was given; zero until the burn.
+    pub cancel_receipt_hash: [u8; 32],
+    /// When the holder requested a cancellation without the attestor (the backstop); zero otherwise.
+    pub requested_at: i64,
+    /// The receipt hash of that request.
+    pub requested_receipt_hash: [u8; 32],
 }
 
 /// Installment terms requested by `open_line`; fixed for the life of the line.

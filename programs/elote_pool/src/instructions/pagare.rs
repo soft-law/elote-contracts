@@ -1,6 +1,6 @@
 //! The pagaré after its issuance (issuance is `draw`, in `lines.rs`). Extinction is an act of the
 //! holder against a receipt (C22; LGTOC 17, 129): the holder and the attestor sign, the sidecar
-//! becomes the lasting PAGADO mark, and the asset is burnt last.
+//! becomes the lasting PAGADO mark, and the asset is thawed and burnt last.
 
 use anchor_lang::prelude::*;
 
@@ -100,8 +100,17 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
         holder: ctx.accounts.holder.key(),
     });
 
-    // Last, so a Core refusal leaves nothing half done: the pool PDA burns as the permanent burn
-    // delegate (it is also the owner while the asset is in the pool), the rent goes to `payer`.
+    // Last, so a Core refusal leaves nothing half done: the pool PDA thaws the asset as the
+    // collection's authority (a frozen asset cannot be burnt), then burns it as its owner; the
+    // rent goes to `payer`.
+    mpl_core::instructions::UpdatePluginV1CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
+        .asset(&ctx.accounts.asset.to_account_info())
+        .collection(Some(&ctx.accounts.collection.to_account_info()))
+        .payer(&ctx.accounts.payer.to_account_info())
+        .authority(Some(&ctx.accounts.pool.to_account_info()))
+        .system_program(&ctx.accounts.system_program.to_account_info())
+        .plugin(mpl_core::types::Plugin::PermanentFreezeDelegate(mpl_core::types::PermanentFreezeDelegate { frozen: false }))
+        .invoke_signed(pool_signer!(pool))?;
     mpl_core::instructions::BurnV1CpiBuilder::new(&ctx.accounts.mpl_core_program.to_account_info())
         .asset(&ctx.accounts.asset.to_account_info())
         .collection(Some(&ctx.accounts.collection.to_account_info()))

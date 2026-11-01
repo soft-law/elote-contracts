@@ -60,7 +60,7 @@ share one thing that cannot be split: the money.
   logic, or one loan funded by several pools (the loan becomes an account of its own program and
   pools hold positions). None of these exists today.
 
-## 1. One program, six modules
+## 1. One program, seven modules
 
 ```
 programs/elote_pool/src/
@@ -69,6 +69,7 @@ programs/elote_pool/src/
 ├── errors.rs         PoolError (33 codes, 6000..6032)
 ├── events.rs         24 events, all emitted through emit_cpi!
 ├── math.rs           pure arithmetic: share pricing, installments, late interest, arrears
+├── registry.rs       the pagaré registry: entry hashes and the sidecar's hash chain
 └── instructions/
     ├── pool.rs       init_pool, deposit, redeem, set_paused, set_attestor, and the pool_signer! macro
     ├── lines.rs      open_line, draw (which mints the pagaré), repay, mark_in_collection, write_off,
@@ -204,7 +205,7 @@ two kinds apart. `CreditLine::anchor()` (`first_due_at - interval`) is the singl
 calendar is anchored, and `last_due()` (the last due date, or `term_end` on a bullet line) is the
 instant every tranche's interest runs to.
 
-### 2.3 `Pagare` (245 bytes) and the pagaré asset
+### 2.3 `Pagare` (353 bytes; 245 before step 6d) and the pagaré asset
 
 The sidecar `draw` writes next to each Core asset (decision 24). Per the legal brief of
 2026-11-01 the signed data message is the pagaré; the asset is its registration and circulation
@@ -226,29 +227,33 @@ rent is a cost of every draw.
 | 130 | 8 | `drawn_through` | the line's `drawn` after this tranche: Σ amounts of pagarés `0..=draw_index`; the coverage rule reads it instead of earlier sidecars (`tests/pagare.rs` pins the invariant) |
 | 138 | 32 | `cert_fingerprint` | hash of the PSC certificate that signed the pagaré text (C6a); zero only with `signature_method` 0 |
 | 170 | 1 | `signature_method` | 0 wallet only, 1 PSC + wallet, 2 SAT e.firma + wallet (`SignatureMethodInvalid` otherwise) |
-| 171 | 1 | `status` | 0 `PAGARE_OUTSTANDING`, 1 `PAGARE_PAID` (set by `cancel_pagare`, never reverts) |
+| 171 | 1 | `status` | 0 `PAGARE_OUTSTANDING`, 1 `PAGARE_PAID` (burnt), 2 `PAGARE_PAID_PENDING_CANCEL` (paid, the burn owed); never reverts |
 | 172 | 8 | `paid_at` | when `cancel_pagare` marked it paid; zero while outstanding |
 | 180 | 32 | `receipt_hash` | hash of the FEA-signed receipt given to `cancel_pagare` (LGTOC 129); zero while outstanding |
 | 212 | 1 | `bump` | |
-| 213 | 32 | `reserved` | zero; room for later facts (an endoso count, the current holder) without a layout change |
+| 213 | 32 | `reserved` | zero; room for later facts without a layout change |
+| 245 | 32 | `log_root` | the registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first (`registry.rs`) |
+| 277 | 2 | `entry_count` | entries in the chain; 1 after the draw |
+| 279 | 1 | `last_kind` | `KIND_*` of the last entry |
+| 280 | 1 | `flags` | bit 0: the asset carries an owner-managed `BurnDelegate` (a later procuración approves instead of adds) |
+| 281 | 32 | `cancel_receipt_hash` | the final receipt `cancel_pagare` was given; zero until the burn |
+| 313 | 8 | `requested_at` | the backstop's request time; zero otherwise |
+| 321 | 32 | `requested_receipt_hash` | the receipt hash of that request |
 
 The Core asset is created in the same instruction with: owner = pool PDA (the vehicle's custody);
 update authority = the series' collection, whose own update authority is the pool PDA (Core
 expresses the authority of an asset in a collection through the collection); frozen from creation
-by a `PermanentFreezeDelegate` whose authority is the pool PDA; a `PermanentTransferDelegate`
-with the pool PDA as authority (the endoso will move it through this delegate, and nothing else
-can); a `PermanentBurnDelegate` with the pool PDA as authority, so `cancel_pagare` burns the
-pagaré with one `BurnV1` whoever holds it (its cancellation on full payment must not depend on
-the holder); `ImmutableMetadata`; an `Attributes` plugin with authority `None` carrying `pagare_hash`,
-`amount`, `currency` (the asset mint), `issued_at`, `due_at`, `line`, `draw_index`, `cert_fingerprint` and
-`signature_method`, the 32-byte values
-as lower-case hex (a base58 encoding on chain costs tens of thousands of CU); and an empty
-`AppData` external adapter, schema `Binary`, data authority = pool PDA, for the endoso log. The
-name is `PAGARE <line_id>-<draw_index>`: no series label, none of the words a court read as an
-offering in 2016609 (C29); the URI is empty. The program never reads the asset
-back: `cancel_pagare` trusts the sidecar (`asset` must be `Pagare.asset`) and the Core program's
-own checks in the `BurnV1` CPI, which the permanent burn delegate force-approves through the
-freeze (`tests/pagare.rs` burns a frozen asset).
+by a `PermanentFreezeDelegate` whose authority is `UpdateAuthority` (the collection, so the pool
+PDA; one approve relinquishes it); no transfer or burn delegate (the pool is the owner while the
+asset is in the pool and only the program signs for it); `ImmutableMetadata`; an `Attributes`
+plugin with authority `None` carrying `pagare_hash`, `amount`, `currency` (the asset mint),
+`issued_at`, `due_at`, `line`, `draw_index`, `cert_fingerprint` and `signature_method`, the
+32-byte values as lower-case hex (a base58 encoding on chain costs tens of thousands of CU); and
+`AddBlocker`, so nothing is added later. No external adapter: the registry lives in the sidecar.
+The name is `PAGARE <line_id>-<draw_index>`: no series label, none of the words a court read as an
+offering in 2016609 (C29); the URI is empty. The program never reads the asset back:
+`cancel_pagare` trusts the sidecar (`asset` must be `Pagare.asset`) and the Core program's own
+checks in its CPIs (thaw as the collection's authority, then `BurnV1` as the owner).
 
 What Core lets the parties do with such an asset after its creation, pinned by
 `tests/core_capabilities.rs` against the 0.15.3 binary (step 6d prework, condition C9):
@@ -305,8 +310,9 @@ sidecar (a PDA of this program): `log_root: [u8; 32]`, with `log_root' = sha256(
 entry_hash)` and the issuance entry as genesis, written by `draw`; `entry_count: u16`;
 `last_kind: u8`; `flags: u8` (bit 0: the asset carries a `BurnDelegate` plugin, so a later
 procuración approves instead of adds; Core refuses a second `AddPluginV1` with
-`PluginAlreadyExists`, found in the measurement). `entry_hash = sha256(kind || from || to || hash
-|| stated_at || entry_count)`; the entry's full content goes in the event `PagareEntry { pool,
+`PluginAlreadyExists`, found in the measurement). `entry_hash = sha256(asset || kind || from || to
+|| hash || stated_at || entry_count)`, the asset first so two pagarés with the same facts never
+share a chain; the entry's full content goes in the event `PagareEntry { pool,
 line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at }` and
 in the engine, which can replay the chain from the events and compare it with `log_root`. Kinds,
 mandatory and validated (an unknown kind is refused: art. 30 presumes propiedad when the class is
@@ -707,15 +713,17 @@ repays through `repay` like anyone else).
   Active` and `drawn_at = now`; the `Pagare` sidecar (`line`, `draw_index`, `asset`,
   `pagare_hash = document_hash`, `amount`, `issued_at = now`, `due_at = last_due`,
   `drawn_through = drawn` after the tranche, `cert_fingerprint`, `signature_method`, status
-  outstanding).
+  outstanding, and the registry opened with the issuance entry: `log_root =
+  sha256(0 || entry_hash)`, `entry_count = 1`, `last_kind = Emision`).
 - **Events:** `LineDrawn` with the tranche as `amount` and `outstanding_after`, then
   `LineDrawState` (`drawn`, `available`, `interest_due`, `availability_end`, `document_hash`),
   then `PagareIssued` (`draw_index`, `asset`, `pagare_hash`, `amount`, `due_at`, `holder` = the
-  pool PDA).
-- **Compute:** 89 694 CU on the first tranche and 89 869 on the second at 120 installments,
-  deterministic, of which the Core CPI is about 44 000 (`tests/compute.rs`; the ceiling is
-  100 000, so some 10 000 CU of room remain before clients would need a compute-budget request;
-  the attributes are the lever if it comes to that).
+  pool PDA), then `PagareEntry` (the issuance entry: kind `Emision`, from and to the pool, the
+  pagaré's hash, `entry_count` 1, both dates `now`).
+- **Compute:** 82 399 CU on the first tranche and 82 574 on the second at 120 installments,
+  deterministic, of which the Core CPI is about 37 000 with the final plugin set
+  (`tests/compute.rs`; the ceiling is 100 000, so some 17 000 CU of room remain before clients
+  would need a compute-budget request; the attributes are the lever if it comes to that).
 
 ### 5.6 `repay(amount: u64)`
 
@@ -877,13 +885,13 @@ the payment must outlive the título.
   carries no AppData length: reading it would mean decoding the asset's external adapter header on
   chain (the rule at the top of §5), and the engine reads and archives the log off chain before the
   burn.
-- **CPI, last:** Metaplex Core `BurnV1` with the pool PDA as authority (the permanent burn
-  delegate, also the owner while the asset is in the pool), the collection, `payer`, the system
-  program. The permanent burn delegate force-approves the burn through the permanent freeze, so
-  no thaw precedes it. Core leaves a one-byte `Uninitialized` tombstone at the address (so it
-  cannot be re-created as an asset) and sends the rest of the rent to `payer`; the collection's
-  `current_size` drops by one and `num_minted` stays.
-- **Compute:** 26 891 CU on a 120-installment line (`tests/compute.rs`); no arrears loop runs.
+- **CPIs, last:** Metaplex Core `UpdatePluginV1` thawing the asset (the pool PDA as the
+  collection's authority, which holds the freeze delegate), then `BurnV1` with the pool PDA as
+  the owner, the collection, `payer`, the system program. Core leaves a one-byte `Uninitialized`
+  tombstone at the address (so it cannot be re-created as an asset) and sends the rest of the
+  rent to `payer`; the collection's `current_size` drops by one and `num_minted` stays.
+- **Compute:** 44 544 CU on a 120-installment line (`tests/compute.rs`; the thaw is about 17 000
+  of it); no arrears loop runs.
 
 ### 5.14 `set_collection_period(collection_period_seconds: u32)`
 
@@ -1066,12 +1074,12 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
 | `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins, costs about 4 200 CU and does not stop adapters; AppData is written by its fixed data authority and removed by the collection's authority; an Owner-held AppData authority follows the asset through `TransferV1` and a write replaces the data; owner-managed delegates are the owner's to add (AddBlocker or not), approve and revoke, reset to `Owner` on transfer, and the approved burn delegate burns a thawed asset; a burn delegate approved to a program address refuses the procurador's own key |
 | `tests/audit.rs` | LiteSVM | the regression tests of the 2026-11-01 audit (`docs/audits/`): F-01 a third-party repayment does not close a line that can still draw, F-02 a collection with plugins or minted assets is refused, F-03 the collection period from the mark, F-05 the attestor is neither the admin nor a borrower |
-| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (26 904 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 959 CU at 120, deterministic, of which the Core CPI is about 44 000; `repay` 57 008, `mark_in_collection` 34 366, `write_off` 47 896 at 120 with every installment missed and the collection period run, so every installment takes the accrual branch; after an early mark, `repay` 48 181 and `write_off` 47 897) |
+| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (44 544 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 82 574 CU at 120, deterministic, of which the Core CPI is about 37 000; `repay` 57 008, `mark_in_collection` 34 366, `write_off` 47 896 at 120 with every installment missed and the collection period run, so every installment takes the accrual branch; after an early mark, `repay` 48 181 and `write_off` 47 897) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 141 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 142 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.

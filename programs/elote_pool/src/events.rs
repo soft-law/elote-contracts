@@ -144,6 +144,24 @@ pub struct PagareIssued {
     pub holder: Pubkey,
 }
 
+/// One entry of a pagaré's registry (LGTOC 8 fr. VI, 13, 130): the full content the sidecar's
+/// hash chain commits to. `stated_at` is the date the entry states (the signed message's date for
+/// a late entry), `recorded_at` the slot's time.
+#[event]
+pub struct PagareEntry {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub draw_index: u16,
+    pub asset: Pubkey,
+    pub kind: u8,
+    pub from: Pubkey,
+    pub to: Pubkey,
+    pub entry_hash: [u8; 32],
+    pub entry_count: u16,
+    pub recorded_at: i64,
+    pub stated_at: i64,
+}
+
 /// Emitted by `cancel_pagare` (C22, LGTOC 129), before the burn. `holder` is the key that
 /// extinguished the pagaré; the sidecar stays as the PAGADO mark. No AppData length: the engine
 /// archives the log off chain before the burn.

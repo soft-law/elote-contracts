@@ -83,11 +83,28 @@ export type Pagare = {
   status: number;
   /** When `cancel_pagare` marked it paid; zero while outstanding. */
   paidAt: bigint;
-  /** Hash of the FEA-signed receipt `cancel_pagare` was given (LGTOC 129); zero while outstanding. */
+  /**
+   * Hash of the receipt the payment entry that marked it paid carried (LGTOC 129); zero while
+   * outstanding.
+   */
   receiptHash: ReadonlyUint8Array;
   bump: number;
   /** Room for later facts without a layout change. */
   reserved: ReadonlyUint8Array;
+  /** The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first. */
+  logRoot: ReadonlyUint8Array;
+  /** Entries in the chain; the issuance entry is 1. */
+  entryCount: number;
+  /** `KIND_*` of the last entry. */
+  lastKind: number;
+  /** `PAGARE_FLAG_*` bits. */
+  flags: number;
+  /** Hash of the final receipt `cancel_pagare` was given; zero until the burn. */
+  cancelReceiptHash: ReadonlyUint8Array;
+  /** When the holder requested a cancellation without the attestor (the backstop); zero otherwise. */
+  requestedAt: bigint;
+  /** The receipt hash of that request. */
+  requestedReceiptHash: ReadonlyUint8Array;
 };
 
 export type PagareArgs = {
@@ -120,11 +137,28 @@ export type PagareArgs = {
   status: number;
   /** When `cancel_pagare` marked it paid; zero while outstanding. */
   paidAt: number | bigint;
-  /** Hash of the FEA-signed receipt `cancel_pagare` was given (LGTOC 129); zero while outstanding. */
+  /**
+   * Hash of the receipt the payment entry that marked it paid carried (LGTOC 129); zero while
+   * outstanding.
+   */
   receiptHash: ReadonlyUint8Array;
   bump: number;
   /** Room for later facts without a layout change. */
   reserved: ReadonlyUint8Array;
+  /** The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first. */
+  logRoot: ReadonlyUint8Array;
+  /** Entries in the chain; the issuance entry is 1. */
+  entryCount: number;
+  /** `KIND_*` of the last entry. */
+  lastKind: number;
+  /** `PAGARE_FLAG_*` bits. */
+  flags: number;
+  /** Hash of the final receipt `cancel_pagare` was given; zero until the burn. */
+  cancelReceiptHash: ReadonlyUint8Array;
+  /** When the holder requested a cancellation without the attestor (the backstop); zero otherwise. */
+  requestedAt: number | bigint;
+  /** The receipt hash of that request. */
+  requestedReceiptHash: ReadonlyUint8Array;
 };
 
 /** Gets the encoder for {@link PagareArgs} account data. */
@@ -147,6 +181,13 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["bump", getU8Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 32)],
+      ["logRoot", fixEncoderSize(getBytesEncoder(), 32)],
+      ["entryCount", getU16Encoder()],
+      ["lastKind", getU8Encoder()],
+      ["flags", getU8Encoder()],
+      ["cancelReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["requestedAt", getI64Encoder()],
+      ["requestedReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
   );
@@ -171,6 +212,13 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["bump", getU8Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 32)],
+    ["logRoot", fixDecoderSize(getBytesDecoder(), 32)],
+    ["entryCount", getU16Decoder()],
+    ["lastKind", getU8Decoder()],
+    ["flags", getU8Decoder()],
+    ["cancelReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["requestedAt", getI64Decoder()],
+    ["requestedReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
 
@@ -241,5 +289,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 245;
+  return 353;
 }

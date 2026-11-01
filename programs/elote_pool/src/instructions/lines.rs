@@ -11,12 +11,13 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 use crate::errors::PoolError;
 use crate::events::{
     LateInterestCollected, LineCancelled, LineDrawState, LineDrawn, LineDrawsSuspended, LineInCollection, LineOpened,
-    LineRepaid, LineScheduled, LineSponsorRole, LineTermsSet, LineWrittenOff, NavUpdated, PagareIssued,
+    LineRepaid, LineScheduled, LineSponsorRole, LineTermsSet, LineWrittenOff, NavUpdated, PagareEntry, PagareIssued,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
 use crate::pool_signer;
+use crate::registry;
 use crate::state::{
-    seeds, CreditLine, LineStatus, Pagare, Pool, Schedule, ScheduleParams, BPS, LINE_VERSION, MAX_DRAWS,
+    seeds, CreditLine, LineStatus, Pagare, Pool, Schedule, ScheduleParams, BPS, KIND_EMISION, LINE_VERSION, MAX_DRAWS,
     MAX_INSTALLMENTS, MIN_MAX_MISSED, PAGARE_OUTSTANDING, SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
 };
 
@@ -326,24 +327,23 @@ fn dec_u(mut m: u64) -> String {
 }
 
 /// Mints the pagaré: one Core asset in the pool's collection, owned by the pool PDA and frozen
-/// from creation; the three permanent delegates held by the pool PDA (it is the freeze that stops
-/// anyone else, and `init_pool` admits only a bare collection, so no collection plugin reaches the
-/// asset); `ImmutableMetadata`; `Attributes` nobody can change (the nine facts, 32-byte
-/// values as hex); an empty `AppData` whose data authority is the pool PDA. The name is
+/// from creation by a `PermanentFreezeDelegate` whose authority is `UpdateAuthority` (the
+/// collection, so the pool PDA; a later version relinquishes it with one approve). No transfer or
+/// burn delegate: the pool is the owner while the asset is in the pool and only the program signs
+/// for it; `init_pool` admits only a bare collection, so no collection plugin reaches the asset.
+/// `ImmutableMetadata`; `Attributes` nobody can change (the nine facts, 32-byte values as hex);
+/// `AddBlocker`, so nothing is added later. No adapter: the registry is the sidecar's. The name is
 /// `PAGARE <line>-<index>` (C29), the URI empty, nothing personal.
 #[allow(clippy::too_many_arguments)]
 fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) -> Result<()> {
     let (draw_index, amount, document_hash, issued_at, due_at) =
         (record.draw_index, record.amount, record.pagare_hash, record.issued_at, record.due_at);
     use mpl_core::types::{
-        AppDataInitInfo, Attribute, Attributes, ExternalPluginAdapterInitInfo, ExternalPluginAdapterSchema,
-        ImmutableMetadata, PermanentBurnDelegate, PermanentFreezeDelegate, PermanentTransferDelegate, Plugin,
-        PluginAuthority, PluginAuthorityPair,
+        AddBlocker, Attribute, Attributes, ImmutableMetadata, PermanentFreezeDelegate, Plugin, PluginAuthority,
+        PluginAuthorityPair,
     };
     let pool = &accounts.pool;
     let line = &accounts.line;
-    let pool_key = pool.key();
-    let by_pool = Some(PluginAuthority::Address { address: pool_key });
     // Hex, not base58: a base58 encoding of a 32-byte key costs tens of thousands of CU on chain.
     let attributes = vec![
         Attribute { key: "pagare_hash".into(), value: hex(&document_hash) },
@@ -359,21 +359,15 @@ fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) 
     let plugins = vec![
         PluginAuthorityPair {
             plugin: Plugin::PermanentFreezeDelegate(PermanentFreezeDelegate { frozen: true }),
-            authority: by_pool.clone(),
+            authority: Some(PluginAuthority::UpdateAuthority),
         },
-        PluginAuthorityPair { plugin: Plugin::PermanentTransferDelegate(PermanentTransferDelegate {}), authority: by_pool.clone() },
-        PluginAuthorityPair { plugin: Plugin::PermanentBurnDelegate(PermanentBurnDelegate {}), authority: by_pool.clone() },
         PluginAuthorityPair { plugin: Plugin::ImmutableMetadata(ImmutableMetadata {}), authority: Some(PluginAuthority::None) },
         PluginAuthorityPair {
             plugin: Plugin::Attributes(Attributes { attribute_list: attributes }),
             authority: Some(PluginAuthority::None),
         },
+        PluginAuthorityPair { plugin: Plugin::AddBlocker(AddBlocker {}), authority: Some(PluginAuthority::None) },
     ];
-    let adapters = vec![ExternalPluginAdapterInitInfo::AppData(AppDataInitInfo {
-        data_authority: PluginAuthority::Address { address: pool_key },
-        init_plugin_authority: by_pool,
-        schema: Some(ExternalPluginAdapterSchema::Binary),
-    })];
 
     let index_bytes = draw_index.to_le_bytes();
     let line_key = line.key();
@@ -391,7 +385,6 @@ fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) 
         .name(["PAGARE ", &dec_u(line.line_id), "-", &dec_u(draw_index.into())].concat())
         .uri(String::new())
         .plugins(plugins)
-        .external_plugin_adapters(adapters)
         .invoke_signed(&[pool_seeds[0], asset_seeds])?;
     Ok(())
 }
@@ -516,7 +509,19 @@ pub fn draw(
         receipt_hash: [0; 32],
         bump: pagare_bump,
         reserved: [0; 32],
+        log_root: [0; 32],
+        entry_count: 0,
+        last_kind: 0,
+        flags: 0,
+        cancel_receipt_hash: [0; 32],
+        requested_at: 0,
+        requested_receipt_hash: [0; 32],
     };
+    // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.
+    let mut record = record;
+    let pool_key = ctx.accounts.pool.key();
+    let entry_hash =
+        registry::append(&mut record, KIND_EMISION, &pool_key, &pool_key, &document_hash, now).ok_or(PoolError::Overflow)?;
     issue_pagare(ctx.accounts, asset_bump, &record)?;
     create_sidecar(ctx.accounts, pagare_bump, &record)?;
 
@@ -560,6 +565,19 @@ pub fn draw(
         amount,
         due_at: last_due,
         holder: pool.key(),
+    });
+    emit_cpi!(PagareEntry {
+        pool: pool.key(),
+        line_id: line.line_id,
+        draw_index,
+        asset: ctx.accounts.asset.key(),
+        kind: KIND_EMISION,
+        from: pool.key(),
+        to: pool.key(),
+        entry_hash,
+        entry_count: record.entry_count,
+        recorded_at: now,
+        stated_at: now,
     });
     Ok(())
 }
