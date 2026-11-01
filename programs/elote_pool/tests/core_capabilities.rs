@@ -20,7 +20,8 @@ use mpl_core::instructions::{
     TransferV1Builder, UpdatePluginV1Builder, UpdateV1Builder, UpdateV2Builder,
 };
 use mpl_core::types::{
-    AddBlocker, Attribute, Attributes, ImmutableMetadata, PermanentBurnDelegate, PermanentFreezeDelegate,
+    AddBlocker, AppDataInitInfo, AppDataUpdateInfo, Attribute, Attributes, ExternalPluginAdapterInitInfo,
+    ExternalPluginAdapterKey, ExternalPluginAdapterSchema, ExternalPluginAdapterUpdateInfo, ImmutableMetadata, PermanentBurnDelegate, PermanentFreezeDelegate,
     PermanentTransferDelegate, Plugin, PluginAuthority, PluginAuthorityPair, PluginType, TransferDelegate, UpdateAuthority,
     UpdateDelegate,
 };
@@ -47,6 +48,8 @@ struct Parties {
     stranger: Keypair,
     collection: Pubkey,
     asset: Pubkey,
+    /// Compute units of the `CreateV2` that made the asset.
+    create_cu: u64,
 }
 
 /// An asset shaped like a pagaré: in `collection`, owned by `owner`, frozen, the three permanent
@@ -86,9 +89,14 @@ fn pagare_like(env: &mut Env, add_blocker: bool) -> Parties {
         .name("PAGARE 0-0".into())
         .uri(String::new())
         .plugins(plugins)
+        .external_plugin_adapters(vec![ExternalPluginAdapterInitInfo::AppData(AppDataInitInfo {
+            data_authority: PluginAuthority::Address { address: delegate.pubkey() },
+            init_plugin_authority: Some(PluginAuthority::Address { address: delegate.pubkey() }),
+            schema: Some(ExternalPluginAdapterSchema::Binary),
+        })])
         .instruction();
-    env.send(ix, &ua, &[&asset]);
-    Parties { ua, delegate, owner, stranger, collection, asset: asset.pubkey() }
+    let create_cu = env.send(ix, &ua, &[&asset]).compute_units_consumed;
+    Parties { ua, delegate, owner, stranger, collection, asset: asset.pubkey(), create_cu }
 }
 
 /// Sends `ix` signed by `signer` and returns `Ok(())` or the Core error code.
@@ -299,7 +307,106 @@ fn an_assets_update_authority_cannot_leave_its_collection_and_add_blocker_closes
 
     // With an AddBlocker from creation, not even that.
     let b = pagare_like(&mut env, true);
-    let r = attempt(&mut env, add_plugin_ix(&b, &b.ua, authority_managed()), &b.ua);
-    assert!(r.is_err(), "AddBlocker refuses the update authority's plugin");
+    assert_eq!(attempt(&mut env, add_plugin_ix(&b, &b.ua, authority_managed()), &b.ua), Err(CORE_INVALID_AUTHORITY));
     assert!(env.asset_state(&b.asset).plugin_list.update_delegate.is_none());
+}
+
+/// The price of an `AddBlocker` in the creation set, measured on the pagaré shape with a direct
+/// `CreateV2` (the Core CPI inside `draw` costs the same work): about 4 200 CU, which would take
+/// `draw` at 120 installments from about 89 900 to about 94 100 CU, inside the 100 000 ceiling but
+/// nearly half of the room left. An option for the 6d design, not a change to `draw`.
+#[test]
+fn add_blocker_costs_about_four_thousand_cu_at_creation() {
+    let mut env = Env::new();
+    let without = pagare_like(&mut env, false).create_cu;
+    let with = pagare_like(&mut env, true).create_cu;
+    let delta = with as i64 - without as i64;
+    println!("CreateV2 of the pagaré shape: {without} CU; with AddBlocker: {with} CU; delta {delta} CU");
+    assert!((3_000..6_000).contains(&delta), "AddBlocker delta {delta} CU left the pinned band");
+}
+
+/// AppData, where 6d would log the endosos: its data authority is fixed at creation (Core's
+/// `AppDataUpdateInfo` carries only the schema), and only that authority writes the data or changes
+/// the schema; the collection's authority, the owner and strangers get `InvalidAuthority`. Adding
+/// another adapter or removing an existing one is the collection's authority alone (`NoApprovals`
+/// for the rest), and an `AddBlocker` stops neither: the pool PDA, as the collection's authority,
+/// keeps the power to remove the log and to add adapters whatever else it relinquishes.
+#[test]
+fn app_data_is_written_only_by_its_fixed_data_authority_and_removed_only_by_the_collection_authority() {
+    use mpl_core::instructions::{
+        AddExternalPluginAdapterV1Builder, RemoveExternalPluginAdapterV1Builder, UpdateExternalPluginAdapterV1Builder,
+        WriteExternalPluginAdapterDataV1Builder,
+    };
+    let mut env = Env::new();
+    let key = |p: &Parties| ExternalPluginAdapterKey::AppData(PluginAuthority::Address { address: p.delegate.pubkey() });
+    let write = |p: &Parties, by: &Keypair| {
+        WriteExternalPluginAdapterDataV1Builder::new()
+            .asset(p.asset)
+            .collection(Some(p.collection))
+            .payer(by.pubkey())
+            .authority(Some(by.pubkey()))
+            .key(key(p))
+            .data(vec![1, 2, 3])
+            .instruction()
+    };
+    let reschema = |p: &Parties, by: &Keypair| {
+        UpdateExternalPluginAdapterV1Builder::new()
+            .asset(p.asset)
+            .collection(Some(p.collection))
+            .payer(by.pubkey())
+            .authority(Some(by.pubkey()))
+            .key(key(p))
+            .update_info(ExternalPluginAdapterUpdateInfo::AppData(AppDataUpdateInfo { schema: Some(ExternalPluginAdapterSchema::Json) }))
+            .instruction()
+    };
+    let add = |p: &Parties, by: &Keypair| {
+        AddExternalPluginAdapterV1Builder::new()
+            .asset(p.asset)
+            .collection(Some(p.collection))
+            .payer(by.pubkey())
+            .authority(Some(by.pubkey()))
+            .init_info(ExternalPluginAdapterInitInfo::AppData(AppDataInitInfo {
+                data_authority: PluginAuthority::Address { address: by.pubkey() },
+                init_plugin_authority: None,
+                schema: None,
+            }))
+            .instruction()
+    };
+    let remove = |p: &Parties, by: &Keypair| {
+        RemoveExternalPluginAdapterV1Builder::new()
+            .asset(p.asset)
+            .collection(Some(p.collection))
+            .payer(by.pubkey())
+            .authority(Some(by.pubkey()))
+            .key(key(p))
+            .instruction()
+    };
+    let app_data = |env: &Env, p: &Parties| {
+        let asset = env.asset_state(&p.asset);
+        asset.external_plugin_adapter_list.app_data.iter().map(|a| (a.base.schema.clone(), a.base.data_authority.clone(), a.data_len)).collect::<Vec<_>>()
+    };
+
+    for add_blocker in [false, true] {
+        let p = pagare_like(&mut env, add_blocker);
+        let by_delegate = PluginAuthority::Address { address: p.delegate.pubkey() };
+        assert_eq!(app_data(&env, &p), vec![(ExternalPluginAdapterSchema::Binary, by_delegate.clone(), 0)]);
+        // Writing and re-schematising: the data authority only.
+        for by in [&p.stranger, &p.owner, &p.ua] {
+            assert_eq!(attempt(&mut env, write(&p, by), by), Err(CORE_INVALID_AUTHORITY));
+            assert_eq!(attempt(&mut env, reschema(&p, by), by), Err(CORE_INVALID_AUTHORITY));
+        }
+        assert_eq!(attempt(&mut env, write(&p, &p.delegate), &p.delegate), Ok(()));
+        assert_eq!(attempt(&mut env, reschema(&p, &p.delegate), &p.delegate), Ok(()));
+        assert_eq!(app_data(&env, &p), vec![(ExternalPluginAdapterSchema::Json, by_delegate.clone(), 3)], "the data authority never moved");
+        // Adding and removing adapters: the collection's authority only, AddBlocker or not.
+        for by in [&p.stranger, &p.owner, &p.delegate] {
+            assert_eq!(attempt(&mut env, add(&p, by), by), Err(CORE_NO_APPROVALS));
+            assert_eq!(attempt(&mut env, remove(&p, by), by), Err(CORE_NO_APPROVALS));
+        }
+        assert_eq!(attempt(&mut env, add(&p, &p.ua), &p.ua), Ok(()), "AddBlocker {add_blocker}");
+        assert_eq!(app_data(&env, &p).len(), 2);
+        assert_eq!(attempt(&mut env, remove(&p, &p.ua), &p.ua), Ok(()), "AddBlocker {add_blocker}");
+        let by_ua = PluginAuthority::Address { address: p.ua.pubkey() };
+        assert_eq!(app_data(&env, &p), vec![(ExternalPluginAdapterSchema::Binary, by_ua, 0)], "the log is gone, the collection's own adapter remains");
+    }
 }

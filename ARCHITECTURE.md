@@ -265,7 +265,23 @@ What Core lets the parties do with such an asset after its creation, pinned by
 - An asset's update authority cannot leave its collection: `UpdateV1` to an address or `None` and
   `UpdateV2` to an address fail with `InvalidAuthority` for everyone, the collection's authority
   included. That authority can still add authority-managed plugins (`UpdateDelegate` went
-  through), not permanent or owner-managed ones; an `AddBlocker` set at creation closes that door.
+  through), not permanent or owner-managed ones; an `AddBlocker` set at creation closes that door
+  (at about 4 200 CU more per creation, which would put `draw` at 120 installments near 94 100 CU).
+- AppData (where the endoso log would live): its data authority is fixed at creation (Core's
+  update carries only the schema) and alone writes the data or changes the schema; adding or
+  removing adapters is the collection's authority alone, and `AddBlocker` stops neither. Whatever
+  else the pool relinquishes, as the collection's authority it keeps the power to remove the log.
+
+Working assumption pending counsel (decision 27, question Q7): the pool keeps the permanent
+delegates on an endorsed pagaré, and their use is bounded to `endorse_pagare`, `court_order_transfer`
+and `cancel_pagare` (design B). Design A, relinquishing them at the endoso, is the literal reading
+of C9 and its costs are the two above: `cancel_pagare` would need a second burn branch as the
+owner, after a mandatory thaw, and every endoso after the first would happen outside the program,
+the sidecar's holder of record following Core's owner only by a fixed-offset read. The findings
+allow both. Two traps bind either design: frozen plus a freeze authority of `None` is permanent,
+so any relinquish path thaws first; and approving the endorsee's key as a permanent delegate is
+leaky, since a delegate can revoke and a revoke resets to the collection's authority, the pool, so
+only `None` removes the pool.
 
 ### 2.4 Constants (`state.rs`)
 
@@ -830,13 +846,13 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/known_limits.rs` | LiteSVM | the nine tests in §9: six limits still in force and three inverted on 2026-10-31 |
 | `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
 | `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
-| `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins |
+| `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins, costs about 4 200 CU and does not stop adapters; AppData is written by its fixed data authority and removed by the collection's authority |
 | `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (26 891 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 869 CU at 120, deterministic, of which the Core CPI is about 44 000) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 126 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 128 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.
