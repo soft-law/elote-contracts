@@ -335,6 +335,18 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   plan's principal + interest let a título burn with principal still owed, since repay settles
   interest first); the event names the holder, so 6d needs no new shape. Receipt reuse is not
   checked on chain (engine issues one per pagaré; attestor is the guard). Next: commit 4.
+- **6c commit 4 accepted** (`1024104`; 126 Rust; `tests/core_capabilities.rs`, no program change;
+  push authorised). Core 0.15.3 findings: permanent delegates cannot be re-approved directly
+  (`CannotRedelegate`); revoke resets to the collection's authority (the pool PDA) which can then
+  approve a key or `None`; `None` is terminal; only the freeze delegate thaws, and frozen + `None`
+  is stuck; an asset's update authority never leaves its collection, `AddBlocker` at creation
+  closes the remaining plugin door. Coordinator's reading: two designs, **A** relinquish at
+  endoso (C9 exceptions impossible, C5/C28 off chain) vs **B** retain and bound by instructions;
+  **B is the working assumption pending counsel Q7**; `AddBlocker` not added to `draw` yet. Two
+  measurements ordered before 6d: draw CU at 120 with `AddBlocker` in the creation set; whether
+  the AppData data authority can change after creation and whether `AddBlocker` blocks updating
+  an existing adapter. Traps for the 6d spec: thaw before any relinquish; approving the endorsee
+  as permanent delegate is leaky (the delegate can revoke back to the pool). 6d and verifier held.
 
 ## Points the coordinator still owns
 

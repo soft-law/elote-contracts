@@ -45,6 +45,7 @@ human's hands or a licence, it says so and names the person.
 | 22 | Loss assumptions for series documents | Base PD 12 to 20% a year, LGD 80 to 90%, expected loss 10 to 18%; stress PD 35%, LGD 95%. No initial grace period; weekly, quincenal or monthly cadence as offered; postponement vouchers as a later parameter. | loans-gov-mexico `M-pagares-recovery.md` §3.7 and `sr/synthesis.md`; first-loss tranches in Goldfinch and Maple were exhausted by off-chain conduct. | series term sheets, tranched plan evidence section |
 | 24 | Pagaré token | **The token is the pagaré** (Mario, 2026-10-31: Elote's legal position and innovation). One Metaplex Core asset per disposición, issued by the pool at `draw` with the attestor's signature, held frozen in the pool PDA as the series vehicle's custody, burned against full payment (art. 129), endorsed only through the program to wallets with Elote's SAS attestation, with the endoso log in the asset's `AppData`. The sistema de información is Solana plus the program plus the agreements engine, designated in the pagaré text. Only hashes, salted commitments, amounts, dates and keys on chain; `expediente_root` on the line. Token-2022, Light and a token-less record rejected for the título. | Centrifuge and Tinlake proved the locked document token; Huma, Tinlake's unlock and Credix's unsalted hashes show what to avoid. The pagaré research reads the LGTOC more narrowly; its objections are the items counsel must defend (item 16). `docs/plans/2026-10-31-expediente-token-design.md`. | tranched plan D9, D14, D15; counsel item 16 |
 | 26 | Legal brief, 2026-11-01 | **Posture moves from H1 to H2, pending Mario's word:** the electronic pagaré is the signed data message issued through the sistema de información (program + agreements engine); the Core asset is its único registro de emisión, tenencia y circulación. H1 (the asset alone is the título) is not sustained (LGTOC 14, 170). Mechanics adopted: cancellation is an act of the holder with a receipt (`cancel_pagare(k, receipt_hash)` signed by holder and attestor, sidecar kept as the persistent PAGADO mark, burn last); double signature recorded at `draw` (`cert_fingerprint`, `signature_method`); neutral asset and collection names; the new attestor co-signs `set_attestor`; control must pass with an endoso en propiedad (C9), technical verification ordered. Open with counsel and Mario: one pagaré per installment vs per draw with acceleration clause and payment annotations (C19/C20). | loans-gov-mexico draft brief; mapping in `docs/plans/2026-11-01-pagare-token-legal-conditions.md`. | expediente design, dev brief, counsel brief |
+| 27 | Control after the endoso (C9), 2026-11-01 | **Working assumption B, pending counsel Q7 and Mario:** the pool PDA keeps the three permanent Core delegates on an endorsed pagaré and the program bounds their use to enumerated instructions (`endorse_pagare` gated by SAS and logging `endoso_hash`, `court_order_transfer` with a court-document hash, `cancel_pagare` with the holder's signature); "no power of the vehicle over the asset" is satisfied by the instruction set plus the upgrade governance (C10, C11). Alternative A, relinquish at endoso (thaw, revoke, approve `None`), gives up every on-chain power irreversibly, which also makes the C9 exceptions impossible and moves C5 and C28 off chain. Pinned Core 0.15.3 facts behind the choice: a permanent delegate cannot be re-approved directly; revoke resets it to the collection's authority (the pool); `None` is terminal; frozen plus `None` is stuck forever; an asset's update authority never leaves its collection. `AddBlocker` at creation and the AppData data-authority question are measured before 6d. No 6d code until counsel answers. | dev commit `1024104`, `tests/core_capabilities.rs`; advisor review 2026-11-01 | legal-conditions mapping C9, dev brief, counsel brief Q7 |
 | 25 | The signed document is the source | **Everything on chain is born from the signed document** (Mario, 2026-10-31, answer "2"). The payment calendar is fixed in the credit agreement: `open_line` takes `first_due_at` from the contract and installments count from it, not from the first draw; the draw window is known at signing; a late drawer pays on the agreed dates. The attestor co-signs `open_line`, `draw` and `endorse_pagare`, tying every on-chain term to its signed document. `cancel_line` closes lines never drawn by their first due date. The minimum-days question from the UX review is closed as unnecessary. | Matches how Mexican credit is signed; removes the late-drawer trap; one anchor change in the program if done before the window tests. | tranched plan D3, D16; expediente design "Opening"; dev brief |
 | 23 | Etherfuse on-chain routes | **Shape A stays REST-only.** The SDK has disabled every user buy and redeem instruction since 3.0.13 ("contact Etherfuse for OTC"); a PDA may hold CETES and may fund an off-ramp by transfer, which keeps shape B possible later through a KYB'd entity, not through on-chain CPIs. | loans-gov-mexico `N-guarantees-etherfuse-liquidity.md` "Corrections" and §B6, §B8; verified in the 3.0.19 bundle. | CETES review |
 
@@ -113,16 +114,24 @@ Added from the loans-gov-mexico research (2026-10-31):
     whether the contractual designation of the Softlaw system as the "sistema de información"
     (LGTOC arts. 17, 27) is enough while no CNBV rules exist; the art. 5o Bis gate in a juicio
     ejecutivo; and which persona (SOFOM, fiduciario or SPV) is the tenedor, since a PDA cannot be.
-16. Pagaré token, Elote's position to defend: the Core asset issued by the program **is** the
-    electronic pagaré under LGTOC arts. 5o and 5o Bis, with Solana, the program and the agreements
-    engine as the sistema de información designated in the pagaré text. Counsel confirms or
-    corrects: the designation under arts. 17 and 27 without CNBV rules; the signature method so
-    the borrower's signature is attributable (CCom art. 97, tesis 2031391) and whether the attestor
-    plus a NOM-151 constancia suffice with a wallet key; that the series vehicle holding through
-    the pool PDA is the tenedor and how a judge verifies the last holder (art. 39) from the endoso
-    log; burn against payment as the art. 129 cancellation; post-maturity endoso effects and
-    notice; the art. 5o Bis gate in a juicio ejecutivo
-    (`docs/plans/2026-10-31-expediente-token-design.md`).
+16. Pagaré token, Elote's position to defend (H2, decision 26): the electronic pagaré is the
+    signed data message issued through the sistema de información (program plus agreements engine,
+    designated in the pagaré text); the Core asset is its único registro de emisión, tenencia y
+    circulación. Counsel confirms or corrects: whether H2 holds and whether art. 5o paras. 2-3 is
+    the "express" permission art. 5o Bis asks for (Q2); the designation under arts. 17 and 27
+    without an act of authority (Q3); the signature method so the borrower's signature is
+    attributable (CCom art. 97, tesis 2031391), the double signature of C6a, and whether the
+    attestor plus a NOM-151 constancia suffice (Q1); that the series vehicle holding through the
+    pool PDA is the tenedor and how a judge verifies the last holder (art. 39) from the endoso
+    log; cancellation by the holder against a receipt with the asset burnt last as the art. 129
+    cancellation (Q8); post-maturity endoso effects and notice; the art. 5o Bis gate in a juicio
+    ejecutivo. **Q7, control after the endoso (decision 27):** Core lets the pool either keep its
+    permanent delegates on an endorsed pagaré and bound their use by instruction (B), or give them
+    up irreversibly at the endoso (A), in which case no return from procuración, court-ordered
+    transfer or gated endoso is possible on chain. Counsel says which reading satisfies "the
+    endorsee holds free of the vehicle's control" and whether a documented, instruction-bounded
+    delegate held by the vehicle defeats the endoso en propiedad
+    (`docs/plans/2026-11-01-pagare-token-legal-conditions.md`, C9).
 
 Decided facts the brief may state for its scope section (from this record and `ARCHITECTURE.md`
 §8): the design is non-custodial throughout, since investors hold series shares and CETES in
