@@ -410,3 +410,193 @@ fn app_data_is_written_only_by_its_fixed_data_authority_and_removed_only_by_the_
         assert_eq!(app_data(&env, &p), vec![(ExternalPluginAdapterSchema::Binary, by_ua, 0)], "the log is gone, the collection's own adapter remains");
     }
 }
+
+/// Question for design A (decision 27, Mario's reading of C9: the history travels with the pagaré):
+/// can an AppData adapter be created with data authority `Owner`, and does that authority follow
+/// the asset through `TransferV1`, so that each holder writes its own entry and the pool has no
+/// write power once the asset has left it?
+#[test]
+fn an_app_data_with_owner_data_authority_follows_the_asset_to_each_new_owner() {
+    use mpl_core::instructions::WriteExternalPluginAdapterDataV1Builder;
+    let mut env = Env::new();
+    let ua = env.funded(1);
+    let first = env.funded(1);
+    let second = env.funded(1);
+    let stranger = env.funded(1);
+    let collection = env.create_collection(&ua.pubkey());
+    let asset = Keypair::new();
+    // Thawed (no freeze delegate) so the owner can transfer; the adapter's data authority is the
+    // owner, its plugin authority (schema changes, removal) the collection's authority by default.
+    let ix = CreateV2Builder::new()
+        .asset(asset.pubkey())
+        .collection(Some(collection))
+        .authority(Some(ua.pubkey()))
+        .payer(ua.pubkey())
+        .owner(Some(first.pubkey()))
+        .name("PAGARE 0-0".into())
+        .uri(String::new())
+        .external_plugin_adapters(vec![ExternalPluginAdapterInitInfo::AppData(AppDataInitInfo {
+            data_authority: PluginAuthority::Owner,
+            init_plugin_authority: None,
+            schema: Some(ExternalPluginAdapterSchema::Binary),
+        })])
+        .instruction();
+    env.send(ix, &ua, &[&asset]);
+    let asset = asset.pubkey();
+    let state = env.asset_state(&asset);
+    assert_eq!(state.external_plugin_adapter_list.app_data[0].base.data_authority, PluginAuthority::Owner);
+    let write = |by: &Keypair, data: Vec<u8>| {
+        WriteExternalPluginAdapterDataV1Builder::new()
+            .asset(asset)
+            .collection(Some(collection))
+            .payer(by.pubkey())
+            .authority(Some(by.pubkey()))
+            .key(ExternalPluginAdapterKey::AppData(PluginAuthority::Owner))
+            .data(data)
+            .instruction()
+    };
+    let data = |env: &Env| {
+        let state = env.asset_state(&asset);
+        let app = &state.external_plugin_adapter_list.app_data[0];
+        env.account(&asset).data[app.data_offset..app.data_offset + app.data_len].to_vec()
+    };
+    let attempt_write = |env: &mut Env, by: &Keypair, data: Vec<u8>| {
+        env.try_send(write(by, data), by, &[]).map(|_| ()).map_err(|e| custom_error_code(&e.err).unwrap_or(u32::MAX))
+    };
+
+    // The first owner writes; the collection's authority and a stranger cannot.
+    assert_eq!(attempt_write(&mut env, &ua, vec![9]), Err(CORE_INVALID_AUTHORITY));
+    assert_eq!(attempt_write(&mut env, &stranger, vec![9]), Err(CORE_INVALID_AUTHORITY));
+    assert_eq!(attempt_write(&mut env, &first, vec![1]), Ok(()));
+    assert_eq!(data(&env), vec![1]);
+    // After the transfer the power has moved with the asset.
+    let ix = TransferV1Builder::new()
+        .asset(asset)
+        .collection(Some(collection))
+        .payer(first.pubkey())
+        .authority(Some(first.pubkey()))
+        .new_owner(second.pubkey())
+        .instruction();
+    env.send(ix, &first, &[]);
+    assert_eq!(env.asset_state(&asset).base.owner, second.pubkey());
+    assert_eq!(attempt_write(&mut env, &first, vec![2]), Err(CORE_INVALID_AUTHORITY), "the former owner is nobody");
+    assert_eq!(attempt_write(&mut env, &ua, vec![2]), Err(CORE_INVALID_AUTHORITY));
+    assert_eq!(attempt_write(&mut env, &second, vec![1, 2]), Ok(()));
+    assert_eq!(data(&env), vec![1, 2], "a write replaces the data: a log is the whole history rewritten by the holder");
+}
+
+/// An asset shaped like a pagaré after its first endoso (thawed), with an `AddBlocker` and, with
+/// `burn_delegate`, an owner-managed `BurnDelegate` whose authority is the owner (the procuración
+/// design: the owner lends the power to extinguish to the procurador).
+fn owner_managed_like(env: &mut Env, add_blocker: bool, burn_delegate: bool) -> Parties {
+    use mpl_core::types::BurnDelegate;
+    let ua = env.funded(1);
+    let delegate = env.funded(1);
+    let owner = env.funded(1);
+    let stranger = env.funded(1);
+    let collection = env.create_collection(&ua.pubkey());
+    let asset = Keypair::new();
+    let nobody = Some(PluginAuthority::None);
+    let mut plugins = vec![
+        PluginAuthorityPair {
+            plugin: Plugin::PermanentFreezeDelegate(PermanentFreezeDelegate { frozen: false }),
+            authority: Some(PluginAuthority::Address { address: delegate.pubkey() }),
+        },
+        PluginAuthorityPair { plugin: Plugin::ImmutableMetadata(ImmutableMetadata {}), authority: nobody.clone() },
+    ];
+    if add_blocker {
+        plugins.push(PluginAuthorityPair { plugin: Plugin::AddBlocker(AddBlocker {}), authority: nobody });
+    }
+    if burn_delegate {
+        plugins.push(PluginAuthorityPair { plugin: Plugin::BurnDelegate(BurnDelegate {}), authority: Some(PluginAuthority::Owner) });
+    }
+    let ix = CreateV2Builder::new()
+        .asset(asset.pubkey())
+        .collection(Some(collection))
+        .authority(Some(ua.pubkey()))
+        .payer(ua.pubkey())
+        .owner(Some(owner.pubkey()))
+        .name("PAGARE 0-0".into())
+        .uri(String::new())
+        .plugins(plugins)
+        .instruction();
+    let create_cu = env.send(ix, &ua, &[&asset]).compute_units_consumed;
+    Parties { ua, delegate, owner, stranger, collection, asset: asset.pubkey(), create_cu }
+}
+
+/// Facts for the endoso en procuración (LGTOC 35; design A). Owner-managed delegates are the
+/// owner's: with or without an `AddBlocker` the owner adds a `BurnDelegate`, `TransferDelegate` or
+/// `FreezeDelegate` after creation and the collection's authority cannot (`NoApprovals`). An
+/// owner-managed `BurnDelegate` created with authority `Owner` is approved to another key by the
+/// owner alone (not the collection's authority, not a stranger), cannot be re-approved while
+/// delegated (`CannotRedelegate`, as for the permanent kind), is revoked back to `Owner` by the
+/// delegate or the owner, and `TransferV1` resets it to `Owner`: an endoso en propiedad clears a
+/// procuración by itself. The approved delegate burns a thawed asset in its collection and
+/// receives the rent; it cannot burn a frozen one.
+#[test]
+fn owner_managed_delegates_belong_to_the_owner_reset_on_transfer_and_burn_when_thawed() {
+    use mpl_core::instructions::BurnV1Builder;
+    use mpl_core::types::{BurnDelegate, FreezeDelegate, TransferDelegate};
+    let mut env = Env::new();
+    // Added after creation by the owner, AddBlocker or not; never by the collection's authority.
+    for add_blocker in [false, true] {
+        let p = owner_managed_like(&mut env, add_blocker, false);
+        for plugin in [
+            Plugin::BurnDelegate(BurnDelegate {}),
+            Plugin::TransferDelegate(TransferDelegate {}),
+            Plugin::FreezeDelegate(FreezeDelegate { frozen: false }),
+        ] {
+            assert_eq!(attempt(&mut env, add_plugin_ix(&p, &p.ua, plugin.clone()), &p.ua), Err(CORE_NO_APPROVALS));
+            assert_eq!(attempt(&mut env, add_plugin_ix(&p, &p.owner, plugin), &p.owner), Ok(()), "AddBlocker {add_blocker}");
+        }
+        let list = &env.asset_state(&p.asset).plugin_list;
+        assert!(list.burn_delegate.is_some() && list.transfer_delegate.is_some() && list.freeze_delegate.is_some());
+    }
+
+    // A BurnDelegate from creation, authority Owner: the owner lends it and takes it back.
+    let p = owner_managed_like(&mut env, true, true);
+    let procurador = env.funded(1);
+    let authority = |env: &Env, p: &Parties| env.asset_state(&p.asset).plugin_list.burn_delegate.as_ref().unwrap().base.authority;
+    let by_owner = BaseAuthority { authority_type: AuthorityType::Owner, address: None };
+    let to = PluginAuthority::Address { address: procurador.pubkey() };
+    assert_eq!(authority(&env, &p), by_owner);
+    assert_eq!(attempt(&mut env, approve_ix(&p, &p.stranger, &PluginType::BurnDelegate, to.clone()), &p.stranger), Err(CORE_NO_APPROVALS));
+    assert_eq!(attempt(&mut env, approve_ix(&p, &p.ua, &PluginType::BurnDelegate, to.clone()), &p.ua), Err(CORE_NO_APPROVALS));
+    assert_eq!(attempt(&mut env, approve_ix(&p, &p.owner, &PluginType::BurnDelegate, to.clone()), &p.owner), Ok(()));
+    assert_eq!(authority(&env, &p), held_by(procurador.pubkey()));
+    let other = PluginAuthority::Address { address: p.stranger.pubkey() };
+    assert_eq!(attempt(&mut env, approve_ix(&p, &p.owner, &PluginType::BurnDelegate, other), &p.owner), Err(CORE_CANNOT_REDELEGATE));
+    assert_eq!(attempt(&mut env, revoke_ix(&p, &p.ua, &PluginType::BurnDelegate), &p.ua), Err(CORE_NO_APPROVALS));
+    assert_eq!(attempt(&mut env, revoke_ix(&p, &procurador, &PluginType::BurnDelegate), &procurador), Ok(()), "the procurador may renounce");
+    assert_eq!(authority(&env, &p), by_owner);
+    assert_eq!(attempt(&mut env, approve_ix(&p, &p.owner, &PluginType::BurnDelegate, to.clone()), &p.owner), Ok(()));
+    assert_eq!(attempt(&mut env, revoke_ix(&p, &p.owner, &PluginType::BurnDelegate), &p.owner), Ok(()), "the owner revokes");
+    assert_eq!(authority(&env, &p), by_owner);
+    // A transfer resets the delegate to the (new) owner: an endoso en propiedad clears it.
+    assert_eq!(attempt(&mut env, approve_ix(&p, &p.owner, &PluginType::BurnDelegate, to.clone()), &p.owner), Ok(()));
+    let new_owner = env.funded(1);
+    assert_eq!(attempt(&mut env, transfer_ix(&p, &p.owner, &new_owner.pubkey()), &p.owner), Ok(()));
+    assert_eq!(env.asset_state(&p.asset).base.owner, new_owner.pubkey());
+    assert_eq!(authority(&env, &p), by_owner);
+
+    // The approved delegate burns a thawed asset in its collection, rent to the payer; not a frozen one.
+    let q = owner_managed_like(&mut env, true, true);
+    let procurador = env.funded(1);
+    let to = PluginAuthority::Address { address: procurador.pubkey() };
+    assert_eq!(attempt(&mut env, approve_ix(&q, &q.owner, &PluginType::BurnDelegate, to.clone()), &q.owner), Ok(()));
+    assert_eq!(attempt(&mut env, set_frozen_ix(&q, &q.delegate, true), &q.delegate), Ok(()));
+    let burn = |q: &Parties, by: &Keypair| {
+        BurnV1Builder::new().asset(q.asset).collection(Some(q.collection)).payer(by.pubkey()).authority(Some(by.pubkey())).instruction()
+    };
+    assert_eq!(attempt(&mut env, burn(&q, &procurador), &procurador), Err(CORE_INVALID_AUTHORITY), "frozen");
+    assert_eq!(attempt(&mut env, set_frozen_ix(&q, &q.delegate, false), &q.delegate), Ok(()));
+    assert_eq!(attempt(&mut env, burn(&q, &q.stranger), &q.stranger), Err(CORE_NO_APPROVALS));
+    let asset_lamports = env.account(&q.asset).lamports;
+    let before = env.account(&procurador.pubkey()).lamports;
+    assert_eq!(attempt(&mut env, burn(&q, &procurador), &procurador), Ok(()));
+    let tomb = env.account(&q.asset);
+    assert_eq!((tomb.data.len(), tomb.data[0]), (1, 0));
+    let after = env.account(&procurador.pubkey()).lamports;
+    assert!(after > before && after <= before + asset_lamports - tomb.lamports, "the delegate, as payer, receives the rent");
+    assert_eq!(env.collection_state(&q.collection).current_size, 0);
+}
