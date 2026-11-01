@@ -306,6 +306,15 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   neutral asset and collection names; the new attestor co-signs `set_attestor`; 6d prework: verify
   whether Core's permanent plugin authorities can be reassigned at endoso (C9). 6d and the verifier
   still gated; per-installment vs per-draw pagaré (C19/C20) open with counsel and Mario.
+- **Decisions 1 and 2 landed** (`8c08c87`, local at report time): `PermanentBurnDelegate` in the
+  plugin set; `draw(amount, document_hash, asset_bump, pagare_bump)` verified with
+  `create_program_address`, deterministic 86,064 / 86,239 CU at 120 installments (Core CPI
+  43,671). Accepted plan for the next three commits: draw additions (`cert_fingerprint`,
+  `signature_method`, neutral names, `set_attestor` co-signed by the new attestor; sidecar grows
+  with `drawn_through`, status, `paid_at`, `receipt_hash`, reserved bytes kept); `cancel_pagare`
+  per the C22 spec with the holder signer = `pool.admin` while in the pool and no AppData length in
+  the event (fixed-offset rule); 6d prework as pinned LiteSVM experiments on Core plugin-authority
+  reassignment. Per-draw shape kept.
 
 ## Points the coordinator still owns
 
