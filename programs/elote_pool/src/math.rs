@@ -186,13 +186,18 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
     let mut overdue_principal: u64 = 0;
     let mut weighted: u128 = 0;
     let mut first_missed_due = None;
+    // Every installment but the first overdue one (partly paid) and the last (it carries the
+    // rounding remainder) is the regular installment, so its principal share is computed once;
+    // the per-part figure is identical, only the u128 division is saved (step 5d).
+    let base = installment_amount(t.total, t.installments)?;
+    let base_share = principal_share(base, t.principal, t.total)?;
     let mut k = covered;
     while k < due {
         k += 1; // k <= due <= installments
         let upto = cumulative_due(t.total, t.installments, k)?;
         let before = cumulative_due(t.total, t.installments, k - 1)?;
         let part = upto.checked_sub(paid.max(before))?;
-        let part_principal = principal_share(part, t.principal, t.total)?;
+        let part_principal = if part == base { base_share } else { principal_share(part, t.principal, t.total)? };
         let due_at = t.anchor.checked_add(t.interval.checked_mul(i64::from(k))?)?;
         if first_missed_due.is_none() {
             first_missed_due = Some(due_at);
