@@ -513,6 +513,15 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `cancel_delay_seconds` (Pool.reserved 8..12, floor 7 days, `set_cancel_delay`), attestor
   optional on cancel when the backstop conditions hold; a request needs the same coverage checks,
   one pending at a time, a delay change never shortens a pending request.
+- **Part 1 (f) accepted** (`96f6034`; 150 Rust + 11 JS): `cancel_delay_seconds` in
+  Pool.reserved 8..12 (init_pool fifth argument, floor 7 days, `CancelDelayTooShort` 6044,
+  `set_cancel_delay`, `CancelDelaySet`); `request_cancellation(draw_index, receipt_hash)` by the
+  holder with the cancel checks (`CancellationPending` 6045 while one is pending), stores the
+  deadline as `cancel_after` (offset 313) so a delay change never moves it; cancel's attestor
+  optional only on the owner's branch after the deadline with the requested receipt; every
+  cancellation clears the request. CU: request 14.1k, holder alone 48.3k. (g) next: every
+  payment writes an Abono (interest included) on the cursor's pagaré; ceiling case to report =
+  eight sidecars at 120 all missed.
 
 ## Points the coordinator still owns
 
