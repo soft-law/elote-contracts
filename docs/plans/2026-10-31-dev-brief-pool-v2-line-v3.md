@@ -430,6 +430,15 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   paid-pending-cancel, `cancel_pagare` requires that status and burns; the time-locked holder-only
   cancellation (`cancel_delay_seconds` on the pool) is specified and built in part 1 if small;
   with no AppData adapter the "removing adapters alters the title" objection dissolves.
+- **6d spec accepted** (`1175c6d`, push authorised; 131 Rust, eight pinned Core tests): registry
+  as a sidecar hash chain (`log_root`, `entry_count`, `last_kind`, flags; eleven kinds; full
+  entries in `PagareEntry`), creation set without AppData (draw falls to 78.9k CU at 120),
+  procuración 32.7k, revocation 36.6k, court annotation 14.1k, in-pool cancel 44.1k, cancel by the
+  procurador 48.3k; sidecar 353 bytes with 32 reserved; a later procuración approves instead of
+  adding (flags bit 0); thaw before the procurador's burn. **Payment entries: shape (i)** inside
+  `repay` (~5k CU per touched sidecar, client splits beyond eight), Pagado entry at coverage sets
+  paid-pending-cancel; backstop built in part 1 (`cancel_delay_seconds` in Pool.reserved 8..12,
+  floor 7 days). Dev on step 7; 6d part 1 released after step 7 and the audit report.
 
 ## Points the coordinator still owns
 
