@@ -416,6 +416,14 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `receipt_hash` (shape decided on CU at 120, inside `repay` vs bundled `annotate_payment`).
   6d code split: part 1 (registry, procuración, court, payments) on release; part 2 (en
   propiedad) gated on C32 design. Order: cleanup → amended §2.3 + two assessments → step 7.
+- **Comment cleanup accepted** (`f86b482`, push authorised; comments only, 130 Rust green, CU
+  unchanged): 590 → 516 comment lines of 2,993; every step, decision, D and R reference gone from
+  source and tests; legal narrative reduced to tags; duplicated struct/handler text removed; the
+  layout tables, formulas, ordered check lists and the three safety notes stay. One correction:
+  the schedule interval counts from `first_due_at`, not `drawn_at`. **Decision 29** narrows 6d
+  v1 to procuración (registry, `endorse_pagare` kind Procuracion by the pool, revocation, court
+  annotation, payment entries, cancellation by the procurador via the program PDA); en propiedad
+  specified, not built. Dev now on the §2.3 amendments and the two assessments, then step 7.
 
 ## Points the coordinator still owns
 
