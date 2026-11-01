@@ -346,17 +346,20 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
   date, receipt hash) to each sidecar it touches, oldest first through `drawn_through`; when the
   payment brings `principal_repaid` to `drawn_through` of pagaré `k`, that sidecar's entry is of
   kind `Pagado` and sets `status = PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash`: the
-  receipt and the PAGADO mark exist at the moment of payment, and only the burn waits. Two shapes
-  were measured and neither is decided here. (i) Inside `repay`, with a `receipt_hash` argument and
-  the touched sidecars as remaining accounts: `repay` at 22 539 CU early in a 120-installment
-  schedule, 27 531 with one sidecar, 32 497 with two, about 5 000 CU per sidecar; in the ceiling
-  case (every installment missed, `repay` at 56 569) about eight sidecars fit under 100 000, and a
-  payment covering more is split by the client. Shape (i) is valid only under the mandate the
-  pagaré text carries ("el tenedor autoriza al sistema de información a asentar los abonos"), since
-  art. 130 puts the annotation on the holder; the template carries that clause. (ii) A separate
-  `annotate_payment(draw_index, amount, receipt_hash)` signed by the payer, the holder or the
-  procurador with the attestor, bundled by the client in the same transaction: 14 093 CU per
-  sidecar and no ceiling pressure, but atomic only as far as the client bundles it.
+  receipt and the PAGADO mark exist at the moment of payment, and only the burn waits. Decided
+  (2026-11-02): the entries are written inside `repay`, which gains a `receipt_hash` argument and
+  takes the touched sidecars as remaining accounts, oldest first by `drawn_through`. Measured at
+  22 539 CU early in a 120-installment schedule, 27 531 with one sidecar, 32 497 with two, about
+  5 000 CU per sidecar; in the ceiling case (every installment missed, `repay` at 56 569) about
+  eight sidecars fit under 100 000. Client rule: a payment that would touch more than eight
+  sidecars is split into several `repay` calls, each under the ceiling; the program refuses
+  nothing on that count beyond the compute limit itself. Engine rule: the receipt (amount, date,
+  pagaré, payer) is prepared before the transaction and its hash goes in the argument; its NOM-151
+  constancia is obtained after confirmation, and a failed transaction voids the receipt. This shape
+  is valid under the mandate the pagaré text carries ("el tenedor autoriza al sistema de
+  información a asentar los abonos"), since art. 130 puts the annotation on the holder; the
+  template carries that clause. A separate `annotate_payment` instruction (14 093 CU per sidecar,
+  atomic only as far as the client bundles it) was measured and is not built.
 - `cancel_pagare(draw_index, receipt_hash)`, in the pool: requires `status ==
   PAGARE_PAID_PENDING_CANCEL` (the payment entry already marked it paid), the coverage rule, the
   holder (the admin) and the attestor; stores `cancel_receipt_hash` (the final receipt may differ
@@ -370,7 +373,8 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
   recovery): `request_cancellation(draw_index, receipt_hash)` by the holder appends a
   `SolicitudCancelacion` entry and sets `requested_at = now` and `requested_receipt_hash`; once
   `now > requested_at + pool.cancel_delay_seconds` (a new pool parameter in `Pool.reserved`
-  bytes 8..12, fixed at `init_pool`) and the attestor has not co-signed, `cancel_pagare` accepts
+  bytes 8..12, set by `init_pool` with a floor of seven days and changed only by the admin, with
+  an event) and the attestor has not co-signed, `cancel_pagare` accepts
   the holder alone with the same `receipt_hash` and the same checks. One small instruction and
   one branch; built in part 1.
 
