@@ -600,3 +600,28 @@ fn owner_managed_delegates_belong_to_the_owner_reset_on_transfer_and_burn_when_t
     assert!(after > before && after <= before + asset_lamports - tomb.lamports, "the delegate, as payer, receives the rent");
     assert_eq!(env.collection_state(&q.collection).current_size, 0);
 }
+
+/// The procurador's burn delegate points at a program PDA, never at the procurador's key: with
+/// the `BurnDelegate` approved to an address nobody holds a key for, the procurador's own
+/// signature is refused by Core (`NoApprovals`), as is anyone else's; only a program that signs
+/// for that address can burn, so the burn happens only inside the instruction that writes the
+/// receipt and the PAGADO mark. The owner can still tear up its own title.
+#[test]
+fn a_burn_delegate_approved_to_a_program_address_refuses_the_procuradors_own_key() {
+    use mpl_core::instructions::BurnV1Builder;
+    let mut env = Env::new();
+    let p = owner_managed_like(&mut env, true, true);
+    let procurador = env.funded(1);
+    let (pda, _) = Pubkey::find_program_address(&[b"procurador", p.asset.as_ref(), procurador.pubkey().as_ref()], &PROGRAM_ID);
+    let to = PluginAuthority::Address { address: pda };
+    assert_eq!(attempt(&mut env, approve_ix(&p, &p.owner, &PluginType::BurnDelegate, to), &p.owner), Ok(()));
+    assert_eq!(env.asset_state(&p.asset).plugin_list.burn_delegate.as_ref().unwrap().base.authority, held_by(pda));
+    let burn = |by: &Keypair| {
+        BurnV1Builder::new().asset(p.asset).collection(Some(p.collection)).payer(by.pubkey()).authority(Some(by.pubkey())).instruction()
+    };
+    assert_eq!(attempt(&mut env, burn(&procurador), &procurador), Err(CORE_NO_APPROVALS), "the procurador's key is not the delegate");
+    assert_eq!(attempt(&mut env, burn(&p.stranger), &p.stranger), Err(CORE_NO_APPROVALS));
+    assert_eq!(attempt(&mut env, burn(&p.ua), &p.ua), Err(CORE_NO_APPROVALS), "nor the collection's authority");
+    assert_eq!(env.asset_state(&p.asset).base.owner, p.owner.pubkey(), "the asset is still there");
+    assert_eq!(attempt(&mut env, burn(&p.owner), &p.owner), Ok(()));
+}

@@ -269,89 +269,152 @@ What Core lets the parties do with such an asset after its creation, pinned by
   (at about 4 200 CU more per creation, which would put `draw` at 120 installments near 94 100 CU).
 - AppData (where the endoso log would live): its data authority is fixed at creation (Core's
   update carries only the schema) and alone writes the data or changes the schema; adding or
-  removing adapters is the collection's authority alone, and `AddBlocker` stops neither. Whatever
-  else the pool relinquishes, as the collection's authority it keeps the power to remove the log.
+  removing adapters is the collection's authority alone, and `AddBlocker` stops neither. With the
+  registry in the sidecar and no adapter on the asset (below), that residual power has nothing to
+  act on: the asset carries only immutable attributes.
 
 Decision 27 (Mario, 2026-11-01): design A. The endoso transfers ownership, the history travels
 with the pagaré, and a pagaré is independent and lives on its own; after an endoso en propiedad
-the pool, the admin and the attestor hold no power to move, freeze or burn it. Design B (keep the
-permanent delegates, bound their use by instruction) was the working assumption until then and is
-closed. What follows is the step 6d specification, accepted in its shape by the coordinator on
-2026-11-01 (creation set, instructions, history, traps); no 6d code exists yet.
+the pool, the admin and the attestor hold no power to move, freeze or burn it. Decision 29
+(2026-11-02, C32): the vehicle makes no endoso en propiedad in v1; collection runs through endosos
+en procuración and the asset stays with the pool. Step 6d is therefore built in two parts: part 1,
+below, is v1; the en propiedad paths are specified here so a later version endorses en propiedad
+without re-minting, and are marked "not built in v1". This is the specification as amended on
+2026-11-02 for the legal supplement on endosos and the final brief (§6.5, §6.6, C-1, C-2); no 6d
+code exists yet, the numbers come from a throwaway prototype.
 
-**Creation set (chosen from the measurements below).** `draw` creates the asset with:
-`PermanentFreezeDelegate { frozen: true }` whose authority is `UpdateAuthority` (the collection, so
-the pool PDA, for as long as the asset is in the collection, which is always); `ImmutableMetadata`
-(authority `None`); `Attributes` (authority `None`, the nine facts as today); `AddBlocker`
-(authority `None`); an `AppData` adapter, schema `Binary`, data authority `Owner`. No
-`PermanentTransferDelegate` and no `PermanentBurnDelegate`: while the asset is in the pool the pool
-PDA is its owner and only the program signs for it, so the two delegates added nothing to custody
-and cost about 43 000 CU each to relinquish. Compute of `draw` at 120 installments: 84 827 CU
-(from 89 832; the `AddBlocker` is in).
+**Creation set (final).** `draw` creates the asset with: `PermanentFreezeDelegate { frozen: true }`
+whose authority is `UpdateAuthority` (the collection, so the pool PDA, for as long as the asset is
+in the collection, which is always); `ImmutableMetadata` (authority `None`); `Attributes`
+(authority `None`, the nine facts); `AddBlocker` (authority `None`). No `AppData` adapter: the
+registry lives in the sidecar (next paragraph). No `PermanentTransferDelegate` and no
+`PermanentBurnDelegate`: while the asset is in the pool the pool PDA is its owner and only the
+program signs for it. The asset therefore carries nothing but immutable attributes, and the
+collection authority's residual power over adapters acts on nothing. `draw` at 120 installments:
+78 919 CU on the first tranche, 79 094 on the second (from 89 726 / 89 901), the issuance entry
+of the registry included.
 
-**`endorse_pagare(draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32])`.** Signers: the
-asset's owner, read from the asset at a fixed offset (Core's `owner` at bytes 1..33; while it is
-the pool PDA the admin signs and the program signs for the pool, as for every act of the pool;
-afterwards the holder, whose signature is passed through to Core) and the attestor. Checks: the
-line is not `WrittenOff`; `endoso_hash != 0` (`DocumentHashRequired`); `to` passes the SAS gate
-(a fixed-offset read of the endorsee's attestation, C28); the pagaré is outstanding. The
-instruction writes the entry (`kind`, `to`, `endoso_hash`) to the AppData as the owner, bumps the
-sidecar's `endoso_count` and sets its `last_endoso_hash` (the program-owned, append-only trace of
-every endoso routed through the program), emits `PagareEndorsed { pool, line_id, draw_index,
-asset, kind, from, to, endoso_hash, endoso_count }`, then:
+**The registry: a hash chain in the sidecar.** The supplement adds writers the holder must not be
+able to block or erase (a payment entry at every repayment, LGTOC 130, "el asiento no puede
+depender de que un tercero tenedor coopere después"; court annotations) and makes append-only a
+legal property (rewriting or removing entries alters the title, arts. 8 fr. VI and 13). An AppData
+adapter under `Owner` authority fails both, as the pinned facts show: every write needs the
+holder's signature and a write replaces the whole data. So the registry is program-owned, in the
+sidecar (a PDA of this program): `log_root: [u8; 32]`, with `log_root' = sha256(log_root ||
+entry_hash)` and the issuance entry as genesis, written by `draw`; `entry_count: u16`;
+`last_kind: u8`; `flags: u8` (bit 0: the asset carries a `BurnDelegate` plugin, so a later
+procuración approves instead of adds; Core refuses a second `AddPluginV1` with
+`PluginAlreadyExists`, found in the measurement). `entry_hash = sha256(kind || from || to || hash
+|| stated_at || entry_count)`; the entry's full content goes in the event `PagareEntry { pool,
+line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at }` and
+in the engine, which can replay the chain from the events and compare it with `log_root`. Kinds,
+mandatory and validated (an unknown kind is refused: art. 30 presumes propiedad when the class is
+missing, so it is never left blank): `Emision` (0), `Propiedad` (1), `Procuracion` (2),
+`Revocacion` (3), `Terminacion` (4), `Abono` (5), `AnotacionJudicial` (6), `ConstanciaJudicial`
+(7), `EndosoTardio` (8), `Pagado` (9), `SolicitudCancelacion` (10). Entries are never rewritten or
+removed. A Core transfer made outside the program is visible only as Core's ownership transaction
+and is shown by the verifier as "transferencia sin asiento", never described in the title text as
+"not an endoso" (art. 25 risk; template side); the class of the last entry is shown.
+
+**Sidecar layout at 6d.** To today's 245 bytes: `log_root` 32, `entry_count` 2, `last_kind` 1,
+`flags` 1, `cancel_receipt_hash` 32, `requested_at` 8, `requested_receipt_hash` 32: 353 bytes,
+the 32 reserved bytes kept (321 without them). `status` gains a value: 0 `PAGARE_OUTSTANDING`,
+1 `PAGARE_PAID` (burnt), 2 `PAGARE_PAID_PENDING_CANCEL` (paid, the burn still owed). The layout
+table above is updated in the 6d commit; only `draw` creates sidecars and no mainnet pool exists.
+
+**Instructions built in v1 (part 1).**
+
+- `draw`: appends the `Emision` entry (from = to = the pool PDA, hash = `pagare_hash`).
+- `endorse_pagare(draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32])`: in v1 only
+  `kind = Procuracion` with the pool as endorser. Signers: the admin (the pool is the owner; the
+  program signs for the pool PDA) and the attestor; `to` passes the SAS gate (C28, a fixed-offset
+  read of the procurador's attestation); `endoso_hash != 0`; the line is not `WrittenOff`; the
+  pagaré is outstanding. Appends the entry, then `AddPluginV1` of an owner-managed `BurnDelegate`
+  whose authority is the program PDA `["procurador", pagare, to]`, or `ApprovePluginAuthorityV1`
+  to that PDA when `flags` says the plugin exists. The delegate never points at the procurador's
+  key: an approved owner-managed delegate can call `BurnV1` directly, which would extinguish the
+  title without payment, receipt or PAGADO mark; only the program signs for the PDA, so the burn
+  happens only inside `cancel_pagare` (pinned: the procurador's own key is refused by Core). The
+  owner stays the owner; nothing moves. 32 739 CU at 120 installments (add path).
+- `revoke_procuracion(draw_index, to, entry_hash)`: the admin as the owner; appends the
+  `Revocacion` entry (art. 41) and `RevokePluginAuthorityV1` puts the `BurnDelegate` back to
+  `Owner`. 36 637 CU.
+- `court_annotation(draw_index, kind, document_hash)`: admin and attestor; `kind` is
+  `AnotacionJudicial` (embargo, suspension, cancellation) or `ConstanciaJudicial` (art. 28);
+  appends, moves nothing, emits. 14 109 CU.
+- Payment entries (art. 130, "en un solo acto"): every payment appends one `Abono` entry (amount,
+  date, receipt hash) to each sidecar it touches, oldest first through `drawn_through`; when the
+  payment brings `principal_repaid` to `drawn_through` of pagaré `k`, that sidecar's entry is of
+  kind `Pagado` and sets `status = PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash`: the
+  receipt and the PAGADO mark exist at the moment of payment, and only the burn waits. Two shapes
+  were measured and neither is decided here. (i) Inside `repay`, with a `receipt_hash` argument and
+  the touched sidecars as remaining accounts: `repay` at 22 539 CU early in a 120-installment
+  schedule, 27 531 with one sidecar, 32 497 with two, about 5 000 CU per sidecar; in the ceiling
+  case (every installment missed, `repay` at 56 569) about eight sidecars fit under 100 000, and a
+  payment covering more is split by the client. Shape (i) is valid only under the mandate the
+  pagaré text carries ("el tenedor autoriza al sistema de información a asentar los abonos"), since
+  art. 130 puts the annotation on the holder; the template carries that clause. (ii) A separate
+  `annotate_payment(draw_index, amount, receipt_hash)` signed by the payer, the holder or the
+  procurador with the attestor, bundled by the client in the same transaction: 14 093 CU per
+  sidecar and no ceiling pressure, but atomic only as far as the client bundles it.
+- `cancel_pagare(draw_index, receipt_hash)`, in the pool: requires `status ==
+  PAGARE_PAID_PENDING_CANCEL` (the payment entry already marked it paid), the coverage rule, the
+  holder (the admin) and the attestor; stores `cancel_receipt_hash` (the final receipt may differ
+  from the payment's; both are kept), appends a `Terminacion` entry, sets `status = PAGARE_PAID`,
+  thaws (as the collection's authority) and burns as the owner. 44 127 CU. Procurador branch:
+  the procurador's signature, the attestor, the same receipt and coverage checks, then thaw and
+  `BurnV1` with the PDA `["procurador", pagare, procurador]` as authority, signed by the program.
+  48 346 CU. The attestor co-signs because it certifies the receipt archive, not the holder's act.
+- Backstop, so the debtor is never left without receipt or title if the attestor fails (LGTOC 17,
+  129; research prefers it to rotation, which is slow; rotation under C14 stays the primary
+  recovery): `request_cancellation(draw_index, receipt_hash)` by the holder appends a
+  `SolicitudCancelacion` entry and sets `requested_at = now` and `requested_receipt_hash`; once
+  `now > requested_at + pool.cancel_delay_seconds` (a new pool parameter in `Pool.reserved`
+  bytes 8..12, fixed at `init_pool`) and the attestor has not co-signed, `cancel_pagare` accepts
+  the holder alone with the same `receipt_hash` and the same checks. One small instruction and
+  one branch; built in part 1.
+
+**Specified, not built in v1 (A-compatible).**
 
 - `kind = Propiedad` (LGTOC 34): on the first endoso, while the pool is the owner, thaw
-  (`UpdatePluginV1` as the collection's authority), then approve `None` on the freeze delegate
-  (one `ApprovePluginAuthorityV1`, irreversible), then `TransferV1` as the owner. On a later endoso
-  routed through the program: write and `TransferV1` as the holder. The log write and the
-  transfer are in the same instruction, always.
-- `kind = Procuración` (LGTOC 35): no transfer; `AddPluginV1` of an owner-managed `BurnDelegate`
-  with the procurador as its authority (`ApprovePluginAuthorityV1` instead when the plugin is
-  already there), so the procurador can extinguish the pagaré after collecting (`cancel_pagare`,
-  below). The owner stays the owner.
-- `revoke_procuracion(draw_index, endoso_hash)`: the owner and the attestor sign; the owner's
-  revocation entry goes to the AppData, the sidecar's count and last hash move as for an endoso,
-  and `RevokePluginAuthorityV1` puts the `BurnDelegate` back to `Owner`. An endoso en propiedad
-  revokes it by itself: `TransferV1` resets owner-managed authorities to the new owner (pinned).
+  (`UpdatePluginV1` as the collection's authority), approve `None` on the freeze delegate (one
+  `ApprovePluginAuthorityV1`, irreversible), append the entry and `TransferV1` as the owner, all in
+  one instruction; if a procuración is in force, a `Terminacion` entry goes in the same
+  instruction, since `TransferV1` clears the delegate silently (pinned). What happens to that
+  draw's repayments, `drawn`, `principal_repaid` and the NAV's outstanding principal waits for the
+  written C32 design. First endoso en propiedad measured at 79 333 CU with an AppData write, which
+  the sidecar chain replaces at lower cost.
+- Holder-initiated entries (an endoso by a holder that is not the pool): signer = Core's owner
+  read at a fixed offset (bytes 1..33), no attestor, no SAS gate ("verificados solo por firma y sin
+  aprobación del vehículo"); the attestor and the gate bind only when the pool is the endorser.
+- `EndosoTardio` (curing a chain): admin and attestor append the entry with the signed message
+  hash, allowed only when Core's owner already equals the endorsee named in the entry (fixed-offset
+  read); two dates, `stated_at` from the message and `recorded_at = now`; no transfer.
+- `cancel_pagare`, endorsed branch: when Core's owner is not the pool, the signer is the owner or
+  the procurador of an approved PDA delegate; the owner is at a fixed offset, the delegate's
+  authority is not (the plugin registry follows the variable-length name and URI), so the program
+  passes the signer or the PDA to `BurnV1` and Core refuses anyone else, atomically with the mark.
+  No thaw: an endorsed asset is thawed by construction.
 
-After the first endoso the holder can also transfer the asset with a plain Core instruction, by
-construction; the program neither prevents nor records that, the sidecar stores no holder, and
-Core's owner is read at a fixed offset when an instruction needs it. The C28 gate therefore binds
-the first endoso and every endoso routed through the program, not transfers outside it.
-
-**`cancel_pagare`, endorsed branch.** When Core's owner (fixed-offset read) is not the pool, the
-`holder` signer may be the owner or the approved `BurnDelegate` authority (the procurador). The
-owner is at a fixed offset; the plugin's authority is not (the plugin registry follows the
-variable-length name and URI), so the program does not read it: the signer is passed to `BurnV1`
-as its authority and Core refuses anyone but those two, atomically with the mark. The attestor
-co-signs, the coverage rule holds as in the pool, and the sidecar gets the PAGADO mark as today.
-No thaw: an endorsed asset is thawed by construction. In the pool,
-`cancel_pagare` thaws (as the collection's authority) and burns as the owner: 45 152 CU at 120
-installments, from 26 891 with the burn delegate.
-
-**The history.** The AppData is the holder's current record: a write replaces its data, so each
-holder rewrites the whole log and may erase earlier entries (pinned). The immutable history of a
-pagaré is `PagareIssued`, every `PagareEndorsed` and Core's ownership transactions; a verifier
-reads those, and the AppData for the holder's own statement.
-
-**Sidecar.** Two fields join the layout for the trace: `endoso_count: u16` and
-`last_endoso_hash: [u8; 32]`, written by `endorse_pagare` (both kinds) and `revoke_procuracion`.
-They do not fit the 32 reserved bytes together, so the sidecar grows by 34 bytes to 279 at step
-6d, before any mainnet pool exists; only `draw` creates sidecars and the layout table above is
-updated with the change.
+**The history.** The registry is the sidecar's chain (program-owned, append-only, replayable from
+the `PagareEntry` events) together with `PagareIssued` and Core's ownership transactions. The
+holder's own statements enter it only through program instructions; a transfer outside the program
+leaves no entry and is shown as such.
 
 **Two traps, binding.** Thaw before any relinquish: a frozen asset whose freeze authority is
-`None` is immovable forever. And after the first endoso the asset can never be frozen again, even
-if it returns to the pool: the freeze power is gone with the `None`.
+`None` is immovable forever. And after the first endoso en propiedad the asset can never be frozen
+again, even if it returns to the pool: the freeze power is gone with the `None`.
 
-**Measurements (120 installments, one instruction each, Anchor overhead and the event included,
-the SAS read not yet, about 1 000 to 2 000 CU).** Today's creation set: first endoso 190 536 CU
-(thaw, three revoke-and-approve pairs at about 43 000 each, write, transfer); the pieces without
-the pairs, 62 045. Freeze delegate only, held by the pool's address, with `AddBlocker` and the
-owner-held AppData: 100 627 (one pair, 41 056). The chosen set: first endoso en propiedad 79 333,
-endoso en procuración 45 770, in-pool cancel 45 152, draw 84 827. With an owner-managed
-`BurnDelegate` in the creation set instead of adding it at the procuración: draw 89 283, first
-endoso 81 731, procuración 53 161; not chosen.
+**Measurements (120 installments, one instruction each, Anchor overhead and the event included;
+the SAS read not yet, about 1 000 to 2 000 CU).** Final creation set with the sidecar chain: draw
+78 919 / 79 094; procuración 32 739 (add) ; revocation 36 637; court annotation 14 109; payment
+entry shape (ii) 14 093; `repay` with shape (i) 22 539 plain, 27 531 with one sidecar, 32 497 with
+two, early in the schedule; cancel in the pool 44 127; cancel by the procurador 48 346; sidecar
+280 bytes in the prototype (353 with the fields above). Earlier rows, kept for the record: today's
+creation set put the first endoso en propiedad at 190 536 CU (three revoke-and-approve pairs at
+about 43 000 each); the freeze delegate held by the pool's address with `AddBlocker` and an
+Owner-held AppData at 100 627; the freeze delegate held as `UpdateAuthority` at 79 333 for the
+first endoso en propiedad and 45 770 for a procuración with the AppData write.
 
 ### 2.4 Constants (`state.rs`)
 
@@ -916,13 +979,13 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/known_limits.rs` | LiteSVM | the nine tests in §9: six limits still in force and three inverted on 2026-10-31 |
 | `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
 | `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
-| `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins, costs about 4 200 CU and does not stop adapters; AppData is written by its fixed data authority and removed by the collection's authority; an Owner-held AppData authority follows the asset through `TransferV1` and a write replaces the data; owner-managed delegates are the owner's to add (AddBlocker or not), approve and revoke, reset to `Owner` on transfer, and the approved burn delegate burns a thawed asset |
+| `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins, costs about 4 200 CU and does not stop adapters; AppData is written by its fixed data authority and removed by the collection's authority; an Owner-held AppData authority follows the asset through `TransferV1` and a write replaces the data; owner-managed delegates are the owner's to add (AddBlocker or not), approve and revoke, reset to `Owner` on transfer, and the approved burn delegate burns a thawed asset; a burn delegate approved to a program address refuses the procurador's own key |
 | `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (26 891 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 869 CU at 120, deterministic, of which the Core CPI is about 44 000; `repay` 56 569, `mark_in_collection` 33 453, `write_off` 38 620 at 120 with every installment missed) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 130 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 131 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.
