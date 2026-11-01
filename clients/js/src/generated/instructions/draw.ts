@@ -144,6 +144,8 @@ export type DrawInstructionData = {
   documentHash: ReadonlyUint8Array;
   assetBump: number;
   pagareBump: number;
+  certFingerprint: ReadonlyUint8Array;
+  signatureMethod: number;
 };
 
 export type DrawInstructionDataArgs = {
@@ -151,6 +153,8 @@ export type DrawInstructionDataArgs = {
   documentHash: ReadonlyUint8Array;
   assetBump: number;
   pagareBump: number;
+  certFingerprint: ReadonlyUint8Array;
+  signatureMethod: number;
 };
 
 export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructionDataArgs> {
@@ -161,6 +165,8 @@ export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructio
       ["documentHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["assetBump", getU8Encoder()],
       ["pagareBump", getU8Encoder()],
+      ["certFingerprint", fixEncoderSize(getBytesEncoder(), 32)],
+      ["signatureMethod", getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: DRAW_DISCRIMINATOR }),
   );
@@ -173,6 +179,8 @@ export function getDrawInstructionDataDecoder(): FixedSizeDecoder<DrawInstructio
     ["documentHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["assetBump", getU8Decoder()],
     ["pagareBump", getU8Decoder()],
+    ["certFingerprint", fixDecoderSize(getBytesDecoder(), 32)],
+    ["signatureMethod", getU8Decoder()],
   ]);
 }
 
@@ -229,15 +237,14 @@ export type DrawAsyncInput<
   payer: TAccountPayer;
   /**
    * The Metaplex Core asset that is the pagaré, created by the Core program in this
-   * instruction at `["pagare_asset", line, line.draws, asset_bump]`, so clients need no
-   * keypair for it. The client derives the bump and the handler checks the address with one
-   * `create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of
-   * a draw does not depend on the line's key.
+   * instruction at `["pagare_asset", line, line.draws]`, so clients need no keypair for it.
+   * The client derives the bump, so the constraint runs one `create_program_address` and no
+   * search: the compute of a draw does not depend on the line's key.
    */
   asset: TAccountAsset;
   /**
-   * The program's record of the pagaré, created by the handler at `["pagare", line,
-   * line.draws, pagare_bump]` and verified the same way.
+   * The program's record of the pagaré, created by the handler (Anchor's `init` always
+   * searches for the bump) at `["pagare", line, line.draws]`.
    */
   pagare: TAccountPagare;
   /** The series' collection the pool controls (validated at `init_pool`). */
@@ -250,6 +257,8 @@ export type DrawAsyncInput<
   documentHash: DrawInstructionDataArgs["documentHash"];
   assetBump: DrawInstructionDataArgs["assetBump"];
   pagareBump: DrawInstructionDataArgs["pagareBump"];
+  certFingerprint: DrawInstructionDataArgs["certFingerprint"];
+  signatureMethod: DrawInstructionDataArgs["signatureMethod"];
 };
 
 export async function getDrawInstructionAsync<
@@ -598,15 +607,14 @@ export type DrawInput<
   payer: TAccountPayer;
   /**
    * The Metaplex Core asset that is the pagaré, created by the Core program in this
-   * instruction at `["pagare_asset", line, line.draws, asset_bump]`, so clients need no
-   * keypair for it. The client derives the bump and the handler checks the address with one
-   * `create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of
-   * a draw does not depend on the line's key.
+   * instruction at `["pagare_asset", line, line.draws]`, so clients need no keypair for it.
+   * The client derives the bump, so the constraint runs one `create_program_address` and no
+   * search: the compute of a draw does not depend on the line's key.
    */
   asset: TAccountAsset;
   /**
-   * The program's record of the pagaré, created by the handler at `["pagare", line,
-   * line.draws, pagare_bump]` and verified the same way.
+   * The program's record of the pagaré, created by the handler (Anchor's `init` always
+   * searches for the bump) at `["pagare", line, line.draws]`.
    */
   pagare: TAccountPagare;
   /** The series' collection the pool controls (validated at `init_pool`). */
@@ -619,6 +627,8 @@ export type DrawInput<
   documentHash: DrawInstructionDataArgs["documentHash"];
   assetBump: DrawInstructionDataArgs["assetBump"];
   pagareBump: DrawInstructionDataArgs["pagareBump"];
+  certFingerprint: DrawInstructionDataArgs["certFingerprint"];
+  signatureMethod: DrawInstructionDataArgs["signatureMethod"];
 };
 
 export function getDrawInstruction<
@@ -942,15 +952,14 @@ export type ParsedDrawInstruction<
     payer: TAccountMetas[8];
     /**
      * The Metaplex Core asset that is the pagaré, created by the Core program in this
-     * instruction at `["pagare_asset", line, line.draws, asset_bump]`, so clients need no
-     * keypair for it. The client derives the bump and the handler checks the address with one
-     * `create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of
-     * a draw does not depend on the line's key.
+     * instruction at `["pagare_asset", line, line.draws]`, so clients need no keypair for it.
+     * The client derives the bump, so the constraint runs one `create_program_address` and no
+     * search: the compute of a draw does not depend on the line's key.
      */
     asset: TAccountMetas[9];
     /**
-     * The program's record of the pagaré, created by the handler at `["pagare", line,
-     * line.draws, pagare_bump]` and verified the same way.
+     * The program's record of the pagaré, created by the handler (Anchor's `init` always
+     * searches for the bump) at `["pagare", line, line.draws]`.
      */
     pagare: TAccountMetas[10];
     /** The series' collection the pool controls (validated at `init_pool`). */

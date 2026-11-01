@@ -12,6 +12,7 @@ mod common;
 
 use common::*;
 use elote_pool::state::LineStatus;
+use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 
 /// Inverted 2026-10-31 (R-01 delta). The admin can no longer name itself as the borrower: the
@@ -254,4 +255,44 @@ fn limit_late_interest_is_settled_at_execution_time_so_clients_must_pad() {
     let before = env.token_balance(&ata(&borrower.pubkey(), &k.asset_mint));
     env.repay(&k, line_id, &borrower, due_now + 100_000);
     assert_eq!(before - env.token_balance(&ata(&borrower.pubkey(), &k.asset_mint)), due_now + 100_000);
+}
+
+/// Limit (2026-11-01, decision 2 of step 6c): `draw` takes the pagaré PDA bumps from the client
+/// and verifies each with one `create_program_address`, so its compute does not depend on the
+/// line's key. The price: a valid bump that is not the canonical one (the highest valid) is
+/// accepted too, and the asset and sidecar then sit at addresses `find_program_address` never
+/// derives. Proving a bump canonical costs the same search that was removed. The attestor
+/// co-signs every draw and derives the canonical bump, and the `PagareIssued` event and the
+/// sidecar carry the asset's address, so indexers never need to derive it; a non-canonical
+/// mint is a client bug, not an attack, and this test pins that it is possible.
+#[test]
+fn limit_draw_accepts_a_valid_non_canonical_pagare_bump() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let investor = env.investor(&k, 10 * UNIT);
+    env.deposit(&k, &investor, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(UNIT, 0);
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    let line_key = line_pda(&k.pool, line_id).0;
+
+    let (canonical, canonical_bump) = pagare_asset_pda(&line_key, 0);
+    let (odd, odd_bump) = (0..canonical_bump)
+        .rev()
+        .find_map(|b| {
+            Pubkey::create_program_address(&[b"pagare_asset", line_key.as_ref(), &[0, 0], &[b]], &PROGRAM_ID).ok().map(|a| (a, b))
+        })
+        .expect("a second valid bump exists for practically every seed");
+    assert_ne!(odd, canonical);
+
+    let b = borrower.pubkey();
+    let pagare_bump = pagare_pda(&line_key, 0).1;
+    let mut ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, odd_bump, pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD);
+    let i = ix.accounts.iter().position(|m| m.pubkey == canonical).unwrap();
+    ix.accounts[i].pubkey = odd;
+    env.send_with_attestor(ix, &borrower);
+    let sidecar = env.pagare(&k, line_id, 0);
+    assert_eq!(sidecar.asset, odd, "the sidecar and the event name the asset, wherever it sits");
+    assert_eq!(env.asset_state(&odd).base.owner, k.pool);
+    assert!(env.svm.get_account(&canonical).is_none(), "nothing at the canonical address");
 }

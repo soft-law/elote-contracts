@@ -73,6 +73,8 @@ export const ELOTE_POOL_ERROR__TOO_MANY_DRAWS = 0x178a; // 6026
 export const ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED = 0x178b; // 6027
 /** DocumentHashRequired: The signed pagaré's hash is required */
 export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x178c; // 6028
+/** SignatureMethodInvalid: signature_method is unknown, or lacks its certificate fingerprint */
+export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x178d; // 6029
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
@@ -94,6 +96,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__PAUSED
   | typeof ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM
   | typeof ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED
+  | typeof ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID
   | typeof ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED
   | typeof ELOTE_POOL_ERROR__SPONSOR_REQUIRED
   | typeof ELOTE_POOL_ERROR__TERM_ENDED
@@ -127,6 +130,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,
     [ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM]: `The last installment would fall due after the term`,
     [ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED]: `The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions`,
+    [ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID]: `signature_method is unknown, or lacks its certificate fingerprint`,
     [ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED]: `The result is below the minimum the caller accepts`,
     [ELOTE_POOL_ERROR__SPONSOR_REQUIRED]: `The sponsor named on this line must sign`,
     [ELOTE_POOL_ERROR__TERM_ENDED]: `The term has ended`,

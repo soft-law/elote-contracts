@@ -9,6 +9,7 @@ use common::*;
 use elote_pool::events::PagareIssued;
 use mpl_core::types::{ExternalPluginAdapterSchema, Key, UpdateAuthority};
 use mpl_core::{AuthorityType, BaseAuthority};
+use anchor_lang::Space;
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 
@@ -57,6 +58,8 @@ fn every_draw_issues_one_frozen_pagare_held_by_the_pool() {
     let sidecar = env.pagare(&k, line_id, 0);
     assert_eq!((sidecar.line, sidecar.draw_index, sidecar.asset), (line_key, 0, asset0));
     assert_eq!((sidecar.pagare_hash, sidecar.amount, sidecar.issued_at, sidecar.due_at), (hash0, 4 * UNIT, t0, last_due));
+    assert_eq!((sidecar.cert_fingerprint, sidecar.signature_method), (CERT_FINGERPRINT, SIGNATURE_METHOD));
+    assert_eq!((sidecar.status, sidecar.paid_at, sidecar.receipt_hash), (PAGARE_OUTSTANDING, 0, [0; 32]), "outstanding until cancel_pagare");
 
     let asset = env.asset_state(&asset0);
     assert_eq!(asset.base.key, Key::AssetV1);
@@ -65,7 +68,7 @@ fn every_draw_issues_one_frozen_pagare_held_by_the_pool() {
     // and the collection's update authority is the pool PDA: the pool controls the asset.
     assert_eq!(asset.base.update_authority, UpdateAuthority::Collection(k.collection));
     assert_eq!(env.collection_state(&k.collection).update_authority, k.pool);
-    assert_eq!(asset.base.name, format!("Pagare {line_id}-0"));
+    assert_eq!(asset.base.name, format!("PAGARE {line_id}-0"), "no series label, nothing a court could read as an offering");
     assert_eq!(asset.base.uri, "");
     let freeze = asset.plugin_list.permanent_freeze_delegate.as_ref().expect("PermanentFreezeDelegate");
     assert!(freeze.permanent_freeze_delegate.frozen, "frozen from creation");
@@ -121,7 +124,7 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     // Immutable metadata, nobody's.
     let immutable = asset.plugin_list.immutable_metadata.as_ref().expect("ImmutableMetadata");
     assert_eq!(immutable.base.authority.authority_type, AuthorityType::None);
-    // Attributes, nobody's, with the seven facts and nothing personal.
+    // Attributes, nobody's, with the nine facts and nothing personal.
     let attributes = asset.plugin_list.attributes.as_ref().expect("Attributes");
     assert_eq!(attributes.base.authority.authority_type, AuthorityType::None);
     let list: Vec<(&str, &str)> =
@@ -141,6 +144,8 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
             ("due_at", due.as_str()),
             ("line", line_s.as_str()),
             ("draw_index", "0"),
+            ("cert_fingerprint", hex(&CERT_FINGERPRINT).as_str()),
+            ("signature_method", "1"),
         ]
     );
     // Nothing else was set.
@@ -163,9 +168,52 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     assert!(adapters.lifecycle_hooks.is_empty() && adapters.oracles.is_empty() && adapters.data_sections.is_empty());
 }
 
+/// `drawn_through` of pagaré `k` is the line's `drawn` after tranche `k`, monotonic across `k`: the
+/// coverage rule of `cancel_pagare` reads it instead of summing earlier sidecars.
+#[test]
+fn drawn_through_is_the_lines_drawn_after_each_tranche() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(6 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let mut total = 0;
+    for (i, amount) in [UNIT, 2 * UNIT, 3 * UNIT].into_iter().enumerate() {
+        env.draw_amount(&k, line_id, &borrower, amount);
+        total += amount;
+        let sidecar = env.pagare(&k, line_id, i as u16);
+        assert_eq!((sidecar.amount, sidecar.drawn_through), (amount, total));
+        assert_eq!(sidecar.drawn_through, env.line(&k, line_id).drawn);
+    }
+}
+
+/// Condition C6a: the certificate fingerprint may be zero only for a wallet-only signature
+/// (method 0); methods above 2 do not exist.
+#[test]
+fn a_zero_fingerprint_is_allowed_only_for_a_wallet_only_signature() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(6 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let attestor = env.attestor.insecure_clone();
+    let b = borrower.pubkey();
+    for (fingerprint, method) in [([0; 32], 1), ([0; 32], 2), (CERT_FINGERPRINT, 3), ([0; 32], 3)] {
+        let ix = env.draw_ix_signed(&k, line_id, &b, UNIT, DOCUMENT_HASH, fingerprint, method);
+        env.expect_err(ix, &borrower, &[&attestor], E_SIGNATURE_METHOD_INVALID);
+    }
+    for (i, (fingerprint, method)) in [([0; 32], 0), (CERT_FINGERPRINT, 0), (CERT_FINGERPRINT, 2)].into_iter().enumerate() {
+        let ix = env.draw_ix_signed(&k, line_id, &b, UNIT, DOCUMENT_HASH, fingerprint, method);
+        env.send_with_attestor(ix, &borrower);
+        let sidecar = env.pagare(&k, line_id, i as u16);
+        assert_eq!((sidecar.cert_fingerprint, sidecar.signature_method), (fingerprint, method));
+    }
+}
+
 /// The pagaré addresses are predictable once the line is open, so anyone can send lamports to
-/// them ahead of the draw. Neither the sidecar's `init` nor the Core program's account creation
-/// refuses a pre-funded address: the draw still goes through and nobody can brick a line that way.
+/// them ahead of the draw, and both `create_account`s refuse a funded address. The program moves
+/// whatever is there to the payer first, so the draw goes through, the payer is not out of pocket
+/// and nobody can brick a line that way.
 #[test]
 fn a_draw_survives_pre_funded_pagare_addresses() {
     let mut env = Env::new();
@@ -174,24 +222,28 @@ fn a_draw_survives_pre_funded_pagare_addresses() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     let line_key = line_pda(&k.pool, line_id).0;
-    let asset0 = pagare_asset_pda(&line_key, 0).0;
-    let sidecar0 = pagare_pda(&line_key, 0).0;
-    // Below the rent-exempt minimum the runtime refuses the transfer itself, so the only funding
-    // that lands is a rent-exempt one.
-    env.svm.airdrop(&asset0, 1_000_000_000).unwrap();
-    env.svm.airdrop(&sidecar0, 1_000_000).unwrap(); // rent-exempt for no data, below the sidecar's rent
-    let before = env.account(&borrower.pubkey()).lamports;
+    let sidecar_rent = env.svm.minimum_balance_for_rent_exemption(8 + elote_pool::state::Pagare::INIT_SPACE);
+    // Below the rent-exempt minimum the runtime refuses the transfer itself, so the smallest
+    // funding that lands is rent-exempt for no data (below the sidecar's rent); the other case is
+    // more than the sidecar's rent.
+    for (i, (asset_funding, sidecar_funding)) in [(1_000_000_000, 1_000_000), (1_000_000, 1_000_000_000)].into_iter().enumerate() {
+        let asset = pagare_asset_pda(&line_key, i as u16).0;
+        let sidecar = pagare_pda(&line_key, i as u16).0;
+        env.svm.airdrop(&asset, asset_funding).unwrap();
+        env.svm.airdrop(&sidecar, sidecar_funding).unwrap();
+        let before = env.account(&borrower.pubkey()).lamports;
 
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
-    env.send_with_attestor(ix, &borrower);
-    // The stray lamports on the asset address went to the payer (here the borrower), who paid
-    // the fee and the rent of both accounts out of them; the sidecar's were kept and topped up
-    // to its rent.
-    assert!(env.account(&borrower.pubkey()).lamports > before + 990_000_000);
-    let asset = env.asset_state(&asset0);
-    assert_eq!((asset.base.key, asset.base.owner), (Key::AssetV1, k.pool));
-    assert_eq!(env.pagare(&k, line_id, 0).pagare_hash, DOCUMENT_HASH);
-    assert_eq!(env.line(&k, line_id).draws, 1);
+        let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+        env.send_with_attestor(ix, &borrower);
+        // The payer (here the borrower) received both strays and paid the fee and both rents out
+        // of them: about one SOL richer; the sidecar holds exactly its rent.
+        assert!(env.account(&borrower.pubkey()).lamports > before + 990_000_000);
+        assert_eq!(env.account(&sidecar).lamports, sidecar_rent);
+        let asset_state = env.asset_state(&asset);
+        assert_eq!((asset_state.base.key, asset_state.base.owner), (Key::AssetV1, k.pool));
+        assert_eq!(env.pagare(&k, line_id, i as u16).pagare_hash, DOCUMENT_HASH);
+    }
+    assert_eq!(env.line(&k, line_id).draws, 2);
 }
 
 /// The asset's addresses are derived from the line and the draw index, so a stale or foreign
@@ -211,16 +263,16 @@ fn a_draw_with_the_wrong_pagare_accounts_is_refused() {
         let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
         let i = ix.accounts.iter().position(|m| m.pubkey == pagare_asset_pda(&line_key, 0).0).unwrap();
         ix.accounts[i].pubkey = wrong;
-        env.expect_err(ix, &borrower, &[&attestor], E_WRONG_ACCOUNT);
+        env.expect_err(ix, &borrower, &[&attestor], E_CONSTRAINT_SEEDS);
     }
-    // A wrong bump for either account: the client derives both and the program checks each with
-    // one `create_program_address`, so no bump search runs on chain.
+    // A wrong bump for either account: the client derives both and the seeds constraints check
+    // each with one `create_program_address`, so no bump search runs on chain.
     let (asset_bump, pagare_bump) = (pagare_asset_pda(&line_key, 0).1, pagare_pda(&line_key, 0).1);
     let b = borrower.pubkey();
-    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, asset_bump.wrapping_sub(1), pagare_bump);
-    env.expect_err(ix, &borrower, &[&attestor], E_WRONG_ACCOUNT);
-    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, asset_bump, pagare_bump.wrapping_sub(1));
-    env.expect_err(ix, &borrower, &[&attestor], E_WRONG_ACCOUNT);
+    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, asset_bump.wrapping_sub(1), pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD);
+    env.expect_err(ix, &borrower, &[&attestor], E_CONSTRAINT_SEEDS);
+    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, asset_bump, pagare_bump.wrapping_sub(1), CERT_FINGERPRINT, SIGNATURE_METHOD);
+    env.expect_err(ix, &borrower, &[&attestor], E_CONSTRAINT_SEEDS);
     // A collection that is not the pool's.
     let other = env.create_collection(&k.pool);
     let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);

@@ -14,15 +14,18 @@ attestor, pagaré token) are marked "after pool v2" and become binding when that
 | Pool admin (`Pool.admin`) | Squads vault `<index n>` of the Softlaw multisig, one vault per series (decision 15) | `open_line`, `write_off`, `set_paused`; after pool v2 also `set_attestor`, `suspend_draws`, `cancel_line` |
 | Program upgrade authority | `<single hot wallet on devnet>`; a Squads multisig before mainnet (README "Deployments") | Replace the program |
 | Keeper | `<backend service key, no funds beyond fees>` | `mark_in_collection` (permissionless; the key only pays fees) |
-| Attestor (after pool v2) | Agreements engine signer, rotatable through `set_attestor` | Co-signs `open_line`, `draw`, `endorse_pagare` |
+| Attestor (after pool v2) | Agreements engine signer, rotatable through `set_attestor` (the admin and the new key both sign) | Co-signs `open_line`, `draw`, `cancel_pagare`, `endorse_pagare` |
 | Token ACL list authority (after pool v2) | `<backend ABL operator key>` | Adds and removes wallets on the series' allow list; freezes and thaws share accounts |
 
 The admin is part of the pool PDA's seeds and cannot be rotated. Members rotate inside Squads.
 
 **Creating a series (pool v2).** The admin creates two things before `init_pool`. The Metaplex
 Core collection of the series' pagarés, with the pool PDA (derivable from the admin key and the
-asset mint) as update authority and a name and URI that identify the series and nothing else
-(no folio, no person). And the share mint: the first
+asset mint) as update authority and, as its name, the vehicle's legal-name hash prefix or a
+neutral label the admin chooses: never a series label, and never the words "programa", "serie",
+"emisión" or "inversión", which a court read as an offering in 2016609 (brief condition C29);
+the URI public and non-personal or empty (no folio, no person). The assets the program mints are
+named `PAGARE <line_id>-<draw_index>` for the same reason. And the share mint: the first
 mainnet pool, and every CR series after it, uses a Token-2022 mint with `DefaultAccountState =
 Frozen` and Token ACL's `MintConfig` as freeze authority, mint authority = the pool PDA, the
 asset's decimals, no other extension. `init_pool` then records `permissioned = true`, and

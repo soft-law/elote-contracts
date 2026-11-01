@@ -20,7 +20,7 @@ use crate::math::{self, Arrears, ScheduleTerms};
 use crate::pool_signer;
 use crate::state::{
     seeds, CreditLine, LineStatus, Pagare, Pool, Schedule, ScheduleParams, BPS, LINE_VERSION, MAX_DRAWS,
-    MAX_INSTALLMENTS, MIN_MAX_MISSED, SPONSOR_GUARANTOR,
+    MAX_INSTALLMENTS, MIN_MAX_MISSED, PAGARE_OUTSTANDING, SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
 };
 
 // -----------------------------------------------------------------------------------------------
@@ -213,6 +213,7 @@ fn last_due_of(s: &ScheduleParams) -> Result<i64> {
 
 #[event_cpi]
 #[derive(Accounts)]
+#[instruction(amount: u64, document_hash: [u8; 32], asset_bump: u8, pagare_bump: u8)]
 pub struct Draw<'info> {
     pub borrower: Signer<'info>,
 
@@ -261,18 +262,25 @@ pub struct Draw<'info> {
     pub payer: Signer<'info>,
 
     /// The Metaplex Core asset that is the pagaré, created by the Core program in this
-    /// instruction at `["pagare_asset", line, line.draws, asset_bump]`, so clients need no
-    /// keypair for it. The client derives the bump and the handler checks the address with one
-    /// `create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of
-    /// a draw does not depend on the line's key.
-    /// CHECK: verified in the handler; the Core program initialises it.
-    #[account(mut)]
+    /// instruction at `["pagare_asset", line, line.draws]`, so clients need no keypair for it.
+    /// The client derives the bump, so the constraint runs one `create_program_address` and no
+    /// search: the compute of a draw does not depend on the line's key.
+    /// CHECK: the seeds; the Core program initialises it.
+    #[account(
+        mut,
+        seeds = [seeds::PAGARE_ASSET, line.key().as_ref(), &line.draws.to_le_bytes()],
+        bump = asset_bump,
+    )]
     pub asset: UncheckedAccount<'info>,
 
-    /// The program's record of the pagaré, created by the handler at `["pagare", line,
-    /// line.draws, pagare_bump]` and verified the same way.
-    /// CHECK: verified and initialised in the handler.
-    #[account(mut)]
+    /// The program's record of the pagaré, created by the handler (Anchor's `init` always
+    /// searches for the bump) at `["pagare", line, line.draws]`.
+    /// CHECK: the seeds; the handler initialises it.
+    #[account(
+        mut,
+        seeds = [seeds::PAGARE, line.key().as_ref(), &line.draws.to_le_bytes()],
+        bump = pagare_bump,
+    )]
     pub pagare: UncheckedAccount<'info>,
 
     /// The series' collection the pool controls (validated at `init_pool`).
@@ -329,19 +337,14 @@ fn dec_u(mut m: u64) -> String {
 /// collection, owned by the pool PDA (the vehicle's custody) and frozen from creation, with
 /// `PermanentFreezeDelegate`, `PermanentTransferDelegate` and `PermanentBurnDelegate` held by the
 /// pool PDA (so only the program can ever move or burn it, whoever holds it), `ImmutableMetadata`, an `Attributes` plugin nobody can change
-/// (`pagare_hash`, `amount`, `currency`, `issued_at`, `due_at`, `line`, `draw_index`) and an
-/// empty `AppData` section whose data authority is the pool PDA, for the endoso log. The name
-/// carries the line id and the draw index and nothing else; the URI is empty. Nothing personal.
+/// (`pagare_hash`, `amount`, `currency`, `issued_at`, `due_at`, `line`, `draw_index`,
+/// `cert_fingerprint`, `signature_method`) and an empty `AppData` section whose data authority is
+/// the pool PDA, for the endoso log. The name carries the line id and the draw index and nothing
+/// else; the URI is empty. Nothing personal.
 #[allow(clippy::too_many_arguments)]
-fn issue_pagare<'info>(
-    accounts: &Draw<'info>,
-    asset_bump: u8,
-    draw_index: u16,
-    amount: u64,
-    document_hash: [u8; 32],
-    issued_at: i64,
-    due_at: i64,
-) -> Result<()> {
+fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) -> Result<()> {
+    let (draw_index, amount, document_hash, issued_at, due_at) =
+        (record.draw_index, record.amount, record.pagare_hash, record.issued_at, record.due_at);
     use mpl_core::types::{
         AppDataInitInfo, Attribute, Attributes, ExternalPluginAdapterInitInfo, ExternalPluginAdapterSchema,
         ImmutableMetadata, PermanentBurnDelegate, PermanentFreezeDelegate, PermanentTransferDelegate, Plugin,
@@ -360,6 +363,8 @@ fn issue_pagare<'info>(
         Attribute { key: "due_at".into(), value: dec(due_at) },
         Attribute { key: "line".into(), value: dec_u(line.line_id) },
         Attribute { key: "draw_index".into(), value: dec_u(draw_index.into()) },
+        Attribute { key: "cert_fingerprint".into(), value: hex(&record.cert_fingerprint) },
+        Attribute { key: "signature_method".into(), value: dec_u(record.signature_method.into()) },
     ];
     let plugins = vec![
         PluginAuthorityPair {
@@ -384,24 +389,7 @@ fn issue_pagare<'info>(
     let line_key = line.key();
     let pool_seeds = pool_signer!(pool);
     let asset_seeds: &[&[u8]] = &[seeds::PAGARE_ASSET, line_key.as_ref(), &index_bytes, &[asset_bump]];
-    // The asset address is predictable once the line is open, and Core creates it with a plain
-    // `create_account`, which refuses a funded address: left alone, a stranger could block every
-    // draw of a line for the price of rent. The address is this program's PDA, so sweep whatever
-    // was sent there to the payer first.
-    let stray = accounts.asset.lamports();
-    if stray > 0 {
-        anchor_lang::system_program::transfer(
-            CpiContext::new_with_signer(
-                accounts.system_program.key(),
-                anchor_lang::system_program::Transfer {
-                    from: accounts.asset.to_account_info(),
-                    to: accounts.payer.to_account_info(),
-                },
-                &[asset_seeds],
-            ),
-            stray,
-        )?;
-    }
+    sweep_to_payer(accounts, &accounts.asset.to_account_info(), asset_seeds)?;
     mpl_core::instructions::CreateV2CpiBuilder::new(&accounts.mpl_core_program.to_account_info())
         .asset(&accounts.asset.to_account_info())
         .collection(Some(&accounts.collection.to_account_info()))
@@ -409,7 +397,8 @@ fn issue_pagare<'info>(
         .payer(&accounts.payer.to_account_info())
         .owner(Some(&accounts.pool.to_account_info()))
         .system_program(&accounts.system_program.to_account_info())
-        .name(["Pagare ", &dec_u(line.line_id), "-", &dec_u(draw_index.into())].concat())
+        // No series label and none of the words a court read as an offering (condition C29).
+        .name(["PAGARE ", &dec_u(line.line_id), "-", &dec_u(draw_index.into())].concat())
         .uri(String::new())
         .plugins(plugins)
         .external_plugin_adapters(adapters)
@@ -417,34 +406,45 @@ fn issue_pagare<'info>(
     Ok(())
 }
 
-/// Creates the sidecar at the verified address and writes `record` into it. Like Anchor's `init`,
-/// a pre-funded address is tolerated: topped up to its rent if needed, then allocated and
-/// assigned; an unfunded one is created in one `create_account`.
+/// The pagaré addresses are predictable once the line is open, and both `create_account`s (the
+/// Core program's for the asset, ours for the sidecar) refuse a funded address: left alone, a
+/// stranger could block every draw of a line for the price of rent. Both addresses are this
+/// program's PDAs, so whatever was sent there is moved to the payer first, signed by the PDA.
+fn sweep_to_payer<'info>(accounts: &Draw<'info>, account: &AccountInfo<'info>, seeds: &[&[u8]]) -> Result<()> {
+    let stray = account.lamports();
+    if stray > 0 {
+        anchor_lang::system_program::transfer(
+            CpiContext::new_with_signer(
+                accounts.system_program.key(),
+                anchor_lang::system_program::Transfer { from: account.clone(), to: accounts.payer.to_account_info() },
+                &[seeds],
+            ),
+            stray,
+        )?;
+    }
+    Ok(())
+}
+
+/// Creates the sidecar (Anchor's `init` always searches for the bump; the seeds constraint
+/// already verified the address with the client's bump) and writes `record` into it.
 fn create_sidecar<'info>(accounts: &Draw<'info>, pagare_bump: u8, record: &Pagare) -> Result<()> {
-    use anchor_lang::system_program::{allocate, assign, create_account, transfer, Allocate, Assign, CreateAccount, Transfer};
+    use anchor_lang::system_program::{create_account, CreateAccount};
     let space = 8 + Pagare::INIT_SPACE;
-    let rent = Rent::get()?.minimum_balance(space);
     let line_key = accounts.line.key();
     let index_bytes = record.draw_index.to_le_bytes();
     let seeds: &[&[u8]] = &[seeds::PAGARE, line_key.as_ref(), &index_bytes, &[pagare_bump]];
-    let system = accounts.system_program.key();
     let pagare = accounts.pagare.to_account_info();
-    let payer = accounts.payer.to_account_info();
-    let have = pagare.lamports();
-    if have == 0 {
-        create_account(
-            CpiContext::new_with_signer(system, CreateAccount { from: payer, to: pagare.clone() }, &[seeds]),
-            rent,
-            space as u64,
-            &crate::ID,
-        )?;
-    } else {
-        if have < rent {
-            transfer(CpiContext::new(system, Transfer { from: payer, to: pagare.clone() }), rent - have)?;
-        }
-        allocate(CpiContext::new_with_signer(system, Allocate { account_to_allocate: pagare.clone() }, &[seeds]), space as u64)?;
-        assign(CpiContext::new_with_signer(system, Assign { account_to_assign: pagare.clone() }, &[seeds]), &crate::ID)?;
-    }
+    sweep_to_payer(accounts, &pagare, seeds)?;
+    create_account(
+        CpiContext::new_with_signer(
+            accounts.system_program.key(),
+            CreateAccount { from: accounts.payer.to_account_info(), to: pagare.clone() },
+            &[seeds],
+        ),
+        Rent::get()?.minimum_balance(space),
+        space as u64,
+        &crate::ID,
+    )?;
     let mut data = pagare.try_borrow_mut_data()?;
     record.try_serialize(&mut &mut data[..])?;
     Ok(())
@@ -457,7 +457,16 @@ fn create_sidecar<'info>(accounts: &Draw<'info>, pagare_bump: u8, record: &Pagar
 /// one unit (D3b); fewer than `MAX_DRAWS` tranches; the vault has the liquidity; a non-zero
 /// `document_hash`. The tranche's interest, at the annual rate from now to the last due date, is
 /// added to `interest_due` and never changes again.
-pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32], asset_bump: u8, pagare_bump: u8) -> Result<()> {
+#[allow(clippy::too_many_arguments)]
+pub fn draw(
+    ctx: Context<Draw>,
+    amount: u64,
+    document_hash: [u8; 32],
+    asset_bump: u8,
+    pagare_bump: u8,
+    cert_fingerprint: [u8; 32],
+    signature_method: u8,
+) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
     require!(!pool.paused, PoolError::Paused);
@@ -478,16 +487,12 @@ pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32], asset_bump
     require!(line.draws < MAX_DRAWS, PoolError::TooManyDraws);
     require!(amount <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
     require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
-    // The pagaré addresses, with the bumps the client derived: one `create_program_address` each.
-    let line_key = line.key();
-    let index_bytes = line.draws.to_le_bytes();
-    let asset_key = Pubkey::create_program_address(&[seeds::PAGARE_ASSET, line_key.as_ref(), &index_bytes, &[asset_bump]], ctx.program_id)
-        .map_err(|_| PoolError::WrongAccount)?;
-    require_keys_eq!(ctx.accounts.asset.key(), asset_key, PoolError::WrongAccount);
-    let pagare_key = Pubkey::create_program_address(&[seeds::PAGARE, line_key.as_ref(), &index_bytes, &[pagare_bump]], ctx.program_id)
-        .map_err(|_| PoolError::WrongAccount)?;
-    require_keys_eq!(ctx.accounts.pagare.key(), pagare_key, PoolError::WrongAccount);
-    require!(ctx.accounts.pagare.data_is_empty() && ctx.accounts.pagare.owner == &System::id(), PoolError::WrongAccount);
+    // Condition C6a: how the pagaré text was signed; the certificate fingerprint may be zero only
+    // for a wallet-only signature.
+    require!(
+        signature_method <= SIGNATURE_EFIRMA_WALLET && (signature_method == SIGNATURE_WALLET || cert_fingerprint != [0u8; 32]),
+        PoolError::SignatureMethodInvalid
+    );
 
     token::transfer_checked(
         CpiContext::new_with_signer(
@@ -506,7 +511,6 @@ pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32], asset_bump
 
     // The pagaré: the Core asset (the título) and its sidecar, indexed by the draw being made.
     let draw_index = ctx.accounts.line.draws;
-    issue_pagare(&ctx.accounts, asset_bump, draw_index, amount, document_hash, now, last_due)?;
     let record = Pagare {
         line: ctx.accounts.line.key(),
         draw_index,
@@ -515,9 +519,16 @@ pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32], asset_bump
         amount,
         issued_at: now,
         due_at: last_due,
+        drawn_through: drawn_after,
+        cert_fingerprint,
+        signature_method,
+        status: PAGARE_OUTSTANDING,
+        paid_at: 0,
+        receipt_hash: [0; 32],
         bump: pagare_bump,
         reserved: [0; 32],
     };
+    issue_pagare(&ctx.accounts, asset_bump, &record)?;
     create_sidecar(&ctx.accounts, pagare_bump, &record)?;
 
     let pool = &mut ctx.accounts.pool;

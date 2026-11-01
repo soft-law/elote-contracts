@@ -315,20 +315,73 @@
           "name": "asset",
           "docs": [
             "The Metaplex Core asset that is the pagaré, created by the Core program in this",
-            "instruction at `[\"pagare_asset\", line, line.draws, asset_bump]`, so clients need no",
-            "keypair for it. The client derives the bump and the handler checks the address with one",
-            "`create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of",
-            "a draw does not depend on the line's key."
+            "instruction at `[\"pagare_asset\", line, line.draws]`, so clients need no keypair for it.",
+            "The client derives the bump, so the constraint runs one `create_program_address` and no",
+            "search: the compute of a draw does not depend on the line's key."
           ],
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101,
+                  95,
+                  97,
+                  115,
+                  115,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "account",
+                "path": "line.draws",
+                "account": "CreditLine"
+              }
+            ]
+          }
         },
         {
           "name": "pagare",
           "docs": [
-            "The program's record of the pagaré, created by the handler at `[\"pagare\", line,",
-            "line.draws, pagare_bump]` and verified the same way."
+            "The program's record of the pagaré, created by the handler (Anchor's `init` always",
+            "searches for the bump) at `[\"pagare\", line, line.draws]`."
           ],
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "account",
+                "path": "line.draws",
+                "account": "CreditLine"
+              }
+            ]
+          }
         },
         {
           "name": "collection",
@@ -372,6 +425,19 @@
         },
         {
           "name": "pagare_bump",
+          "type": "u8"
+        },
+        {
+          "name": "cert_fingerprint",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "signature_method",
           "type": "u8"
         }
       ]
@@ -1033,6 +1099,13 @@
           ]
         },
         {
+          "name": "new_attestor",
+          "docs": [
+            "The key that becomes the attestor; it signs, proving control of the key (condition C14)."
+          ],
+          "signer": true
+        },
+        {
           "name": "pool",
           "writable": true,
           "pda": {
@@ -1066,12 +1139,7 @@
           "name": "program"
         }
       ],
-      "args": [
-        {
-          "name": "attestor",
-          "type": "pubkey"
-        }
-      ]
+      "args": []
     },
     {
       "name": "set_paused",
@@ -1804,6 +1872,11 @@
       "code": 6028,
       "name": "DocumentHashRequired",
       "msg": "The signed pagaré's hash is required"
+    },
+    {
+      "code": 6029,
+      "name": "SignatureMethodInvalid",
+      "msg": "signature_method is unknown, or lacks its certificate fingerprint"
     }
   ],
   "types": [

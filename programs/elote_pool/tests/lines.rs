@@ -134,7 +134,7 @@ fn the_attestor_must_sign_openings_and_draws() {
     // After a rotation the new key signs and the old one is a stranger.
     let new_attestor = env.funded(1);
     let ix = env.set_attestor_ix(&k, &admin.pubkey(), &new_attestor.pubkey());
-    env.send(ix, &admin, &[]);
+    env.send(ix, &admin, &[&new_attestor]);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
     env.expect_err_with_attestor(ix, &borrower, E_ATTESTOR_REQUIRED);
     let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);

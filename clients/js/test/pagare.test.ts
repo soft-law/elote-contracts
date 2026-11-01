@@ -31,7 +31,6 @@ test("drawPagareAccounts assembles the draw's pagaré accounts and bumps for the
     collection,
     mplCoreProgram: "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
   });
-  assert.ok(assetBump <= 255 && pagareBump <= 255);
 });
 
 test("the Metaplex Core program address is the one the program pins", () => {

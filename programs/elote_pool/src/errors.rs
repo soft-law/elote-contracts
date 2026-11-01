@@ -62,4 +62,6 @@ pub enum PoolError {
     CollectionNotAllowed,
     #[msg("The signed pagaré's hash is required")]
     DocumentHashRequired,
+    #[msg("signature_method is unknown, or lacks its certificate fingerprint")]
+    SignatureMethodInvalid,
 }

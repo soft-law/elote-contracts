@@ -391,6 +391,8 @@ await send("draw: 6,000 tMXN (devnet test token, no value) to the borrower, paga
     ...(await pagareAccounts(line, 0)),
     amount: 6_000n * UNIT,
     documentHash: hash, // the signed pagaré's hash; the agreement hash stands in
+    certFingerprint: new Uint8Array(32), // wallet-only signature in the demo: no certificate
+    signatureMethod: 0,
   }),
 ]);
 const drawn = await snapshot();
@@ -510,6 +512,8 @@ async function scheduleDemo() {
       ...(await pagareAccounts(sLine, 0)),
       amount: principal,
       documentHash: hash,
+      certFingerprint: new Uint8Array(32),
+      signatureMethod: 0,
     }),
   ]);
 

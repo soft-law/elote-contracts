@@ -267,11 +267,25 @@ pub struct CreditLine {
     pub expediente_root: [u8; 32],
 }
 
+/// How the pagaré text was signed (condition C6a): the borrower's wallet alone.
+pub const SIGNATURE_WALLET: u8 = 0;
+/// A PSC (prestador de servicios de certificación) certificate and the wallet.
+pub const SIGNATURE_PSC_WALLET: u8 = 1;
+/// The SAT e.firma and the wallet.
+pub const SIGNATURE_EFIRMA_WALLET: u8 = 2;
+
+/// `Pagare::status`: the título is outstanding (the asset exists, held by the pool or endorsed).
+pub const PAGARE_OUTSTANDING: u8 = 0;
+/// `Pagare::status`: paid and extinguished by `cancel_pagare` (the asset is burnt; the sidecar
+/// stays as the "PAGADO" record with the receipt's hash).
+pub const PAGARE_PAID: u8 = 1;
+
 /// The program's own record of one pagaré (decision 24, pagaré design): the sidecar of the
-/// Metaplex Core asset `draw` mints for a disposición. It holds no status and no folio: a
-/// pagaré's state is derived from the line (covered oldest first by `draw_index`), and the
-/// agreements engine maps the index to its folio off chain. `cancel_pagare` (step 6c) will close
-/// it and return its rent to the relayer; until then the rent of every draw stays locked.
+/// Metaplex Core asset `draw` mints for a disposición. Per the legal brief (2026-11-01), the signed
+/// data message is the pagaré and the asset is its registration and circulation record; the
+/// sidecar is the program's half of that record. It holds no folio (the agreements engine maps the
+/// index to its folio off chain) and nothing personal. It is never closed: after `cancel_pagare`
+/// it stays as the "PAGADO" mark, so its rent is a cost of every draw.
 #[account]
 #[derive(InitSpace)]
 pub struct Pagare {
@@ -287,6 +301,21 @@ pub struct Pagare {
     pub issued_at: i64,
     /// The line's last due date at issuance (D1): when the last payment is owed.
     pub due_at: i64,
+    /// The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.
+    /// The coverage rule reads it instead of summing earlier sidecars (pagarés are covered oldest
+    /// first): pagaré k is paid once principal and interest repaid reach `drawn_through`.
+    pub drawn_through: u64,
+    /// Hash of the PSC certificate that signed the pagaré text (condition C6a); zero only when
+    /// `signature_method` is `SIGNATURE_WALLET`.
+    pub cert_fingerprint: [u8; 32],
+    /// `SIGNATURE_WALLET`, `SIGNATURE_PSC_WALLET` or `SIGNATURE_EFIRMA_WALLET`.
+    pub signature_method: u8,
+    /// `PAGARE_OUTSTANDING` or `PAGARE_PAID`.
+    pub status: u8,
+    /// When `cancel_pagare` marked it paid; zero while outstanding.
+    pub paid_at: i64,
+    /// Hash of the FEA-signed receipt `cancel_pagare` was given (LGTOC 129); zero while outstanding.
+    pub receipt_hash: [u8; 32],
     pub bump: u8,
     /// Room for later facts (an endoso count, the current holder) without a layout change.
     pub reserved: [u8; 32],

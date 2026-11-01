@@ -519,6 +519,9 @@ pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
 pub struct SetAttestor<'info> {
     pub admin: Signer<'info>,
 
+    /// The key that becomes the attestor; it signs, proving control of the key (condition C14).
+    pub new_attestor: Signer<'info>,
+
     #[account(
         mut,
         seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
@@ -528,10 +531,12 @@ pub struct SetAttestor<'info> {
     pub pool: Account<'info, Pool>,
 }
 
-/// Admin only. The attestor can block every opening, draw and endoso by withholding its
-/// signature and can move nothing; replacing it is the recovery when its key rotates or is lost.
-pub fn set_attestor(ctx: Context<SetAttestor>, attestor: Pubkey) -> Result<()> {
-    require!(attestor != Pubkey::default(), PoolError::WrongAccount);
+/// Admin and the new attestor, which proves control of its key by signing (condition C14; the
+/// holder-facing and court-facing parts of a rotation stay off chain). The attestor can block
+/// every opening, draw and endoso by withholding its signature and can move nothing; replacing it
+/// is the recovery when its key rotates or is lost.
+pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
+    let attestor = ctx.accounts.new_attestor.key();
     let pool = &mut ctx.accounts.pool;
     pool.attestor = attestor;
     emit_cpi!(AttestorSet { pool: pool.key(), attestor });

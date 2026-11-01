@@ -50,6 +50,8 @@ pub const ERR_BASE: u32 = 6000;
 
 pub const E_PAUSED: u32 = ERR_BASE; // PoolError::Paused
 pub const E_UNAUTHORIZED: u32 = ERR_BASE + 1; // PoolError::Unauthorized
+/// Anchor's own `ConstraintSeeds`: an account is not at the address its seeds (and the given bump) derive.
+pub const E_CONSTRAINT_SEEDS: u32 = 2006;
 pub const E_WRONG_AMOUNT: u32 = ERR_BASE + 2; // PoolError::WrongAmount
 pub const E_INSUFFICIENT_LIQUIDITY: u32 = ERR_BASE + 3; // PoolError::InsufficientLiquidity
 pub const E_LINE_STATUS: u32 = ERR_BASE + 4; // PoolError::LineStatus
@@ -77,6 +79,7 @@ pub const E_AVAILABILITY_ENDED: u32 = ERR_BASE + 25; // PoolError::AvailabilityE
 pub const E_TOO_MANY_DRAWS: u32 = ERR_BASE + 26; // PoolError::TooManyDraws
 pub const E_COLLECTION_NOT_ALLOWED: u32 = ERR_BASE + 27; // PoolError::CollectionNotAllowed
 pub const E_DOCUMENT_HASH_REQUIRED: u32 = ERR_BASE + 28; // PoolError::DocumentHashRequired
+pub const E_SIGNATURE_METHOD_INVALID: u32 = ERR_BASE + 29; // PoolError::SignatureMethodInvalid
 
 /// Token-2022's `TokenError::AccountFrozen`, surfaced as custom error 17 by a failed CPI.
 pub const SPL_TOKEN_ACCOUNT_FROZEN: u32 = 17;
@@ -218,6 +221,11 @@ pub const YEAR: i64 = elote_pool::state::SECONDS_PER_YEAR as i64;
 pub const EXPEDIENTE_ROOT: [u8; 32] = [0xe7; 32];
 /// The fixed pagaré hash the tests draw with.
 pub const DOCUMENT_HASH: [u8; 32] = [0xd0; 32];
+/// The fingerprint of the PSC certificate behind the default test signature (method 1, PSC + wallet).
+pub const CERT_FINGERPRINT: [u8; 32] = [0xcf; 32];
+pub const SIGNATURE_METHOD: u8 = elote_pool::state::SIGNATURE_PSC_WALLET;
+#[allow(unused_imports)]
+pub use elote_pool::state::{PAGARE_OUTSTANDING, PAGARE_PAID};
 
 pub struct Env {
     pub svm: LiteSVM,
@@ -558,13 +566,20 @@ impl Env {
         }
     }
 
-    pub fn set_attestor_ix(&self, k: &PoolKeys, admin: &Pubkey, attestor: &Pubkey) -> Instruction {
+    /// `set_attestor`: the admin and the new attestor both sign (condition C14).
+    pub fn set_attestor_ix(&self, k: &PoolKeys, admin: &Pubkey, new_attestor: &Pubkey) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SetAttestor { admin: *admin, pool: k.pool, event_authority, program }
-                .to_account_metas(None),
-            data: elote_pool::instruction::SetAttestor { attestor: *attestor }.data(),
+            accounts: elote_pool::accounts::SetAttestor {
+                admin: *admin,
+                new_attestor: *new_attestor,
+                pool: k.pool,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::SetAttestor {}.data(),
         }
     }
 
@@ -920,7 +935,25 @@ impl Env {
         let line = line_pda(&k.pool, line_id).0;
         let draw_index = self.line(k, line_id).draws;
         let (asset_bump, pagare_bump) = (pagare_asset_pda(&line, draw_index).1, pagare_pda(&line, draw_index).1);
-        self.draw_ix_full(k, line_id, borrower, payer, amount, document_hash, asset_bump, pagare_bump)
+        self.draw_ix_full(k, line_id, borrower, payer, amount, document_hash, asset_bump, pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD)
+    }
+
+    /// As `draw_ix_amount`, with the signature facts of the pagaré given explicitly.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_ix_signed(
+        &self,
+        k: &PoolKeys,
+        line_id: u64,
+        borrower: &Pubkey,
+        amount: u64,
+        document_hash: [u8; 32],
+        cert_fingerprint: [u8; 32],
+        signature_method: u8,
+    ) -> Instruction {
+        let line = line_pda(&k.pool, line_id).0;
+        let draw_index = self.line(k, line_id).draws;
+        let (asset_bump, pagare_bump) = (pagare_asset_pda(&line, draw_index).1, pagare_pda(&line, draw_index).1);
+        self.draw_ix_full(k, line_id, borrower, borrower, amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
     /// As `draw_ix_paid_by`, with the two PDA bumps given explicitly (the program verifies them).
@@ -935,6 +968,8 @@ impl Env {
         document_hash: [u8; 32],
         asset_bump: u8,
         pagare_bump: u8,
+        cert_fingerprint: [u8; 32],
+        signature_method: u8,
     ) -> Instruction {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
@@ -960,7 +995,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::Draw { amount, document_hash, asset_bump, pagare_bump }.data(),
+            data: elote_pool::instruction::Draw { amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method }.data(),
         }
     }
 

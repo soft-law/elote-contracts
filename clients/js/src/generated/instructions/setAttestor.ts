@@ -10,8 +10,6 @@ import {
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
-  getAddressDecoder,
-  getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
   getProgramDerivedAddress,
@@ -27,7 +25,6 @@ import {
   type FixedSizeCodec,
   type FixedSizeDecoder,
   type FixedSizeEncoder,
-  type HasAddress,
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
@@ -59,6 +56,7 @@ export function getSetAttestorDiscriminatorBytes(): ReadonlyUint8Array {
 export type SetAttestorInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountNewAttestor extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
@@ -72,6 +70,10 @@ export type SetAttestorInstruction<
         ? ReadonlySignerAccount<TAccountAdmin> &
             AccountSignerMeta<TAccountAdmin>
         : TAccountAdmin,
+      TAccountNewAttestor extends string
+        ? ReadonlySignerAccount<TAccountNewAttestor> &
+            AccountSignerMeta<TAccountNewAttestor>
+        : TAccountNewAttestor,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -85,19 +87,13 @@ export type SetAttestorInstruction<
     ]
   >;
 
-export type SetAttestorInstructionData = {
-  discriminator: ReadonlyUint8Array;
-  attestor: Address;
-};
+export type SetAttestorInstructionData = { discriminator: ReadonlyUint8Array };
 
-export type SetAttestorInstructionDataArgs = { attestor: Address | HasAddress };
+export type SetAttestorInstructionDataArgs = {};
 
 export function getSetAttestorInstructionDataEncoder(): FixedSizeEncoder<SetAttestorInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([
-      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["attestor", getAddressEncoder()],
-    ]),
+    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
     (value) => ({ ...value, discriminator: SET_ATTESTOR_DISCRIMINATOR }),
   );
 }
@@ -105,7 +101,6 @@ export function getSetAttestorInstructionDataEncoder(): FixedSizeEncoder<SetAtte
 export function getSetAttestorInstructionDataDecoder(): FixedSizeDecoder<SetAttestorInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["attestor", getAddressDecoder()],
   ]);
 }
 
@@ -121,20 +116,23 @@ export function getSetAttestorInstructionDataCodec(): FixedSizeCodec<
 
 export type SetAttestorAsyncInput<
   TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountNewAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   admin: TAccountAdmin;
+  /** The key that becomes the attestor; it signs, proving control of the key (condition C14). */
+  newAttestor: TAccountNewAttestor;
   pool: TAccountPool;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  attestor: SetAttestorInstructionDataArgs["attestor"];
 };
 
 export async function getSetAttestorInstructionAsync<
   TAccountAdmin extends InstructionSignerInput,
+  TAccountNewAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -142,6 +140,7 @@ export async function getSetAttestorInstructionAsync<
 >(
   input: SetAttestorAsyncInput<
     TAccountAdmin,
+    TAccountNewAttestor,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -155,6 +154,10 @@ export async function getSetAttestorInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountAdmin,
       InstructionAccountInputAddress<TAccountAdmin>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountNewAttestor,
+      InstructionAccountInputAddress<TAccountNewAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -184,6 +187,11 @@ export async function getSetAttestorInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    newAttestor: {
+      value: input.newAttestor ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -201,9 +209,6 @@ export async function getSetAttestorInstructionAsync<
     ResolvedInstructionAccount
   >;
 
-  // Original args.
-  const args = { ...input };
-
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -219,19 +224,22 @@ export async function getSetAttestorInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("admin", accounts.admin),
+      getAccountMeta("newAttestor", accounts.newAttestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSetAttestorInstructionDataEncoder().encode(
-      args as SetAttestorInstructionDataArgs,
-    ),
+    data: getSetAttestorInstructionDataEncoder().encode({}),
     programAddress,
   } as SetAttestorInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountAdmin,
       InstructionAccountInputAddress<TAccountAdmin>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountNewAttestor,
+      InstructionAccountInputAddress<TAccountNewAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -250,20 +258,23 @@ export async function getSetAttestorInstructionAsync<
 
 export type SetAttestorInput<
   TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountNewAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   admin: TAccountAdmin;
+  /** The key that becomes the attestor; it signs, proving control of the key (condition C14). */
+  newAttestor: TAccountNewAttestor;
   pool: TAccountPool;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  attestor: SetAttestorInstructionDataArgs["attestor"];
 };
 
 export function getSetAttestorInstruction<
   TAccountAdmin extends InstructionSignerInput,
+  TAccountNewAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -271,6 +282,7 @@ export function getSetAttestorInstruction<
 >(
   input: SetAttestorInput<
     TAccountAdmin,
+    TAccountNewAttestor,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -283,6 +295,10 @@ export function getSetAttestorInstruction<
   ResolvedInstructionAccountMeta<
     TAccountAdmin,
     InstructionAccountInputAddress<TAccountAdmin>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountNewAttestor,
+    InstructionAccountInputAddress<TAccountNewAttestor>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -311,6 +327,11 @@ export function getSetAttestorInstruction<
   // Original accounts.
   const originalAccounts = {
     admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    newAttestor: {
+      value: input.newAttestor ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -328,9 +349,6 @@ export function getSetAttestorInstruction<
     ResolvedInstructionAccount
   >;
 
-  // Original args.
-  const args = { ...input };
-
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -340,19 +358,22 @@ export function getSetAttestorInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("admin", accounts.admin),
+      getAccountMeta("newAttestor", accounts.newAttestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSetAttestorInstructionDataEncoder().encode(
-      args as SetAttestorInstructionDataArgs,
-    ),
+    data: getSetAttestorInstructionDataEncoder().encode({}),
     programAddress,
   } as SetAttestorInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountAdmin,
       InstructionAccountInputAddress<TAccountAdmin>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountNewAttestor,
+      InstructionAccountInputAddress<TAccountNewAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -376,9 +397,11 @@ export type ParsedSetAttestorInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     admin: TAccountMetas[0];
-    pool: TAccountMetas[1];
-    eventAuthority: TAccountMetas[2];
-    program: TAccountMetas[3];
+    /** The key that becomes the attestor; it signs, proving control of the key (condition C14). */
+    newAttestor: TAccountMetas[1];
+    pool: TAccountMetas[2];
+    eventAuthority: TAccountMetas[3];
+    program: TAccountMetas[4];
   };
   data: SetAttestorInstructionData;
 };
@@ -391,12 +414,12 @@ export function parseSetAttestorInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedSetAttestorInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 4) {
+  if (instruction.accounts.length < 5) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 4,
+        expectedAccountMetas: 5,
       },
     );
   }
@@ -410,6 +433,7 @@ export function parseSetAttestorInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       admin: getNextAccount(),
+      newAttestor: getNextAccount(),
       pool: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

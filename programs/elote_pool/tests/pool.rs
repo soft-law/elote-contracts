@@ -604,26 +604,30 @@ fn init_pool_rejects_a_collection_the_pool_does_not_control() {
 }
 
 /// `set_attestor` is the recovery when the agreements engine's key rotates or is lost: admin
-/// only, never the zero key, announced by `AttestorSet`.
+/// only, co-signed by the new attestor, which proves control of the new key (condition C14),
+/// announced by `AttestorSet`.
 #[test]
-fn set_attestor_is_admin_only_and_rejects_the_zero_key() {
+fn set_attestor_is_admin_only_and_co_signed_by_the_new_attestor() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let admin = env.admin.insecure_clone();
-    let new_attestor = Pubkey::new_unique();
+    let new_attestor = env.funded(1);
 
     let stranger = env.funded(1);
-    let ix = env.set_attestor_ix(&k, &stranger.pubkey(), &new_attestor);
-    env.expect_err(ix, &stranger, &[], E_UNAUTHORIZED);
-    let ix = env.set_attestor_ix(&k, &admin.pubkey(), &Pubkey::default());
-    env.expect_err(ix, &admin, &[], E_WRONG_ACCOUNT);
+    let ix = env.set_attestor_ix(&k, &stranger.pubkey(), &new_attestor.pubkey());
+    env.expect_err(ix, &stranger, &[&new_attestor], E_UNAUTHORIZED);
+    // The admin alone cannot name a key it does not control.
+    let mut ix = env.set_attestor_ix(&k, &admin.pubkey(), &new_attestor.pubkey());
+    let i = ix.accounts.iter().position(|m| m.pubkey == new_attestor.pubkey()).unwrap();
+    ix.accounts[i].is_signer = false;
+    assert!(env.try_send(ix, &admin, &[]).is_err());
     assert_eq!(env.pool(&k).attestor, env.attestor.pubkey(), "unchanged");
 
-    let ix = env.set_attestor_ix(&k, &admin.pubkey(), &new_attestor);
-    let meta = env.send(ix, &admin, &[]);
+    let ix = env.set_attestor_ix(&k, &admin.pubkey(), &new_attestor.pubkey());
+    let meta = env.send(ix, &admin, &[&new_attestor]);
     let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
-    assert_eq!((ev.pool, ev.attestor), (k.pool, new_attestor));
-    assert_eq!(env.pool(&k).attestor, new_attestor);
+    assert_eq!((ev.pool, ev.attestor), (k.pool, new_attestor.pubkey()));
+    assert_eq!(env.pool(&k).attestor, new_attestor.pubkey());
 }
 
 /// Series-shelf 2f: `NavUpdated { pool, total_assets, share_supply }` follows every instruction
