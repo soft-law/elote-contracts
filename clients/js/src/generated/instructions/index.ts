@@ -8,6 +8,7 @@
 
 export * from "./cancelLine";
 export * from "./cancelPagare";
+export * from "./courtAnnotation";
 export * from "./deposit";
 export * from "./draw";
 export * from "./endorsePagare";

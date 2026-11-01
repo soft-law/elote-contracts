@@ -735,3 +735,88 @@ fn revoke_procuracion_appends_the_entry_and_takes_the_delegate_back() {
     let burn = asset.plugin_list.burn_delegate.as_ref().unwrap();
     assert_eq!(burn.base.authority.address, Some(pda));
 }
+
+/// A court's act on a title (embargo, suspension, cancellation; the constancia of art. 28): the
+/// holder and the attestor record the document's hash as an entry; nothing moves on the sidecar or
+/// the asset. Allowed on any line status, written-off included, and beside a procuración in force;
+/// refused only on a burnt title, which the sidecar records as `PAGARE_PAID`.
+#[test]
+fn court_annotations_append_the_entry_and_move_nothing() {
+    use elote_pool::events::PagareEntry;
+    use elote_pool::state::{KIND_ANOTACION_JUDICIAL, KIND_CONSTANCIA_JUDICIAL, KIND_PROCURACION, KIND_RECIBO};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let admin = env.admin.insecure_clone();
+    let attestor = env.attestor.insecure_clone();
+    let a = admin.pubkey();
+    let embargo = [0x6a; 32];
+
+    // Refusals: a kind that is not a court's, a zero hash, a non-holder, a stranger for attestor.
+    for kind in [KIND_PROCURACION, KIND_RECIBO, KIND_RECIBO + 1] {
+        let ix = env.court_annotation_ix(&k, line_id, 0, &a, kind, embargo);
+        env.expect_err(ix, &admin, &[&attestor], E_ANNOTATION_KIND_INVALID);
+    }
+    let ix = env.court_annotation_ix(&k, line_id, 0, &a, KIND_ANOTACION_JUDICIAL, [0; 32]);
+    env.expect_err(ix, &admin, &[&attestor], E_DOCUMENT_HASH_REQUIRED);
+    let ix = env.court_annotation_ix(&k, line_id, 0, &borrower.pubkey(), KIND_ANOTACION_JUDICIAL, embargo);
+    env.expect_err(ix, &borrower, &[&attestor], E_NOT_HOLDER);
+    let stranger = env.funded(1);
+    let mut ix = env.court_annotation_ix(&k, line_id, 0, &a, KIND_ANOTACION_JUDICIAL, embargo);
+    let i = ix.accounts.iter().position(|m| m.pubkey == attestor.pubkey()).unwrap();
+    ix.accounts[i].pubkey = stranger.pubkey();
+    env.expect_err(ix, &admin, &[&stranger], E_ATTESTOR_REQUIRED);
+
+    // The embargo: one entry, from and to the pool (no counterparty), the rest untouched.
+    let before = env.pagare(&k, line_id, 0);
+    let meta = env.court_annotation(&k, line_id, 0, KIND_ANOTACION_JUDICIAL, embargo);
+    let now = env.now();
+    let after = env.pagare(&k, line_id, 0);
+    let expected = entry_hash(&after.asset, KIND_ANOTACION_JUDICIAL, &k.pool, &k.pool, &embargo, now, 2);
+    assert_eq!((after.entry_count, after.last_kind), (2, KIND_ANOTACION_JUDICIAL));
+    assert_eq!(after.log_root, chain(&before.log_root, &expected));
+    assert_eq!(
+        (after.status, after.flags, after.procurador, after.paid_at, after.receipt_hash, after.amount, after.due_at),
+        (before.status, before.flags, before.procurador, before.paid_at, before.receipt_hash, before.amount, before.due_at),
+        "nothing else on the sidecar moves"
+    );
+    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
+    assert_eq!(
+        (ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count, ev.asset, ev.stated_at),
+        (KIND_ANOTACION_JUDICIAL, k.pool, k.pool, expected, 2, after.asset, now)
+    );
+    let asset = env.asset_state(&after.asset);
+    assert_eq!(asset.base.owner, k.pool, "the asset stays with the pool");
+    assert!(asset.plugin_list.permanent_freeze_delegate.as_ref().unwrap().permanent_freeze_delegate.frozen, "and stays frozen");
+
+    // The constancia (art. 28) chains on, and both coexist with a procuración in force.
+    env.court_annotation(&k, line_id, 0, KIND_CONSTANCIA_JUDICIAL, [0x6b; 32]);
+    let procurador = env.funded(1);
+    env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
+    env.court_annotation(&k, line_id, 0, KIND_ANOTACION_JUDICIAL, [0x6c; 32]);
+    let p0 = env.pagare(&k, line_id, 0);
+    assert_eq!((p0.entry_count, p0.last_kind, p0.procurador), (5, KIND_ANOTACION_JUDICIAL, procurador.pubkey()));
+
+    // A written-off line: the title outlives the loss and a court may still act on it.
+    let borrower = env.borrower(&k);
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.warp(p.term_end + 1);
+    let ix = env.write_off_ix(&k, line_id, &a);
+    env.send(ix, &admin, &[]);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
+    env.court_annotation(&k, line_id, 0, KIND_ANOTACION_JUDICIAL, embargo);
+    assert_eq!(env.pagare(&k, line_id, 0).entry_count, 2);
+
+    // A burnt title is refused; its sibling on the repaid line is not.
+    let (_, line_id) = drawn_and_repaid(&mut env, &k, 4 * UNIT, 1_000, &[UNIT, 3 * UNIT]);
+    env.cancel_pagare(&k, line_id, 0);
+    let ix = env.court_annotation_ix(&k, line_id, 0, &a, KIND_CONSTANCIA_JUDICIAL, embargo);
+    env.expect_err(ix, &admin, &[&attestor], E_PAGARE_ALREADY_PAID);
+    env.court_annotation(&k, line_id, 1, KIND_CONSTANCIA_JUDICIAL, embargo);
+    assert_eq!(env.pagare(&k, line_id, 1).last_kind, KIND_CONSTANCIA_JUDICIAL);
+}

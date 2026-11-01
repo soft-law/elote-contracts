@@ -154,6 +154,13 @@ pub mod elote_pool {
         instructions::pagare::revoke_procuracion(ctx, draw_index, entry_hash)
     }
 
+    /// Records a court's act on pagaré `draw_index`: `kind` is AnotacionJudicial (6: embargo,
+    /// suspension, cancellation) or ConstanciaJudicial (7, LGTOC 28), over the court document's
+    /// hash. The holder and the attestor sign; nothing moves.
+    pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> Result<()> {
+        instructions::pagare::court_annotation(ctx, draw_index, kind, document_hash)
+    }
+
     /// Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then
     /// interest, then principal, and never more than is due. Anyone may pay. A full repayment
     /// closes the line and forfeits the undrawn remainder.

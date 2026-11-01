@@ -9,8 +9,8 @@ use crate::events::PagareCancelled;
 use crate::pool_signer;
 use crate::registry;
 use crate::state::{
-    seeds, CreditLine, LineStatus, Pagare, Pool, KIND_PROCURACION, KIND_REVOCACION, PAGARE_FLAG_BURN_DELEGATE,
-    PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING, PAGARE_PAID,
+    seeds, CreditLine, LineStatus, Pagare, Pool, KIND_ANOTACION_JUDICIAL, KIND_CONSTANCIA_JUDICIAL, KIND_PROCURACION,
+    KIND_REVOCACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING, PAGARE_PAID,
 };
 use crate::events::PagareEntry;
 
@@ -350,6 +350,73 @@ pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entr
         to,
         entry_hash: hash,
         entry_count,
+        recorded_at: now,
+        stated_at: now,
+    });
+    Ok(())
+}
+
+// -----------------------------------------------------------------------------------------------
+// court_annotation
+// -----------------------------------------------------------------------------------------------
+
+#[event_cpi]
+#[derive(Accounts)]
+#[instruction(draw_index: u16)]
+pub struct CourtAnnotation<'info> {
+    /// The pagaré's holder: the admin while the asset is in the pool.
+    #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
+    pub holder: Signer<'info>,
+
+    /// Attests the court document behind `document_hash`.
+    #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
+    pub attestor: Signer<'info>,
+
+    #[account(
+        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+    )]
+    pub pool: Account<'info, Pool>,
+
+    #[account(
+        seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
+        bump = line.bump,
+        has_one = pool @ PoolError::WrongAccount,
+    )]
+    pub line: Account<'info, CreditLine>,
+
+    #[account(
+        mut,
+        seeds = [seeds::PAGARE, line.key().as_ref(), &draw_index.to_le_bytes()],
+        bump = pagare.bump,
+        has_one = line @ PoolError::WrongAccount,
+    )]
+    pub pagare: Account<'info, Pagare>,
+}
+
+/// A court's act on the title: `AnotacionJudicial` (embargo, suspension, cancellation) or
+/// `ConstanciaJudicial` (LGTOC 28), over the court document's hash, attested by the attestor.
+/// Appends the entry (from and to the pool: there is no counterparty) and emits it; nothing else
+/// moves. Allowed on any line status and beside a procuración; refused only on a burnt title,
+/// which the sidecar records as `PAGARE_PAID` (the burn happens only inside `cancel_pagare`).
+pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> Result<()> {
+    require!(kind == KIND_ANOTACION_JUDICIAL || kind == KIND_CONSTANCIA_JUDICIAL, PoolError::AnnotationKindInvalid);
+    require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
+    let pagare = &mut ctx.accounts.pagare;
+    require!(pagare.status != PAGARE_PAID, PoolError::PagareAlreadyPaid);
+    let now = Clock::get()?.unix_timestamp;
+    let pool_key = ctx.accounts.pool.key();
+    let hash = registry::append(pagare, kind, &pool_key, &pool_key, &document_hash, now).ok_or(PoolError::Overflow)?;
+    emit_cpi!(PagareEntry {
+        pool: pool_key,
+        line_id: ctx.accounts.line.line_id,
+        draw_index,
+        asset: pagare.asset,
+        kind,
+        from: pool_key,
+        to: pool_key,
+        entry_hash: hash,
+        entry_count: pagare.entry_count,
         recorded_at: now,
         stated_at: now,
     });

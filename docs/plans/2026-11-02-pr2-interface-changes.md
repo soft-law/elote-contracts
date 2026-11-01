@@ -112,3 +112,14 @@ generated client derives `findPagarePda` and the `cancelPagare` builder derives 
 - **`Pagare.procurador: Pubkey`** at offset 213 (the former `reserved` bytes, same size): the
   procurador of the procuración in force, the zero key when none. Set by `endorse_pagare`, cleared
   here. Clients show it as who may collect today.
+
+## 6d part 1 (d): `court_annotation`
+
+- **New instruction** `court_annotation(draw_index: u16, kind: u8, document_hash: [u8; 32])`.
+  Signers: holder (the admin while the asset is in the pool), attestor. Accounts: `pool`, `line`,
+  `pagare` only (no asset, no Core program, no payer). `kind` is 6 `AnotacionJudicial` or 7
+  `ConstanciaJudicial`; `document_hash` is the court document's hash, non-zero. Appends the entry
+  with from = to = the pool and emits `PagareEntry`; nothing else changes. Allowed whatever the
+  line's status and beside a procuración; refused on a burnt title (`Pagare.status == 1`).
+- **Error added:** 6043 `AnnotationKindInvalid`.
+- Compute: about 14 441 CU at 120 installments.

@@ -101,9 +101,12 @@ export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x1798; // 6040
 export const ELOTE_POOL_ERROR__ENDORSEE_INVALID = 0x1799; // 6041
 /** ProcuracionState: The pagaré has no procuración in force, or already has one */
 export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x179a; // 6042
+/** AnnotationKindInvalid: This kind is not a court annotation */
+export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x179b; // 6043
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED
+  | typeof ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN
   | typeof ELOTE_POOL_ERROR__ATTESTOR_REQUIRED
@@ -151,6 +154,7 @@ let elotePoolErrorMessages: Record<ElotePoolError, string> | undefined;
 if (process.env["NODE_ENV"] !== "production") {
   elotePoolErrorMessages = {
     [ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED]: `The signed agreement's hash is required`,
+    [ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID]: `This kind is not a court annotation`,
     [ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED]: `The asset mint carries a Token-2022 extension the pool does not accept`,
     [ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN]: `The attestor cannot be the admin`,
     [ELOTE_POOL_ERROR__ATTESTOR_REQUIRED]: `The pool's attestor must sign`,

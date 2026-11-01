@@ -90,4 +90,6 @@ pub enum PoolError {
     EndorseeInvalid,
     #[msg("The pagaré has no procuración in force, or already has one")]
     ProcuracionState,
+    #[msg("This kind is not a court annotation")]
+    AnnotationKindInvalid,
 }

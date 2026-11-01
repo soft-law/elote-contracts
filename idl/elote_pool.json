@@ -267,6 +267,149 @@
       ]
     },
     {
+      "name": "court_annotation",
+      "docs": [
+        "Records a court's act on pagaré `draw_index`: `kind` is AnotacionJudicial (6: embargo,",
+        "suspension, cancellation) or ConstanciaJudicial (7, LGTOC 28), over the court document's",
+        "hash. The holder and the attestor sign; nothing moves."
+      ],
+      "discriminator": [
+        218,
+        162,
+        99,
+        238,
+        34,
+        206,
+        17,
+        50
+      ],
+      "accounts": [
+        {
+          "name": "holder",
+          "docs": [
+            "The pagaré's holder: the admin while the asset is in the pool."
+          ],
+          "signer": true
+        },
+        {
+          "name": "attestor",
+          "docs": [
+            "Attests the court document behind `document_hash`."
+          ],
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          },
+          "relations": [
+            "pagare"
+          ]
+        },
+        {
+          "name": "pagare",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "arg",
+                "path": "draw_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_index",
+          "type": "u16"
+        },
+        {
+          "name": "kind",
+          "type": "u8"
+        },
+        {
+          "name": "document_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "deposit",
       "docs": [
         "Deposits `assets` for shares at the current NAV, at least `min_shares_out`; the first",
@@ -2549,6 +2692,11 @@
       "code": 6042,
       "name": "ProcuracionState",
       "msg": "The pagaré has no procuración in force, or already has one"
+    },
+    {
+      "code": 6043,
+      "name": "AnnotationKindInvalid",
+      "msg": "This kind is not a court annotation"
     }
   ],
   "types": [

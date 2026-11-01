@@ -161,6 +161,11 @@ fn procuracion_stays_under_the_ceiling() {
     let again = env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH).compute_units_consumed;
     println!("endorse_pagare (procuracion, plugin approved) at 120 installments: {again} CU");
     assert!(revoke < CEILING && again < CEILING);
+    let court = env
+        .court_annotation(&k, line_id, 0, elote_pool::state::KIND_ANOTACION_JUDICIAL, [0x6a; 32])
+        .compute_units_consumed;
+    println!("court_annotation at 120 installments: {court} CU");
+    assert!(court < CEILING);
 }
 
 #[test]

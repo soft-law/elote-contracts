@@ -93,6 +93,7 @@ pub const E_PAGARE_ACCOUNTS_MISMATCH: u32 = ERR_BASE + 39; // PoolError::PagareA
 pub const E_ENDOSO_KIND_INVALID: u32 = ERR_BASE + 40; // PoolError::EndosoKindInvalid
 pub const E_ENDORSEE_INVALID: u32 = ERR_BASE + 41; // PoolError::EndorseeInvalid
 pub const E_PROCURACION_STATE: u32 = ERR_BASE + 42; // PoolError::ProcuracionState
+pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + 43; // PoolError::AnnotationKindInvalid
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
@@ -1158,6 +1159,33 @@ impl Env {
             .to_account_metas(None),
             data: elote_pool::instruction::RevokeProcuracion { draw_index, entry_hash }.data(),
         }
+    }
+
+    /// `court_annotation(draw_index, kind, document_hash)` by `holder`, the pool's attestor as the second signer.
+    pub fn court_annotation_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, kind: u8, document_hash: [u8; 32]) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::CourtAnnotation {
+                holder: *holder,
+                attestor: self.attestor.pubkey(),
+                pool: k.pool,
+                line,
+                pagare: pagare_pda(&line, draw_index).0,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::CourtAnnotation { draw_index, kind, document_hash }.data(),
+        }
+    }
+    /// A court annotation of pagaré `draw_index`, signed by the admin and the attestor.
+    pub fn court_annotation(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> TransactionMetadata {
+        let admin = self.admin.insecure_clone();
+        let attestor = self.attestor.insecure_clone();
+        let ix = self.court_annotation_ix(k, line_id, draw_index, &admin.pubkey(), kind, document_hash);
+        self.send(ix, &admin, &[&attestor])
     }
 
     /// An endoso en procuración of pagaré `draw_index` to `procurador`, signed by the admin and the attestor.

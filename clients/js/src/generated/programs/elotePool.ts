@@ -49,6 +49,7 @@ import {
 import {
   getCancelLineInstructionAsync,
   getCancelPagareInstructionAsync,
+  getCourtAnnotationInstructionAsync,
   getDepositInstructionAsync,
   getDrawInstructionAsync,
   getEndorsePagareInstructionAsync,
@@ -65,6 +66,7 @@ import {
   getWriteOffInstructionAsync,
   parseCancelLineInstruction,
   parseCancelPagareInstruction,
+  parseCourtAnnotationInstruction,
   parseDepositInstruction,
   parseDrawInstruction,
   parseEndorsePagareInstruction,
@@ -81,6 +83,7 @@ import {
   parseWriteOffInstruction,
   type CancelLineAsyncInput,
   type CancelPagareAsyncInput,
+  type CourtAnnotationAsyncInput,
   type DepositAsyncInput,
   type DrawAsyncInput,
   type EndorsePagareAsyncInput,
@@ -89,6 +92,7 @@ import {
   type OpenLineAsyncInput,
   type ParsedCancelLineInstruction,
   type ParsedCancelPagareInstruction,
+  type ParsedCourtAnnotationInstruction,
   type ParsedDepositInstruction,
   type ParsedDrawInstruction,
   type ParsedEndorsePagareInstruction,
@@ -499,6 +503,7 @@ export function identifyElotePoolEvent(
 export enum ElotePoolInstruction {
   CancelLine,
   CancelPagare,
+  CourtAnnotation,
   Deposit,
   Draw,
   EndorsePagare,
@@ -540,6 +545,17 @@ export function identifyElotePoolInstruction(
     )
   ) {
     return ElotePoolInstruction.CancelPagare;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([218, 162, 99, 238, 34, 206, 17, 50]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.CourtAnnotation;
   }
   if (
     containsBytes(
@@ -711,6 +727,9 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.CancelPagare;
     } & ParsedCancelPagareInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.CourtAnnotation;
+    } & ParsedCourtAnnotationInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.Deposit;
     } & ParsedDepositInstruction<TProgram>)
   | ({
@@ -770,6 +789,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.CancelPagare,
         ...parseCancelPagareInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.CourtAnnotation: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.CourtAnnotation,
+        ...parseCourtAnnotationInstruction(instruction),
       };
     }
     case ElotePoolInstruction.Deposit: {
@@ -909,6 +935,11 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getCancelPagareInstructionAsync> &
     SelfPlanAndSendFunctions;
+  courtAnnotation: (
+    input: CourtAnnotationAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getCourtAnnotationInstructionAsync> &
+    SelfPlanAndSendFunctions;
   deposit: (
     input: DepositAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1024,6 +1055,14 @@ export function elotePoolProgram(
                     instructionConfig?.programAddress ?? config.programAddress,
                 },
               ),
+            ),
+          courtAnnotation: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCourtAnnotationInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
             ),
           deposit: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
