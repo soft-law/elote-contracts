@@ -99,13 +99,18 @@ pub fn late_interest(amount: u64, late_bps: u16, seconds: u64) -> Option<u64> {
 
 /// `seconds` clamped to the time after which late interest would exceed the amount it accrues
 /// on; this also bounds every product below `u128::MAX`.
-fn capped_seconds(late_bps: u16, seconds: u64) -> u64 {
+/// The seconds after which late interest at `late_bps` a year reaches the amount itself: the
+/// per-part cap on the accrual period. Zero when there is no late interest.
+fn seconds_cap(late_bps: u16) -> u64 {
     if late_bps == 0 {
         return 0;
     }
     // Rounded up, so a full run reaches the amount; constants, late_bps > 0.
-    let cap = (BPS * SECONDS_PER_YEAR).div_ceil(u64::from(late_bps));
-    seconds.min(cap)
+    (BPS * SECONDS_PER_YEAR).div_ceil(u64::from(late_bps))
+}
+
+fn capped_seconds(late_bps: u16, seconds: u64) -> u64 {
+    seconds.min(seconds_cap(late_bps))
 }
 
 /// `weighted * late_bps / (10_000 * SECONDS_PER_YEAR)`, capped at `cap`.
@@ -191,12 +196,15 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
     // the per-part figure is identical, only the u128 division is saved (step 5d).
     let base = installment_amount(t.total, t.installments)?;
     let base_share = principal_share(base, t.principal, t.total)?;
+    let cap = seconds_cap(t.late_bps);
     let mut k = covered;
+    // What was due before installment k is what was due through k - 1: carried, not recomputed.
+    let mut before = cumulative_due(t.total, t.installments, covered)?;
     while k < due {
         k += 1; // k <= due <= installments
         let upto = cumulative_due(t.total, t.installments, k)?;
-        let before = cumulative_due(t.total, t.installments, k - 1)?;
         let part = upto.checked_sub(paid.max(before))?;
+        before = upto;
         let part_principal = if part == base { base_share } else { principal_share(part, t.principal, t.total)? };
         let due_at = t.anchor.checked_add(t.interval.checked_mul(i64::from(k))?)?;
         if first_missed_due.is_none() {
@@ -205,7 +213,7 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
         let start = due_at.checked_add(i64::from(t.grace))?.max(t.late_paid_until);
         if now > start {
             let seconds = now.checked_sub(start)? as u64; // positive
-            let s = capped_seconds(t.late_bps, seconds);
+            let s = seconds.min(cap);
             weighted = weighted.checked_add((part_principal as u128).checked_mul(s as u128)?)?;
         }
         overdue = overdue.checked_add(part)?;

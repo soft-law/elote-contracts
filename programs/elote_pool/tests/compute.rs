@@ -5,6 +5,11 @@
 //!
 //! The ceiling is below the 200_000 CU a transaction gets per instruction without a compute
 //! budget instruction, so clients never need to request more.
+//!
+//! Measured at 120 installments, every installment missed: repay 56 569 CU, mark_in_collection
+//! 33 453, write_off 38 620 (84 381, 60 106 and 65 271 before steps 5d and the carried cumulative
+//! due; the loop now costs one u64 multiply, one subtraction and one u128 multiply per installment
+//! on the regular path).
 
 mod common;
 
