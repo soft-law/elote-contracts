@@ -363,6 +363,18 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   cap; same arithmetic in the same order, 416 vectors byte-identical, no regeneration. At 120
   installments: repay 56,569 CU (was 63,946), mark_in_collection 33,453 (39,635), write_off
   38,620 (44,802). 128 Rust + 11 JS, clippy clean. Dev holds on 6d and the verifier.
+- **Mario decided A for C9** (decision 27, 2026-11-01): 6d design and measurements released,
+  code held until the spec and CU numbers are accepted. Sent to the developer: measure the first
+  endoso at 120 with the current plugin set and with a set without the permanent transfer and
+  burn delegates (in-pool cancel then burns as owner after a thaw), `AddBlocker` in the creation
+  set; pin whether an AppData adapter can carry data authority `Owner` that follows `TransferV1`
+  (if so the log travels with the holder); `endorse_pagare` as an owner-signed instruction (SAS
+  gate, `endoso_hash`, attestor, `PagareEndorsed`, `TransferV1` with the signer's authority;
+  first endoso thaws and relinquishes every delegate, irreversibly); `cancel_pagare` gains the
+  endorsed branch (holder = Core owner at fixed offset, burn as owner); direct Core transfers
+  outside the program are allowed by construction and C28 binds only program-routed endosos;
+  traps: thaw before relinquish, never frozen again after the first endoso. Deliverables in order:
+  Owner-authority finding, endoso CU numbers, then a written 6d spec.
 
 ## Points the coordinator still owns
 
