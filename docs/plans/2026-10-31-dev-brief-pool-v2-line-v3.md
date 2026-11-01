@@ -323,6 +323,18 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   ~10k of room (attributes are the lever). Known limit accepted: a valid non-canonical bump is
   accepted by `draw`; the attestor's client is the canonicality guard. Next: commit 3
   `cancel_pagare`, commit 4 the Core authority experiments, then push.
+- **6c commit 3 accepted** (`7c87f38`; 123 Rust + 11 JS, clippy clean; push of commits 1-3
+  authorised): `cancel_pagare(draw_index, receipt_hash)` in `instructions/pagare.rs`; holder
+  signer = `pool.admin` while the asset is in the pool (`NotHolder` 6032), attestor co-signs, a
+  payer receives the asset's rent; checks before any write: outstanding (`PagareAlreadyPaid`
+  6031), receipt nonzero, line `Active | Repaid`, coverage `principal_repaid >= drawn_through`
+  (`PagareNotCovered` 6030). Sidecar marked PAGADO and never closed; `PagareCancelled` carries
+  `holder` (no AppData length); `BurnV1` last with the pool PDA as permanent burn delegate (Core
+  force-approves through the permanent freeze; one-byte tombstone stays, rent returns to the
+  payer). 26,891 CU at 120. Two deviations accepted: coverage counts **principal only** (the
+  plan's principal + interest let a título burn with principal still owed, since repay settles
+  interest first); the event names the holder, so 6d needs no new shape. Receipt reuse is not
+  checked on chain (engine issues one per pagaré; attestor is the guard). Next: commit 4.
 
 ## Points the coordinator still owns
 
