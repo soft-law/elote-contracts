@@ -315,6 +315,14 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   per the C22 spec with the holder signer = `pool.admin` while in the pool and no AppData length in
   the event (fixed-offset rule); 6d prework as pinned LiteSVM experiments on Core plugin-authority
   reassignment. Per-draw shape kept.
+- **6c commits 1 and 2 accepted** (`8c08c87`, `3c2c13b`, local; 118 Rust + 11 JS):
+  `draw(amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)`,
+  `SignatureMethodInvalid` 6029, nine attributes, asset name `PAGARE <line>-<draw>`; sidecar 245
+  bytes, never closed, with `drawn_through` (invariant pinned), `status`, `paid_at`,
+  `receipt_hash`; `set_attestor` takes the new attestor as a signer; draw 89.7k CU at 120 with
+  ~10k of room (attributes are the lever). Known limit accepted: a valid non-canonical bump is
+  accepted by `draw`; the attestor's client is the canonicality guard. Next: commit 3
+  `cancel_pagare`, commit 4 the Core authority experiments, then push.
 
 ## Points the coordinator still owns
 
