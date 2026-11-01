@@ -106,6 +106,35 @@ fn cancel_pagare_stays_under_the_ceiling() {
     assert!(cancel < CEILING, "cancel_pagare used {cancel} CU, ceiling {CEILING}");
 }
 
+/// After the mark every remaining installment is due, so a repayment early in a 120-installment
+/// schedule loops over all of them instead of the few that were missed; the figure is the
+/// all-missed shape above, which the ceiling already covers.
+#[test]
+fn repay_after_the_mark_stays_under_the_ceiling_at_120_installments() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool_with_grace(0);
+    let investor = env.investor(&k, 200 * UNIT);
+    env.deposit(&k, &investor, 200 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(100 * UNIT, 1_200, 120, 5_000);
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw(&k, line_id, &borrower);
+    env.warp(env.now() + 3 * p.interval() + 1);
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    let mark = env.send(ix, &investor, &[]).compute_units_consumed;
+    let late = env.arrears(&k, line_id).late_due;
+    let admin = env.admin.insecure_clone();
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), late + 1_000);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), late + 1_000);
+    let repay = env.send(ix, &borrower, &[]).compute_units_consumed;
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    let write_off = env.send(ix, &admin, &[]).compute_units_consumed;
+    println!("mark_in_collection at 120 installments, 3 missed: {mark} CU");
+    println!("repay after the mark at 120 installments: {repay} CU");
+    println!("write_off after the mark at 120 installments: {write_off} CU");
+    assert!(mark < CEILING && repay < CEILING && write_off < CEILING);
+}
+
 #[test]
 fn arrears_instructions_stay_under_the_ceiling_at_18_and_120_installments() {
     for n in [18u16, 120] {

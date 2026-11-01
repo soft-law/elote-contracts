@@ -123,7 +123,7 @@ export type SetAttestorAsyncInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   admin: TAccountAdmin;
-  /** The key that becomes the attestor; it signs, proving control of the key (condition C14). */
+  /** The key that becomes the attestor; it signs, proving control of the key (C14). */
   newAttestor: TAccountNewAttestor;
   pool: TAccountPool;
   eventAuthority?: TAccountEventAuthority;
@@ -265,7 +265,7 @@ export type SetAttestorInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   admin: TAccountAdmin;
-  /** The key that becomes the attestor; it signs, proving control of the key (condition C14). */
+  /** The key that becomes the attestor; it signs, proving control of the key (C14). */
   newAttestor: TAccountNewAttestor;
   pool: TAccountPool;
   eventAuthority: TAccountEventAuthority;
@@ -397,7 +397,7 @@ export type ParsedSetAttestorInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     admin: TAccountMetas[0];
-    /** The key that becomes the attestor; it signs, proving control of the key (condition C14). */
+    /** The key that becomes the attestor; it signs, proving control of the key (C14). */
     newAttestor: TAccountMetas[1];
     pool: TAccountMetas[2];
     eventAuthority: TAccountMetas[3];

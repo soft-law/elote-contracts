@@ -38,6 +38,7 @@ fn case(t: &ScheduleTerms, paid: u64, now: i64) -> Value {
         "grace": t.grace,
         "late_paid_until": t.late_paid_until.to_string(),
         "late_collected": t.late_collected.to_string(),
+        "accelerated_at": t.accelerated_at.to_string(),
         "paid": paid.to_string(),
         "now": now.to_string(),
         "due": a.due,
@@ -63,6 +64,7 @@ fn hand_cases() -> Vec<Value> {
         late_paid_until: 0,
         principal: total,
         late_collected: 0,
+        accelerated_at: 0,
     };
     let mut v = Vec::new();
     let t = terms(600, 6, 0, 0);
@@ -98,11 +100,23 @@ fn hand_cases() -> Vec<Value> {
     v.push(case(&t, 0, first_due + (YEAR / 10) as i64));
     v.push(case(&t, 60, first_due + (YEAR / 10) as i64));
     v.push(case(&t, 0, t.anchor + 60 * YEAR as i64));
+    // Accelerated at 1_250 (vencimiento anticipado): every installment due, those not yet due
+    // accrue from the mark; paying the pre-mark arrears cures nothing.
+    let mut t = terms(600, 6, 10_000, 10);
+    t.accelerated_at = 1_250;
+    for paid in [100, 300, 600] {
+        v.push(case(&t, paid, 1_350));
+    }
+    t.late_paid_until = 1_300;
+    v.push(case(&t, 100, 1_350));
+    v.push(case(&t, 100, 1_250));
     v
 }
 
 fn generated_cases() -> Vec<Value> {
     let mut r = Lcg(0x5EED_2026_1019);
+    // A second stream for the acceleration, so the 400 original cases keep their values.
+    let mut acc = Lcg(0xACCE_55ED_2026_1102);
     (0..400)
         .map(|_| {
             let n = r.range(1, 120) as u16;
@@ -131,6 +145,7 @@ fn generated_cases() -> Vec<Value> {
                 late_paid_until,
                 principal,
                 late_collected,
+                accelerated_at: if acc.range(0, 5) == 0 && now > anchor { anchor + (now - anchor) * (acc.range(0, 10_000) as i64) / 10_000 } else { 0 },
             };
             case(&t, paid, now)
         })

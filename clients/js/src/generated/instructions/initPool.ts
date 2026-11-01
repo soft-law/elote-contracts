@@ -190,9 +190,9 @@ export type InitPoolAsyncInput<
   assetMint: TAccountAssetMint;
   pool?: TAccountPool;
   /**
-   * The share mint, created by the admin beforehand and validated here (series-shelf 2c):
-   * mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that
-   * takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned.
+   * The share mint, created by the admin beforehand and validated here: mint authority = this
+   * pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.
+   * `DefaultAccountState = Frozen` makes the shares permissioned.
    */
   shareMint: TAccountShareMint;
   /** A PDA token account, so nobody can pre-create it and block the pool. */
@@ -204,9 +204,8 @@ export type InitPoolAsyncInput<
    */
   deadShares?: TAccountDeadShares;
   /**
-   * The series' Metaplex Core collection the pagaré assets are minted into: created by the
-   * admin beforehand with the pool PDA as update authority, validated in the handler
-   * (`validate_collection`), like the share mint.
+   * The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as
+   * update authority.
    */
   collection: TAccountCollection;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
@@ -528,9 +527,9 @@ export type InitPoolInput<
   assetMint: TAccountAssetMint;
   pool: TAccountPool;
   /**
-   * The share mint, created by the admin beforehand and validated here (series-shelf 2c):
-   * mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that
-   * takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned.
+   * The share mint, created by the admin beforehand and validated here: mint authority = this
+   * pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.
+   * `DefaultAccountState = Frozen` makes the shares permissioned.
    */
   shareMint: TAccountShareMint;
   /** A PDA token account, so nobody can pre-create it and block the pool. */
@@ -542,9 +541,8 @@ export type InitPoolInput<
    */
   deadShares: TAccountDeadShares;
   /**
-   * The series' Metaplex Core collection the pagaré assets are minted into: created by the
-   * admin beforehand with the pool PDA as update authority, validated in the handler
-   * (`validate_collection`), like the share mint.
+   * The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as
+   * update authority.
    */
   collection: TAccountCollection;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
@@ -809,9 +807,9 @@ export type ParsedInitPoolInstruction<
     assetMint: TAccountMetas[1];
     pool: TAccountMetas[2];
     /**
-     * The share mint, created by the admin beforehand and validated here (series-shelf 2c):
-     * mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that
-     * takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned.
+     * The share mint, created by the admin beforehand and validated here: mint authority = this
+     * pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.
+     * `DefaultAccountState = Frozen` makes the shares permissioned.
      */
     shareMint: TAccountMetas[3];
     /** A PDA token account, so nobody can pre-create it and block the pool. */
@@ -823,9 +821,8 @@ export type ParsedInitPoolInstruction<
      */
     deadShares: TAccountMetas[5];
     /**
-     * The series' Metaplex Core collection the pagaré assets are minted into: created by the
-     * admin beforehand with the pool PDA as update authority, validated in the handler
-     * (`validate_collection`), like the share mint.
+     * The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as
+     * update authority.
      */
     collection: TAccountMetas[6];
     /** The token program of `asset_mint` (classic SPL Token or Token-2022). */

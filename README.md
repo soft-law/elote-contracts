@@ -62,7 +62,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 | collection | a Metaplex Core collection the admin creates and hands to `init_pool` | the series' collection of pagaré assets; its update authority must be the pool PDA, so only the program mints into it |
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
 | dead shares | PDA token account `["dead", pool]`, owned by the pool PDA | the 1,000 shares locked by the first deposit |
-| `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | terms, agreement hash and expediente root, what was drawn and repaid, status, the draw window and the first due date, the installment schedule (scheduled lines) |
+| `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | terms, agreement hash and expediente root, what was drawn and repaid, status, the draw window and the first due date, the installment schedule (scheduled lines), when the balance was accelerated |
 | `Pagare` | PDA `["pagare", line, draw_index (u16 LE)]` | the program's record of one draw's pagaré: the asset's address, the signed pagaré's hash and how it was signed, the amount and the line's drawn total through it, when it was issued and when it is due, and once paid the "PAGADO" mark (status, paid_at, the receipt's hash); never closed; no folio |
 | pagaré asset | PDA `["pagare_asset", line, draw_index (u16 LE)]`, owned by the Metaplex Core program | the pagaré token itself (decision 24): a Core asset in the series' collection, held frozen by the pool PDA, with permanent freeze, transfer and burn delegates held by the pool PDA, immutable metadata, locked attributes (hash, amount, currency, dates, line, draw index) and an empty `AppData` section for the endoso log |
 
@@ -147,10 +147,9 @@ Without it the line is a bullet line (single maturity) and nothing below applies
 - **Collection.** Once `max_missed` installments are missed (at least three, three months of arrears)
   and the grace period of the last of them has run (`now > first_due_at + (covered + max_missed - 1) * interval
   + grace`, with `covered` installments paid), anyone may call `mark_in_collection`, which moves the line
-  to `InCollection`. Collection does not accelerate the balance: the remaining installments keep their
-  due dates. Repayments are
-  still accepted there; a full repayment moves it to `Repaid`. A payment that cures the arrears leaves the
-  status as it is, but then nothing is missed and the write-off below is not allowed.
+  to `InCollection` and records the acceleration (`accelerated_at`): from the mark every installment is
+  due and late interest runs on all remaining principal (vencimiento anticipado, decision 28). Repayments
+  are still accepted there; there is no cure, and only a full repayment moves the line to `Repaid`.
 - **Write-off policy.** After the third month in arrears the line goes to out-of-court collection and the
   admin records the write-off. The program allows `write_off` only when the line is in collection and its
   oldest missed installment fell due more than the grace period ago, or when the term ended more than the
@@ -225,7 +224,7 @@ and the Associated Token Account program by default; the harness adds Metaplex C
 | `core_capabilities.rs` | What Metaplex Core allows after an asset's creation (step 6d prework): handing off or extinguishing the permanent delegates, thawing, moving the update authority off the collection, adding plugins and adapters, writing and removing AppData, the cost of `AddBlocker`, an Owner-held AppData following the asset, owner-managed delegates for the procuración; pinned against the Core binary so an upgrade that changes an answer fails here |
 | `compute.rs` | Compute units of `init_pool`, `draw` (with the Core CPI), `cancel_pagare`, `repay`, `mark_in_collection` and `write_off` at 18 and 120 installments stay under 100,000 |
 | `math_props.rs` | Property tests (proptest) over the share accounting and the arrears arithmetic |
-| `vectors.rs` | Evaluates the arrears arithmetic on 416 cases and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
+| `vectors.rs` | Evaluates the arrears arithmetic on 421 cases (44 accelerated) and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
 
 ## Deployments and upgrade authority
 

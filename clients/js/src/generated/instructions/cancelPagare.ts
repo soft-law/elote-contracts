@@ -181,20 +181,11 @@ export type CancelPagareAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /**
-   * The pagaré's current holder. While the asset is in the pool that is the admin, the
-   * vehicle's signer (step 6d extends this to the holder of record after an endoso).
-   */
+  /** The pagaré's holder: the admin while the asset is in the pool. */
   holder: TAccountHolder;
-  /**
-   * The pool's attestor: the agreements engine attests the receipt behind `receipt_hash` was
-   * signed and is conserved, and that the AppData log was archived before the burn.
-   */
+  /** Attests the receipt behind `receipt_hash` and that the AppData log was archived. */
   attestor: TAccountAttestor;
-  /**
-   * Receives the asset's rent from the Core program when it is burnt (the relayer that funded
-   * it at the draw, as a rule). Any signer.
-   */
+  /** Receives the asset's rent from the Core program. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
   line: TAccountLine;
@@ -479,20 +470,11 @@ export type CancelPagareInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /**
-   * The pagaré's current holder. While the asset is in the pool that is the admin, the
-   * vehicle's signer (step 6d extends this to the holder of record after an endoso).
-   */
+  /** The pagaré's holder: the admin while the asset is in the pool. */
   holder: TAccountHolder;
-  /**
-   * The pool's attestor: the agreements engine attests the receipt behind `receipt_hash` was
-   * signed and is conserved, and that the AppData log was archived before the burn.
-   */
+  /** Attests the receipt behind `receipt_hash` and that the AppData log was archived. */
   attestor: TAccountAttestor;
-  /**
-   * Receives the asset's rent from the Core program when it is burnt (the relayer that funded
-   * it at the draw, as a rule). Any signer.
-   */
+  /** Receives the asset's rent from the Core program. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
   line: TAccountLine;
@@ -743,20 +725,11 @@ export type ParsedCancelPagareInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /**
-     * The pagaré's current holder. While the asset is in the pool that is the admin, the
-     * vehicle's signer (step 6d extends this to the holder of record after an endoso).
-     */
+    /** The pagaré's holder: the admin while the asset is in the pool. */
     holder: TAccountMetas[0];
-    /**
-     * The pool's attestor: the agreements engine attests the receipt behind `receipt_hash` was
-     * signed and is conserved, and that the AppData log was archived before the burn.
-     */
+    /** Attests the receipt behind `receipt_hash` and that the AppData log was archived. */
     attestor: TAccountMetas[1];
-    /**
-     * Receives the asset's rent from the Core program when it is burnt (the relayer that funded
-     * it at the draw, as a rule). Any signer.
-     */
+    /** Receives the asset's rent from the Core program. Any signer. */
     payer: TAccountMetas[2];
     pool: TAccountMetas[3];
     line: TAccountMetas[4];

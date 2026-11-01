@@ -86,15 +86,13 @@ export type Pool = {
   reserved: ReadonlyUint8Array;
   bump: number;
   /**
-   * The agreements engine's key. It co-signs `open_line`, `draw` and `endorse_pagare`,
-   * attesting that the signed document behind the hash exists and matches the arguments.
-   * Rotated by the admin with `set_attestor`; never the zero key.
+   * The agreements engine's key; co-signs `open_line`, `draw` and `cancel_pagare`, attesting
+   * the signed document behind the hash. Rotated with `set_attestor`; never the zero key.
    */
   attestor: Address;
   /**
-   * The series' Metaplex Core collection, in which `draw` mints one pagaré asset per
-   * disposición. Recorded at `init_pool`; validated as a Core collection from step 6 of the
-   * pool v2 batch.
+   * The series' Metaplex Core collection `draw` mints the pagaré assets into; validated at
+   * `init_pool`.
    */
   collection: Address;
 };
@@ -134,15 +132,13 @@ export type PoolArgs = {
   reserved: ReadonlyUint8Array;
   bump: number;
   /**
-   * The agreements engine's key. It co-signs `open_line`, `draw` and `endorse_pagare`,
-   * attesting that the signed document behind the hash exists and matches the arguments.
-   * Rotated by the admin with `set_attestor`; never the zero key.
+   * The agreements engine's key; co-signs `open_line`, `draw` and `cancel_pagare`, attesting
+   * the signed document behind the hash. Rotated with `set_attestor`; never the zero key.
    */
   attestor: Address | HasAddress;
   /**
-   * The series' Metaplex Core collection, in which `draw` mints one pagaré asset per
-   * disposición. Recorded at `init_pool`; validated as a Core collection from step 6 of the
-   * pool v2 batch.
+   * The series' Metaplex Core collection `draw` mints the pagaré assets into; validated at
+   * `init_pool`.
    */
   collection: Address | HasAddress;
 };

@@ -96,10 +96,10 @@
     {
       "name": "cancel_pagare",
       "docs": [
-        "Extinguishes pagaré `draw_index` of a line against the FEA-signed receipt whose hash is",
-        "`receipt_hash`, once the line has repaid enough to cover it: the holder (the admin while the",
-        "asset is in the pool) and the attestor sign; the sidecar is marked paid and kept, the asset",
-        "is burnt. Refused on a line in collection or written off. Not paused."
+        "Marks pagaré `draw_index` paid against the receipt `receipt_hash` and burns its asset; the",
+        "record is kept. The holder (the admin while the asset is in the pool) and the attestor",
+        "sign; refused until the line's principal repaid covers the pagaré, and in collection or",
+        "after a write-off. Never paused."
       ],
       "discriminator": [
         90,
@@ -115,24 +115,21 @@
         {
           "name": "holder",
           "docs": [
-            "The pagaré's current holder. While the asset is in the pool that is the admin, the",
-            "vehicle's signer (step 6d extends this to the holder of record after an endoso)."
+            "The pagaré's holder: the admin while the asset is in the pool."
           ],
           "signer": true
         },
         {
           "name": "attestor",
           "docs": [
-            "The pool's attestor: the agreements engine attests the receipt behind `receipt_hash` was",
-            "signed and is conserved, and that the AppData log was archived before the burn."
+            "Attests the receipt behind `receipt_hash` and that the AppData log was archived."
           ],
           "signer": true
         },
         {
           "name": "payer",
           "docs": [
-            "Receives the asset's rent from the Core program when it is burnt (the relayer that funded",
-            "it at the draw, as a rule). Any signer."
+            "Receives the asset's rent from the Core program. Any signer."
           ],
           "writable": true,
           "signer": true
@@ -272,8 +269,8 @@
     {
       "name": "deposit",
       "docs": [
-        "Deposits `assets` into the vault and receives shares at the current NAV, at least",
-        "`min_shares_out`. The first deposit locks `DEAD_SHARES` in the pool."
+        "Deposits `assets` for shares at the current NAV, at least `min_shares_out`; the first",
+        "deposit locks `DEAD_SHARES`. Refused while paused."
       ],
       "discriminator": [
         242,
@@ -375,9 +372,9 @@
     {
       "name": "draw",
       "docs": [
-        "Draws a tranche of `amount` from the vault to the borrower while the draw window is open,",
-        "against the signed pagaré whose hash is `document_hash`. The borrower and the attestor",
-        "sign. Interest on the tranche, at the annual rate to the last due date, is fixed here."
+        "Draws a tranche of `amount` to the borrower against the signed pagaré `document_hash` and",
+        "mints the pagaré asset with its record. The borrower, the attestor and the rent payer",
+        "sign; refused while paused, once the draw window has closed, or above what is available."
       ],
       "discriminator": [
         61,
@@ -400,8 +397,7 @@
         {
           "name": "attestor",
           "docs": [
-            "The pool's attestor (D14): the agreements engine attests that the pagaré behind",
-            "`document_hash` was signed by the borrower and is conserved. No money moves without it."
+            "Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved."
           ],
           "signer": true
         },
@@ -481,8 +477,7 @@
         {
           "name": "payer",
           "docs": [
-            "Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets",
-            "rarely hold SOL. Any signer."
+            "Pays the rent of the pagaré asset and its sidecar. Any signer."
           ],
           "writable": true,
           "signer": true
@@ -490,10 +485,9 @@
         {
           "name": "asset",
           "docs": [
-            "The Metaplex Core asset that is the pagaré, created by the Core program in this",
-            "instruction at `[\"pagare_asset\", line, line.draws]`, so clients need no keypair for it.",
-            "The client derives the bump, so the constraint runs one `create_program_address` and no",
-            "search: the compute of a draw does not depend on the line's key."
+            "The Core asset that is the pagaré, created by the Core program here. The client passes",
+            "the bump, so the constraint runs one `create_program_address` and the compute of a draw",
+            "does not depend on the line's key."
           ],
           "writable": true,
           "pda": {
@@ -530,8 +524,7 @@
         {
           "name": "pagare",
           "docs": [
-            "The program's record of the pagaré, created by the handler (Anchor's `init` always",
-            "searches for the bump) at `[\"pagare\", line, line.draws]`."
+            "The pagaré's record, created by the handler (Anchor's `init` would search for the bump)."
           ],
           "writable": true,
           "pda": {
@@ -622,9 +615,8 @@
       "name": "init_pool",
       "docs": [
         "Creates the pool, its vault and its dead-shares account around `asset_mint` and the",
-        "admin-supplied share mint, with the grace period (seconds) that applies to every line of",
-        "the pool, the largest line `open_line` accepts as a share of the NAV in basis points",
-        "(`1..=10_000`), and the attestor (the agreements engine's key)."
+        "admin's share mint; fixes the grace period, the line cap (`1..=10_000` bps of the NAV)",
+        "and the attestor for the life of the pool. The admin signs."
       ],
       "discriminator": [
         116,
@@ -676,9 +668,9 @@
         {
           "name": "share_mint",
           "docs": [
-            "The share mint, created by the admin beforehand and validated here (series-shelf 2c):",
-            "mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that",
-            "takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned."
+            "The share mint, created by the admin beforehand and validated here: mint authority = this",
+            "pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.",
+            "`DefaultAccountState = Frozen` makes the shares permissioned."
           ]
         },
         {
@@ -735,9 +727,8 @@
         {
           "name": "collection",
           "docs": [
-            "The series' Metaplex Core collection the pagaré assets are minted into: created by the",
-            "admin beforehand with the pool PDA as update authority, validated in the handler",
-            "(`validate_collection`), like the share mint."
+            "The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as",
+            "update authority."
           ]
         },
         {
@@ -862,11 +853,10 @@
     {
       "name": "open_line",
       "docs": [
-        "Approves credit line `line_id` (the next in sequence): a commitment of `principal` to",
-        "`borrower` at an annual `rate_bps`, drawable in tranches until the first due date (or the",
-        "term on a bullet line). The admin, the borrower, the attestor and a named sponsor sign.",
-        "With `schedule`, the line is repaid in installments on the contract's calendar; without",
-        "it, at `term_end`. Moves no money."
+        "Approves line `line_id` (the next): a commitment of `principal` at an annual `rate_bps`,",
+        "repaid at `term_end` or on the `schedule`'s calendar. The admin, the borrower, the attestor",
+        "and the named sponsor sign; refused while paused, with the admin as borrower, or above the",
+        "line cap. Moves no money."
       ],
       "discriminator": [
         99,
@@ -902,8 +892,7 @@
         {
           "name": "attestor",
           "docs": [
-            "The pool's attestor (D16): the agreements engine attests that the signed agreement behind",
-            "`agreement_hash` exists and matches the arguments."
+            "Attests that the signed agreement behind `agreement_hash` exists and matches the arguments."
           ],
           "signer": true
         },
@@ -1036,8 +1025,8 @@
     {
       "name": "redeem",
       "docs": [
-        "Burns `shares` and receives assets at the current NAV, at least `min_assets_out`, up to",
-        "the vault's liquidity."
+        "Burns `shares` for assets at the current NAV, at least `min_assets_out`, up to the vault's",
+        "liquidity. Refused while paused."
       ],
       "discriminator": [
         184,
@@ -1253,8 +1242,7 @@
     {
       "name": "set_attestor",
       "docs": [
-        "Replaces the pool's attestor. Admin only; the recovery when the agreements engine's key",
-        "rotates or is lost."
+        "Replaces the pool's attestor. The admin and the new attestor sign."
       ],
       "discriminator": [
         95,
@@ -1277,7 +1265,7 @@
         {
           "name": "new_attestor",
           "docs": [
-            "The key that becomes the attestor; it signs, proving control of the key (condition C14)."
+            "The key that becomes the attestor; it signs, proving control of the key (C14)."
           ],
           "signer": true
         },
@@ -1385,8 +1373,8 @@
     {
       "name": "suspend_draws",
       "docs": [
-        "Closes the draw window of an approved or active line now (a KYC failure, a default",
-        "event). Admin only. Repayment is untouched; it is not a pause."
+        "Closes a line's draw window now. Admin only; refused unless the line is approved or",
+        "active. Repayment is untouched."
       ],
       "discriminator": [
         126,
@@ -1473,10 +1461,8 @@
     {
       "name": "write_off",
       "docs": [
-        "Recognises the unpaid principal of a line as a loss. Admin only. Allowed on an active line",
-        "once `now > term_end + grace`, and on a line in collection once its oldest missed",
-        "installment is more than `grace` past due (or the term is). It does not wait: the call",
-        "books the loss the moment one of those conditions holds."
+        "Books the unpaid principal of a line as a loss. Admin only; refused before",
+        "`term_end + grace`, or on a line in collection before its oldest missed due date plus grace."
       ],
       "discriminator": [
         42,
@@ -2169,7 +2155,7 @@
             "name": "rate_bps",
             "docs": [
               "Annual ordinary interest rate, in basis points, charged on each tranche from its draw to",
-              "the last due date (decision 9)."
+              "the last due date."
             ],
             "type": "u16"
           },
@@ -2209,7 +2195,7 @@
           {
             "name": "drawn_at",
             "docs": [
-              "Time of the first draw; informational since decision 25 (the calendar is `first_due_at`)."
+              "Time of the first draw; informational (the calendar is `first_due_at`)."
             ],
             "type": "i64"
           },
@@ -2225,7 +2211,7 @@
               "",
               "| bytes  | field              | type    | meaning                                         |",
               "|--------|--------------------|---------|-------------------------------------------------|",
-              "| 0..8   | `interval_seconds` | i64 LE  | seconds between due dates, from `drawn_at`      |",
+              "| 0..8   | `interval_seconds` | i64 LE  | seconds between due dates                       |",
               "| 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |",
               "| 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |",
               "| 12     | `max_missed`       | u8      | missed installments that allow collection       |",
@@ -2285,8 +2271,8 @@
           {
             "name": "expediente_root",
             "docs": [
-              "Salted merkle root of the credit file in the agreements engine (decision 15 of the pagaré",
-              "design). A commitment: no document, name or folio is derivable from it."
+              "Salted merkle root of the credit file in the agreements engine. A commitment: no document,",
+              "name or folio is derivable from it."
             ],
             "type": {
               "array": [
@@ -2294,6 +2280,14 @@
                 32
               ]
             }
+          },
+          {
+            "name": "accelerated_at",
+            "docs": [
+              "When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.",
+              "From then on every installment is due and late interest runs on all remaining principal."
+            ],
+            "type": "i64"
           }
         ]
       }
@@ -2357,7 +2351,7 @@
     {
       "name": "LineCancelled",
       "docs": [
-        "Emitted by `cancel_line` (decision 25): an approved commitment nobody drew is cleared."
+        "Emitted by `cancel_line`."
       ],
       "type": {
         "kind": "struct",
@@ -2376,8 +2370,8 @@
     {
       "name": "LineDrawState",
       "docs": [
-        "Emitted by `draw` after `LineDrawn`: the line after the tranche and the hash of the signed",
-        "pagaré of this disposición (D9, decision 13). The hash is not stored on the line."
+        "Emitted by `draw` after `LineDrawn`: the line after the tranche and the signed pagaré's hash,",
+        "which is not stored on the line."
       ],
       "type": {
         "kind": "struct",
@@ -2425,8 +2419,7 @@
     {
       "name": "LineDrawn",
       "docs": [
-        "One tranche. Since line v3 `amount` is the tranche, not the whole principal, and `draw`",
-        "emits it once per tranche, so indexers that sum it keep working."
+        "One tranche; `amount` is the tranche, emitted once per draw."
       ],
       "type": {
         "kind": "struct",
@@ -2453,8 +2446,7 @@
     {
       "name": "LineDrawsSuspended",
       "docs": [
-        "Emitted by `suspend_draws` (D10): the admin closed the draw window early; `available_forfeited`",
-        "is the undrawn remainder that can no longer be drawn. Repayment is untouched."
+        "Emitted by `suspend_draws`; `available_forfeited` is the undrawn remainder."
       ],
       "type": {
         "kind": "struct",
@@ -2627,9 +2619,8 @@
     {
       "name": "LineSponsorRole",
       "docs": [
-        "Emitted by `open_line` after `LineTermsSet`: which kind of promise the sponsor made",
-        "(decision 19, D12). `role` is `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; emitted with",
-        "`sponsor == None` and role 0 when no sponsor is named."
+        "Emitted by `open_line` after `LineTermsSet`. `role` is `SPONSOR_PROMOTER` or",
+        "`SPONSOR_GUARANTOR`; `sponsor == None` and role 0 when no sponsor is named."
       ],
       "type": {
         "kind": "struct",
@@ -2684,8 +2675,8 @@
     {
       "name": "LineTermsSet",
       "docs": [
-        "Emitted by `open_line` after `LineOpened` (and `LineScheduled`): the facts of a version-3",
-        "opening that the earlier events cannot carry. `first_due_at` is zero on a bullet line."
+        "Emitted by `open_line` after `LineOpened` (and `LineScheduled`). `first_due_at` is zero on a",
+        "bullet line."
       ],
       "type": {
         "kind": "struct",
@@ -2745,9 +2736,8 @@
     {
       "name": "NavUpdated",
       "docs": [
-        "The NAV and the share supply after every instruction that moves either (`deposit`,",
-        "`redeem`, `repay`, `write_off`), read back after the CPIs. For indexers, the shelf page and a",
-        "later secondary venue: `price per share = total_assets / share_supply`."
+        "The NAV and the share supply after every instruction that moves either (`deposit`, `redeem`,",
+        "`repay`, `write_off`), read back after the CPIs: `price per share = total_assets / share_supply`."
       ],
       "type": {
         "kind": "struct",
@@ -2770,12 +2760,9 @@
     {
       "name": "Pagare",
       "docs": [
-        "The program's own record of one pagaré (decision 24, pagaré design): the sidecar of the",
-        "Metaplex Core asset `draw` mints for a disposición. Per the legal brief (2026-11-01), the signed",
-        "data message is the pagaré and the asset is its registration and circulation record; the",
-        "sidecar is the program's half of that record. It holds no folio (the agreements engine maps the",
-        "index to its folio off chain) and nothing personal. It is never closed: after `cancel_pagare`",
-        "it stays as the \"PAGADO\" mark, so its rent is a cost of every draw."
+        "The program's record of one pagaré, the sidecar of the Core asset `draw` mints (C22). It holds",
+        "no folio and nothing personal, and is never closed: after `cancel_pagare` it stays as the",
+        "PAGADO mark."
       ],
       "type": {
         "kind": "struct",
@@ -2824,7 +2811,7 @@
           {
             "name": "due_at",
             "docs": [
-              "The line's last due date at issuance (D1): when the last payment is owed."
+              "The line's last due date at issuance: when the last payment is owed."
             ],
             "type": "i64"
           },
@@ -2840,7 +2827,7 @@
           {
             "name": "cert_fingerprint",
             "docs": [
-              "Hash of the PSC certificate that signed the pagaré text (condition C6a); zero only when",
+              "Hash of the PSC certificate that signed the pagaré text (C6a); zero only when",
               "`signature_method` is `SIGNATURE_WALLET`."
             ],
             "type": {
@@ -2890,7 +2877,7 @@
           {
             "name": "reserved",
             "docs": [
-              "Room for later facts (an endoso count, the current holder) without a layout change."
+              "Room for later facts without a layout change."
             ],
             "type": {
               "array": [
@@ -2905,11 +2892,9 @@
     {
       "name": "PagareCancelled",
       "docs": [
-        "Emitted by `cancel_pagare` (C22, LGTOC 129): the pagaré was paid and extinguished against the",
-        "FEA-signed receipt whose hash is `receipt_hash`; the asset is burnt in the same instruction and",
-        "the sidecar stays as the \"PAGADO\" mark. `holder` is the key that extinguished it (the admin",
-        "while the asset is in the pool; the holder of record after an endoso). The AppData log is",
-        "archived off chain before the burn, so the event does not carry its length."
+        "Emitted by `cancel_pagare` (C22, LGTOC 129), before the burn. `holder` is the key that",
+        "extinguished the pagaré; the sidecar stays as the PAGADO mark. No AppData length: the engine",
+        "archives the log off chain before the burn."
       ],
       "type": {
         "kind": "struct",
@@ -2949,9 +2934,8 @@
     {
       "name": "PagareIssued",
       "docs": [
-        "Emitted by `draw` after `LineDrawState` (decision 24): the pagaré of this disposición was",
-        "issued as the Metaplex Core asset `asset`, held frozen by `holder` (the pool PDA, the series",
-        "vehicle's custody account). `due_at` is the line's last due date at issuance."
+        "Emitted by `draw` after `LineDrawState`: the pagaré issued as the Metaplex Core asset `asset`,",
+        "held frozen by `holder` (the pool PDA). `due_at` is the line's last due date at issuance."
       ],
       "type": {
         "kind": "struct",
@@ -3093,18 +3077,16 @@
           {
             "name": "attestor",
             "docs": [
-              "The agreements engine's key. It co-signs `open_line`, `draw` and `endorse_pagare`,",
-              "attesting that the signed document behind the hash exists and matches the arguments.",
-              "Rotated by the admin with `set_attestor`; never the zero key."
+              "The agreements engine's key; co-signs `open_line`, `draw` and `cancel_pagare`, attesting",
+              "the signed document behind the hash. Rotated with `set_attestor`; never the zero key."
             ],
             "type": "pubkey"
           },
           {
             "name": "collection",
             "docs": [
-              "The series' Metaplex Core collection, in which `draw` mints one pagaré asset per",
-              "disposición. Recorded at `init_pool`; validated as a Core collection from step 6 of the",
-              "pool v2 batch."
+              "The series' Metaplex Core collection `draw` mints the pagaré assets into; validated at",
+              "`init_pool`."
             ],
             "type": "pubkey"
           }
@@ -3152,10 +3134,9 @@
     {
       "name": "PoolFlags",
       "docs": [
-        "Emitted by `init_pool` after `PoolLineCapSet`: the read-only facts about the two mints.",
-        "`asset_controls`: the issuer controls on the asset mint, as `Pool::asset_controls` bits",
-        "(bit 0 freeze authority, bit 1 Pausable). `permissioned`: the share mint is frozen by",
-        "default, so holders must be thawed (Token ACL)."
+        "Emitted by `init_pool` after `PoolLineCapSet`. `asset_controls` are the `Pool::asset_controls`",
+        "bits (bit 0 freeze authority, bit 1 Pausable); `permissioned`: the share mint is frozen by",
+        "default."
       ],
       "type": {
         "kind": "struct",
@@ -3202,8 +3183,7 @@
     {
       "name": "PoolLineCapSet",
       "docs": [
-        "Emitted by `init_pool` after `PoolConfigured` (a new event, since events are append-only):",
-        "the concentration cap, the largest line as a share of the NAV in basis points."
+        "Emitted by `init_pool` after `PoolConfigured`: the largest line as a share of the NAV, in bps."
       ],
       "type": {
         "kind": "struct",

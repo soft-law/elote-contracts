@@ -1225,6 +1225,7 @@ impl Env {
             late_paid_until: s.late_paid_until,
             principal: line.drawn,
             late_collected: s.late_collected,
+            accelerated_at: line.accelerated_at,
         };
         elote_pool::math::arrears(&terms, line.principal_repaid + line.interest_repaid, self.now()).expect("arrears")
     }

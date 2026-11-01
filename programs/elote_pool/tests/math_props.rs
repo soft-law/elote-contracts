@@ -107,7 +107,7 @@ proptest! {
         let now = anchor + interval * now_num; // from before the first due date to past the last
         let late_paid_until = if watermark == 0 { 0 } else { anchor + (now - anchor) * watermark / 10_000 };
         let t = ScheduleTerms {
-            total, anchor, interval, installments: n, late_bps, grace, late_paid_until, principal, late_collected,
+            total, anchor, interval, installments: n, late_bps, grace, late_paid_until, principal, late_collected, accelerated_at: 0,
         };
         let Arrears { due, covered, missed, overdue, overdue_principal, late_due, first_missed_due } =
             arrears(&t, paid, now).expect("valid terms never overflow");

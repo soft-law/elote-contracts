@@ -219,10 +219,7 @@ export type OpenLineAsyncInput<
   borrower: TAccountBorrower;
   /** The sponsor named in the arguments; required (and signing) when one is named. */
   sponsor?: TAccountSponsor;
-  /**
-   * The pool's attestor (D16): the agreements engine attests that the signed agreement behind
-   * `agreement_hash` exists and matches the arguments.
-   */
+  /** Attests that the signed agreement behind `agreement_hash` exists and matches the arguments. */
   attestor: TAccountAttestor;
   pool: TAccountPool;
   line?: TAccountLine;
@@ -479,10 +476,7 @@ export type OpenLineInput<
   borrower: TAccountBorrower;
   /** The sponsor named in the arguments; required (and signing) when one is named. */
   sponsor?: TAccountSponsor;
-  /**
-   * The pool's attestor (D16): the agreements engine attests that the signed agreement behind
-   * `agreement_hash` exists and matches the arguments.
-   */
+  /** Attests that the signed agreement behind `agreement_hash` exists and matches the arguments. */
   attestor: TAccountAttestor;
   pool: TAccountPool;
   line: TAccountLine;
@@ -711,10 +705,7 @@ export type ParsedOpenLineInstruction<
     borrower: TAccountMetas[1];
     /** The sponsor named in the arguments; required (and signing) when one is named. */
     sponsor?: TAccountMetas[2] | undefined;
-    /**
-     * The pool's attestor (D16): the agreements engine attests that the signed agreement behind
-     * `agreement_hash` exists and matches the arguments.
-     */
+    /** Attests that the signed agreement behind `agreement_hash` exists and matches the arguments. */
     attestor: TAccountMetas[3];
     pool: TAccountMetas[4];
     line: TAccountMetas[5];

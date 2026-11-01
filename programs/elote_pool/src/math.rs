@@ -135,7 +135,8 @@ pub struct Arrears {
     pub overdue_principal: u64,
     /// Late interest owed now and not yet settled.
     pub late_due: u64,
-    /// Due date of the oldest unpaid installment that has fallen due; `None` when nothing is missed.
+    /// When the oldest unpaid installment became exigible (its due date, or the acceleration if
+    /// that came first); `None` when nothing is missed.
     pub first_missed_due: Option<i64>,
 }
 
@@ -158,6 +159,8 @@ pub struct ScheduleTerms {
     pub principal: u64,
     /// Late interest collected so far.
     pub late_collected: u64,
+    /// When the balance was accelerated (`mark_in_collection`); zero when it was not.
+    pub accelerated_at: i64,
 }
 
 /// The principal share of a `part` of the installments: `part * principal / total`, rounded down.
@@ -175,14 +178,19 @@ fn principal_share(part: u64, principal: u64, total: u64) -> Option<u64> {
 /// Late interest accrues on the principal share of each overdue part separately (no interest on
 /// overdue interest): the unpaid part of installment `k` accrues from
 /// `start_k = max(due_k + grace, late_paid_until)` until `now`, at `late_bps` a year, and never
-/// beyond its own amount. The sum is divided once:
+/// beyond its own amount. Once the balance is accelerated (`accelerated_at > 0`, set by
+/// `mark_in_collection`) every installment counts as due, so `overdue` is the whole unpaid balance,
+/// and installment `k` is exigible at `min(due_k, accelerated_at)` and accrues from
+/// `max(min(due_k + grace, accelerated_at), late_paid_until)`: one already overdue keeps its own
+/// start, one not yet due starts at the mark with no further grace. The sum is divided once:
 ///
 /// `late_due = Σ principal_share(part_k) * min(now - start_k, cap) * late_bps / (10_000 * SECONDS_PER_YEAR)`,
 /// capped at `overdue_principal` for this settlement and at `principal - late_collected` over the
 /// life of the line. The per-part cap applies to one settlement: after a repayment the watermark
 /// moves and the same unpaid part can accrue again, which is what the lifetime cap bounds.
 pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
-    let due = installments_due(now, t.anchor, t.interval, t.installments);
+    let accelerated = t.accelerated_at > 0;
+    let due = if accelerated { t.installments } else { installments_due(now, t.anchor, t.interval, t.installments) };
     let covered = installments_covered(paid, t.total, t.installments)?;
     let missed = due.saturating_sub(covered); // a count, zero when paid ahead
     let mut overdue: u64 = 0;
@@ -204,10 +212,13 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
         before = upto;
         let part_principal = if part == base { base_share } else { principal_share(part, t.principal, t.total)? };
         let due_at = t.anchor.checked_add(t.interval.checked_mul(i64::from(k))?)?;
+        let grace_end = due_at.checked_add(i64::from(t.grace))?;
+        let (exigible_at, accrual_from) =
+            if accelerated { (due_at.min(t.accelerated_at), grace_end.min(t.accelerated_at)) } else { (due_at, grace_end) };
         if first_missed_due.is_none() {
-            first_missed_due = Some(due_at);
+            first_missed_due = Some(exigible_at);
         }
-        let start = due_at.checked_add(i64::from(t.grace))?.max(t.late_paid_until);
+        let start = accrual_from.max(t.late_paid_until);
         if now > start {
             let seconds = now.checked_sub(start)? as u64; // positive
             let s = seconds.min(cap);
@@ -374,6 +385,7 @@ mod tests {
             late_paid_until: 0,
             principal: total,
             late_collected: 0,
+            accelerated_at: 0,
         }
     }
 
@@ -466,5 +478,38 @@ mod tests {
         // Far in the future the per-settlement cap is the overdue principal, not the overdue total.
         let a = arrears(&t, 0, t.anchor + 60 * YEAR as i64).unwrap();
         assert_eq!((a.overdue, a.overdue_principal, a.late_due), (600, 498, 498));
+    }
+
+    /// Vencimiento anticipado: once accelerated, every installment is due, the whole balance is
+    /// overdue, and an installment not yet due accrues from the acceleration (no further grace)
+    /// while one already overdue keeps its own start.
+    #[test]
+    fn arrears_after_acceleration_count_every_installment_and_accrue_from_the_mark() {
+        // Six installments of 100 due at 1_100, 1_200, ... 1_600; 100% a year; grace 10.
+        let mut t = terms(600, 6, 10_000, 10);
+        let now = 1_350;
+        let plain = arrears(&t, 100, now).unwrap();
+        assert_eq!((plain.due, plain.covered, plain.missed, plain.overdue), (3, 1, 2, 200));
+        // Accelerated at 1_250, after the second installment's grace, before the third due date.
+        t.accelerated_at = 1_250;
+        let a = arrears(&t, 100, now).unwrap();
+        assert_eq!((a.due, a.covered, a.missed), (6, 1, 5));
+        assert_eq!((a.overdue, a.overdue_principal), (500, 500), "the whole balance");
+        assert_eq!(a.first_missed_due, Some(1_200), "the oldest unpaid installment, already due");
+        // Installment 2 accrues from 1_210 (its own due + grace), 3 to 6 from 1_250 (the mark).
+        let weighted: u128 = 100 * (now - 1_210) as u128 + 4 * 100 * (now - 1_250) as u128;
+        assert_eq!(a.late_due, (weighted * 10_000 / (10_000 * YEAR as u128)) as u64);
+        // Paying the two installments that were overdue before the mark cures nothing.
+        let a = arrears(&t, 300, now).unwrap();
+        assert_eq!((a.covered, a.missed, a.overdue), (3, 3, 300));
+        assert_eq!(a.first_missed_due, Some(1_250), "an installment due after the mark is due at the mark");
+        // The watermark still rules the start.
+        t.late_paid_until = 1_300;
+        let a = arrears(&t, 100, now).unwrap();
+        let weighted: u128 = 5 * 100 * (now - 1_300) as u128;
+        assert_eq!(a.late_due, (weighted * 10_000 / (10_000 * YEAR as u128)) as u64);
+        // Fully paid: nothing is overdue, accelerated or not.
+        let a = arrears(&t, 600, now).unwrap();
+        assert_eq!((a.covered, a.missed, a.overdue, a.late_due, a.first_missed_due), (6, 0, 0, 0, None));
     }
 }

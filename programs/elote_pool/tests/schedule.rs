@@ -409,12 +409,14 @@ fn a_line_in_collection_still_accepts_repayments_and_closes_when_repaid() {
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
 
-    // The borrower pays the arrears with their late interest: the line stays in collection.
+    // The mark accelerated the balance: all 6.72 is overdue. The borrower pays half of it with
+    // the late interest: the line stays in collection with the other half still missed.
     let a = env.arrears(&k, line_id);
     assert!(a.late_due > 0);
-    let ev = env.repay(&k, line_id, &b, a.overdue + a.late_due);
-    assert_eq!(ev.remaining, 6_720_000 - a.overdue);
-    assert_eq!(env.arrears(&k, line_id).missed, 0);
+    assert_eq!(a.overdue, 6_720_000);
+    let ev = env.repay(&k, line_id, &b, 3_360_000 + a.late_due);
+    assert_eq!(ev.remaining, 3_360_000);
+    assert_eq!(env.arrears(&k, line_id).missed, 3);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
 
     // Paying the rest closes it.
@@ -507,8 +509,11 @@ fn collection_waits_for_the_grace_of_the_third_missed_installment() {
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
 }
 
+/// After the mark there is no cure: the installments not yet due became exigible at the mark, so
+/// paying the pre-mark arrears leaves them missed, and the write-off waits only for the grace
+/// counted from the mark.
 #[test]
-fn a_cured_line_in_collection_is_not_written_off_until_it_misses_again() {
+fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_grace_from_the_mark() {
     let mut env = Env::new();
     let grace: u32 = 10 * 24 * 3600;
     let k = pool_with(&mut env, 10 * UNIT, grace);
@@ -519,18 +524,22 @@ fn a_cured_line_in_collection_is_not_written_off_until_it_misses_again() {
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
 
-    // The borrower pays all arrears and late interest: nothing is missed.
+    let marked_at = env.now();
+
+    // The borrower pays the three installments that were missed before the mark, with the late
+    // interest: the other three are still missed, exigible since the mark.
     let a = env.arrears(&k, line_id);
-    env.repay(&k, line_id, &b, a.overdue + a.late_due);
-    assert_eq!(env.arrears(&k, line_id).missed, 0);
+    env.repay(&k, line_id, &b, 3_360_000 + a.late_due);
+    let a = env.arrears(&k, line_id);
+    assert_eq!((a.missed, a.first_missed_due), (3, Some(marked_at)));
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
 
-    // The fourth installment falls due at t0 + 4 months and is missed: grace runs 10 more days.
-    env.warp(t0 + 4 * p.interval() + i64::from(grace));
+    // The grace runs from the mark.
+    env.warp(marked_at + i64::from(grace));
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
-    env.warp(t0 + 4 * p.interval() + i64::from(grace) + 1);
+    env.warp(marked_at + i64::from(grace) + 1);
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.send(ix, &admin, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
@@ -671,4 +680,48 @@ fn a_repayment_that_settles_no_late_interest_leaves_the_watermark_where_it_was()
     assert_eq!(ev.amount, 1);
     let s = env.line(&k, line_id).schedule().unwrap();
     assert_eq!((s.late_collected, s.late_paid_until), (1, env.now()));
+}
+
+/// Decision 28 (vencimiento anticipado at the third missed installment): the mark records the
+/// acceleration, from which every installment is due and late interest runs on all remaining
+/// principal; paying the installments that were missed before the mark cures nothing, and only a
+/// full repayment leaves collection.
+#[test]
+fn the_mark_accelerates_the_balance() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
+    assert_eq!(env.line(&k, line_id).accelerated_at, 0);
+    env.warp(t0 + 3 * p.interval() + 1);
+    let before = env.arrears(&k, line_id);
+    assert_eq!((before.due, before.missed, before.overdue), (3, 3, 3_360_000));
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.send(ix, &b, &[]);
+    let marked_at = env.now();
+    assert_eq!(env.line(&k, line_id).accelerated_at, marked_at);
+
+    // Everything is due now: the whole 6.72 is overdue, late interest accrues on all 6.0 of
+    // principal, the first three installments from their own due dates, the other three from the mark.
+    let a = env.arrears(&k, line_id);
+    assert_eq!((a.due, a.covered, a.missed), (6, 0, 6));
+    assert_eq!((a.overdue, a.overdue_principal), (6_720_000, 6_000_000));
+    env.warp(marked_at + 10 * 24 * 3600);
+    let a = env.arrears(&k, line_id);
+    let part_principal = 1_000_000u128; // 1.12 per installment, 1.0 of it principal
+    let seconds = |due: i64| (env.now() - due) as u128;
+    let weighted = part_principal * (seconds(t0 + p.interval()) + seconds(t0 + 2 * p.interval()) + seconds(t0 + 3 * p.interval()))
+        + 3 * part_principal * seconds(marked_at);
+    assert_eq!(a.late_due, (weighted * 10_000 / (10_000 * YEAR as u128)) as u64);
+
+    // Paying what was missed before the mark leaves three installments missed and the line in collection.
+    env.repay(&k, line_id, &b, 3_360_000 + a.late_due);
+    let a = env.arrears(&k, line_id);
+    assert_eq!((a.covered, a.missed, a.overdue), (3, 3, 3_360_000));
+    assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
+    // Paying the rest closes it.
+    let a = env.arrears(&k, line_id);
+    env.repay(&k, line_id, &b, 3_360_000 + a.late_due);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    assert_eq!(env.line(&k, line_id).accelerated_at, marked_at, "the record stays");
 }

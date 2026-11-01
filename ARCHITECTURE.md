@@ -153,7 +153,7 @@ when they were added. They are read and written only through `Pool::grace_period
 (`max_line_principal(nav)` applies the cap), and the JS client mirrors the reads in
 `clients/js/src/schedule.ts` (`poolGracePeriodSeconds`, `poolMaxLineBps`, `maxLinePrincipal`).
 
-### 2.2 `CreditLine` (305 bytes; 246 before line v3)
+### 2.2 `CreditLine` (313 bytes; 305 before step 7, 246 before line v3)
 
 | offset | size | field | notes |
 |---|---|---|---|
@@ -182,6 +182,7 @@ when they were added. They are read and written only through `Pool::grace_period
 | 264 | 8 | `first_due_at` | line v3: the first due date from the signed contract; 0 on a bullet line |
 | 272 | 1 | `sponsor_role` | line v3: 0 promoter, 1 guarantor (decision 19); recorded, not enforced |
 | 273 | 32 | `expediente_root` | line v3: salted merkle root of the credit file; never zero |
+| 305 | 8 | `accelerated_at` | step 7 (decision 28): when `mark_in_collection` accelerated the balance; 0 before. From then on every installment is due and late interest runs on all remaining principal |
 
 `Schedule` packing inside `reserved` (scheduled lines only):
 
@@ -717,8 +718,11 @@ earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad th
   (`NotEnoughMissed`: with `covered` installments paid, the `max_missed`-th missed one is
   installment `k`); `now > anchor + k * interval + grace`, with `anchor = first_due_at -
   interval` (`NotEnoughMissed`: the grace of the last missed installment has run).
-- **Writes:** `status = InCollection`. Nothing else: collection does not accelerate the
-  balance, the remaining installments keep their due dates.
+- **Writes:** `status = InCollection`, `accelerated_at = now` (decision 28, vencimiento
+  anticipado): from the mark every installment is due, `overdue` is the whole unpaid balance and
+  late interest runs on all remaining principal (§6). There is no cure after the mark: paying the
+  installments that were missed before it leaves the others missed, exigible since the mark, and
+  the line leaves collection only by full repayment or write-off.
 - **Events:** `LineInCollection` with `missed` and `remaining` (principal + interest, no late
   interest).
 
@@ -729,8 +733,10 @@ earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad th
 - **Checks:** `after_term = now > term_end + grace`. If `status == Active`: require
   `after_term` (`TermNotEnded`). If `status == InCollection`: require `after_term` **or**
   (`arrears(now).first_missed_due` is `Some(due)` and `now > due + grace`)
-  (`WriteOffTooEarly`); a cured line has no `first_missed_due`, so only the term can release it.
-  Any other status: `LineStatus`.
+  (`WriteOffTooEarly`). Any other status: `LineStatus`.
+  After the mark `first_missed_due` is the instant the oldest unpaid installment became exigible:
+  its due date, or the mark for an installment that fell due only by the acceleration, so once
+  the pre-mark arrears are paid the write-off waits for the grace counted from the mark.
 - **Writes:** `loss = drawn - principal_repaid` (an approved line never drawn has nothing to
   book and is not written off: `LineStatus`); `pool.outstanding_principal -= loss`;
   `pool.written_off += loss`; `status = WrittenOff`; `closed_at = now`.
@@ -844,6 +850,15 @@ interest never pays an installment (`paid` is principal + ordinary interest only
 **Missed** is `due - covered` when positive; the grace period does not change the count, it
 only delays late interest and collection.
 
+**Acceleration (decision 28).** `mark_in_collection` sets `accelerated_at`. From then on `due =
+installments` whatever the clock says, so `overdue` is the whole unpaid balance and `missed =
+installments - covered`; installment `k` becomes exigible at `min(due_k, accelerated_at)` and its
+late interest runs from `max(min(due_k + grace, accelerated_at), late_paid_until)`: one already
+overdue keeps its own start and grace, one not yet due starts at the mark with no further grace
+(the grace was consumed by the third missed installment). `first_missed_due` follows the exigible
+instant. The loop then runs over every remaining installment, which is the shape `tests/compute.rs`
+already bounds.
+
 **Late interest** accrues on the principal share of each overdue part `part_k` separately
 (decision 11: no interest on overdue interest), from `start_k = max(due_k + grace,
 late_paid_until)` until `now`, linearly at `late_bps` a year of 365 days:
@@ -873,7 +888,7 @@ settlement. Two caps apply, and they are different things:
   interest and principal.
 
 `arrears` returns `Arrears { due, covered, missed, overdue, overdue_principal, late_due,
-first_missed_due }`.
+first_missed_due }`; `ScheduleTerms.accelerated_at` is zero until the mark.
 `repay` uses `late_due`; `mark_in_collection` uses `covered` and `missed`; `write_off` uses
 `first_missed_due`. The loop runs at most `installments <= 120` times, which is what
 `tests/compute.rs` bounds: the arrears instructions stay under the compute ceiling at 18 and at
@@ -976,7 +991,7 @@ Other points outside the test file, from the same review and from the Etherfuse 
 |---|---|---|
 | `src/math.rs` (unit) | plain | rounding, caps, installment arithmetic, arrears cases |
 | `tests/math_props.rs` | proptest | the pure functions never panic and keep their bounds over random inputs |
-| `tests/vectors.rs` | plain + `vectors.json` | committed numeric vectors match the program arithmetic (shared with the JS client's tests) |
+| `tests/vectors.rs` | plain + `vectors.json` | 421 committed numeric vectors (44 of them accelerated) match the program arithmetic (shared with the JS client's tests) |
 | `tests/pool.rs` | LiteSVM | init, first deposit, pricing after interest, redeem liquidity, wrong accounts, pause, dead-shares inflation defence, rounding and slippage floors |
 | `tests/lines.rs` | LiteSVM | open/draw/repay full cycle raises the share price, sponsor co-sign, sponsor pays interest, overpay and wrong status, double draw, write-off lowers the NAV once, bad params, term checks |
 | `tests/schedule.rs` | LiteSVM, clock warped | schedule validation, installments on their due dates, missed count over time, late interest after grace, caps, repayment order, collection after three missed, cure beats collection, write-off timing in both paths |
@@ -984,12 +999,12 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
 | `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
 | `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins, costs about 4 200 CU and does not stop adapters; AppData is written by its fixed data authority and removed by the collection's authority; an Owner-held AppData authority follows the asset through `TransferV1` and a write replaces the data; owner-managed delegates are the owner's to add (AddBlocker or not), approve and revoke, reset to `Owner` on transfer, and the approved burn delegate burns a thawed asset; a burn delegate approved to a program address refuses the procurador's own key |
-| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (26 891 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 869 CU at 120, deterministic, of which the Core CPI is about 44 000; `repay` 56 569, `mark_in_collection` 33 453, `write_off` 38 620 at 120 with every installment missed) |
+| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (26 906 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 980 CU at 120, deterministic, of which the Core CPI is about 44 000; `repay` 56 992, `mark_in_collection` 34 114, `write_off` 39 093 at 120 with every installment missed; after the mark, `repay` 48 148 and `write_off` 39 094 early in a 120-installment schedule) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 131 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 135 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.

@@ -37,7 +37,9 @@ Token-2022's `AccountFrozen`. The devnet demo uses a plain classic share mint an
 
 ## 2. Keeper: `mark_in_collection`
 
-`mark_in_collection` is permissionless and never paused. It records a fact (the line missed
+`mark_in_collection` is permissionless and never paused. It is the on-chain record of the
+vencimiento anticipado (decision 28): from the mark every installment is due and late interest runs
+on all remaining principal. It records a fact (the line missed
 `max_missed` installments and the grace of the last of them has run); nothing moves. It must be
 called promptly because `write_off` on a line in collection is only allowed after it.
 

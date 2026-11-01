@@ -143,6 +143,7 @@ pub fn open_line(
     line.first_due_at = first_due_at;
     line.sponsor_role = sponsor_role;
     line.expediente_root = expediente_root;
+    line.accelerated_at = 0;
 
     pool.line_count = pool.line_count.checked_add(1).ok_or(PoolError::Overflow)?;
 
@@ -716,6 +717,7 @@ fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
         late_paid_until: s.late_paid_until,
         principal: line.drawn,
         late_collected: s.late_collected,
+        accelerated_at: line.accelerated_at,
     };
     let paid = line.principal_repaid.checked_add(line.interest_repaid).ok_or(PoolError::Overflow)?;
     Ok(math::arrears(&terms, paid, now).ok_or(PoolError::Overflow)?)
@@ -746,7 +748,9 @@ pub struct MarkInCollection<'info> {
 /// Anyone may move an active scheduled line to `InCollection` once `max_missed` installments are
 /// missed and the grace period of the last of them has run: with `covered` installments paid,
 /// `now > anchor + (covered + max_missed) * interval + grace`, where the anchor is one interval
-/// before `first_due_at`. It only records facts, so it is not blocked by the pause.
+/// before `first_due_at`. The mark accelerates the balance (vencimiento anticipado):
+/// `accelerated_at = now`, from which every installment is due and late interest runs on all
+/// remaining principal. It records facts and moves no funds, so it is not blocked by the pause.
 pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
@@ -772,6 +776,7 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
         .ok_or(PoolError::Overflow)?;
     let line = &mut ctx.accounts.line;
     line.status = LineStatus::InCollection;
+    line.accelerated_at = now;
     emit_cpi!(LineInCollection { pool: pool.key(), line_id: line.line_id, missed: a.missed, remaining });
     Ok(())
 }

@@ -103,7 +103,8 @@ const max = (a: bigint, b: bigint) => (a > b ? a : b);
  * Arrears of a drawn scheduled line at `now` (unix seconds), as `math::arrears` computes them.
  * The installments repay `drawn + interestDue` on the contract's calendar: installment `k` is
  * due at `firstDueAt + (k - 1) * interval` (decision 25), and late interest accrues on the
- * principal share (`drawn`) of what is overdue (decision 11).
+ * principal share (`drawn`) of what is overdue. Once `acceleratedAt` is set every installment is
+ * due and late interest runs on all remaining principal from the mark.
  */
 export function lineArrears(
   line: {
@@ -112,6 +113,8 @@ export function lineArrears(
     principalRepaid: bigint;
     interestRepaid: bigint;
     firstDueAt: bigint;
+    /** `CreditLine.acceleratedAt`: zero until `mark_in_collection` accelerates the balance. */
+    acceleratedAt: bigint;
   },
   s: Schedule,
   graceSeconds: bigint,
@@ -124,8 +127,10 @@ export function lineArrears(
   const cumulative = (k: bigint) => (k >= n ? total : base * k);
   // One interval before the first due date: the anchor `math::arrears` counts from.
   const anchor = line.firstDueAt - s.intervalSeconds;
-  const due =
-    s.intervalSeconds <= 0n || now <= anchor
+  const accelerated = line.acceleratedAt > 0n;
+  const due = accelerated
+    ? n
+    : s.intervalSeconds <= 0n || now <= anchor
       ? 0n
       : min(n, (now - anchor) / s.intervalSeconds);
   const covered = paid >= total ? n : min(n - 1n, paid / base);
@@ -142,8 +147,11 @@ export function lineArrears(
     // Late interest accrues on the principal share of each part only (decision 11).
     const partPrincipal = (part * line.drawn) / total;
     const dueAt = anchor + k * s.intervalSeconds;
-    firstMissedDue ??= dueAt;
-    const start = max(dueAt + graceSeconds, s.latePaidUntil);
+    // Once accelerated, an installment not yet due is exigible at the mark and accrues from it.
+    const exigibleAt = accelerated ? min(dueAt, line.acceleratedAt) : dueAt;
+    const accrualFrom = accelerated ? min(dueAt + graceSeconds, line.acceleratedAt) : dueAt + graceSeconds;
+    firstMissedDue ??= exigibleAt;
+    const start = max(accrualFrom, s.latePaidUntil);
     if (now > start) weighted += partPrincipal * min(now - start, lateCap);
     overdue += part;
     overduePrincipal += partPrincipal;

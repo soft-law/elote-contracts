@@ -218,10 +218,7 @@ export type DrawAsyncInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   borrower: TAccountBorrower;
-  /**
-   * The pool's attestor (D14): the agreements engine attests that the pagaré behind
-   * `document_hash` was signed by the borrower and is conserved. No money moves without it.
-   */
+  /** Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved. */
   attestor: TAccountAttestor;
   pool: TAccountPool;
   line: TAccountLine;
@@ -230,22 +227,15 @@ export type DrawAsyncInput<
   vault: TAccountVault;
   borrowerAssetAccount: TAccountBorrowerAssetAccount;
   tokenProgram?: TAccountTokenProgram;
-  /**
-   * Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets
-   * rarely hold SOL. Any signer.
-   */
+  /** Pays the rent of the pagaré asset and its sidecar. Any signer. */
   payer: TAccountPayer;
   /**
-   * The Metaplex Core asset that is the pagaré, created by the Core program in this
-   * instruction at `["pagare_asset", line, line.draws]`, so clients need no keypair for it.
-   * The client derives the bump, so the constraint runs one `create_program_address` and no
-   * search: the compute of a draw does not depend on the line's key.
+   * The Core asset that is the pagaré, created by the Core program here. The client passes
+   * the bump, so the constraint runs one `create_program_address` and the compute of a draw
+   * does not depend on the line's key.
    */
   asset: TAccountAsset;
-  /**
-   * The program's record of the pagaré, created by the handler (Anchor's `init` always
-   * searches for the bump) at `["pagare", line, line.draws]`.
-   */
+  /** The pagaré's record, created by the handler (Anchor's `init` would search for the bump). */
   pagare: TAccountPagare;
   /** The series' collection the pool controls (validated at `init_pool`). */
   collection: TAccountCollection;
@@ -588,10 +578,7 @@ export type DrawInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   borrower: TAccountBorrower;
-  /**
-   * The pool's attestor (D14): the agreements engine attests that the pagaré behind
-   * `document_hash` was signed by the borrower and is conserved. No money moves without it.
-   */
+  /** Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved. */
   attestor: TAccountAttestor;
   pool: TAccountPool;
   line: TAccountLine;
@@ -600,22 +587,15 @@ export type DrawInput<
   vault: TAccountVault;
   borrowerAssetAccount: TAccountBorrowerAssetAccount;
   tokenProgram?: TAccountTokenProgram;
-  /**
-   * Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets
-   * rarely hold SOL. Any signer.
-   */
+  /** Pays the rent of the pagaré asset and its sidecar. Any signer. */
   payer: TAccountPayer;
   /**
-   * The Metaplex Core asset that is the pagaré, created by the Core program in this
-   * instruction at `["pagare_asset", line, line.draws]`, so clients need no keypair for it.
-   * The client derives the bump, so the constraint runs one `create_program_address` and no
-   * search: the compute of a draw does not depend on the line's key.
+   * The Core asset that is the pagaré, created by the Core program here. The client passes
+   * the bump, so the constraint runs one `create_program_address` and the compute of a draw
+   * does not depend on the line's key.
    */
   asset: TAccountAsset;
-  /**
-   * The program's record of the pagaré, created by the handler (Anchor's `init` always
-   * searches for the bump) at `["pagare", line, line.draws]`.
-   */
+  /** The pagaré's record, created by the handler (Anchor's `init` would search for the bump). */
   pagare: TAccountPagare;
   /** The series' collection the pool controls (validated at `init_pool`). */
   collection: TAccountCollection;
@@ -933,10 +913,7 @@ export type ParsedDrawInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     borrower: TAccountMetas[0];
-    /**
-     * The pool's attestor (D14): the agreements engine attests that the pagaré behind
-     * `document_hash` was signed by the borrower and is conserved. No money moves without it.
-     */
+    /** Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved. */
     attestor: TAccountMetas[1];
     pool: TAccountMetas[2];
     line: TAccountMetas[3];
@@ -945,22 +922,15 @@ export type ParsedDrawInstruction<
     vault: TAccountMetas[5];
     borrowerAssetAccount: TAccountMetas[6];
     tokenProgram: TAccountMetas[7];
-    /**
-     * Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets
-     * rarely hold SOL. Any signer.
-     */
+    /** Pays the rent of the pagaré asset and its sidecar. Any signer. */
     payer: TAccountMetas[8];
     /**
-     * The Metaplex Core asset that is the pagaré, created by the Core program in this
-     * instruction at `["pagare_asset", line, line.draws]`, so clients need no keypair for it.
-     * The client derives the bump, so the constraint runs one `create_program_address` and no
-     * search: the compute of a draw does not depend on the line's key.
+     * The Core asset that is the pagaré, created by the Core program here. The client passes
+     * the bump, so the constraint runs one `create_program_address` and the compute of a draw
+     * does not depend on the line's key.
      */
     asset: TAccountMetas[9];
-    /**
-     * The program's record of the pagaré, created by the handler (Anchor's `init` always
-     * searches for the bump) at `["pagare", line, line.draws]`.
-     */
+    /** The pagaré's record, created by the handler (Anchor's `init` would search for the bump). */
     pagare: TAccountMetas[10];
     /** The series' collection the pool controls (validated at `init_pool`). */
     collection: TAccountMetas[11];

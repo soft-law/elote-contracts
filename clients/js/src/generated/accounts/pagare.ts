@@ -64,7 +64,7 @@ export type Pagare = {
   /** The tranche this pagaré documents. */
   amount: bigint;
   issuedAt: bigint;
-  /** The line's last due date at issuance (D1): when the last payment is owed. */
+  /** The line's last due date at issuance: when the last payment is owed. */
   dueAt: bigint;
   /**
    * The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.
@@ -73,7 +73,7 @@ export type Pagare = {
    */
   drawnThrough: bigint;
   /**
-   * Hash of the PSC certificate that signed the pagaré text (condition C6a); zero only when
+   * Hash of the PSC certificate that signed the pagaré text (C6a); zero only when
    * `signature_method` is `SIGNATURE_WALLET`.
    */
   certFingerprint: ReadonlyUint8Array;
@@ -86,7 +86,7 @@ export type Pagare = {
   /** Hash of the FEA-signed receipt `cancel_pagare` was given (LGTOC 129); zero while outstanding. */
   receiptHash: ReadonlyUint8Array;
   bump: number;
-  /** Room for later facts (an endoso count, the current holder) without a layout change. */
+  /** Room for later facts without a layout change. */
   reserved: ReadonlyUint8Array;
 };
 
@@ -101,7 +101,7 @@ export type PagareArgs = {
   /** The tranche this pagaré documents. */
   amount: number | bigint;
   issuedAt: number | bigint;
-  /** The line's last due date at issuance (D1): when the last payment is owed. */
+  /** The line's last due date at issuance: when the last payment is owed. */
   dueAt: number | bigint;
   /**
    * The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.
@@ -110,7 +110,7 @@ export type PagareArgs = {
    */
   drawnThrough: number | bigint;
   /**
-   * Hash of the PSC certificate that signed the pagaré text (condition C6a); zero only when
+   * Hash of the PSC certificate that signed the pagaré text (C6a); zero only when
    * `signature_method` is `SIGNATURE_WALLET`.
    */
   certFingerprint: ReadonlyUint8Array;
@@ -123,7 +123,7 @@ export type PagareArgs = {
   /** Hash of the FEA-signed receipt `cancel_pagare` was given (LGTOC 129); zero while outstanding. */
   receiptHash: ReadonlyUint8Array;
   bump: number;
-  /** Room for later facts (an endoso count, the current holder) without a layout change. */
+  /** Room for later facts without a layout change. */
   reserved: ReadonlyUint8Array;
 };
 

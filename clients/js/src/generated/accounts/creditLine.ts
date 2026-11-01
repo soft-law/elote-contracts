@@ -76,7 +76,7 @@ export type CreditLine = {
   principal: bigint;
   /**
    * Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
-   * the last due date (decision 9).
+   * the last due date.
    */
   rateBps: number;
   /**
@@ -90,7 +90,7 @@ export type CreditLine = {
   interestRepaid: bigint;
   status: LineStatus;
   openedAt: bigint;
-  /** Time of the first draw; informational since decision 25 (the calendar is `first_due_at`). */
+  /** Time of the first draw; informational (the calendar is `first_due_at`). */
   drawnAt: bigint;
   closedAt: bigint;
   /**
@@ -99,7 +99,7 @@ export type CreditLine = {
    *
    * | bytes  | field              | type    | meaning                                         |
    * |--------|--------------------|---------|-------------------------------------------------|
-   * | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates, from `drawn_at`      |
+   * | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates                       |
    * | 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |
    * | 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |
    * | 12     | `max_missed`       | u8      | missed installments that allow collection       |
@@ -127,10 +127,15 @@ export type CreditLine = {
   /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
   sponsorRole: number;
   /**
-   * Salted merkle root of the credit file in the agreements engine (decision 15 of the pagaré
-   * design). A commitment: no document, name or folio is derivable from it.
+   * Salted merkle root of the credit file in the agreements engine. A commitment: no document,
+   * name or folio is derivable from it.
    */
   expedienteRoot: ReadonlyUint8Array;
+  /**
+   * When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.
+   * From then on every installment is due and late interest runs on all remaining principal.
+   */
+  acceleratedAt: bigint;
 };
 
 export type CreditLineArgs = {
@@ -146,7 +151,7 @@ export type CreditLineArgs = {
   principal: number | bigint;
   /**
    * Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
-   * the last due date (decision 9).
+   * the last due date.
    */
   rateBps: number;
   /**
@@ -160,7 +165,7 @@ export type CreditLineArgs = {
   interestRepaid: number | bigint;
   status: LineStatusArgs;
   openedAt: number | bigint;
-  /** Time of the first draw; informational since decision 25 (the calendar is `first_due_at`). */
+  /** Time of the first draw; informational (the calendar is `first_due_at`). */
   drawnAt: number | bigint;
   closedAt: number | bigint;
   /**
@@ -169,7 +174,7 @@ export type CreditLineArgs = {
    *
    * | bytes  | field              | type    | meaning                                         |
    * |--------|--------------------|---------|-------------------------------------------------|
-   * | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates, from `drawn_at`      |
+   * | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates                       |
    * | 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |
    * | 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |
    * | 12     | `max_missed`       | u8      | missed installments that allow collection       |
@@ -197,10 +202,15 @@ export type CreditLineArgs = {
   /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
   sponsorRole: number;
   /**
-   * Salted merkle root of the credit file in the agreements engine (decision 15 of the pagaré
-   * design). A commitment: no document, name or folio is derivable from it.
+   * Salted merkle root of the credit file in the agreements engine. A commitment: no document,
+   * name or folio is derivable from it.
    */
   expedienteRoot: ReadonlyUint8Array;
+  /**
+   * When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.
+   * From then on every installment is due and late interest runs on all remaining principal.
+   */
+  acceleratedAt: number | bigint;
 };
 
 /** Gets the encoder for {@link CreditLineArgs} account data. */
@@ -232,6 +242,7 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
       ["firstDueAt", getI64Encoder()],
       ["sponsorRole", getU8Encoder()],
       ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
+      ["acceleratedAt", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: CREDIT_LINE_DISCRIMINATOR }),
   );
@@ -265,6 +276,7 @@ export function getCreditLineDecoder(): Decoder<CreditLine> {
     ["firstDueAt", getI64Decoder()],
     ["sponsorRole", getU8Decoder()],
     ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
+    ["acceleratedAt", getI64Decoder()],
   ]);
 }
 

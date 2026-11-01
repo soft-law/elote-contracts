@@ -1,5 +1,6 @@
 [
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 0,
@@ -20,6 +21,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 1,
@@ -40,6 +42,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 1,
     "due": 3,
@@ -60,6 +63,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 4,
     "due": 3,
@@ -80,6 +84,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 6,
@@ -100,6 +105,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 2,
@@ -120,6 +126,7 @@
     "total": "34531920"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 1,
@@ -140,6 +147,7 @@
     "total": "34531920"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 2,
@@ -160,6 +168,7 @@
     "total": "34531920"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 2,
@@ -180,6 +189,7 @@
     "total": "34531920"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 6,
@@ -200,6 +210,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 6,
@@ -220,6 +231,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 6,
@@ -240,6 +252,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 2,
@@ -260,6 +273,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 1,
@@ -280,6 +294,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 1,
@@ -300,6 +315,7 @@
     "total": "600"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1000",
     "covered": 0,
     "due": 6,
@@ -320,6 +336,112 @@
     "total": "600"
   },
   {
+    "accelerated_at": "1250",
+    "anchor": "1000",
+    "covered": 1,
+    "due": 6,
+    "first_missed_due": "1200",
+    "grace": 10,
+    "installments": 6,
+    "interval": "100",
+    "late_bps": 10000,
+    "late_collected": "0",
+    "late_due": "0",
+    "late_paid_until": "0",
+    "missed": 5,
+    "now": "1350",
+    "overdue": "500",
+    "overdue_principal": "500",
+    "paid": "100",
+    "principal": "600",
+    "total": "600"
+  },
+  {
+    "accelerated_at": "1250",
+    "anchor": "1000",
+    "covered": 3,
+    "due": 6,
+    "first_missed_due": "1250",
+    "grace": 10,
+    "installments": 6,
+    "interval": "100",
+    "late_bps": 10000,
+    "late_collected": "0",
+    "late_due": "0",
+    "late_paid_until": "0",
+    "missed": 3,
+    "now": "1350",
+    "overdue": "300",
+    "overdue_principal": "300",
+    "paid": "300",
+    "principal": "600",
+    "total": "600"
+  },
+  {
+    "accelerated_at": "1250",
+    "anchor": "1000",
+    "covered": 6,
+    "due": 6,
+    "first_missed_due": null,
+    "grace": 10,
+    "installments": 6,
+    "interval": "100",
+    "late_bps": 10000,
+    "late_collected": "0",
+    "late_due": "0",
+    "late_paid_until": "0",
+    "missed": 0,
+    "now": "1350",
+    "overdue": "0",
+    "overdue_principal": "0",
+    "paid": "600",
+    "principal": "600",
+    "total": "600"
+  },
+  {
+    "accelerated_at": "1250",
+    "anchor": "1000",
+    "covered": 1,
+    "due": 6,
+    "first_missed_due": "1200",
+    "grace": 10,
+    "installments": 6,
+    "interval": "100",
+    "late_bps": 10000,
+    "late_collected": "0",
+    "late_due": "0",
+    "late_paid_until": "1300",
+    "missed": 5,
+    "now": "1350",
+    "overdue": "500",
+    "overdue_principal": "500",
+    "paid": "100",
+    "principal": "600",
+    "total": "600"
+  },
+  {
+    "accelerated_at": "1250",
+    "anchor": "1000",
+    "covered": 1,
+    "due": 6,
+    "first_missed_due": "1200",
+    "grace": 10,
+    "installments": 6,
+    "interval": "100",
+    "late_bps": 10000,
+    "late_collected": "0",
+    "late_due": "0",
+    "late_paid_until": "1300",
+    "missed": 5,
+    "now": "1250",
+    "overdue": "500",
+    "overdue_principal": "500",
+    "paid": "100",
+    "principal": "600",
+    "total": "600"
+  },
+  {
+    "accelerated_at": "0",
     "anchor": "1852927959",
     "covered": 24,
     "due": 24,
@@ -340,6 +462,7 @@
     "total": "36106587531275"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1720262794",
     "covered": 31,
     "due": 31,
@@ -360,6 +483,7 @@
     "total": "135171036185018"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1589522213",
     "covered": 15,
     "due": 26,
@@ -380,6 +504,7 @@
     "total": "260915004827777"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1247615520",
     "covered": 6,
     "due": 18,
@@ -400,6 +525,7 @@
     "total": "53696532985175"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1373367479",
     "covered": 4,
     "due": 0,
@@ -420,6 +546,7 @@
     "total": "32353399634554"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1343098035",
     "covered": 70,
     "due": 0,
@@ -440,6 +567,7 @@
     "total": "212268626683845"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1829095038",
     "covered": 28,
     "due": 0,
@@ -460,6 +588,7 @@
     "total": "74463499732352"
   },
   {
+    "accelerated_at": "1937459603",
     "anchor": "1744277087",
     "covered": 7,
     "due": 31,
@@ -480,6 +609,7 @@
     "total": "48554296101905"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1781740393",
     "covered": 50,
     "due": 83,
@@ -500,6 +630,7 @@
     "total": "177601288108425"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1777429858",
     "covered": 44,
     "due": 17,
@@ -520,6 +651,7 @@
     "total": "188934603577918"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1026350113",
     "covered": 67,
     "due": 0,
@@ -540,6 +672,7 @@
     "total": "42729743789801"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1662085514",
     "covered": 21,
     "due": 0,
@@ -560,6 +693,7 @@
     "total": "277841498026659"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1798151556",
     "covered": 24,
     "due": 0,
@@ -580,6 +714,7 @@
     "total": "256241662758696"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1289677463",
     "covered": 61,
     "due": 61,
@@ -600,6 +735,7 @@
     "total": "193508702253565"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1758423028",
     "covered": 3,
     "due": 11,
@@ -620,6 +756,7 @@
     "total": "35467045013002"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1832170692",
     "covered": 21,
     "due": 0,
@@ -640,6 +777,7 @@
     "total": "268655331684"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1882409667",
     "covered": 84,
     "due": 108,
@@ -660,6 +798,7 @@
     "total": "234874742418296"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1598019884",
     "covered": 32,
     "due": 18,
@@ -680,6 +819,7 @@
     "total": "103012905857034"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1521589271",
     "covered": 3,
     "due": 3,
@@ -700,6 +840,7 @@
     "total": "180137650259442"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1705958302",
     "covered": 51,
     "due": 65,
@@ -720,6 +861,7 @@
     "total": "112860973261476"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1369510108",
     "covered": 26,
     "due": 30,
@@ -740,6 +882,7 @@
     "total": "128013407077837"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1971022363",
     "covered": 27,
     "due": 63,
@@ -760,6 +903,7 @@
     "total": "94536928053726"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1088190044",
     "covered": 31,
     "due": 0,
@@ -780,6 +924,7 @@
     "total": "123787616545178"
   },
   {
+    "accelerated_at": "1489544403",
     "anchor": "1319281362",
     "covered": 0,
     "due": 3,
@@ -800,6 +945,7 @@
     "total": "203323983460941"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1246299879",
     "covered": 6,
     "due": 15,
@@ -820,6 +966,7 @@
     "total": "59970004737603"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1877555219",
     "covered": 102,
     "due": 0,
@@ -840,6 +987,7 @@
     "total": "11362777995483"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1792532338",
     "covered": 15,
     "due": 47,
@@ -860,10 +1008,11 @@
     "total": "134614851519705"
   },
   {
+    "accelerated_at": "1790828970",
     "anchor": "1759395495",
     "covered": 23,
-    "due": 48,
-    "first_missed_due": "1804058007",
+    "due": 70,
+    "first_missed_due": "1790828970",
     "grace": 677219,
     "installments": 70,
     "interval": "1860938",
@@ -871,15 +1020,16 @@
     "late_collected": "21929818358784",
     "late_due": "3955236364069",
     "late_paid_until": "1799288050",
-    "missed": 25,
+    "missed": 47,
     "now": "1848720519",
-    "overdue": "25480847451192",
-    "overdue_principal": "8951421709697",
+    "overdue": "48638555714213",
+    "overdue_principal": "17086724622582",
     "paid": "25045061486280",
     "principal": "25885054722853",
     "total": "73683617200493"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1667591979",
     "covered": 118,
     "due": 84,
@@ -900,26 +1050,28 @@
     "total": "184404696420406"
   },
   {
+    "accelerated_at": "1467895870",
     "anchor": "1456869032",
     "covered": 65,
-    "due": 11,
-    "first_missed_due": null,
+    "due": 93,
+    "first_missed_due": "1467895870",
     "grace": 332038,
     "installments": 93,
     "interval": "6884889",
     "late_bps": 8806,
     "late_collected": "0",
-    "late_due": "0",
+    "late_due": "18381172347522",
     "late_paid_until": "1459247072",
-    "missed": 0,
+    "missed": 28,
     "now": "1532602811",
-    "overdue": "0",
-    "overdue_principal": "0",
+    "overdue": "22967852489219",
+    "overdue_principal": "18381172347522",
     "paid": "55180675867935",
     "principal": "62542267245659",
     "total": "78148528357154"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1060271259",
     "covered": 60,
     "due": 0,
@@ -940,6 +1092,7 @@
     "total": "221371452828449"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1206623131",
     "covered": 49,
     "due": 0,
@@ -960,6 +1113,7 @@
     "total": "159173449550653"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1017201055",
     "covered": 91,
     "due": 98,
@@ -980,6 +1134,7 @@
     "total": "134890031179808"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1691681195",
     "covered": 18,
     "due": 6,
@@ -1000,6 +1155,7 @@
     "total": "118781275206516"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1165762682",
     "covered": 99,
     "due": 99,
@@ -1020,6 +1176,7 @@
     "total": "204686740079428"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1350451486",
     "covered": 18,
     "due": 0,
@@ -1040,6 +1197,7 @@
     "total": "159580301278314"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1893759522",
     "covered": 92,
     "due": 0,
@@ -1060,6 +1218,7 @@
     "total": "48623292033799"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1426682784",
     "covered": 4,
     "due": 63,
@@ -1080,6 +1239,7 @@
     "total": "36206935839042"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1908172677",
     "covered": 10,
     "due": 79,
@@ -1100,6 +1260,7 @@
     "total": "79244462849944"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1093073803",
     "covered": 28,
     "due": 0,
@@ -1120,6 +1281,7 @@
     "total": "231559415993210"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1703427686",
     "covered": 8,
     "due": 0,
@@ -1140,6 +1302,7 @@
     "total": "155398221228680"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1829257721",
     "covered": 15,
     "due": 0,
@@ -1160,6 +1323,7 @@
     "total": "204184892462962"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1160706388",
     "covered": 48,
     "due": 102,
@@ -1180,6 +1344,7 @@
     "total": "49509468541647"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1150770575",
     "covered": 94,
     "due": 0,
@@ -1200,6 +1365,7 @@
     "total": "188103470477697"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1749981450",
     "covered": 0,
     "due": 1,
@@ -1220,6 +1386,7 @@
     "total": "24260472072369"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1116888066",
     "covered": 6,
     "due": 0,
@@ -1240,26 +1407,28 @@
     "total": "206121912056006"
   },
   {
+    "accelerated_at": "1384254945",
     "anchor": "1380939757",
     "covered": 5,
-    "due": 2,
-    "first_missed_due": null,
+    "due": 112,
+    "first_missed_due": "1384254945",
     "grace": 334975,
     "installments": 112,
     "interval": "4866689",
     "late_bps": 9991,
     "late_collected": "0",
-    "late_due": "0",
+    "late_due": "1333056365024",
     "late_paid_until": "1381983175",
-    "missed": 0,
+    "missed": 107,
     "now": "1390673135",
-    "overdue": "0",
-    "overdue_principal": "0",
+    "overdue": "37101976132016",
+    "overdue_principal": "6555919184206",
     "paid": "2068184480208",
     "principal": "6921367382011",
     "total": "39170160612224"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1653744836",
     "covered": 1,
     "due": 0,
@@ -1280,6 +1449,7 @@
     "total": "269827769858749"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1911776014",
     "covered": 11,
     "due": 12,
@@ -1300,6 +1470,7 @@
     "total": "277470433680034"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1661414247",
     "covered": 51,
     "due": 0,
@@ -1320,6 +1491,7 @@
     "total": "159827752418202"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1836541199",
     "covered": 9,
     "due": 44,
@@ -1340,6 +1512,7 @@
     "total": "41730282773953"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1749282403",
     "covered": 37,
     "due": 0,
@@ -1360,26 +1533,28 @@
     "total": "9995241027135"
   },
   {
+    "accelerated_at": "1851579943",
     "anchor": "1521604930",
     "covered": 20,
-    "due": 116,
+    "due": 117,
     "first_missed_due": "1590283771",
     "grace": 1116971,
     "installments": 117,
     "interval": "3270421",
     "late_bps": 1226,
     "late_collected": "0",
-    "late_due": "2201021287269",
+    "late_due": "2272184749737",
     "late_paid_until": "0",
-    "missed": 96,
+    "missed": 97,
     "now": "1900973766",
-    "overdue": "156430523195802",
-    "overdue_principal": "3785618663809",
+    "overdue": "158060722722839",
+    "overdue_principal": "3825069492389",
     "paid": "32672621940258",
     "principal": "4615746943869",
     "total": "190733344663097"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1279341853",
     "covered": 50,
     "due": 9,
@@ -1400,6 +1575,7 @@
     "total": "64818869385672"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1910245928",
     "covered": 50,
     "due": 78,
@@ -1420,6 +1596,7 @@
     "total": "81484793336443"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1930551865",
     "covered": 114,
     "due": 0,
@@ -1440,6 +1617,7 @@
     "total": "18304136109608"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1235155803",
     "covered": 25,
     "due": 51,
@@ -1460,6 +1638,7 @@
     "total": "60494540343268"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1629263286",
     "covered": 109,
     "due": 109,
@@ -1480,6 +1659,7 @@
     "total": "74676796516860"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1912735613",
     "covered": 6,
     "due": 0,
@@ -1500,6 +1680,7 @@
     "total": "8614568693292"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1368249746",
     "covered": 47,
     "due": 0,
@@ -1520,6 +1701,7 @@
     "total": "235687570225417"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1014583086",
     "covered": 49,
     "due": 52,
@@ -1540,6 +1722,7 @@
     "total": "23066750630404"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1457564678",
     "covered": 49,
     "due": 101,
@@ -1560,26 +1743,28 @@
     "total": "246617361045051"
   },
   {
+    "accelerated_at": "1581875208",
     "anchor": "1465656017",
     "covered": 33,
-    "due": 33,
-    "first_missed_due": null,
+    "due": 96,
+    "first_missed_due": "1581875208",
     "grace": 841921,
     "installments": 96,
     "interval": "5357970",
     "late_bps": 5371,
     "late_collected": "0",
-    "late_due": "0",
+    "late_due": "66669590663088",
     "late_paid_until": "0",
-    "missed": 0,
+    "missed": 63,
     "now": "1642469027",
-    "overdue": "0",
-    "overdue_principal": "0",
+    "overdue": "78315036605588",
+    "overdue_principal": "66669590663088",
     "paid": "42616150242416",
     "principal": "102948719364896",
     "total": "120931186848004"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1548943987",
     "covered": 5,
     "due": 0,
@@ -1600,6 +1785,7 @@
     "total": "218344500386432"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1560057665",
     "covered": 26,
     "due": 17,
@@ -1620,6 +1806,7 @@
     "total": "199983920845111"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1669351202",
     "covered": 32,
     "due": 28,
@@ -1640,6 +1827,7 @@
     "total": "266597178286432"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1154866633",
     "covered": 102,
     "due": 78,
@@ -1660,6 +1848,7 @@
     "total": "49033203083793"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1145432336",
     "covered": 17,
     "due": 42,
@@ -1680,26 +1869,28 @@
     "total": "108679822187883"
   },
   {
+    "accelerated_at": "1517463421",
     "anchor": "1517019535",
     "covered": 109,
-    "due": 48,
-    "first_missed_due": null,
+    "due": 118,
+    "first_missed_due": "1517463421",
     "grace": 688363,
     "installments": 118,
     "interval": "75123",
     "late_bps": 5715,
     "late_collected": "0",
-    "late_due": "0",
+    "late_due": "16354082783",
     "late_paid_until": "0",
-    "missed": 0,
+    "missed": 9,
     "now": "1520625439",
-    "overdue": "0",
-    "overdue_principal": "0",
+    "overdue": "710831518738",
+    "overdue_principal": "285398854821",
     "paid": "9636061022502",
     "principal": "4154277356050",
     "total": "10346892541240"
   },
   {
+    "accelerated_at": "1502142138",
     "anchor": "1189299696",
     "covered": 2,
     "due": 5,
@@ -1720,6 +1911,7 @@
     "total": "262802406443871"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1667991826",
     "covered": 97,
     "due": 0,
@@ -1740,6 +1932,7 @@
     "total": "241478554230620"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1341725974",
     "covered": 9,
     "due": 0,
@@ -1760,6 +1953,7 @@
     "total": "19751974474598"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1224885183",
     "covered": 117,
     "due": 108,
@@ -1780,6 +1974,7 @@
     "total": "147395370598485"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1742382934",
     "covered": 2,
     "due": 0,
@@ -1800,29 +1995,31 @@
     "total": "116546561752952"
   },
   {
+    "accelerated_at": "1438604573",
     "anchor": "1437331100",
     "covered": 45,
-    "due": 14,
-    "first_missed_due": null,
+    "due": 70,
+    "first_missed_due": "1438604573",
     "grace": 1090299,
     "installments": 70,
     "interval": "228262",
     "late_bps": 9536,
     "late_collected": "0",
-    "late_due": "0",
+    "late_due": "258255041001",
     "late_paid_until": "1438444470",
-    "missed": 0,
+    "missed": 25,
     "now": "1440526768",
-    "overdue": "0",
-    "overdue_principal": "0",
+    "overdue": "61624933546724",
+    "overdue_principal": "4443157709689",
     "paid": "116791202946354",
     "principal": "12863803444007",
     "total": "178416136493078"
   },
   {
+    "accelerated_at": "1494472028",
     "anchor": "1466051198",
     "covered": 95,
-    "due": 23,
+    "due": 95,
     "first_missed_due": null,
     "grace": 204342,
     "installments": 95,
@@ -1840,6 +2037,7 @@
     "total": "152712885986892"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1656605282",
     "covered": 13,
     "due": 20,
@@ -1860,6 +2058,7 @@
     "total": "170186246879815"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1018195431",
     "covered": 83,
     "due": 0,
@@ -1880,16 +2079,17 @@
     "total": "40841971600326"
   },
   {
+    "accelerated_at": "1516961018",
     "anchor": "1495097650",
     "covered": 52,
     "due": 75,
-    "first_missed_due": "1525119712",
+    "first_missed_due": "1516961018",
     "grace": 968176,
     "installments": 75,
     "interval": "566454",
     "late_bps": 2310,
     "late_collected": "0",
-    "late_due": "3768537183281",
+    "late_due": "6188683277820",
     "late_paid_until": "1512392000",
     "missed": 23,
     "now": "1556841136",
@@ -1900,6 +2100,7 @@
     "total": "94776839967894"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1934110298",
     "covered": 31,
     "due": 48,
@@ -1920,6 +2121,7 @@
     "total": "181025566996414"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1459840894",
     "covered": 45,
     "due": 0,
@@ -1940,6 +2142,7 @@
     "total": "39078529759951"
   },
   {
+    "accelerated_at": "2420055754",
     "anchor": "1813459333",
     "covered": 0,
     "due": 5,
@@ -1960,6 +2163,7 @@
     "total": "224416413123212"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1206081937",
     "covered": 1,
     "due": 10,
@@ -1980,6 +2184,7 @@
     "total": "53497339385870"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1270347657",
     "covered": 12,
     "due": 15,
@@ -2000,6 +2205,7 @@
     "total": "72564545243216"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1850170677",
     "covered": 1,
     "due": 0,
@@ -2020,6 +2226,7 @@
     "total": "153859137769195"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1017620899",
     "covered": 9,
     "due": 0,
@@ -2040,6 +2247,7 @@
     "total": "127102817571597"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1109788598",
     "covered": 76,
     "due": 0,
@@ -2060,6 +2268,7 @@
     "total": "106346595659989"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1068877778",
     "covered": 73,
     "due": 0,
@@ -2080,26 +2289,28 @@
     "total": "229663368548384"
   },
   {
+    "accelerated_at": "1634101895",
     "anchor": "1431698323",
     "covered": 68,
-    "due": 38,
-    "first_missed_due": null,
+    "due": 75,
+    "first_missed_due": "1634101895",
     "grace": 55321,
     "installments": 75,
     "interval": "6613372",
     "late_bps": 947,
     "late_collected": "0",
-    "late_due": "0",
+    "late_due": "3143349586507",
     "late_paid_until": "1466479369",
-    "missed": 0,
+    "missed": 7,
     "now": "1683006459",
-    "overdue": "0",
-    "overdue_principal": "0",
+    "overdue": "23007895660221",
+    "overdue_principal": "21404245332717",
     "paid": "250569936182256",
     "principal": "254509456963229",
     "total": "273577831842477"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1972742268",
     "covered": 21,
     "due": 0,
@@ -2120,9 +2331,10 @@
     "total": "126822190485619"
   },
   {
+    "accelerated_at": "1533849249",
     "anchor": "1116567582",
     "covered": 39,
-    "due": 78,
+    "due": 89,
     "first_missed_due": "1496185462",
     "grace": 429685,
     "installments": 89,
@@ -2131,15 +2343,16 @@
     "late_collected": "179075338214708",
     "late_due": "42388102571283",
     "late_paid_until": "0",
-    "missed": 39,
+    "missed": 50,
     "now": "1856822448",
-    "overdue": "107882027663218",
-    "overdue_principal": "95540323698829",
+    "overdue": "138789757947533",
+    "overdue_principal": "122912209638700",
     "paid": "111281877988850",
     "principal": "221463440785991",
     "total": "250071635936383"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1301784365",
     "covered": 2,
     "due": 77,
@@ -2160,6 +2373,7 @@
     "total": "176139994187902"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1477627742",
     "covered": 66,
     "due": 0,
@@ -2180,6 +2394,7 @@
     "total": "83360524874739"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1617800649",
     "covered": 41,
     "due": 0,
@@ -2200,6 +2415,7 @@
     "total": "114611903102084"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1348447159",
     "covered": 27,
     "due": 0,
@@ -2220,6 +2436,7 @@
     "total": "97491750095253"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1250915555",
     "covered": 4,
     "due": 0,
@@ -2240,6 +2457,7 @@
     "total": "6616607567752"
   },
   {
+    "accelerated_at": "2207863994",
     "anchor": "1947145659",
     "covered": 13,
     "due": 15,
@@ -2260,6 +2478,7 @@
     "total": "163990255200632"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1379835654",
     "covered": 38,
     "due": 0,
@@ -2280,6 +2499,7 @@
     "total": "203809167990682"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1613052019",
     "covered": 16,
     "due": 50,
@@ -2300,6 +2520,7 @@
     "total": "50050992534791"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1985945576",
     "covered": 49,
     "due": 68,
@@ -2320,6 +2541,7 @@
     "total": "20500615748411"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1767348563",
     "covered": 10,
     "due": 0,
@@ -2340,6 +2562,7 @@
     "total": "265115064976399"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1553273938",
     "covered": 8,
     "due": 0,
@@ -2360,6 +2583,7 @@
     "total": "69722480883050"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1954714486",
     "covered": 8,
     "due": 16,
@@ -2380,6 +2604,7 @@
     "total": "76182638086788"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1246806030",
     "covered": 90,
     "due": 90,
@@ -2400,6 +2625,7 @@
     "total": "193153128809286"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1678490127",
     "covered": 5,
     "due": 19,
@@ -2420,6 +2646,7 @@
     "total": "196967351694270"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1206160318",
     "covered": 23,
     "due": 89,
@@ -2440,6 +2667,7 @@
     "total": "205462250111659"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1968559774",
     "covered": 5,
     "due": 0,
@@ -2460,6 +2688,7 @@
     "total": "80041109781813"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1088582110",
     "covered": 59,
     "due": 0,
@@ -2480,6 +2709,7 @@
     "total": "193541643095686"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1247870859",
     "covered": 64,
     "due": 2,
@@ -2500,6 +2730,7 @@
     "total": "207192168584076"
   },
   {
+    "accelerated_at": "1853856184",
     "anchor": "1629784613",
     "covered": 60,
     "due": 102,
@@ -2509,7 +2740,7 @@
     "interval": "3493716",
     "late_bps": 7748,
     "late_collected": "0",
-    "late_due": "60002401657619",
+    "late_due": "61716915025090",
     "late_paid_until": "0",
     "missed": 42,
     "now": "2010599657",
@@ -2520,6 +2751,7 @@
     "total": "249475678835549"
   },
   {
+    "accelerated_at": "2098880962",
     "anchor": "1732792135",
     "covered": 29,
     "due": 103,
@@ -2529,7 +2761,7 @@
     "interval": "3740589",
     "late_bps": 3600,
     "late_collected": "0",
-    "late_due": "54220595109123",
+    "late_due": "54767651335574",
     "late_paid_until": "1967721323",
     "missed": 74,
     "now": "2155478692",
@@ -2540,6 +2772,7 @@
     "total": "192428375575357"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1262561035",
     "covered": 23,
     "due": 99,
@@ -2560,6 +2793,7 @@
     "total": "90676354481330"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1081591799",
     "covered": 2,
     "due": 4,
@@ -2580,6 +2814,7 @@
     "total": "6757543415230"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1907057683",
     "covered": 3,
     "due": 0,
@@ -2600,6 +2835,7 @@
     "total": "193466196242750"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1850889800",
     "covered": 66,
     "due": 111,
@@ -2620,6 +2856,7 @@
     "total": "248500082724409"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1500870279",
     "covered": 50,
     "due": 99,
@@ -2640,6 +2877,7 @@
     "total": "228690469047476"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1972059065",
     "covered": 10,
     "due": 10,
@@ -2660,6 +2898,7 @@
     "total": "209731693024626"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1530979814",
     "covered": 2,
     "due": 2,
@@ -2680,6 +2919,7 @@
     "total": "126446765888712"
   },
   {
+    "accelerated_at": "1612616763",
     "anchor": "1333556307",
     "covered": 53,
     "due": 58,
@@ -2700,6 +2940,7 @@
     "total": "93784994565910"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1854954247",
     "covered": 17,
     "due": 17,
@@ -2720,6 +2961,7 @@
     "total": "54681594212889"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1577018759",
     "covered": 14,
     "due": 31,
@@ -2740,6 +2982,7 @@
     "total": "163492165339478"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1154896295",
     "covered": 37,
     "due": 2,
@@ -2760,6 +3003,7 @@
     "total": "271221327079645"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1483189343",
     "covered": 44,
     "due": 0,
@@ -2780,6 +3024,7 @@
     "total": "264806867488856"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1442643846",
     "covered": 30,
     "due": 35,
@@ -2800,6 +3045,7 @@
     "total": "194518986198238"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1415973664",
     "covered": 2,
     "due": 0,
@@ -2820,6 +3066,7 @@
     "total": "270484291897952"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1197565936",
     "covered": 22,
     "due": 21,
@@ -2840,6 +3087,7 @@
     "total": "229425063011404"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1975447379",
     "covered": 79,
     "due": 0,
@@ -2860,6 +3108,7 @@
     "total": "112800574038115"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1118236246",
     "covered": 3,
     "due": 10,
@@ -2880,6 +3129,7 @@
     "total": "140431744820589"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1396333729",
     "covered": 35,
     "due": 35,
@@ -2900,6 +3150,7 @@
     "total": "158104111026688"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1165044061",
     "covered": 3,
     "due": 0,
@@ -2920,6 +3171,7 @@
     "total": "117628779535346"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1930497034",
     "covered": 95,
     "due": 94,
@@ -2940,6 +3192,7 @@
     "total": "260061482576592"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1419652861",
     "covered": 3,
     "due": 0,
@@ -2960,6 +3213,7 @@
     "total": "264341234723417"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1418233828",
     "covered": 26,
     "due": 28,
@@ -2980,6 +3234,7 @@
     "total": "216250675087884"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1536852567",
     "covered": 19,
     "due": 0,
@@ -3000,6 +3255,7 @@
     "total": "122879337240630"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1196509658",
     "covered": 26,
     "due": 26,
@@ -3020,6 +3276,7 @@
     "total": "86592164819433"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1546774058",
     "covered": 14,
     "due": 14,
@@ -3040,6 +3297,7 @@
     "total": "83852751726510"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1340084721",
     "covered": 66,
     "due": 0,
@@ -3060,6 +3318,7 @@
     "total": "216831005805855"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1388290522",
     "covered": 22,
     "due": 41,
@@ -3080,6 +3339,7 @@
     "total": "134790340884397"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1729066030",
     "covered": 15,
     "due": 0,
@@ -3100,6 +3360,7 @@
     "total": "205900055733204"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1724520327",
     "covered": 15,
     "due": 15,
@@ -3120,6 +3381,7 @@
     "total": "48689182329612"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1369033581",
     "covered": 14,
     "due": 0,
@@ -3140,6 +3402,7 @@
     "total": "57487437517701"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1607345844",
     "covered": 6,
     "due": 18,
@@ -3160,6 +3423,7 @@
     "total": "205144687204839"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1645283805",
     "covered": 28,
     "due": 0,
@@ -3180,6 +3444,7 @@
     "total": "27351560105764"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1200888545",
     "covered": 18,
     "due": 36,
@@ -3200,6 +3465,7 @@
     "total": "152821849133072"
   },
   {
+    "accelerated_at": "1494630534",
     "anchor": "1012649268",
     "covered": 13,
     "due": 13,
@@ -3220,6 +3486,7 @@
     "total": "183398687733622"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1937006095",
     "covered": 73,
     "due": 0,
@@ -3240,6 +3507,7 @@
     "total": "88677951571206"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1427027954",
     "covered": 15,
     "due": 44,
@@ -3260,6 +3528,7 @@
     "total": "48808399750431"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1503766858",
     "covered": 29,
     "due": 45,
@@ -3280,6 +3549,7 @@
     "total": "54121162861701"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1265688770",
     "covered": 43,
     "due": 9,
@@ -3300,6 +3570,7 @@
     "total": "184570768972053"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1076843487",
     "covered": 35,
     "due": 0,
@@ -3320,6 +3591,7 @@
     "total": "107438411489388"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1527610548",
     "covered": 8,
     "due": 0,
@@ -3340,6 +3612,7 @@
     "total": "254827559737817"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1279696601",
     "covered": 9,
     "due": 19,
@@ -3360,6 +3633,7 @@
     "total": "156682967221090"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1854634329",
     "covered": 84,
     "due": 17,
@@ -3380,6 +3654,7 @@
     "total": "117160718419187"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1663411025",
     "covered": 13,
     "due": 24,
@@ -3400,6 +3675,7 @@
     "total": "159430830596281"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1243559960",
     "covered": 41,
     "due": 0,
@@ -3420,6 +3696,7 @@
     "total": "150255522508650"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1356582368",
     "covered": 40,
     "due": 39,
@@ -3440,6 +3717,7 @@
     "total": "108868061255189"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1375550613",
     "covered": 17,
     "due": 46,
@@ -3460,26 +3738,28 @@
     "total": "105952215448743"
   },
   {
+    "accelerated_at": "1230299293",
     "anchor": "1083515911",
     "covered": 3,
-    "due": 52,
+    "due": 109,
     "first_missed_due": "1107147199",
     "grace": 400861,
     "installments": 109,
     "interval": "5907822",
     "late_bps": 6198,
     "late_collected": "0",
-    "late_due": "48017410851251",
+    "late_due": "116639325511164",
     "late_paid_until": "1135648895",
-    "missed": 49,
+    "missed": 106,
     "now": "1390722655",
-    "overdue": "63143700609064",
-    "overdue_principal": "53432199455886",
+    "overdue": "137838957114252",
+    "overdue_principal": "116639325511164",
     "paid": "4999340413200",
     "principal": "120869767368876",
     "total": "142838297527452"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1116346641",
     "covered": 57,
     "due": 0,
@@ -3500,6 +3780,7 @@
     "total": "6204003649052"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1351465188",
     "covered": 38,
     "due": 0,
@@ -3520,6 +3801,7 @@
     "total": "159402616506334"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1553920960",
     "covered": 7,
     "due": 0,
@@ -3540,6 +3822,7 @@
     "total": "100829789516559"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1684631395",
     "covered": 109,
     "due": 42,
@@ -3560,6 +3843,7 @@
     "total": "154795120292768"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1195916501",
     "covered": 0,
     "due": 1,
@@ -3580,6 +3864,7 @@
     "total": "232450471723419"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1351656710",
     "covered": 25,
     "due": 25,
@@ -3600,6 +3885,7 @@
     "total": "98349245931666"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1226779612",
     "covered": 0,
     "due": 52,
@@ -3620,6 +3906,7 @@
     "total": "180721607968831"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1973675525",
     "covered": 49,
     "due": 58,
@@ -3640,6 +3927,7 @@
     "total": "44257743150900"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1117609669",
     "covered": 82,
     "due": 41,
@@ -3660,6 +3948,7 @@
     "total": "48307881497008"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1024550256",
     "covered": 37,
     "due": 24,
@@ -3680,6 +3969,7 @@
     "total": "126342400828939"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1458634093",
     "covered": 29,
     "due": 35,
@@ -3700,6 +3990,7 @@
     "total": "231594623805482"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1896285180",
     "covered": 58,
     "due": 1,
@@ -3720,6 +4011,7 @@
     "total": "186341794086374"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1913744666",
     "covered": 7,
     "due": 0,
@@ -3740,6 +4032,7 @@
     "total": "70753274163734"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1907311584",
     "covered": 2,
     "due": 19,
@@ -3760,6 +4053,7 @@
     "total": "16899430075084"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1095056707",
     "covered": 24,
     "due": 25,
@@ -3780,6 +4074,7 @@
     "total": "239166641961454"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1134520210",
     "covered": 19,
     "due": 40,
@@ -3800,6 +4095,7 @@
     "total": "13894774987710"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1832060291",
     "covered": 17,
     "due": 17,
@@ -3820,6 +4116,7 @@
     "total": "44184374081348"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1862603393",
     "covered": 11,
     "due": 0,
@@ -3840,6 +4137,7 @@
     "total": "109788518395226"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1086100080",
     "covered": 8,
     "due": 63,
@@ -3860,6 +4158,7 @@
     "total": "85164113791623"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1629024710",
     "covered": 7,
     "due": 0,
@@ -3880,6 +4179,7 @@
     "total": "191786701014216"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1404831351",
     "covered": 36,
     "due": 90,
@@ -3900,6 +4200,7 @@
     "total": "209949802305576"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1260454723",
     "covered": 40,
     "due": 0,
@@ -3920,6 +4221,7 @@
     "total": "204708170446179"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1164230002",
     "covered": 98,
     "due": 36,
@@ -3940,10 +4242,11 @@
     "total": "174701207225501"
   },
   {
+    "accelerated_at": "1296256116",
     "anchor": "1278895756",
     "covered": 58,
-    "due": 72,
-    "first_missed_due": "1308251619",
+    "due": 92,
+    "first_missed_due": "1296256116",
     "grace": 35807,
     "installments": 92,
     "interval": "497557",
@@ -3951,15 +4254,16 @@
     "late_collected": "0",
     "late_due": "0",
     "late_paid_until": "1314719860",
-    "missed": 14,
+    "missed": 34,
     "now": "1314719860",
-    "overdue": "39704966854638",
-    "overdue_principal": "4728861553206",
+    "overdue": "100019362799573",
+    "overdue_principal": "11912306111492",
     "paid": "177426858546930",
     "principal": "33043844968097",
     "total": "277446221346503"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1589889095",
     "covered": 9,
     "due": 56,
@@ -3980,6 +4284,7 @@
     "total": "280682502774385"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1025130623",
     "covered": 91,
     "due": 0,
@@ -4000,6 +4305,7 @@
     "total": "144375678326657"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1775801231",
     "covered": 3,
     "due": 0,
@@ -4020,6 +4326,7 @@
     "total": "63084322802757"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1428197216",
     "covered": 93,
     "due": 23,
@@ -4040,6 +4347,7 @@
     "total": "14106982579545"
   },
   {
+    "accelerated_at": "1550976266",
     "anchor": "1381022330",
     "covered": 11,
     "due": 63,
@@ -4060,6 +4368,7 @@
     "total": "72855853545105"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1867281033",
     "covered": 0,
     "due": 0,
@@ -4080,6 +4389,7 @@
     "total": "50491323547150"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1308211033",
     "covered": 53,
     "due": 0,
@@ -4100,6 +4410,7 @@
     "total": "257035297425603"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1287470549",
     "covered": 60,
     "due": 0,
@@ -4120,6 +4431,7 @@
     "total": "222675769894253"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1682971278",
     "covered": 26,
     "due": 68,
@@ -4140,6 +4452,7 @@
     "total": "198358816699170"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1255808298",
     "covered": 5,
     "due": 96,
@@ -4160,6 +4473,7 @@
     "total": "147202841510247"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1058078498",
     "covered": 79,
     "due": 24,
@@ -4180,6 +4494,7 @@
     "total": "87330878757051"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1060903565",
     "covered": 15,
     "due": 36,
@@ -4200,6 +4515,7 @@
     "total": "118222615835486"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1305152378",
     "covered": 7,
     "due": 0,
@@ -4220,6 +4536,7 @@
     "total": "14309528630781"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1086713713",
     "covered": 80,
     "due": 91,
@@ -4240,6 +4557,7 @@
     "total": "101043939437742"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1181589226",
     "covered": 48,
     "due": 0,
@@ -4260,6 +4578,7 @@
     "total": "238437924666328"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1104878448",
     "covered": 0,
     "due": 0,
@@ -4280,6 +4599,7 @@
     "total": "157925859186899"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1474004159",
     "covered": 0,
     "due": 1,
@@ -4300,6 +4620,7 @@
     "total": "56351057090964"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1848275464",
     "covered": 28,
     "due": 0,
@@ -4320,6 +4641,7 @@
     "total": "236659360334931"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1871832804",
     "covered": 22,
     "due": 25,
@@ -4340,6 +4662,7 @@
     "total": "38676485171205"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1727391259",
     "covered": 10,
     "due": 18,
@@ -4360,6 +4683,7 @@
     "total": "175480211006357"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1339133776",
     "covered": 13,
     "due": 0,
@@ -4380,6 +4704,7 @@
     "total": "121793649407847"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1679827193",
     "covered": 4,
     "due": 0,
@@ -4400,6 +4725,7 @@
     "total": "37932972727446"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1634268236",
     "covered": 39,
     "due": 0,
@@ -4420,6 +4746,7 @@
     "total": "119807351334812"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1647149826",
     "covered": 53,
     "due": 53,
@@ -4440,6 +4767,7 @@
     "total": "105312310858329"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1886407729",
     "covered": 18,
     "due": 30,
@@ -4460,6 +4788,7 @@
     "total": "118876284040571"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1272574841",
     "covered": 6,
     "due": 6,
@@ -4480,6 +4809,7 @@
     "total": "246639515006588"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1534218275",
     "covered": 3,
     "due": 0,
@@ -4500,6 +4830,7 @@
     "total": "143061669498616"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1367944891",
     "covered": 13,
     "due": 0,
@@ -4520,6 +4851,7 @@
     "total": "8880597520266"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1687592967",
     "covered": 70,
     "due": 70,
@@ -4540,6 +4872,7 @@
     "total": "205486621986969"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1672508725",
     "covered": 19,
     "due": 0,
@@ -4560,6 +4893,7 @@
     "total": "255721974450476"
   },
   {
+    "accelerated_at": "1109630747",
     "anchor": "1057837692",
     "covered": 5,
     "due": 51,
@@ -4569,7 +4903,7 @@
     "interval": "4544566",
     "late_bps": 4124,
     "late_collected": "0",
-    "late_due": "3983336141158",
+    "late_due": "3988263066274",
     "late_paid_until": "0",
     "missed": 46,
     "now": "1362323614",
@@ -4580,6 +4914,7 @@
     "total": "6158730125830"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1946380560",
     "covered": 36,
     "due": 37,
@@ -4600,6 +4935,7 @@
     "total": "23329683397310"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1286237622",
     "covered": 8,
     "due": 0,
@@ -4620,6 +4956,7 @@
     "total": "219976374420475"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1418882106",
     "covered": 15,
     "due": 60,
@@ -4640,6 +4977,7 @@
     "total": "113328784939076"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1920569007",
     "covered": 1,
     "due": 2,
@@ -4660,6 +4998,7 @@
     "total": "610211166671"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1077164513",
     "covered": 92,
     "due": 0,
@@ -4680,46 +5019,49 @@
     "total": "175537998048078"
   },
   {
+    "accelerated_at": "1373333969",
     "anchor": "1273580964",
     "covered": 2,
-    "due": 16,
+    "due": 43,
     "first_missed_due": "1297370952",
     "grace": 643867,
     "installments": 43,
     "interval": "7929996",
     "late_bps": 8737,
     "late_collected": "0",
-    "late_due": "20568238089018",
+    "late_due": "61777672625551",
     "late_paid_until": "0",
-    "missed": 14,
+    "missed": 41,
     "now": "1400460900",
-    "overdue": "42840534781798",
-    "overdue_principal": "25944227864748",
+    "overdue": "126226934169003",
+    "overdue_principal": "76443031335374",
     "paid": "6573627818010",
     "principal": "80424020342101",
     "total": "132800561987013"
   },
   {
+    "accelerated_at": "1513886635",
     "anchor": "1236278881",
     "covered": 71,
-    "due": 57,
-    "first_missed_due": null,
+    "due": 78,
+    "first_missed_due": "1513886635",
     "grace": 1454179,
     "installments": 78,
     "interval": "6581502",
     "late_bps": 2305,
     "late_collected": "0",
-    "late_due": "0",
+    "late_due": "1888651775446",
     "late_paid_until": "0",
-    "missed": 0,
+    "missed": 7,
     "now": "1611424495",
-    "overdue": "0",
-    "overdue_principal": "0",
+    "overdue": "6176725472000",
+    "overdue_principal": "2649197555312",
     "paid": "70839801516204",
     "principal": "33032388429926",
     "total": "77016526988204"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1837544260",
     "covered": 7,
     "due": 15,
@@ -4740,6 +5082,7 @@
     "total": "95404200530758"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1884864090",
     "covered": 21,
     "due": 59,
@@ -4760,6 +5103,7 @@
     "total": "154237928611668"
   },
   {
+    "accelerated_at": "1411692968",
     "anchor": "1253856201",
     "covered": 1,
     "due": 11,
@@ -4780,6 +5124,7 @@
     "total": "121217940169916"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1287186176",
     "covered": 50,
     "due": 94,
@@ -4800,6 +5145,7 @@
     "total": "172667028804809"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1510317866",
     "covered": 9,
     "due": 0,
@@ -4820,6 +5166,7 @@
     "total": "114260833311140"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1854860418",
     "covered": 39,
     "due": 0,
@@ -4840,6 +5187,7 @@
     "total": "192482069043096"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1733640861",
     "covered": 16,
     "due": 30,
@@ -4860,26 +5208,28 @@
     "total": "187897549673137"
   },
   {
+    "accelerated_at": "1698449432",
     "anchor": "1299140844",
     "covered": 24,
-    "due": 78,
+    "due": 105,
     "first_missed_due": "1544602144",
     "grace": 1269380,
     "installments": 105,
     "interval": "9818452",
     "late_bps": 5302,
     "late_collected": "32950625620464",
-    "late_due": "40242375726452",
+    "late_due": "52347395662641",
     "late_paid_until": "1726019645",
-    "missed": 54,
+    "missed": 81,
     "now": "2064980100",
-    "overdue": "62191468923108",
-    "overdue_principal": "43216851755501",
+    "overdue": "93755401720611",
+    "overdue_principal": "65150628656909",
     "paid": "28993225824948",
     "principal": "85298021283105",
     "total": "122748627545559"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1624608465",
     "covered": 5,
     "due": 0,
@@ -4900,6 +5250,7 @@
     "total": "166776557168135"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1062165069",
     "covered": 19,
     "due": 0,
@@ -4920,6 +5271,7 @@
     "total": "109275320247764"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1012522455",
     "covered": 17,
     "due": 0,
@@ -4940,6 +5292,7 @@
     "total": "120527715977293"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1513185684",
     "covered": 104,
     "due": 0,
@@ -4960,6 +5313,7 @@
     "total": "202259593641380"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1313664971",
     "covered": 0,
     "due": 1,
@@ -4980,6 +5334,7 @@
     "total": "186477927096125"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1425315708",
     "covered": 31,
     "due": 94,
@@ -5000,6 +5355,7 @@
     "total": "17125144656668"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1448697665",
     "covered": 15,
     "due": 0,
@@ -5020,6 +5376,7 @@
     "total": "155060615477512"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1606512663",
     "covered": 46,
     "due": 0,
@@ -5040,6 +5397,7 @@
     "total": "147779110079672"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1802889149",
     "covered": 8,
     "due": 33,
@@ -5060,6 +5418,7 @@
     "total": "95205401316309"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1811714898",
     "covered": 49,
     "due": 0,
@@ -5080,6 +5439,7 @@
     "total": "196339980360199"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1939965226",
     "covered": 7,
     "due": 13,
@@ -5100,6 +5460,7 @@
     "total": "112868134319591"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1807005671",
     "covered": 41,
     "due": 21,
@@ -5120,6 +5481,7 @@
     "total": "5172436322294"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1990290054",
     "covered": 2,
     "due": 9,
@@ -5140,6 +5502,7 @@
     "total": "267513613853106"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1417619706",
     "covered": 19,
     "due": 0,
@@ -5160,6 +5523,7 @@
     "total": "176616057685763"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1647754565",
     "covered": 68,
     "due": 0,
@@ -5180,6 +5544,7 @@
     "total": "266890400977524"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1344197873",
     "covered": 19,
     "due": 0,
@@ -5200,6 +5565,7 @@
     "total": "124124069480638"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1980691780",
     "covered": 4,
     "due": 7,
@@ -5220,6 +5586,7 @@
     "total": "240359145648943"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1052572709",
     "covered": 24,
     "due": 46,
@@ -5240,6 +5607,7 @@
     "total": "111132050047982"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1560433914",
     "covered": 24,
     "due": 0,
@@ -5260,6 +5628,7 @@
     "total": "208910164556610"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1835598556",
     "covered": 1,
     "due": 0,
@@ -5280,6 +5649,7 @@
     "total": "49999277294073"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1261418652",
     "covered": 11,
     "due": 0,
@@ -5300,6 +5670,7 @@
     "total": "88451265625422"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1103702179",
     "covered": 4,
     "due": 0,
@@ -5320,6 +5691,7 @@
     "total": "71637067489947"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1711821183",
     "covered": 25,
     "due": 0,
@@ -5340,6 +5712,7 @@
     "total": "267542247315974"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1881405018",
     "covered": 47,
     "due": 0,
@@ -5360,6 +5733,7 @@
     "total": "5066733296107"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1526002713",
     "covered": 19,
     "due": 0,
@@ -5380,6 +5754,7 @@
     "total": "18002948697774"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1149206463",
     "covered": 9,
     "due": 0,
@@ -5400,6 +5775,7 @@
     "total": "87077344663138"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1215955622",
     "covered": 0,
     "due": 0,
@@ -5420,6 +5796,7 @@
     "total": "193836106358788"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1428541375",
     "covered": 6,
     "due": 0,
@@ -5440,6 +5817,7 @@
     "total": "277892625638625"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1667520422",
     "covered": 5,
     "due": 64,
@@ -5460,6 +5838,7 @@
     "total": "201447244748292"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1722005504",
     "covered": 6,
     "due": 51,
@@ -5480,6 +5859,7 @@
     "total": "165737765316854"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1464323298",
     "covered": 46,
     "due": 0,
@@ -5500,6 +5880,7 @@
     "total": "72155158097518"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1408604274",
     "covered": 0,
     "due": 4,
@@ -5520,6 +5901,7 @@
     "total": "232750140592093"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1411330143",
     "covered": 80,
     "due": 0,
@@ -5540,6 +5922,7 @@
     "total": "67170092222557"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1843379671",
     "covered": 89,
     "due": 0,
@@ -5560,9 +5943,10 @@
     "total": "93923616810747"
   },
   {
+    "accelerated_at": "1665917167",
     "anchor": "1601989821",
     "covered": 53,
-    "due": 17,
+    "due": 53,
     "first_missed_due": null,
     "grace": 1951075,
     "installments": 53,
@@ -5580,6 +5964,7 @@
     "total": "269841927460017"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1155375091",
     "covered": 14,
     "due": 56,
@@ -5600,6 +5985,7 @@
     "total": "9933072256167"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1975917664",
     "covered": 42,
     "due": 69,
@@ -5620,6 +6006,7 @@
     "total": "107262294632945"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1394838884",
     "covered": 41,
     "due": 0,
@@ -5640,6 +6027,7 @@
     "total": "86635838660844"
   },
   {
+    "accelerated_at": "1285541396",
     "anchor": "1220617970",
     "covered": 38,
     "due": 64,
@@ -5649,7 +6037,7 @@
     "interval": "1087429",
     "late_bps": 5650,
     "late_collected": "0",
-    "late_due": "11660196898612",
+    "late_due": "12158546105256",
     "late_paid_until": "0",
     "missed": 26,
     "now": "1292388284",
@@ -5660,6 +6048,7 @@
     "total": "182879095694437"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1355754519",
     "covered": 42,
     "due": 70,
@@ -5680,6 +6069,7 @@
     "total": "56997367601545"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1953567490",
     "covered": 6,
     "due": 7,
@@ -5700,6 +6090,7 @@
     "total": "134881752385350"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1251688330",
     "covered": 12,
     "due": 38,
@@ -5720,6 +6111,7 @@
     "total": "127576307152188"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1688706136",
     "covered": 6,
     "due": 0,
@@ -5740,6 +6132,7 @@
     "total": "130974442490621"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1210342354",
     "covered": 3,
     "due": 0,
@@ -5760,6 +6153,7 @@
     "total": "163306493350747"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1996541303",
     "covered": 0,
     "due": 0,
@@ -5780,6 +6174,7 @@
     "total": "203434977851113"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1561987862",
     "covered": 3,
     "due": 0,
@@ -5800,6 +6195,7 @@
     "total": "256541849516100"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1768797929",
     "covered": 1,
     "due": 13,
@@ -5820,6 +6216,7 @@
     "total": "173260869854760"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1894022374",
     "covered": 16,
     "due": 32,
@@ -5840,6 +6237,7 @@
     "total": "10128786563352"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1500149559",
     "covered": 3,
     "due": 10,
@@ -5860,6 +6258,7 @@
     "total": "40579112675549"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1214238009",
     "covered": 5,
     "due": 14,
@@ -5880,6 +6279,7 @@
     "total": "126788723073436"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1414370206",
     "covered": 56,
     "due": 0,
@@ -5900,6 +6300,7 @@
     "total": "96651522559092"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1951969509",
     "covered": 57,
     "due": 71,
@@ -5920,6 +6321,7 @@
     "total": "174247518048735"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1119858771",
     "covered": 15,
     "due": 0,
@@ -5940,6 +6342,7 @@
     "total": "265718634537917"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1517888712",
     "covered": 39,
     "due": 0,
@@ -5960,6 +6363,7 @@
     "total": "81473528881672"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1982441891",
     "covered": 56,
     "due": 43,
@@ -5980,6 +6384,7 @@
     "total": "74687269743659"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1913879787",
     "covered": 22,
     "due": 0,
@@ -6000,6 +6405,7 @@
     "total": "12025331513484"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1900120652",
     "covered": 5,
     "due": 0,
@@ -6020,6 +6426,7 @@
     "total": "157804976891698"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1482034318",
     "covered": 0,
     "due": 0,
@@ -6040,6 +6447,7 @@
     "total": "214278816699378"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1645952496",
     "covered": 2,
     "due": 20,
@@ -6060,6 +6468,7 @@
     "total": "102608280986632"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1998329672",
     "covered": 16,
     "due": 16,
@@ -6080,6 +6489,7 @@
     "total": "155926936759318"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1115367185",
     "covered": 27,
     "due": 27,
@@ -6100,6 +6510,7 @@
     "total": "151308391449827"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1559321208",
     "covered": 1,
     "due": 45,
@@ -6120,6 +6531,7 @@
     "total": "88621291924846"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1572297064",
     "covered": 9,
     "due": 0,
@@ -6140,6 +6552,7 @@
     "total": "168301179909546"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1086553030",
     "covered": 41,
     "due": 44,
@@ -6160,6 +6573,7 @@
     "total": "237756648518043"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1568785675",
     "covered": 56,
     "due": 0,
@@ -6180,6 +6594,7 @@
     "total": "169979513835596"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1548971256",
     "covered": 69,
     "due": 3,
@@ -6200,6 +6615,7 @@
     "total": "9254001489530"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1232666508",
     "covered": 51,
     "due": 5,
@@ -6220,6 +6636,7 @@
     "total": "25219362665393"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1208331356",
     "covered": 12,
     "due": 0,
@@ -6240,6 +6657,7 @@
     "total": "253010377910848"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1065092599",
     "covered": 94,
     "due": 0,
@@ -6260,6 +6678,7 @@
     "total": "171027210332662"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1620431994",
     "covered": 56,
     "due": 60,
@@ -6280,6 +6699,7 @@
     "total": "104293166942060"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1045292274",
     "covered": 42,
     "due": 0,
@@ -6300,6 +6720,7 @@
     "total": "164795318600981"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1697015962",
     "covered": 35,
     "due": 0,
@@ -6320,6 +6741,7 @@
     "total": "132712236111334"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1091536050",
     "covered": 29,
     "due": 26,
@@ -6340,6 +6762,7 @@
     "total": "235304411489936"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1120892803",
     "covered": 46,
     "due": 41,
@@ -6360,6 +6783,7 @@
     "total": "160191796387187"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1511316476",
     "covered": 36,
     "due": 51,
@@ -6380,6 +6804,7 @@
     "total": "109452498281961"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1523042755",
     "covered": 52,
     "due": 0,
@@ -6400,6 +6825,7 @@
     "total": "249804125750200"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1132295371",
     "covered": 22,
     "due": 14,
@@ -6420,6 +6846,7 @@
     "total": "59728053295011"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1215741596",
     "covered": 5,
     "due": 10,
@@ -6440,6 +6867,7 @@
     "total": "1303742044656"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1364664821",
     "covered": 2,
     "due": 3,
@@ -6460,6 +6888,7 @@
     "total": "199723903050800"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1634220218",
     "covered": 9,
     "due": 27,
@@ -6480,6 +6909,7 @@
     "total": "92580339805344"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1265500510",
     "covered": 0,
     "due": 2,
@@ -6500,6 +6930,7 @@
     "total": "19000234157013"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1473938963",
     "covered": 67,
     "due": 0,
@@ -6520,6 +6951,7 @@
     "total": "239657981844231"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1350640262",
     "covered": 41,
     "due": 0,
@@ -6540,6 +6972,7 @@
     "total": "275819544395296"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1789171298",
     "covered": 4,
     "due": 0,
@@ -6560,6 +6993,7 @@
     "total": "102719239324846"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1375638473",
     "covered": 22,
     "due": 34,
@@ -6580,6 +7014,7 @@
     "total": "193059174131115"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1481587955",
     "covered": 48,
     "due": 0,
@@ -6600,6 +7035,7 @@
     "total": "268305257110125"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1180356892",
     "covered": 42,
     "due": 0,
@@ -6620,6 +7056,7 @@
     "total": "159544145175040"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1213237123",
     "covered": 38,
     "due": 43,
@@ -6640,6 +7077,7 @@
     "total": "61968409594877"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1792647541",
     "covered": 67,
     "due": 92,
@@ -6660,6 +7098,7 @@
     "total": "177384937892873"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1576473632",
     "covered": 5,
     "due": 0,
@@ -6680,6 +7119,7 @@
     "total": "160303997888646"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1071068105",
     "covered": 89,
     "due": 94,
@@ -6700,6 +7140,7 @@
     "total": "241845225270435"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1494916856",
     "covered": 6,
     "due": 9,
@@ -6720,6 +7161,7 @@
     "total": "45080764666131"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1021178377",
     "covered": 30,
     "due": 19,
@@ -6740,6 +7182,7 @@
     "total": "180196579640070"
   },
   {
+    "accelerated_at": "1833807391",
     "anchor": "1666758420",
     "covered": 21,
     "due": 34,
@@ -6760,6 +7203,7 @@
     "total": "70974334640547"
   },
   {
+    "accelerated_at": "1147976800",
     "anchor": "1060351902",
     "covered": 16,
     "due": 33,
@@ -6780,6 +7224,7 @@
     "total": "124043518498644"
   },
   {
+    "accelerated_at": "1868566077",
     "anchor": "1727188269",
     "covered": 20,
     "due": 33,
@@ -6800,6 +7245,7 @@
     "total": "73821004153793"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1587812974",
     "covered": 71,
     "due": 90,
@@ -6820,6 +7266,7 @@
     "total": "25494496466253"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1445448370",
     "covered": 6,
     "due": 10,
@@ -6840,6 +7287,7 @@
     "total": "281300496319504"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1328442800",
     "covered": 74,
     "due": 69,
@@ -6860,6 +7308,7 @@
     "total": "223392344689542"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1236083581",
     "covered": 29,
     "due": 38,
@@ -6880,6 +7329,7 @@
     "total": "264914258992223"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1168979255",
     "covered": 42,
     "due": 0,
@@ -6900,6 +7350,7 @@
     "total": "152900226637475"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1499309827",
     "covered": 3,
     "due": 53,
@@ -6920,6 +7371,7 @@
     "total": "31135257409702"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1387613692",
     "covered": 90,
     "due": 92,
@@ -6940,6 +7392,7 @@
     "total": "189267415941500"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1729200649",
     "covered": 35,
     "due": 0,
@@ -6960,6 +7413,7 @@
     "total": "209941481087155"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1347539895",
     "covered": 12,
     "due": 0,
@@ -6980,6 +7434,7 @@
     "total": "97704339834038"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1476386783",
     "covered": 67,
     "due": 0,
@@ -7000,6 +7455,7 @@
     "total": "250096843618996"
   },
   {
+    "accelerated_at": "2021776074",
     "anchor": "1363509887",
     "covered": 1,
     "due": 12,
@@ -7020,6 +7476,7 @@
     "total": "92767463513895"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1916253308",
     "covered": 4,
     "due": 9,
@@ -7040,6 +7497,7 @@
     "total": "201007088109962"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1151048332",
     "covered": 23,
     "due": 0,
@@ -7060,6 +7518,7 @@
     "total": "193052079786662"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1507588503",
     "covered": 6,
     "due": 0,
@@ -7080,6 +7539,7 @@
     "total": "223462345429811"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1553296409",
     "covered": 57,
     "due": 56,
@@ -7100,6 +7560,7 @@
     "total": "50112327615216"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1620799964",
     "covered": 2,
     "due": 0,
@@ -7120,6 +7581,7 @@
     "total": "197474656043662"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1317677798",
     "covered": 0,
     "due": 0,
@@ -7140,6 +7602,7 @@
     "total": "255739519170926"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1284183253",
     "covered": 51,
     "due": 0,
@@ -7160,6 +7623,7 @@
     "total": "151293978022597"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1723475688",
     "covered": 8,
     "due": 10,
@@ -7180,6 +7644,7 @@
     "total": "192332767729039"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1036302827",
     "covered": 18,
     "due": 18,
@@ -7200,6 +7665,7 @@
     "total": "251264232261594"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1583062688",
     "covered": 6,
     "due": 78,
@@ -7220,6 +7686,7 @@
     "total": "169732943042839"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1824235732",
     "covered": 117,
     "due": 17,
@@ -7240,6 +7707,7 @@
     "total": "64701008605138"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1818800078",
     "covered": 44,
     "due": 94,
@@ -7260,6 +7728,7 @@
     "total": "153678817349015"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1572324844",
     "covered": 6,
     "due": 10,
@@ -7280,6 +7749,7 @@
     "total": "273537137494725"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1653494752",
     "covered": 8,
     "due": 0,
@@ -7300,6 +7770,7 @@
     "total": "186133384411470"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1746111537",
     "covered": 34,
     "due": 0,
@@ -7320,6 +7791,7 @@
     "total": "209503072638261"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1320398581",
     "covered": 57,
     "due": 0,
@@ -7340,6 +7812,7 @@
     "total": "127325566760244"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1949520015",
     "covered": 9,
     "due": 0,
@@ -7360,6 +7833,7 @@
     "total": "123317764208054"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1603220949",
     "covered": 12,
     "due": 0,
@@ -7380,6 +7854,7 @@
     "total": "179074016746791"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1397361444",
     "covered": 26,
     "due": 37,
@@ -7400,6 +7875,7 @@
     "total": "270553425218475"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1380876191",
     "covered": 8,
     "due": 0,
@@ -7420,6 +7896,7 @@
     "total": "25230610125948"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1835161902",
     "covered": 95,
     "due": 0,
@@ -7440,6 +7917,7 @@
     "total": "10729407614096"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1600426647",
     "covered": 105,
     "due": 34,
@@ -7460,6 +7938,7 @@
     "total": "82590754757597"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1750662228",
     "covered": 44,
     "due": 0,
@@ -7480,6 +7959,7 @@
     "total": "268568757710124"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1562645143",
     "covered": 27,
     "due": 42,
@@ -7500,6 +7980,7 @@
     "total": "120014272434954"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1343434753",
     "covered": 30,
     "due": 6,
@@ -7520,6 +8001,7 @@
     "total": "184931334031218"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1776823135",
     "covered": 72,
     "due": 80,
@@ -7540,6 +8022,7 @@
     "total": "230773056459464"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1045424412",
     "covered": 47,
     "due": 0,
@@ -7560,6 +8043,7 @@
     "total": "219786264458120"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1941126213",
     "covered": 14,
     "due": 31,
@@ -7580,6 +8064,7 @@
     "total": "97222011433970"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1138968492",
     "covered": 60,
     "due": 0,
@@ -7600,6 +8085,7 @@
     "total": "159580969413518"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1503197958",
     "covered": 30,
     "due": 39,
@@ -7620,6 +8106,7 @@
     "total": "206258716768886"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1361476237",
     "covered": 12,
     "due": 0,
@@ -7640,6 +8127,7 @@
     "total": "82822392977037"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1765095530",
     "covered": 66,
     "due": 0,
@@ -7660,6 +8148,7 @@
     "total": "231594611367813"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1849798651",
     "covered": 17,
     "due": 78,
@@ -7680,6 +8169,7 @@
     "total": "51779231218219"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1347399978",
     "covered": 71,
     "due": 0,
@@ -7700,6 +8190,7 @@
     "total": "33051520861250"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1976484957",
     "covered": 44,
     "due": 0,
@@ -7720,6 +8211,7 @@
     "total": "236168837521264"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1716713059",
     "covered": 39,
     "due": 0,
@@ -7740,6 +8232,7 @@
     "total": "81558617348722"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1694242457",
     "covered": 81,
     "due": 92,
@@ -7760,6 +8253,7 @@
     "total": "126182460138316"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1274561335",
     "covered": 88,
     "due": 102,
@@ -7780,6 +8274,7 @@
     "total": "266019210375313"
   },
   {
+    "accelerated_at": "1834060701",
     "anchor": "1430639113",
     "covered": 33,
     "due": 33,
@@ -7800,6 +8295,7 @@
     "total": "94592193456243"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1521577138",
     "covered": 1,
     "due": 0,
@@ -7820,6 +8316,7 @@
     "total": "276623948089840"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1707727647",
     "covered": 34,
     "due": 17,
@@ -7840,6 +8337,7 @@
     "total": "220201019613451"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1037735846",
     "covered": 69,
     "due": 0,
@@ -7860,6 +8358,7 @@
     "total": "187843139671947"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1923461626",
     "covered": 78,
     "due": 88,
@@ -7880,6 +8379,7 @@
     "total": "77173133925961"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1812510611",
     "covered": 9,
     "due": 0,
@@ -7900,6 +8400,7 @@
     "total": "217266427386219"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1123347779",
     "covered": 54,
     "due": 0,
@@ -7920,6 +8421,7 @@
     "total": "250148247397917"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1062595376",
     "covered": 67,
     "due": 7,
@@ -7940,6 +8442,7 @@
     "total": "236700192284529"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1757835711",
     "covered": 16,
     "due": 0,
@@ -7960,6 +8463,7 @@
     "total": "209234388900449"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1934975309",
     "covered": 55,
     "due": 0,
@@ -7980,6 +8484,7 @@
     "total": "126169813186246"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1104136346",
     "covered": 44,
     "due": 0,
@@ -8000,6 +8505,7 @@
     "total": "56513983929097"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1392744609",
     "covered": 8,
     "due": 0,
@@ -8020,6 +8526,7 @@
     "total": "116840859441346"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1269131138",
     "covered": 21,
     "due": 0,
@@ -8040,6 +8547,7 @@
     "total": "231587197940307"
   },
   {
+    "accelerated_at": "1544893494",
     "anchor": "1142473658",
     "covered": 4,
     "due": 9,
@@ -8060,6 +8568,7 @@
     "total": "143800695736397"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1505251622",
     "covered": 5,
     "due": 0,
@@ -8080,6 +8589,7 @@
     "total": "124017678379891"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1156264686",
     "covered": 103,
     "due": 80,
@@ -8100,6 +8610,7 @@
     "total": "156554661827334"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1346150327",
     "covered": 5,
     "due": 58,
@@ -8120,6 +8631,7 @@
     "total": "192232648262872"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1867059566",
     "covered": 0,
     "due": 0,
@@ -8140,6 +8652,7 @@
     "total": "149355580989771"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1325437717",
     "covered": 81,
     "due": 0,
@@ -8160,6 +8673,7 @@
     "total": "75894179610149"
   },
   {
+    "accelerated_at": "1561492537",
     "anchor": "1543936245",
     "covered": 11,
     "due": 11,
@@ -8180,6 +8694,7 @@
     "total": "244270703697510"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1577244791",
     "covered": 38,
     "due": 114,
@@ -8200,6 +8715,7 @@
     "total": "59415519658423"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1803953727",
     "covered": 14,
     "due": 0,
@@ -8220,6 +8736,7 @@
     "total": "206633540805991"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1512260256",
     "covered": 7,
     "due": 11,
@@ -8240,16 +8757,17 @@
     "total": "236371615462935"
   },
   {
+    "accelerated_at": "1915509236",
     "anchor": "1875119481",
     "covered": 33,
     "due": 75,
-    "first_missed_due": "1946839115",
+    "first_missed_due": "1915509236",
     "grace": 1948228,
     "installments": 75,
     "interval": "2109401",
     "late_bps": 51,
     "late_collected": "0",
-    "late_due": "163801039656",
+    "late_due": "278361188247",
     "late_paid_until": "1967890936",
     "missed": 42,
     "now": "2033324556",
@@ -8260,6 +8778,7 @@
     "total": "111511563758032"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1560548834",
     "covered": 1,
     "due": 0,
@@ -8280,6 +8799,7 @@
     "total": "45617676317199"
   },
   {
+    "accelerated_at": "0",
     "anchor": "1638000596",
     "covered": 2,
     "due": 0,
@@ -8300,21 +8820,22 @@
     "total": "171256768094039"
   },
   {
+    "accelerated_at": "1604317780",
     "anchor": "1457339565",
     "covered": 70,
-    "due": 32,
-    "first_missed_due": null,
+    "due": 110,
+    "first_missed_due": "1604317780",
     "grace": 856876,
     "installments": 110,
     "interval": "7270966",
     "late_bps": 4973,
     "late_collected": "0",
-    "late_due": "0",
+    "late_due": "29273414323296",
     "late_paid_until": "0",
-    "missed": 0,
+    "missed": 40,
     "now": "1690010477",
-    "overdue": "0",
-    "overdue_principal": "0",
+    "overdue": "65547277927869",
+    "overdue_principal": "29273414323296",
     "paid": "114775357355720",
     "principal": "80532088919637",
     "total": "180322635283589"

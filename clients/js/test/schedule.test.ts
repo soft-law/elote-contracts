@@ -23,6 +23,7 @@ type Vector = {
   grace: number;
   late_paid_until: string;
   late_collected: string;
+  accelerated_at: string;
   paid: string;
   now: string;
   due: number;
@@ -52,6 +53,7 @@ test("lineArrears agrees with math::arrears on every vector", () => {
         interestRepaid: 0n,
         // The vectors anchor the calendar one interval before the first due date.
         firstDueAt: BigInt(v.anchor) + BigInt(v.interval),
+        acceleratedAt: BigInt(v.accelerated_at),
       },
       {
         intervalSeconds: BigInt(v.interval),
@@ -161,6 +163,7 @@ test("lateDue is never negative when lateCollected exceeds the principal (R-24)"
       principalRepaid: 0n,
       interestRepaid: 0n,
       firstDueAt: 1_100n,
+      acceleratedAt: 0n,
     },
     {
       intervalSeconds: 100n,

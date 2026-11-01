@@ -506,3 +506,9 @@ fn draw_state_follows_the_tranches() {
     assert_eq!(line.interest_due as u128, 100_000 + second);
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT);
 }
+
+#[test]
+fn credit_line_layout_is_313_bytes() {
+    use anchor_lang::Space;
+    assert_eq!(8 + elote_pool::state::CreditLine::INIT_SPACE, 313, "305 before accelerated_at");
+}

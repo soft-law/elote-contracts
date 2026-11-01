@@ -254,6 +254,9 @@ pub struct CreditLine {
     /// Salted merkle root of the credit file in the agreements engine. A commitment: no document,
     /// name or folio is derivable from it.
     pub expediente_root: [u8; 32],
+    /// When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.
+    /// From then on every installment is due and late interest runs on all remaining principal.
+    pub accelerated_at: i64,
 }
 
 /// How the pagaré text was signed (C6a): the borrower's wallet alone.
