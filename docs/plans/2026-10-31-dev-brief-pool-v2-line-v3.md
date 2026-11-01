@@ -277,6 +277,13 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   Metaplex Core binary and the collection check at `init_pool`; 6b issuance of the Core asset and
   the `Pagare` sidecar at `draw`; 6c `cancel_pagare`. **6d `endorse_pagare` and the verifier stay
   gated on the legal brief.**
+- **Step 5d accepted** (`bcfeb3c`): principal share computed once for the regular installment;
+  vectors byte-identical; repay 63,946 / mark 39,635 / write_off 44,800 CU at 120 installments.
+- **6a accepted as planned:** mpl-core crate 0.12.1 (solana-program 3.0 line, no anchor feature)
+  against the `release/core@0.15.3` program binary committed under
+  `programs/elote_pool/tests/fixtures` (< 1 MB, sha256 verified at load, tag and URL in a README);
+  collection admin-supplied and validated at `init_pool` (Core-owned, `CollectionV1`, update
+  authority = pool PDA).
 
 ## Points the coordinator still owns
 
