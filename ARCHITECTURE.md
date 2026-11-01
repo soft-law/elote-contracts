@@ -249,6 +249,24 @@ back: `cancel_pagare` trusts the sidecar (`asset` must be `Pagare.asset`) and th
 own checks in the `BurnV1` CPI, which the permanent burn delegate force-approves through the
 freeze (`tests/pagare.rs` burns a frozen asset).
 
+What Core lets the parties do with such an asset after its creation, pinned by
+`tests/core_capabilities.rs` against the 0.15.3 binary (step 6d prework, condition C9):
+
+- A permanent delegate's authority cannot be reassigned directly: `ApprovePluginAuthorityV1` on a
+  delegated permanent plugin fails with `CannotRedelegate` for everyone, the delegate and the
+  collection's update authority included. `RevokePluginAuthorityV1` by the delegate or by the
+  collection's authority resets it to `UpdateAuthority` (the collection, so the pool PDA); from
+  there only the collection's authority can approve a key or `None`, and `None` is terminal (no
+  approve, no revoke after it). A handoff is two acts of the pool; an extinction is irreversible.
+- Only the permanent freeze delegate's authority can thaw or re-freeze (`UpdatePluginV1`); the
+  collection's authority, the owner and strangers get `NoApprovals`. A frozen asset whose freeze
+  authority became `None` is immovable forever (the owner's transfer is refused; Core reports `InvalidAuthority`); thawed
+  before the handoff it becomes an ordinary asset its owner transfers freely.
+- An asset's update authority cannot leave its collection: `UpdateV1` to an address or `None` and
+  `UpdateV2` to an address fail with `InvalidAuthority` for everyone, the collection's authority
+  included. That authority can still add authority-managed plugins (`UpdateDelegate` went
+  through), not permanent or owner-managed ones; an `AddBlocker` set at creation closes that door.
+
 ### 2.4 Constants (`state.rs`)
 
 | constant | value | role |
@@ -812,12 +830,13 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/known_limits.rs` | LiteSVM | the nine tests in §9: six limits still in force and three inverted on 2026-10-31 |
 | `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
 | `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
+| `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins |
 | `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (26 891 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 869 CU at 120, deterministic, of which the Core CPI is about 44 000) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 123 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 126 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.
