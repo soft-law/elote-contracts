@@ -71,6 +71,31 @@ the design as it was. Status: **adopted** (sent to the developer or written into
 | C29 ⚠ [G] | No "programa", "serie", "emisión", "inversión" in names and metadata | program, ops | **adopted**: asset named `PAGARE <line>-<draw>`, neutral collection name |
 | C30 [G] | Assets denominated in pesos, not used as a means of payment | design | holds (currency attribute = the peso asset mint) |
 | C31 [U] | Prior consultation with the CNBV before endorsing to investors | counsel | counsel |
+| C32 [new, DA Phase 5] | After an endoso en propiedad by the vehicle: to whom does the debtor pay, how are the line's cash flows redirected, what happens to NAV and outstanding principal | **design + counsel** | **open; gates the en propiedad code.** Options: whole-line sale with repay redirection; per-pagaré routing by the engine; no en propiedad endosos from the vehicle in v1 (procuración only). Design note requested from theOffice; research states the legal consequences |
+
+## Supplement of 2026-11-02 (endosos, procuración, acceleration): what it changed
+
+Source: `loans-gov-mexico/brief-tok/T-pagare-token-legal-supplement-endosos.md`. Applied to the 6d
+spec (dev message of 2026-11-02) and to decisions 27 and 28:
+
+- **Registry**: leaves the holder-owned AppData (the holder could rewrite it; payment and court
+  entries would depend on the holder's signature) and becomes a program-owned, append-only hash
+  chain in the sidecar (`log_root`, `entry_count`, `last_kind`; full entries in events and in the
+  engine). Compatible with A per Q-B.7: the vehicle keeps a bounded power to annotate, none to
+  move, freeze or burn.
+- **Holder endosos**: signature-verified entries, no attestor, no SAS gate (Q-B.6); attestor and
+  gate bind only when the pool is the endorser. `kind` mandatory (art. 30). `revoke_procuracion`
+  by the owner alone (arts. 35, 41). Termination entry written when an endoso en propiedad
+  clears a procuración.
+- **Procurador**: may receive payment, sign the receipt and extinguish (35, 129, 17); the burn
+  delegate points at a program PDA so a burn without receipt is technically impossible (Q-A.3).
+- **Court**: `court_annotation` (annotates, never moves; LGTOC 20, 341, 287 by analogy, CCom
+  1168, 1067 Bis for apremio); late entries with two dates and the art. 28 constancia (Q-B.9).
+- **Payments**: an entry per payment in the title's registry with `receipt_hash`, in one act
+  with the receipt (art. 130, 8o fr. VIII); shape (inside `repay` or bundled) decided on CU.
+- **Acceleration (Q14)**: the rule holds; moratory interest per missed installment from its own
+  due date (the grace is an express waiver), on principal only; clause imperative with an
+  objective trigger; the on-chain state is a record, not a declaration. Residual: 194/2005.
 
 ## Risks the brief names that the program answers now
 

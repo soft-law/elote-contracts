@@ -406,6 +406,16 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   cancel's endorsed branch); origin tip `017774a`. Sessions paused on usage limits the night of
   2026-11-01 and resumed 2026-11-02: dev on the cleanup then step 7 (proration last, behind one
   function, pending research Q14); audit agent resumed; research on the supplement, Q14 first.
+- **Research supplement applied (2026-11-02)**: Q14 confirms the step 7 proration (per-installment
+  moratory start and principal-only base already hold). 6d spec amendments sent: registry becomes
+  a program-owned hash chain in the sidecar (`log_root`, `entry_count`, `last_kind`; AppData
+  dropped from the creation set; re-measure); procurador's burn delegate points at a program PDA
+  `["procurador", pagare, key]`; holder endosos need no attestor or gate; `kind` mandatory;
+  `revoke_procuracion` owner-only; termination entry on en propiedad over a procuración;
+  `court_annotation` and late entries (two dates); payment entries per repayment with
+  `receipt_hash` (shape decided on CU at 120, inside `repay` vs bundled `annotate_payment`).
+  6d code split: part 1 (registry, procuración, court, payments) on release; part 2 (en
+  propiedad) gated on C32 design. Order: cleanup → amended §2.3 + two assessments → step 7.
 
 ## Points the coordinator still owns
 
