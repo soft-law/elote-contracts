@@ -17,6 +17,8 @@ import {
   getStructEncoder,
   getU64Decoder,
   getU64Encoder,
+  getU8Decoder,
+  getU8Encoder,
   getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
@@ -140,11 +142,15 @@ export type DrawInstructionData = {
   discriminator: ReadonlyUint8Array;
   amount: bigint;
   documentHash: ReadonlyUint8Array;
+  assetBump: number;
+  pagareBump: number;
 };
 
 export type DrawInstructionDataArgs = {
   amount: number | bigint;
   documentHash: ReadonlyUint8Array;
+  assetBump: number;
+  pagareBump: number;
 };
 
 export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructionDataArgs> {
@@ -153,6 +159,8 @@ export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructio
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["amount", getU64Encoder()],
       ["documentHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["assetBump", getU8Encoder()],
+      ["pagareBump", getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: DRAW_DISCRIMINATOR }),
   );
@@ -163,6 +171,8 @@ export function getDrawInstructionDataDecoder(): FixedSizeDecoder<DrawInstructio
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["amount", getU64Decoder()],
     ["documentHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["assetBump", getU8Decoder()],
+    ["pagareBump", getU8Decoder()],
   ]);
 }
 
@@ -219,10 +229,16 @@ export type DrawAsyncInput<
   payer: TAccountPayer;
   /**
    * The Metaplex Core asset that is the pagaré, created by the Core program in this
-   * instruction at a program-derived address, so clients need no keypair for it.
+   * instruction at `["pagare_asset", line, line.draws, asset_bump]`, so clients need no
+   * keypair for it. The client derives the bump and the handler checks the address with one
+   * `create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of
+   * a draw does not depend on the line's key.
    */
   asset: TAccountAsset;
-  /** The program's record of the pagaré. */
+  /**
+   * The program's record of the pagaré, created by the handler at `["pagare", line,
+   * line.draws, pagare_bump]` and verified the same way.
+   */
   pagare: TAccountPagare;
   /** The series' collection the pool controls (validated at `init_pool`). */
   collection: TAccountCollection;
@@ -232,6 +248,8 @@ export type DrawAsyncInput<
   program?: TAccountProgram;
   amount: DrawInstructionDataArgs["amount"];
   documentHash: DrawInstructionDataArgs["documentHash"];
+  assetBump: DrawInstructionDataArgs["assetBump"];
+  pagareBump: DrawInstructionDataArgs["pagareBump"];
 };
 
 export async function getDrawInstructionAsync<
@@ -580,10 +598,16 @@ export type DrawInput<
   payer: TAccountPayer;
   /**
    * The Metaplex Core asset that is the pagaré, created by the Core program in this
-   * instruction at a program-derived address, so clients need no keypair for it.
+   * instruction at `["pagare_asset", line, line.draws, asset_bump]`, so clients need no
+   * keypair for it. The client derives the bump and the handler checks the address with one
+   * `create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of
+   * a draw does not depend on the line's key.
    */
   asset: TAccountAsset;
-  /** The program's record of the pagaré. */
+  /**
+   * The program's record of the pagaré, created by the handler at `["pagare", line,
+   * line.draws, pagare_bump]` and verified the same way.
+   */
   pagare: TAccountPagare;
   /** The series' collection the pool controls (validated at `init_pool`). */
   collection: TAccountCollection;
@@ -593,6 +617,8 @@ export type DrawInput<
   program?: TAccountProgram;
   amount: DrawInstructionDataArgs["amount"];
   documentHash: DrawInstructionDataArgs["documentHash"];
+  assetBump: DrawInstructionDataArgs["assetBump"];
+  pagareBump: DrawInstructionDataArgs["pagareBump"];
 };
 
 export function getDrawInstruction<
@@ -916,10 +942,16 @@ export type ParsedDrawInstruction<
     payer: TAccountMetas[8];
     /**
      * The Metaplex Core asset that is the pagaré, created by the Core program in this
-     * instruction at a program-derived address, so clients need no keypair for it.
+     * instruction at `["pagare_asset", line, line.draws, asset_bump]`, so clients need no
+     * keypair for it. The client derives the bump and the handler checks the address with one
+     * `create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of
+     * a draw does not depend on the line's key.
      */
     asset: TAccountMetas[9];
-    /** The program's record of the pagaré. */
+    /**
+     * The program's record of the pagaré, created by the handler at `["pagare", line,
+     * line.draws, pagare_bump]` and verified the same way.
+     */
     pagare: TAccountMetas[10];
     /** The series' collection the pool controls (validated at `init_pool`). */
     collection: TAccountMetas[11];

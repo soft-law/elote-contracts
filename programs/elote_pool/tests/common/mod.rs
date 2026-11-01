@@ -917,6 +917,25 @@ impl Env {
         amount: u64,
         document_hash: [u8; 32],
     ) -> Instruction {
+        let line = line_pda(&k.pool, line_id).0;
+        let draw_index = self.line(k, line_id).draws;
+        let (asset_bump, pagare_bump) = (pagare_asset_pda(&line, draw_index).1, pagare_pda(&line, draw_index).1);
+        self.draw_ix_full(k, line_id, borrower, payer, amount, document_hash, asset_bump, pagare_bump)
+    }
+
+    /// As `draw_ix_paid_by`, with the two PDA bumps given explicitly (the program verifies them).
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_ix_full(
+        &self,
+        k: &PoolKeys,
+        line_id: u64,
+        borrower: &Pubkey,
+        payer: &Pubkey,
+        amount: u64,
+        document_hash: [u8; 32],
+        asset_bump: u8,
+        pagare_bump: u8,
+    ) -> Instruction {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
         let draw_index = self.line(k, line_id).draws;
@@ -941,7 +960,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::Draw { amount, document_hash }.data(),
+            data: elote_pool::instruction::Draw { amount, document_hash, asset_bump, pagare_bump }.data(),
         }
     }
 

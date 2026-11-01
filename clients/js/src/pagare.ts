@@ -53,19 +53,25 @@ export async function findPagareAssetPda(
 }
 
 /**
- * The pagaré accounts a `draw` instruction needs, for `getDrawInstructionAsync`: the asset and
- * the sidecar of the next draw (`drawIndex` is `CreditLine.draws` as fetched before the draw),
- * the pool's collection (`Pool.collection`) and the Core program.
+ * The pagaré accounts and arguments a `draw` instruction needs, to spread into
+ * `getDrawInstructionAsync`'s input: the asset and the sidecar of the next draw (`drawIndex` is
+ * `CreditLine.draws` as fetched before the draw) with their bumps (the program verifies each with
+ * one `create_program_address`, so no bump search runs on chain), the pool's collection
+ * (`Pool.collection`) and the Core program.
  */
 export async function drawPagareAccounts(
   input: PagareSeeds & { collection: Address },
   config: { programAddress?: Address } = {}
-): Promise<{ asset: Address; pagare: Address; collection: Address; mplCoreProgram: Address }> {
+): Promise<{
+  asset: Address;
+  assetBump: number;
+  pagare: Address;
+  pagareBump: number;
+  collection: Address;
+  mplCoreProgram: Address;
+}> {
   const { line, drawIndex, collection } = input;
-  return {
-    asset: (await findPagareAssetPda({ line, drawIndex }, config))[0],
-    pagare: (await findPagarePda({ line, drawIndex }, config))[0],
-    collection,
-    mplCoreProgram: MPL_CORE_PROGRAM_ADDRESS,
-  };
+  const [asset, assetBump] = await findPagareAssetPda({ line, drawIndex }, config);
+  const [pagare, pagareBump] = await findPagarePda({ line, drawIndex }, config);
+  return { asset, assetBump, pagare, pagareBump, collection, mplCoreProgram: MPL_CORE_PROGRAM_ADDRESS };
 }

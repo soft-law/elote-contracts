@@ -315,70 +315,20 @@
           "name": "asset",
           "docs": [
             "The Metaplex Core asset that is the pagaré, created by the Core program in this",
-            "instruction at a program-derived address, so clients need no keypair for it."
+            "instruction at `[\"pagare_asset\", line, line.draws, asset_bump]`, so clients need no",
+            "keypair for it. The client derives the bump and the handler checks the address with one",
+            "`create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of",
+            "a draw does not depend on the line's key."
           ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  97,
-                  103,
-                  97,
-                  114,
-                  101,
-                  95,
-                  97,
-                  115,
-                  115,
-                  101,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "line"
-              },
-              {
-                "kind": "account",
-                "path": "line.draws",
-                "account": "CreditLine"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "pagare",
           "docs": [
-            "The program's record of the pagaré."
+            "The program's record of the pagaré, created by the handler at `[\"pagare\", line,",
+            "line.draws, pagare_bump]` and verified the same way."
           ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  97,
-                  103,
-                  97,
-                  114,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "line"
-              },
-              {
-                "kind": "account",
-                "path": "line.draws",
-                "account": "CreditLine"
-              }
-            ]
-          }
+          "writable": true
         },
         {
           "name": "collection",
@@ -415,6 +365,14 @@
               32
             ]
           }
+        },
+        {
+          "name": "asset_bump",
+          "type": "u8"
+        },
+        {
+          "name": "pagare_bump",
+          "type": "u8"
         }
       ]
     },
@@ -1384,19 +1342,6 @@
         151,
         129,
         104
-      ]
-    },
-    {
-      "name": "Pagare",
-      "discriminator": [
-        140,
-        142,
-        27,
-        239,
-        147,
-        131,
-        73,
-        247
       ]
     },
     {
@@ -2528,85 +2473,6 @@
           {
             "name": "share_supply",
             "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Pagare",
-      "docs": [
-        "The program's own record of one pagaré (decision 24, pagaré design): the sidecar of the",
-        "Metaplex Core asset `draw` mints for a disposición. It holds no status and no folio: a",
-        "pagaré's state is derived from the line (covered oldest first by `draw_index`), and the",
-        "agreements engine maps the index to its folio off chain. `cancel_pagare` (step 6c) will close",
-        "it and return its rent to the relayer; until then the rent of every draw stays locked."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "line",
-            "type": "pubkey"
-          },
-          {
-            "name": "draw_index",
-            "docs": [
-              "Which disposición of the line, 0-based: the `draws` count at the time of the draw."
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "asset",
-            "docs": [
-              "The Core asset at `[PAGARE_ASSET, line, draw_index]`."
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "pagare_hash",
-            "docs": [
-              "Hash of the signed pagaré data message, as `draw` received it."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "amount",
-            "docs": [
-              "The tranche this pagaré documents."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "issued_at",
-            "type": "i64"
-          },
-          {
-            "name": "due_at",
-            "docs": [
-              "The line's last due date at issuance (D1): when the last payment is owed."
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
-          },
-          {
-            "name": "reserved",
-            "docs": [
-              "Room for later facts (an endoso count, the current holder) without a layout change."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
           }
         ]
       }

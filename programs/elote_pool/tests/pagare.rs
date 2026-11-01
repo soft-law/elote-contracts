@@ -148,7 +148,10 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     assert!(asset.plugin_list.freeze_delegate.is_none());
     assert!(asset.plugin_list.transfer_delegate.is_none());
     assert!(asset.plugin_list.burn_delegate.is_none());
-    assert!(asset.plugin_list.permanent_burn_delegate.is_none());
+    // Permanent burn delegate: authority = the pool PDA, so `cancel_pagare` is one `BurnV1`
+    // whatever the holder (decision of 2026-11-01).
+    let burn = asset.plugin_list.permanent_burn_delegate.as_ref().expect("PermanentBurnDelegate");
+    pool_authority(&burn.base.authority);
     assert!(asset.plugin_list.update_delegate.is_none());
     // One empty AppData section, binary, data authority = the pool PDA.
     let adapters = &asset.external_plugin_adapter_list;
@@ -176,13 +179,14 @@ fn a_draw_survives_pre_funded_pagare_addresses() {
     // Below the rent-exempt minimum the runtime refuses the transfer itself, so the only funding
     // that lands is a rent-exempt one.
     env.svm.airdrop(&asset0, 1_000_000_000).unwrap();
-    env.svm.airdrop(&sidecar0, 1_000_000_000).unwrap();
+    env.svm.airdrop(&sidecar0, 1_000_000).unwrap(); // rent-exempt for no data, below the sidecar's rent
     let before = env.account(&borrower.pubkey()).lamports;
 
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
     env.send_with_attestor(ix, &borrower);
     // The stray lamports on the asset address went to the payer (here the borrower), who paid
-    // the fee and the rent of both accounts out of them; the sidecar's were kept as its rent.
+    // the fee and the rent of both accounts out of them; the sidecar's were kept and topped up
+    // to its rent.
     assert!(env.account(&borrower.pubkey()).lamports > before + 990_000_000);
     let asset = env.asset_state(&asset0);
     assert_eq!((asset.base.key, asset.base.owner), (Key::AssetV1, k.pool));
@@ -207,8 +211,16 @@ fn a_draw_with_the_wrong_pagare_accounts_is_refused() {
         let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
         let i = ix.accounts.iter().position(|m| m.pubkey == pagare_asset_pda(&line_key, 0).0).unwrap();
         ix.accounts[i].pubkey = wrong;
-        assert!(env.try_send(ix, &borrower, &[&attestor]).is_err());
+        env.expect_err(ix, &borrower, &[&attestor], E_WRONG_ACCOUNT);
     }
+    // A wrong bump for either account: the client derives both and the program checks each with
+    // one `create_program_address`, so no bump search runs on chain.
+    let (asset_bump, pagare_bump) = (pagare_asset_pda(&line_key, 0).1, pagare_pda(&line_key, 0).1);
+    let b = borrower.pubkey();
+    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, asset_bump.wrapping_sub(1), pagare_bump);
+    env.expect_err(ix, &borrower, &[&attestor], E_WRONG_ACCOUNT);
+    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, asset_bump, pagare_bump.wrapping_sub(1));
+    env.expect_err(ix, &borrower, &[&attestor], E_WRONG_ACCOUNT);
     // A collection that is not the pool's.
     let other = env.create_collection(&k.pool);
     let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);

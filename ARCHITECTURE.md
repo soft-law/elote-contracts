@@ -120,6 +120,7 @@ Pool            PDA ["pool", admin, asset_mint]          data account, program-o
   `0, 1, 2…` below `MAX_DRAWS`, and the asset of any draw is derivable from the line address
   alone. The asset is a PDA of this program (not a client keypair), which the pool PDA and the
   asset PDA both sign for in the Core `CreateV2` CPI; the Core program then owns the account.
+  The client passes both bumps to `draw`, so the program verifies the addresses without a search.
 
 ### 2.1 `Pool` (299 bytes; 235 before pool v2)
 
@@ -224,7 +225,9 @@ update authority = the series' collection, whose own update authority is the poo
 expresses the authority of an asset in a collection through the collection); frozen from creation
 by a `PermanentFreezeDelegate` whose authority is the pool PDA; a `PermanentTransferDelegate`
 with the pool PDA as authority (the endoso will move it through this delegate, and nothing else
-can); `ImmutableMetadata`; an `Attributes` plugin with authority `None` carrying `pagare_hash`,
+can); a `PermanentBurnDelegate` with the pool PDA as authority, so `cancel_pagare` burns the
+pagaré with one `BurnV1` whoever holds it (its cancellation on full payment must not depend on
+the holder); `ImmutableMetadata`; an `Attributes` plugin with authority `None` carrying `pagare_hash`,
 `amount`, `currency` (the asset mint), `issued_at`, `due_at`, `line` and `draw_index`, the 32-byte values
 as lower-case hex (a base58 encoding on chain costs tens of thousands of CU); and an empty
 `AppData` external adapter, schema `Binary`, data authority = pool PDA, for the endoso log. The
@@ -439,7 +442,7 @@ agreement exists and matches the arguments; the sponsor's signature records whic
 promise it made (`sponsor_role`, decision 19) and grants no authority afterwards (a sponsor
 repays through `repay` like anyone else).
 
-### 5.5 `draw(amount: u64, document_hash: [u8; 32])`
+### 5.5 `draw(amount: u64, document_hash: [u8; 32], asset_bump: u8, pagare_bump: u8)`
 
 - **Signers:** `borrower`, `attestor` (D14: the engine attests the pagaré behind
   `document_hash` was signed and is conserved; no money moves without it) and `payer`, any
@@ -447,23 +450,30 @@ repays through `repay` like anyone else).
   wallets rarely hold SOL).
 - **Constraints:** `line` has `has_one = pool` and `has_one = borrower` (`Unauthorized`);
   `asset_mint` (read-only) and `vault` match the pool; `borrower_asset_account` has the pool's
-  asset mint and is owned by the borrower; `asset` is the PDA `["pagare_asset", line,
-  line.draws]` and `pagare` is initialised at `["pagare", line, line.draws]` (a stale or foreign
-  address fails the seeds, `ConstraintSeeds`); `collection` is `pool.collection`
-  (`WrongAccount`); `mpl_core_program` is the Core program id.
+  asset mint and is owned by the borrower; `collection` is `pool.collection` (`WrongAccount`);
+  `mpl_core_program` is the Core program id. `asset` and `pagare` are unchecked here and
+  verified in the handler (below).
 - **Checks, in order (D8: all before any write):** not paused; `status` is `Approved` or
   `Active` (`LineStatus`); `0 < amount <= principal - drawn` (`WrongAmount`);
   `now < availability_end`, strictly (`AvailabilityEnded`: an installment counts as due at the
   second it falls due); on a scheduled line `drawn + interest_due >= installments` after the
   tranche (`InvalidSchedule`, D3b); `draws < MAX_DRAWS` (`TooManyDraws`); `amount <=
-  vault.amount` (`InsufficientLiquidity`); `document_hash != [0; 32]` (`DocumentHashRequired`).
+  vault.amount` (`InsufficientLiquidity`); `document_hash != [0; 32]` (`DocumentHashRequired`);
+  `asset == create_program_address(["pagare_asset", line, line.draws, asset_bump])` and
+  `pagare == create_program_address(["pagare", line, line.draws, pagare_bump])`, the sidecar
+  address still empty and system-owned (`WrongAccount` for all three). The client derives the
+  two bumps, so the program runs one `create_program_address` per account and never searches:
+  the compute of a draw does not depend on the line's key (with Anchor's `seeds`/`init`
+  constraints it varied by 1 500 CU per failed bump iteration).
 - **CPIs:** `transfer_checked` the tranche vault → borrower (pool signs); if the asset address
   holds lamports (anyone can fund a predictable address ahead of the draw, and Core's
   `create_account` refuses a funded one, which would otherwise let a stranger block every
   draw of a line for the price of rent) a system `transfer` of all of them to `payer`, signed
   by the asset PDA; then Metaplex Core `CreateV2` of the pagaré asset into the collection, with
   the plugins of §2.3 (the pool PDA signs as authority and owner, the asset PDA signs for its
-  own address, `payer` funds it). The sidecar's `init` tolerates a funded address by itself.
+  own address, `payer` funds it); then the sidecar, by hand (Anchor's `init` always searches
+  for the bump): `create_account` at the verified address, or, if someone funded it, a top-up
+  to its rent, `allocate` and `assign`.
 - **Writes:** `pool.outstanding_principal += amount`; `line.drawn += amount`; `line.draws += 1`;
   `line.interest_due += amount * rate_bps * (last_due - now) / (10 000 * SECONDS_PER_YEAR)`
   (D1: fixed at the draw, rounded down once per tranche); on the first tranche `status =
@@ -473,8 +483,9 @@ repays through `repay` like anyone else).
   `LineDrawState` (`drawn`, `available`, `interest_due`, `availability_end`, `document_hash`),
   then `PagareIssued` (`draw_index`, `asset`, `pagare_hash`, `amount`, `due_at`, `holder` = the
   pool PDA).
-- **Compute:** about 85 000 CU at 120 installments, of which the Core CPI is about 39 000
-  (`tests/compute.rs`; the ceiling is 100 000).
+- **Compute:** 86 064 CU on the first tranche and 86 239 on the second at 120 installments,
+  deterministic, of which the Core CPI is about 43 700 (`tests/compute.rs`; the ceiling is
+  100 000).
 
 ### 5.6 `repay(amount: u64)`
 
@@ -733,7 +744,7 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/known_limits.rs` | LiteSVM | the nine tests in §9: six limits still in force and three inverted on 2026-10-31 |
 | `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
 | `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); wrong asset, sidecar or collection refused |
-| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst measured: `draw` at about 85 000 CU at 120, of which the Core CPI is about 39 000) |
+| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 86 239 CU at 120, deterministic, of which the Core CPI is about 43 700) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh

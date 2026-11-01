@@ -19,14 +19,19 @@ test("findPagareAssetPda derives the Core asset address of a draw", async () => 
   assert.equal((await findPagareAssetPda({ line, drawIndex: 300 }))[0], "AVo549EDYCCJ1UEW5WN56yikpEG17krYvATsoQ69DSGs");
 });
 
-test("drawPagareAccounts assembles the draw's pagaré accounts for the next index", async () => {
+test("drawPagareAccounts assembles the draw's pagaré accounts and bumps for the next index", async () => {
   const collection = address("11111111111111111111111111111113");
+  const [, assetBump] = await findPagareAssetPda({ line, drawIndex: 300 });
+  const [, pagareBump] = await findPagarePda({ line, drawIndex: 300 });
   assert.deepEqual(await drawPagareAccounts({ line, drawIndex: 300, collection }), {
     asset: "AVo549EDYCCJ1UEW5WN56yikpEG17krYvATsoQ69DSGs",
+    assetBump,
     pagare: "C7NLJU5z4GzPiCzJfLGqQA5tRq16TxnvYhCsqT9GzPyB",
+    pagareBump,
     collection,
     mplCoreProgram: "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
   });
+  assert.ok(assetBump <= 255 && pagareBump <= 255);
 });
 
 test("the Metaplex Core program address is the one the program pins", () => {

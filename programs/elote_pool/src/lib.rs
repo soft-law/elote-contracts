@@ -109,8 +109,8 @@ pub mod elote_pool {
     /// Draws a tranche of `amount` from the vault to the borrower while the draw window is open,
     /// against the signed pagaré whose hash is `document_hash`. The borrower and the attestor
     /// sign. Interest on the tranche, at the annual rate to the last due date, is fixed here.
-    pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32]) -> Result<()> {
-        instructions::lines::draw(ctx, amount, document_hash)
+    pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32], asset_bump: u8, pagare_bump: u8) -> Result<()> {
+        instructions::lines::draw(ctx, amount, document_hash, asset_bump, pagare_bump)
     }
 
     /// Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then

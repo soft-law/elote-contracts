@@ -37,12 +37,9 @@ import {
 } from "@solana/program-client-core";
 import {
   getCreditLineCodec,
-  getPagareCodec,
   getPoolCodec,
   type CreditLine,
   type CreditLineArgs,
-  type Pagare,
-  type PagareArgs,
   type Pool,
   type PoolArgs,
 } from "../accounts";
@@ -108,7 +105,6 @@ export const ELOTE_POOL_PROGRAM_ADDRESS =
 
 export enum ElotePoolAccount {
   CreditLine,
-  Pagare,
   Pool,
 }
 
@@ -126,17 +122,6 @@ export function identifyElotePoolAccount(
     )
   ) {
     return ElotePoolAccount.CreditLine;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([140, 142, 27, 239, 147, 131, 73, 247]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolAccount.Pagare;
   }
   if (
     containsBytes(
@@ -752,8 +737,6 @@ export type ElotePoolPlugin = {
 export type ElotePoolPluginAccounts = {
   creditLine: ReturnType<typeof getCreditLineCodec> &
     SelfFetchFunctions<CreditLineArgs, CreditLine>;
-  pagare: ReturnType<typeof getPagareCodec> &
-    SelfFetchFunctions<PagareArgs, Pagare>;
   pool: ReturnType<typeof getPoolCodec> & SelfFetchFunctions<PoolArgs, Pool>;
 };
 
@@ -840,7 +823,6 @@ export function elotePoolProgram(
       elotePool: <ElotePoolPlugin>{
         accounts: {
           creditLine: addSelfFetchFunctions(client, getCreditLineCodec()),
-          pagare: addSelfFetchFunctions(client, getPagareCodec()),
           pool: addSelfFetchFunctions(client, getPoolCodec()),
         },
         instructions: {

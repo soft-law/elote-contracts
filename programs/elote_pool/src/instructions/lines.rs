@@ -261,24 +261,19 @@ pub struct Draw<'info> {
     pub payer: Signer<'info>,
 
     /// The Metaplex Core asset that is the pagaré, created by the Core program in this
-    /// instruction at a program-derived address, so clients need no keypair for it.
-    /// CHECK: a PDA this program derives and signs for; the Core program initialises it.
-    #[account(
-        mut,
-        seeds = [seeds::PAGARE_ASSET, line.key().as_ref(), &line.draws.to_le_bytes()],
-        bump,
-    )]
+    /// instruction at `["pagare_asset", line, line.draws, asset_bump]`, so clients need no
+    /// keypair for it. The client derives the bump and the handler checks the address with one
+    /// `create_program_address` (`WrongAccount`): no bump search runs on chain, so the compute of
+    /// a draw does not depend on the line's key.
+    /// CHECK: verified in the handler; the Core program initialises it.
+    #[account(mut)]
     pub asset: UncheckedAccount<'info>,
 
-    /// The program's record of the pagaré.
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + Pagare::INIT_SPACE,
-        seeds = [seeds::PAGARE, line.key().as_ref(), &line.draws.to_le_bytes()],
-        bump,
-    )]
-    pub pagare: Account<'info, Pagare>,
+    /// The program's record of the pagaré, created by the handler at `["pagare", line,
+    /// line.draws, pagare_bump]` and verified the same way.
+    /// CHECK: verified and initialised in the handler.
+    #[account(mut)]
+    pub pagare: UncheckedAccount<'info>,
 
     /// The series' collection the pool controls (validated at `init_pool`).
     /// CHECK: must be `pool.collection`; the Core program checks the rest.
@@ -332,8 +327,8 @@ fn dec_u(mut m: u64) -> String {
 
 /// Mints the pagaré of a disposición (decision 24): one Metaplex Core asset in the pool's
 /// collection, owned by the pool PDA (the vehicle's custody) and frozen from creation, with
-/// `PermanentFreezeDelegate` and `PermanentTransferDelegate` held by the pool PDA (so only the
-/// program can ever move it), `ImmutableMetadata`, an `Attributes` plugin nobody can change
+/// `PermanentFreezeDelegate`, `PermanentTransferDelegate` and `PermanentBurnDelegate` held by the
+/// pool PDA (so only the program can ever move or burn it, whoever holds it), `ImmutableMetadata`, an `Attributes` plugin nobody can change
 /// (`pagare_hash`, `amount`, `currency`, `issued_at`, `due_at`, `line`, `draw_index`) and an
 /// empty `AppData` section whose data authority is the pool PDA, for the endoso log. The name
 /// carries the line id and the draw index and nothing else; the URI is empty. Nothing personal.
@@ -349,8 +344,8 @@ fn issue_pagare<'info>(
 ) -> Result<()> {
     use mpl_core::types::{
         AppDataInitInfo, Attribute, Attributes, ExternalPluginAdapterInitInfo, ExternalPluginAdapterSchema,
-        ImmutableMetadata, PermanentFreezeDelegate, PermanentTransferDelegate, Plugin, PluginAuthority,
-        PluginAuthorityPair,
+        ImmutableMetadata, PermanentBurnDelegate, PermanentFreezeDelegate, PermanentTransferDelegate, Plugin,
+        PluginAuthority, PluginAuthorityPair,
     };
     let pool = &accounts.pool;
     let line = &accounts.line;
@@ -372,6 +367,7 @@ fn issue_pagare<'info>(
             authority: by_pool.clone(),
         },
         PluginAuthorityPair { plugin: Plugin::PermanentTransferDelegate(PermanentTransferDelegate {}), authority: by_pool.clone() },
+        PluginAuthorityPair { plugin: Plugin::PermanentBurnDelegate(PermanentBurnDelegate {}), authority: by_pool.clone() },
         PluginAuthorityPair { plugin: Plugin::ImmutableMetadata(ImmutableMetadata {}), authority: Some(PluginAuthority::None) },
         PluginAuthorityPair {
             plugin: Plugin::Attributes(Attributes { attribute_list: attributes }),
@@ -421,6 +417,39 @@ fn issue_pagare<'info>(
     Ok(())
 }
 
+/// Creates the sidecar at the verified address and writes `record` into it. Like Anchor's `init`,
+/// a pre-funded address is tolerated: topped up to its rent if needed, then allocated and
+/// assigned; an unfunded one is created in one `create_account`.
+fn create_sidecar<'info>(accounts: &Draw<'info>, pagare_bump: u8, record: &Pagare) -> Result<()> {
+    use anchor_lang::system_program::{allocate, assign, create_account, transfer, Allocate, Assign, CreateAccount, Transfer};
+    let space = 8 + Pagare::INIT_SPACE;
+    let rent = Rent::get()?.minimum_balance(space);
+    let line_key = accounts.line.key();
+    let index_bytes = record.draw_index.to_le_bytes();
+    let seeds: &[&[u8]] = &[seeds::PAGARE, line_key.as_ref(), &index_bytes, &[pagare_bump]];
+    let system = accounts.system_program.key();
+    let pagare = accounts.pagare.to_account_info();
+    let payer = accounts.payer.to_account_info();
+    let have = pagare.lamports();
+    if have == 0 {
+        create_account(
+            CpiContext::new_with_signer(system, CreateAccount { from: payer, to: pagare.clone() }, &[seeds]),
+            rent,
+            space as u64,
+            &crate::ID,
+        )?;
+    } else {
+        if have < rent {
+            transfer(CpiContext::new(system, Transfer { from: payer, to: pagare.clone() }), rent - have)?;
+        }
+        allocate(CpiContext::new_with_signer(system, Allocate { account_to_allocate: pagare.clone() }, &[seeds]), space as u64)?;
+        assign(CpiContext::new_with_signer(system, Assign { account_to_assign: pagare.clone() }, &[seeds]), &crate::ID)?;
+    }
+    let mut data = pagare.try_borrow_mut_data()?;
+    record.try_serialize(&mut &mut data[..])?;
+    Ok(())
+}
+
 /// One tranche (D2 to D9). Every check runs before anything is written (D8), in this order: not
 /// paused; `Approved` or `Active`; `0 < amount <= principal - drawn`; `now < availability_end`,
 /// strictly, since an installment counts as due at the second it falls due; on a scheduled line
@@ -428,7 +457,7 @@ fn issue_pagare<'info>(
 /// one unit (D3b); fewer than `MAX_DRAWS` tranches; the vault has the liquidity; a non-zero
 /// `document_hash`. The tranche's interest, at the annual rate from now to the last due date, is
 /// added to `interest_due` and never changes again.
-pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32]) -> Result<()> {
+pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32], asset_bump: u8, pagare_bump: u8) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
     require!(!pool.paused, PoolError::Paused);
@@ -449,6 +478,16 @@ pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32]) -> Result<
     require!(line.draws < MAX_DRAWS, PoolError::TooManyDraws);
     require!(amount <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
     require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
+    // The pagaré addresses, with the bumps the client derived: one `create_program_address` each.
+    let line_key = line.key();
+    let index_bytes = line.draws.to_le_bytes();
+    let asset_key = Pubkey::create_program_address(&[seeds::PAGARE_ASSET, line_key.as_ref(), &index_bytes, &[asset_bump]], ctx.program_id)
+        .map_err(|_| PoolError::WrongAccount)?;
+    require_keys_eq!(ctx.accounts.asset.key(), asset_key, PoolError::WrongAccount);
+    let pagare_key = Pubkey::create_program_address(&[seeds::PAGARE, line_key.as_ref(), &index_bytes, &[pagare_bump]], ctx.program_id)
+        .map_err(|_| PoolError::WrongAccount)?;
+    require_keys_eq!(ctx.accounts.pagare.key(), pagare_key, PoolError::WrongAccount);
+    require!(ctx.accounts.pagare.data_is_empty() && ctx.accounts.pagare.owner == &System::id(), PoolError::WrongAccount);
 
     token::transfer_checked(
         CpiContext::new_with_signer(
@@ -467,16 +506,19 @@ pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32]) -> Result<
 
     // The pagaré: the Core asset (the título) and its sidecar, indexed by the draw being made.
     let draw_index = ctx.accounts.line.draws;
-    issue_pagare(&ctx.accounts, ctx.bumps.asset, draw_index, amount, document_hash, now, last_due)?;
-    let pagare = &mut ctx.accounts.pagare;
-    pagare.line = ctx.accounts.line.key();
-    pagare.draw_index = draw_index;
-    pagare.asset = ctx.accounts.asset.key();
-    pagare.pagare_hash = document_hash;
-    pagare.amount = amount;
-    pagare.issued_at = now;
-    pagare.due_at = last_due;
-    pagare.bump = ctx.bumps.pagare;
+    issue_pagare(&ctx.accounts, asset_bump, draw_index, amount, document_hash, now, last_due)?;
+    let record = Pagare {
+        line: ctx.accounts.line.key(),
+        draw_index,
+        asset: ctx.accounts.asset.key(),
+        pagare_hash: document_hash,
+        amount,
+        issued_at: now,
+        due_at: last_due,
+        bump: pagare_bump,
+        reserved: [0; 32],
+    };
+    create_sidecar(&ctx.accounts, pagare_bump, &record)?;
 
     let pool = &mut ctx.accounts.pool;
     pool.outstanding_principal = pool.outstanding_principal.checked_add(amount).ok_or(PoolError::Overflow)?;
