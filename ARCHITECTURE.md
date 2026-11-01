@@ -312,8 +312,8 @@ in the engine, which can replay the chain from the events and compare it with `l
 mandatory and validated (an unknown kind is refused: art. 30 presumes propiedad when the class is
 missing, so it is never left blank): `Emision` (0), `Propiedad` (1), `Procuracion` (2),
 `Revocacion` (3), `Terminacion` (4), `Abono` (5), `AnotacionJudicial` (6), `ConstanciaJudicial`
-(7), `EndosoTardio` (8), `Pagado` (9), `SolicitudCancelacion` (10). Entries are never rewritten or
-removed. A Core transfer made outside the program is visible only as Core's ownership transaction
+(7), `EndosoTardio` (8), `Pagado` (9), `SolicitudCancelacion` (10), `Recibo` (11). Entries are
+never rewritten or removed. A Core transfer made outside the program is visible only as Core's ownership transaction
 and is shown by the verifier as "transferencia sin asiento", never described in the title text as
 "not an endoso" (art. 25 risk; template side); the class of the last entry is shown.
 
@@ -328,8 +328,9 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
 - `draw`: appends the `Emision` entry (from = to = the pool PDA, hash = `pagare_hash`).
 - `endorse_pagare(draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32])`: in v1 only
   `kind = Procuracion` with the pool as endorser. Signers: the admin (the pool is the owner; the
-  program signs for the pool PDA) and the attestor; `to` passes the SAS gate (C28, a fixed-offset
-  read of the procurador's attestation); `endoso_hash != 0`; the line is not `WrittenOff`; the
+  program signs for the pool PDA) and the attestor. v1 rule: no SAS account is read; the
+  attestor's co-signature is the gate on the procurador (KYB verified off chain by the engine), as
+  it is for borrowers; the SAS read (C28) stays specified for a later version. `endoso_hash != 0`; the line is not `WrittenOff`; the
   pagaré is outstanding. Appends the entry, then `AddPluginV1` of an owner-managed `BurnDelegate`
   whose authority is the program PDA `["procurador", pagare, to]`, or `ApprovePluginAuthorityV1`
   to that PDA when `flags` says the plugin exists. The delegate never points at the procurador's
@@ -349,7 +350,26 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
   kind `Pagado` and sets `status = PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash`: the
   receipt and the PAGADO mark exist at the moment of payment, and only the burn waits. Decided
   (2026-11-02): the entries are written inside `repay`, which gains a `receipt_hash` argument and
-  takes the touched sidecars as remaining accounts, oldest first by `drawn_through`. Measured at
+  takes the touched sidecars as remaining accounts, oldest first by `drawn_through`.
+  Completeness: the line carries a cursor, `pagares_paid: u16`, in `CreditLine.reserved` bytes
+  30..32 (free: the `Schedule` packs 0..30 and never writes them; zero on a bullet line like the
+  rest), the index of the oldest pagaré not yet marked paid. `repay` on a line with draws requires
+  the remaining accounts to be exactly the sidecars `[pagares_paid ..= last_touched]`, consecutive
+  and each verified against its seeds, where `last_touched` is the first pagaré whose
+  `drawn_through` exceeds `principal_repaid` after the payment, or the last draw when none does;
+  anything else is refused (`PagareAccountsMismatch`). Every pagaré up to `last_touched` whose
+  `drawn_through` the payment reaches gets a `Pagado` entry and `PAGARE_PAID_PENDING_CANCEL`, and
+  the cursor advances past it; the one not yet covered gets an `Abono` entry. A payment on a line
+  with no draws, or whose cursor has passed the last draw (only interest left), passes no sidecar.
+  So a covered pagaré can never be left without its mark, and `cancel_pagare` can always find
+  `PAGARE_PAID_PENDING_CANCEL` on it. Receipt: `receipt_hash` on a permissionless `repay` is
+  payer-supplied and unverifiable (no attestor signs a repayment). It stays the entry's receipt
+  field; zero is allowed and means "receipt to follow". The repair path is
+  `annotate_payment(draw_index, entry_count, receipt_hash)`, signed by the holder or the attestor,
+  which appends a `Recibo` entry referencing the payment entry's `entry_count` (the 14 093 CU
+  shape), so the engine attaches the real receipt when the payer's hash is wrong or missing. The
+  engine's own `repay` calls always carry the right hash; third-party payments get a `Recibo`
+  entry afterwards. Measured at
   22 539 CU early in a 120-installment schedule, 27 531 with one sidecar, 32 497 with two, about
   5 000 CU per sidecar; in the ceiling case (every installment missed, `repay` at 56 569) about
   eight sidecars fit under 100 000. Client rule: a payment that would touch more than eight
@@ -377,7 +397,8 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
   bytes 8..12, set by `init_pool` with a floor of seven days and changed only by the admin, with
   an event) and the attestor has not co-signed, `cancel_pagare` accepts
   the holder alone with the same `receipt_hash` and the same checks. One small instruction and
-  one branch; built in part 1.
+  one branch; built in part 1. In v1 the holder is the pool, so the backstop is the admin
+  cancelling alone after the delay.
 
 **Specified, not built in v1 (A-compatible).**
 
@@ -716,8 +737,9 @@ repays through `repay` like anyone else).
   is fully drawn, or the line is in collection. While it can still draw, a payment that clears
   the debt leaves it `Active`, a payment on a zero debt is refused (`WrongAmount`), and the
   undrawn remainder stays drawable; once the window has closed, a payment on a zero debt closes
-  the line and moves nothing (audit F-01: a third party could otherwise pay one unit and forfeit
-  the borrower's commitment).
+  the line and moves nothing: the **closing repayment**, a `LineRepaid` with zero parts and
+  `remaining = 0`, which indexers and the app treat as the close it is, not as an error (audit
+  F-01: a third party could otherwise pay one unit and forfeit the borrower's commitment).
 - **CPIs:** one `transfer_checked` payer → vault (payer signs) for the computed total.
 - **Writes:** `pool.outstanding_principal -= principal_part`;
   `pool.interest_collected += interest_part` (late interest is *not* counted here);
