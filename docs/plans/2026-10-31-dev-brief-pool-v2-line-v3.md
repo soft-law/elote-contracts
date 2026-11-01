@@ -496,6 +496,10 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   added once then approved (flags bit 0); asset stays with the pool, frozen; 34.6k CU. Decided:
   the sidecar stores `procurador: Pubkey` in its reserved bytes (set by the endoso, cleared by
   the revocation) so the revocation and the cancellation verify against it.
+- **Part 1 (c) accepted** (`b507e33`; 146 Rust + 11 JS): `revoke_procuracion(draw_index,
+  entry_hash)` by the holder alone; Revocacion entry to the recorded procurador; flags bit 1
+  cleared, `procurador` (offset 213) zeroed; delegate returned to Owner, plugin kept so the next
+  procuración approves. CU at 120: revoke 36.8k, procuración approve path 40.3k, add path 33.2k.
 
 ## Points the coordinator still owns
 
