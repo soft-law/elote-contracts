@@ -2,7 +2,7 @@
 
 mod common;
 
-use anchor_lang::{AccountDeserialize, InstructionData, Space};
+use anchor_lang::{InstructionData, Space};
 use anchor_spl::token_2022::spl_token_2022;
 use common::*;
 use elote_pool::events::{

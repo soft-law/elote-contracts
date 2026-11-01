@@ -14,13 +14,13 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 use crate::errors::PoolError;
 use crate::events::{
     LateInterestCollected, LineCancelled, LineDrawState, LineDrawn, LineDrawsSuspended, LineInCollection, LineOpened,
-    LineRepaid, LineScheduled, LineSponsorRole, LineTermsSet, LineWrittenOff, NavUpdated,
+    LineRepaid, LineScheduled, LineSponsorRole, LineTermsSet, LineWrittenOff, NavUpdated, PagareIssued,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
 use crate::pool_signer;
 use crate::state::{
-    seeds, CreditLine, LineStatus, Pool, Schedule, ScheduleParams, BPS, LINE_VERSION, MAX_DRAWS, MAX_INSTALLMENTS,
-    MIN_MAX_MISSED, SPONSOR_GUARANTOR,
+    seeds, CreditLine, LineStatus, Pagare, Pool, Schedule, ScheduleParams, BPS, LINE_VERSION, MAX_DRAWS,
+    MAX_INSTALLMENTS, MIN_MAX_MISSED, SPONSOR_GUARANTOR,
 };
 
 // -----------------------------------------------------------------------------------------------
@@ -252,6 +252,173 @@ pub struct Draw<'info> {
     pub borrower_asset_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     pub token_program: Interface<'info, TokenInterface>,
+
+    // -- the pagaré (decision 24) --
+
+    /// Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets
+    /// rarely hold SOL. Any signer.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    /// The Metaplex Core asset that is the pagaré, created by the Core program in this
+    /// instruction at a program-derived address, so clients need no keypair for it.
+    /// CHECK: a PDA this program derives and signs for; the Core program initialises it.
+    #[account(
+        mut,
+        seeds = [seeds::PAGARE_ASSET, line.key().as_ref(), &line.draws.to_le_bytes()],
+        bump,
+    )]
+    pub asset: UncheckedAccount<'info>,
+
+    /// The program's record of the pagaré.
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + Pagare::INIT_SPACE,
+        seeds = [seeds::PAGARE, line.key().as_ref(), &line.draws.to_le_bytes()],
+        bump,
+    )]
+    pub pagare: Account<'info, Pagare>,
+
+    /// The series' collection the pool controls (validated at `init_pool`).
+    /// CHECK: must be `pool.collection`; the Core program checks the rest.
+    #[account(mut, address = pool.collection @ PoolError::WrongAccount)]
+    pub collection: UncheckedAccount<'info>,
+
+    /// CHECK: the Metaplex Core program, by address.
+    #[account(address = mpl_core::ID @ PoolError::WrongAccount)]
+    pub mpl_core_program: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+/// Lower-case hex of `bytes`, byte by byte, without the formatting machinery.
+fn hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut s = Vec::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push(DIGITS[usize::from(b >> 4)]);
+        s.push(DIGITS[usize::from(b & 0x0f)]);
+    }
+    // Every byte pushed is an ASCII digit.
+    String::from_utf8(s).unwrap_or_default()
+}
+
+/// Decimal text of `n`, without the formatting machinery (`to_string` on an integer costs a few
+/// hundred CU on chain; the pagaré carries five of them and the name two more).
+fn dec(n: i64) -> String {
+    let mut s = dec_u(n.unsigned_abs());
+    if n < 0 {
+        s.insert(0, '-');
+    }
+    s
+}
+
+/// `dec` for an unsigned value (64-bit arithmetic only: 128-bit division is a software routine).
+fn dec_u(mut m: u64) -> String {
+    if m == 0 {
+        return "0".into();
+    }
+    let mut digits = [0u8; 20];
+    let mut i = digits.len();
+    while m > 0 {
+        i -= 1;
+        digits[i] = b'0' + (m % 10) as u8;
+        m /= 10;
+    }
+    // Every byte written is an ASCII digit.
+    String::from_utf8(digits[i..].to_vec()).unwrap_or_default()
+}
+
+/// Mints the pagaré of a disposición (decision 24): one Metaplex Core asset in the pool's
+/// collection, owned by the pool PDA (the vehicle's custody) and frozen from creation, with
+/// `PermanentFreezeDelegate` and `PermanentTransferDelegate` held by the pool PDA (so only the
+/// program can ever move it), `ImmutableMetadata`, an `Attributes` plugin nobody can change
+/// (`pagare_hash`, `amount`, `currency`, `issued_at`, `due_at`, `line`, `draw_index`) and an
+/// empty `AppData` section whose data authority is the pool PDA, for the endoso log. The name
+/// carries the line id and the draw index and nothing else; the URI is empty. Nothing personal.
+#[allow(clippy::too_many_arguments)]
+fn issue_pagare<'info>(
+    accounts: &Draw<'info>,
+    asset_bump: u8,
+    draw_index: u16,
+    amount: u64,
+    document_hash: [u8; 32],
+    issued_at: i64,
+    due_at: i64,
+) -> Result<()> {
+    use mpl_core::types::{
+        AppDataInitInfo, Attribute, Attributes, ExternalPluginAdapterInitInfo, ExternalPluginAdapterSchema,
+        ImmutableMetadata, PermanentFreezeDelegate, PermanentTransferDelegate, Plugin, PluginAuthority,
+        PluginAuthorityPair,
+    };
+    let pool = &accounts.pool;
+    let line = &accounts.line;
+    let pool_key = pool.key();
+    let by_pool = Some(PluginAuthority::Address { address: pool_key });
+    // Hex, not base58: a base58 encoding of a 32-byte key costs tens of thousands of CU on chain.
+    let attributes = vec![
+        Attribute { key: "pagare_hash".into(), value: hex(&document_hash) },
+        Attribute { key: "amount".into(), value: dec_u(amount) },
+        Attribute { key: "currency".into(), value: hex(pool.asset_mint.as_ref()) },
+        Attribute { key: "issued_at".into(), value: dec(issued_at) },
+        Attribute { key: "due_at".into(), value: dec(due_at) },
+        Attribute { key: "line".into(), value: dec_u(line.line_id) },
+        Attribute { key: "draw_index".into(), value: dec_u(draw_index.into()) },
+    ];
+    let plugins = vec![
+        PluginAuthorityPair {
+            plugin: Plugin::PermanentFreezeDelegate(PermanentFreezeDelegate { frozen: true }),
+            authority: by_pool.clone(),
+        },
+        PluginAuthorityPair { plugin: Plugin::PermanentTransferDelegate(PermanentTransferDelegate {}), authority: by_pool.clone() },
+        PluginAuthorityPair { plugin: Plugin::ImmutableMetadata(ImmutableMetadata {}), authority: Some(PluginAuthority::None) },
+        PluginAuthorityPair {
+            plugin: Plugin::Attributes(Attributes { attribute_list: attributes }),
+            authority: Some(PluginAuthority::None),
+        },
+    ];
+    let adapters = vec![ExternalPluginAdapterInitInfo::AppData(AppDataInitInfo {
+        data_authority: PluginAuthority::Address { address: pool_key },
+        init_plugin_authority: by_pool,
+        schema: Some(ExternalPluginAdapterSchema::Binary),
+    })];
+
+    let index_bytes = draw_index.to_le_bytes();
+    let line_key = line.key();
+    let pool_seeds = pool_signer!(pool);
+    let asset_seeds: &[&[u8]] = &[seeds::PAGARE_ASSET, line_key.as_ref(), &index_bytes, &[asset_bump]];
+    // The asset address is predictable once the line is open, and Core creates it with a plain
+    // `create_account`, which refuses a funded address: left alone, a stranger could block every
+    // draw of a line for the price of rent. The address is this program's PDA, so sweep whatever
+    // was sent there to the payer first.
+    let stray = accounts.asset.lamports();
+    if stray > 0 {
+        anchor_lang::system_program::transfer(
+            CpiContext::new_with_signer(
+                accounts.system_program.key(),
+                anchor_lang::system_program::Transfer {
+                    from: accounts.asset.to_account_info(),
+                    to: accounts.payer.to_account_info(),
+                },
+                &[asset_seeds],
+            ),
+            stray,
+        )?;
+    }
+    mpl_core::instructions::CreateV2CpiBuilder::new(&accounts.mpl_core_program.to_account_info())
+        .asset(&accounts.asset.to_account_info())
+        .collection(Some(&accounts.collection.to_account_info()))
+        .authority(Some(&accounts.pool.to_account_info()))
+        .payer(&accounts.payer.to_account_info())
+        .owner(Some(&accounts.pool.to_account_info()))
+        .system_program(&accounts.system_program.to_account_info())
+        .name(["Pagare ", &dec_u(line.line_id), "-", &dec_u(draw_index.into())].concat())
+        .uri(String::new())
+        .plugins(plugins)
+        .external_plugin_adapters(adapters)
+        .invoke_signed(&[pool_seeds[0], asset_seeds])?;
+    Ok(())
 }
 
 /// One tranche (D2 to D9). Every check runs before anything is written (D8), in this order: not
@@ -281,7 +448,7 @@ pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32]) -> Result<
     }
     require!(line.draws < MAX_DRAWS, PoolError::TooManyDraws);
     require!(amount <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
-    require!(document_hash != [0u8; 32], PoolError::WrongAmount);
+    require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
 
     token::transfer_checked(
         CpiContext::new_with_signer(
@@ -297,6 +464,19 @@ pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32]) -> Result<
         amount,
         ctx.accounts.asset_mint.decimals,
     )?;
+
+    // The pagaré: the Core asset (the título) and its sidecar, indexed by the draw being made.
+    let draw_index = ctx.accounts.line.draws;
+    issue_pagare(&ctx.accounts, ctx.bumps.asset, draw_index, amount, document_hash, now, last_due)?;
+    let pagare = &mut ctx.accounts.pagare;
+    pagare.line = ctx.accounts.line.key();
+    pagare.draw_index = draw_index;
+    pagare.asset = ctx.accounts.asset.key();
+    pagare.pagare_hash = document_hash;
+    pagare.amount = amount;
+    pagare.issued_at = now;
+    pagare.due_at = last_due;
+    pagare.bump = ctx.bumps.pagare;
 
     let pool = &mut ctx.accounts.pool;
     pool.outstanding_principal = pool.outstanding_principal.checked_add(amount).ok_or(PoolError::Overflow)?;
@@ -328,6 +508,16 @@ pub fn draw(ctx: Context<Draw>, amount: u64, document_hash: [u8; 32]) -> Result<
         interest_due: line.interest_due,
         availability_end: line.availability_end,
         document_hash,
+    });
+    emit_cpi!(PagareIssued {
+        pool: pool.key(),
+        line_id: line.line_id,
+        draw_index,
+        asset: ctx.accounts.asset.key(),
+        pagare_hash: document_hash,
+        amount,
+        due_at: last_due,
+        holder: pool.key(),
     });
     Ok(())
 }
@@ -705,4 +895,26 @@ pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {
     line.closed_at = now;
     emit_cpi!(LineCancelled { pool: ctx.accounts.pool.key(), line_id: line.line_id });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{dec, dec_u, hex};
+
+    #[test]
+    fn decimal_text_matches_the_standard_formatting_at_the_edges() {
+        for n in [0u64, 9, 10, 99, 1_000_000, u64::MAX] {
+            assert_eq!(dec_u(n), n.to_string());
+        }
+        for n in [0i64, -1, 1, i64::MAX, i64::MIN] {
+            assert_eq!(dec(n), n.to_string());
+        }
+    }
+
+    #[test]
+    fn hex_is_lower_case_and_two_digits_per_byte() {
+        assert_eq!(hex(&[]), "");
+        assert_eq!(hex(&[0x00, 0x0f, 0xa0, 0xff]), "000fa0ff");
+        assert_eq!(hex(&[0xab; 32]).len(), 64);
+    }
 }

@@ -1,4 +1,4 @@
-# Operations runbook: `elote_pool`
+and the relayer (`payer`) funds about 0.006 SOL of rent for the asset and its record, locked until `cancel_pagare` (step 6c) ships |# Operations runbook: `elote_pool`
 
 Status: **draft for the owner's approval** (review register item R-14, 2026-10-31). Nothing here
 is in force until Mario signs it off. Names and contact details are placeholders in angle
@@ -56,7 +56,7 @@ reports those lines separately so the admin can act at the term.
 | Event | Who | Instruction | Preconditions and notes |
 |---|---|---|---|
 | New credit approved | Admin (Squads vault), borrower, sponsor if named; after pool v2 also the attestor | `open_line` | Agreement signed and hashed by the agreements engine; `principal <= NAV * max_line_bps / 10_000`; borrower is not the admin |
-| Borrower takes the money | Borrower | `draw` | Before `term_end`; vault has the liquidity. After pool v2: per tranche, with the attestor and the signed pagaré hash |
+| Borrower takes the money | Borrower | `draw` | Before `term_end`; vault has the liquidity. After pool v2: per tranche, with the attestor and the signed pagaré hash; each tranche mints its pagaré token into the series' collection, and the relayer (`payer`) funds about 0.006 SOL of rent for the asset and its record |
 | Repayment | Anyone (borrower, sponsor, third party) | `repay` | Never paused. Screen the `payer` of every `LineRepaid` against sanctions lists (decision 6) |
 | Three installments missed | Keeper | `mark_in_collection` | Section 2 |
 | Loss recognised | Admin | `write_off` | `Active` and `now > term_end + grace`, or `InCollection` and `now > oldest missed due + grace`. Out-of-court collection has run its course per the credit policy |

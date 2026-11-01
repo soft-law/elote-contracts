@@ -60,4 +60,6 @@ pub enum PoolError {
     TooManyDraws,
     #[msg("The collection is not a Metaplex Core collection whose update authority is the pool")]
     CollectionNotAllowed,
+    #[msg("The signed pagaré's hash is required")]
+    DocumentHashRequired,
 }

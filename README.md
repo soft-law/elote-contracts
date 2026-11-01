@@ -63,8 +63,10 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
 | dead shares | PDA token account `["dead", pool]`, owned by the pool PDA | the 1,000 shares locked by the first deposit |
 | `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | terms, agreement hash and expediente root, what was drawn and repaid, status, the draw window and the first due date, the installment schedule (scheduled lines) |
+| `Pagare` | PDA `["pagare", line, draw_index (u16 LE)]` | the program's record of one draw's pagaré: the asset's address, the signed pagaré's hash, the amount, when it was issued and when it is due; no status, no folio |
+| pagaré asset | PDA `["pagare_asset", line, draw_index (u16 LE)]`, owned by the Metaplex Core program | the pagaré token itself (decision 24): a Core asset in the series' collection, held frozen by the pool PDA, with permanent freeze and transfer delegates held by the pool PDA, immutable metadata, locked attributes (hash, amount, currency, dates, line, draw index) and an empty `AppData` section for the endoso log |
 
-Both accounts keep 32 `reserved` bytes; new parameters live there so the layouts do not change.
+All three program accounts keep 32 `reserved` bytes; new parameters live there so the layouts do not change (`Pagare`'s are zero for now).
 `clients/js/src/schedule.ts` reads them and computes arrears exactly as the program does.
 
 | Account | Bytes of `reserved` | Field |
@@ -95,7 +97,7 @@ added by line v3 (`drawn`, `draws`, `availability_end`, `first_due_at`, `sponsor
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit is at least 1.0 and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, sponsor_role, schedule, expediente_root)` | admin, borrower, attestor, sponsor if named | approves the next line as a commitment of `principal` at an annual `rate_bps`; moves no money; the borrower is not the admin and `principal <= NAV * max_line_bps / 10_000` (reads the vault); `schedule` (optional, with the contract's `first_due_at`) makes it an installment line; the draw window closes at `first_due_at`, or at `term_end` on a bullet line |
-| `draw(amount, document_hash)` | borrower, attestor | one tranche from the vault to the borrower while the window is open (strictly before it closes), at most what is still available, against the signed pagaré's hash; interest on the tranche, at the annual rate to the last due date, is fixed here |
+| `draw(amount, document_hash)` | borrower, attestor, payer | one tranche from the vault to the borrower while the window is open (strictly before it closes), at most what is still available, against the signed pagaré's hash; interest on the tranche, at the annual rate to the last due date, is fixed here; mints the pagaré token (a Metaplex Core asset in the series' collection, held frozen by the pool PDA) and its `Pagare` record, whose rent the `payer` (the app's relayer) funds |
 | `repay(amount)` | anyone | late interest (which `amount` must cover), then interest, then principal, never more than is due; what is owed is what was drawn plus the interest fixed at each draw. The line closes when nothing remains and the undrawn remainder lapses. Never paused |
 | `mark_in_collection` | anyone | moves an installment line to `InCollection` once `max_missed` installments are missed and the grace period of the last of them has run. Never paused |
 | `write_off` | admin | after the term plus grace, or for a line in collection after its oldest missed due date plus grace, the unpaid principal is recognised as a loss |
@@ -172,6 +174,7 @@ change fields; new information comes as new events.
 | `LineSponsorRole` | `open_line`, after `LineTermsSet` | pool, line_id, sponsor, role (0 promoter, 1 guarantor) |
 | `LineDrawn` | `draw`, once per tranche | pool, line_id, amount (the tranche), outstanding_after |
 | `LineDrawState` | `draw`, after `LineDrawn` | pool, line_id, amount, drawn, available, interest_due, availability_end, document_hash (the signed pagaré's) |
+| `PagareIssued` | `draw`, after `LineDrawState` | pool, line_id, draw_index, asset (the Core asset), pagare_hash, amount, due_at, holder (the pool PDA) |
 | `LineDrawsSuspended` | `suspend_draws` | pool, line_id, available_forfeited |
 | `LineCancelled` | `cancel_line` | pool, line_id |
 | `LateInterestCollected` | `repay` with late interest, before `LineRepaid` | pool, line_id, amount |
@@ -215,9 +218,11 @@ and the Associated Token Account program by default; the harness adds Metaplex C
 |---|---|
 | `pool.rs`, `lines.rs`, `schedule.rs` | Behaviour of every instruction, happy paths and each error code |
 | `known_limits.rs` | Documentation tests that pin the known design limits listed in SECURITY.md; they pass by design and must be inverted when a limit is removed |
-| `compute.rs` | Compute units of `repay`, `mark_in_collection` and `write_off` at 18 and 120 installments stay under 100,000 |
+| `tranches.rs` | Tranched draws: the draw window, the payability floor, per-tranche interest, the cap on tranches, the attestor on every draw, `suspend_draws`, `cancel_line` |
+| `pagare.rs` | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused |
+| `compute.rs` | Compute units of `init_pool`, `draw` (with the Core CPI), `repay`, `mark_in_collection` and `write_off` at 18 and 120 installments stay under 100,000 |
 | `math_props.rs` | Property tests (proptest) over the share accounting and the arrears arithmetic |
-| `vectors.rs` | Evaluates the arrears arithmetic on 413 cases and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
+| `vectors.rs` | Evaluates the arrears arithmetic on 416 cases and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
 
 ## Deployments and upgrade authority
 

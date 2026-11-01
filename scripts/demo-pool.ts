@@ -41,7 +41,7 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
 } from "@solana/kit";
-import { getCreateAccountInstruction, getTransferSolInstruction } from "@solana-program/system";
+import { SYSTEM_PROGRAM_ADDRESS, getCreateAccountInstruction, getTransferSolInstruction } from "@solana-program/system";
 import {
   TOKEN_PROGRAM_ADDRESS,
   fetchMint,
@@ -62,6 +62,7 @@ import {
   findVaultPda,
   getDepositInstructionAsync,
   getDrawInstructionAsync,
+  drawPagareAccounts,
   getInitPoolInstructionAsync,
   getOpenLineInstructionAsync,
   getRedeemInstructionAsync,
@@ -369,7 +370,15 @@ await send("open_line", admin, [
   }),
 ]);
 const borrowerAsset = await ataOf(borrower.address, assetMint.address);
-await send("draw: 6,000 tMXN (devnet test token, no value) to the borrower", borrower, [
+// The draw mints the pagaré: a Core asset and a sidecar at addresses seeded by the line and the
+// draw index (`CreditLine.draws` before the draw); the admin stands in for the app's relayer as
+// the rent payer.
+const pagareAccounts = async (lineAddress: Address, drawIndex: number) => ({
+  payer: admin,
+  ...(await drawPagareAccounts({ line: lineAddress, drawIndex, collection })),
+  systemProgram: SYSTEM_PROGRAM_ADDRESS,
+});
+await send("draw: 6,000 tMXN (devnet test token, no value) to the borrower, pagaré 0 minted", borrower, [
   await getDrawInstructionAsync({
     borrower,
     attestor: admin,
@@ -379,6 +388,7 @@ await send("draw: 6,000 tMXN (devnet test token, no value) to the borrower", bor
     vault,
     borrowerAssetAccount: borrowerAsset,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    ...(await pagareAccounts(line, 0)),
     amount: 6_000n * UNIT,
     documentHash: hash, // the signed pagaré's hash; the agreement hash stands in
   }),
@@ -487,7 +497,7 @@ async function scheduleDemo() {
       expedienteRoot: hash,
     }),
   ]);
-  await send("draw: 600 tMXN (devnet test token, no value) to the borrower", borrower, [
+  await send("draw: 600 tMXN (devnet test token, no value) to the borrower, pagaré 0 minted", borrower, [
     await getDrawInstructionAsync({
       borrower,
       attestor: admin,
@@ -497,6 +507,7 @@ async function scheduleDemo() {
       vault,
       borrowerAssetAccount: borrowerAsset,
       tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      ...(await pagareAccounts(sLine, 0)),
       amount: principal,
       documentHash: hash,
     }),

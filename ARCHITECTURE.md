@@ -1,3 +1,4 @@
+| 131 | 32 | `reserved` | zero; room for later facts (an endoso count, the current holder) without a layout change |
 # `elote_pool` architecture
 
 How the program is built, instruction by instruction, byte by byte. The [README](README.md) says
@@ -98,6 +99,12 @@ Pool            PDA ["pool", admin, asset_mint]          data account, program-o
 ├── vault       PDA ["vault", pool]                      token account of asset_mint, owner = pool
 ├── dead_shares PDA ["dead", pool]                       token account of share_mint, owner = pool
 └── CreditLine  PDA ["line", pool, line_id as u64 LE]    one per approved line, program-owned
+    ├── Pagare  PDA ["pagare", line, draw_index as u16 LE]        one per draw: the program's record of
+    │                                                            the pagaré, program-owned
+    └── asset   PDA ["pagare_asset", line, draw_index as u16 LE]  the pagaré itself: a Metaplex Core
+                                                                 asset owned by the Core program, held
+                                                                 by the pool PDA, in the series'
+                                                                 collection (`Pool.collection`)
 ```
 
 - The pool address is a function of `(admin, asset_mint)`: one admin can run one pool per asset,
@@ -106,9 +113,13 @@ Pool            PDA ["pool", admin, asset_mint]          data account, program-o
   create them ahead of `init_pool` and block the pool.
 - `line_id` must equal `pool.line_count` at opening, so lines are a dense sequence `0, 1, 2…`
   and a client can enumerate them without an indexer.
-- The pool PDA signs every outbound CPI (minting shares, paying a draw, paying a redemption) with
-  `pool_signer!(pool)`, which rebuilds the seeds `["pool", admin, asset_mint, bump]` from the
-  account's own fields.
+- The pool PDA signs every outbound CPI (minting shares, paying a draw, paying a redemption,
+  creating a pagaré) with `pool_signer!(pool)`, which rebuilds the seeds `["pool", admin,
+  asset_mint, bump]` from the account's own fields.
+- `draw_index` is `CreditLine.draws` before the draw, so a line's pagarés are a dense sequence
+  `0, 1, 2…` below `MAX_DRAWS`, and the asset of any draw is derivable from the line address
+  alone. The asset is a PDA of this program (not a client keypair), which the pool PDA and the
+  asset PDA both sign for in the Core `CreateV2` CPI; the Core program then owns the account.
 
 ### 2.1 `Pool` (299 bytes; 235 before pool v2)
 
@@ -190,10 +201,41 @@ two kinds apart. `CreditLine::anchor()` (`first_due_at - interval`) is the singl
 calendar is anchored, and `last_due()` (the last due date, or `term_end` on a bullet line) is the
 instant every tranche's interest runs to.
 
-### 2.3 Constants (`state.rs`)
+### 2.3 `Pagare` (163 bytes) and the pagaré asset
+
+The sidecar `draw` writes next to each Core asset (decision 24). It holds what the program's own
+logic needs about the pagaré and nothing more: no status (derived from the line and, later, from
+the endoso log), no folio (the engine maps `draw_index` to the folio off chain), nothing personal.
+
+| offset | size | field | notes |
+|---|---|---|---|
+| 0 | 8 | discriminator | |
+| 8 | 32 | `line` | the `CreditLine` |
+| 40 | 2 | `draw_index` | `CreditLine.draws` at issuance |
+| 42 | 32 | `asset` | the Core asset's address (`["pagare_asset", line, draw_index]`) |
+| 74 | 32 | `pagare_hash` | the `document_hash` of the draw: the signed pagaré's hash |
+| 106 | 8 | `amount` | the tranche, in base units of the asset |
+| 114 | 8 | `issued_at` | the draw's timestamp |
+| 122 | 8 | `due_at` | the line's last due date at issuance (`last_due()`) |
+| 130 | 1 | `bump` | |
+
+The Core asset is created in the same instruction with: owner = pool PDA (the vehicle's custody);
+update authority = the series' collection, whose own update authority is the pool PDA (Core
+expresses the authority of an asset in a collection through the collection); frozen from creation
+by a `PermanentFreezeDelegate` whose authority is the pool PDA; a `PermanentTransferDelegate`
+with the pool PDA as authority (the endoso will move it through this delegate, and nothing else
+can); `ImmutableMetadata`; an `Attributes` plugin with authority `None` carrying `pagare_hash`,
+`amount`, `currency` (the asset mint), `issued_at`, `due_at`, `line` and `draw_index`, the 32-byte values
+as lower-case hex (a base58 encoding on chain costs tens of thousands of CU); and an empty
+`AppData` external adapter, schema `Binary`, data authority = pool PDA, for the endoso log. The
+name is `Pagare <line_id>-<draw_index>` and the URI is empty. The program never reads the asset
+back: later instructions trust the sidecar and the Core program's own checks in the CPIs.
+
+### 2.4 Constants (`state.rs`)
 
 | constant | value | role |
 |---|---|---|
+| `MAX_DRAWS` | 64 | tranches per line (`TooManyDraws`); bounds a line's pagaré index space |
 | `min_first_deposit(decimals)` | `max(10^decimals, 1 000 × DEAD_SHARES)` | floor on the first deposit: one whole unit of the asset, never below 1 000 000 base units |
 | `DEAD_SHARES` | 1 000 | shares locked forever by the first deposit |
 | `MIN_FIRST_DEPOSIT_DEAD_RATIO` | 1 000 | the first deposit is at least this many dead shares, whatever the decimals |
@@ -274,6 +316,14 @@ For each instruction: who signs, what the account constraints already guarantee 
 handler runs, the checks in the order the handler makes them, what it writes, which CPIs it
 makes and which events it emits. Error codes are `PoolError` variants (6000 + index in
 `errors.rs`).
+
+**Rule for foreign accounts.** On chain, the program reads an account of another program (a
+Metaplex Core collection or asset) by fixed offsets and bounded lengths, never with that crate's
+full decoder: `validate_collection` checks the owner, the data length, the `Key` byte at offset 0
+and the update authority at bytes 1..33, and that is the only Core account the program decodes at
+all. A full decoder run against an attacker-chosen account of the right owner can allocate until
+the program aborts (an asset passed as the collection did exactly that in development); a fixed
+read fails closed. For the pagaré assets the program trusts its own sidecar and the CPIs.
 
 ### 5.1 `init_pool(grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey)`
 
@@ -391,25 +441,40 @@ repays through `repay` like anyone else).
 
 ### 5.5 `draw(amount: u64, document_hash: [u8; 32])`
 
-- **Signers:** `borrower` and `attestor` (D14: the engine attests the pagaré behind
-  `document_hash` was signed and is conserved; no money moves without it).
+- **Signers:** `borrower`, `attestor` (D14: the engine attests the pagaré behind
+  `document_hash` was signed and is conserved; no money moves without it) and `payer`, any
+  signer that funds the rent of the pagaré asset and its sidecar (the app's relayer, since SME
+  wallets rarely hold SOL).
 - **Constraints:** `line` has `has_one = pool` and `has_one = borrower` (`Unauthorized`);
   `asset_mint` (read-only) and `vault` match the pool; `borrower_asset_account` has the pool's
-  asset mint and is owned by the borrower.
+  asset mint and is owned by the borrower; `asset` is the PDA `["pagare_asset", line,
+  line.draws]` and `pagare` is initialised at `["pagare", line, line.draws]` (a stale or foreign
+  address fails the seeds, `ConstraintSeeds`); `collection` is `pool.collection`
+  (`WrongAccount`); `mpl_core_program` is the Core program id.
 - **Checks, in order (D8: all before any write):** not paused; `status` is `Approved` or
   `Active` (`LineStatus`); `0 < amount <= principal - drawn` (`WrongAmount`);
   `now < availability_end`, strictly (`AvailabilityEnded`: an installment counts as due at the
   second it falls due); on a scheduled line `drawn + interest_due >= installments` after the
   tranche (`InvalidSchedule`, D3b); `draws < MAX_DRAWS` (`TooManyDraws`); `amount <=
-  vault.amount` (`InsufficientLiquidity`); `document_hash != [0; 32]` (`WrongAmount`).
-- **CPIs:** `transfer_checked` the tranche vault → borrower (pool signs).
+  vault.amount` (`InsufficientLiquidity`); `document_hash != [0; 32]` (`DocumentHashRequired`).
+- **CPIs:** `transfer_checked` the tranche vault → borrower (pool signs); if the asset address
+  holds lamports (anyone can fund a predictable address ahead of the draw, and Core's
+  `create_account` refuses a funded one, which would otherwise let a stranger block every
+  draw of a line for the price of rent) a system `transfer` of all of them to `payer`, signed
+  by the asset PDA; then Metaplex Core `CreateV2` of the pagaré asset into the collection, with
+  the plugins of §2.3 (the pool PDA signs as authority and owner, the asset PDA signs for its
+  own address, `payer` funds it). The sidecar's `init` tolerates a funded address by itself.
 - **Writes:** `pool.outstanding_principal += amount`; `line.drawn += amount`; `line.draws += 1`;
   `line.interest_due += amount * rate_bps * (last_due - now) / (10 000 * SECONDS_PER_YEAR)`
   (D1: fixed at the draw, rounded down once per tranche); on the first tranche `status =
-  Active` and `drawn_at = now`.
+  Active` and `drawn_at = now`; the `Pagare` sidecar (`line`, `draw_index`, `asset`,
+  `pagare_hash = document_hash`, `amount`, `issued_at = now`, `due_at = last_due`).
 - **Events:** `LineDrawn` with the tranche as `amount` and `outstanding_after`, then
-  `LineDrawState` (`drawn`, `available`, `interest_due`, `availability_end`, `document_hash`).
-  The pagaré hash is in the event only; the Core asset and its sidecar come with step 6.
+  `LineDrawState` (`drawn`, `available`, `interest_due`, `availability_end`, `document_hash`),
+  then `PagareIssued` (`draw_index`, `asset`, `pagare_hash`, `amount`, `due_at`, `holder` = the
+  pool PDA).
+- **Compute:** about 85 000 CU at 120 installments, of which the Core CPI is about 39 000
+  (`tests/compute.rs`; the ceiling is 100 000).
 
 ### 5.6 `repay(amount: u64)`
 
@@ -604,6 +669,7 @@ What must hold between instructions, and which code keeps it:
 | attestor | `Pool.attestor`, set at `init_pool`, rotated by `set_attestor` | co-signs `open_line` and `draw` (and `endorse_pagare` in step 6), so it can block every opening, draw and endoso and move nothing |
 | share-mint freeze authority | the freeze authority of the admin-supplied share mint (Token ACL's `MintConfig` in production); not recorded by the program | thaw or freeze share accounts, the dead account included: admits and bars investors |
 | borrower | `CreditLine.borrower` | `draw` its own approved line before the term |
+| payer (relayer) | any signer passed as `draw`'s `payer` | pays the rent of the pagaré asset and its sidecar; nothing else |
 | sponsor | `CreditLine.sponsor` | nothing after co-signing the opening |
 | depositor / holder | any signer with the asset or shares | `deposit`, `redeem` |
 | anyone | | `repay` any drawn line, `mark_in_collection` |
@@ -611,6 +677,11 @@ What must hold between instructions, and which code keeps it:
 
 There is no operator role, no fee switch, no admin withdrawal, no account closing and no way to
 change the asset, the admin or the grace period after `init_pool`.
+
+Besides the token programs, the one foreign program the pool depends on is Metaplex Core
+(`CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d`, crate `mpl-core` 0.12.1, tests against the
+pinned binary `release/core@0.15.3`). Its upgrade authority, Metaplex, can change how the pagaré
+assets behave; the program's own records (the sidecars and the events) do not depend on it.
 
 ## 9. Known limits (proved by `tests/known_limits.rs`)
 
@@ -660,12 +731,14 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/lines.rs` | LiteSVM | open/draw/repay full cycle raises the share price, sponsor co-sign, sponsor pays interest, overpay and wrong status, double draw, write-off lowers the NAV once, bad params, term checks |
 | `tests/schedule.rs` | LiteSVM, clock warped | schedule validation, installments on their due dates, missed count over time, late interest after grace, caps, repayment order, collection after three missed, cure beats collection, write-off timing in both paths |
 | `tests/known_limits.rs` | LiteSVM | the nine tests in §9: six limits still in force and three inverted on 2026-10-31 |
-| `tests/compute.rs` | LiteSVM | arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst measured: 67 688 CU at 120) |
+| `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
+| `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); wrong asset, sidecar or collection refused |
+| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst measured: `draw` at about 85 000 CU at 120, of which the Core CPI is about 39 000) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 82 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 112 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.
@@ -681,6 +754,8 @@ anchor build ──► target/idl/elote_pool.json ──npm run idl:sync──�
                                    clients/js/src/generated/   (Codama, @solana/kit, do not edit)
                                    clients/js/src/schedule.ts  (hand-written: reserved-byte
                                                                 decoding and arrears, mirrors math.rs)
+                                   clients/js/src/pagare.ts    (hand-written: the pagaré PDAs, whose
+                                                                seed is a field of the line account)
                                    clients/js/src/index.ts
                                                      │
                                                      ▼

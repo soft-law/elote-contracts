@@ -303,6 +303,99 @@
           "name": "token_program"
         },
         {
+          "name": "payer",
+          "docs": [
+            "Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets",
+            "rarely hold SOL. Any signer."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "asset",
+          "docs": [
+            "The Metaplex Core asset that is the pagaré, created by the Core program in this",
+            "instruction at a program-derived address, so clients need no keypair for it."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101,
+                  95,
+                  97,
+                  115,
+                  115,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "account",
+                "path": "line.draws",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "pagare",
+          "docs": [
+            "The program's record of the pagaré."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "account",
+                "path": "line.draws",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collection",
+          "docs": [
+            "The series' collection the pool controls (validated at `init_pool`)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "mpl_core_program",
+          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
           "name": "event_authority"
         },
         {
@@ -1294,6 +1387,19 @@
       ]
     },
     {
+      "name": "Pagare",
+      "discriminator": [
+        140,
+        142,
+        27,
+        239,
+        147,
+        131,
+        73,
+        247
+      ]
+    },
+    {
       "name": "Pool",
       "discriminator": [
         241,
@@ -1501,6 +1607,19 @@
         24,
         110,
         154
+      ]
+    },
+    {
+      "name": "PagareIssued",
+      "discriminator": [
+        114,
+        100,
+        21,
+        201,
+        68,
+        46,
+        186,
+        138
       ]
     },
     {
@@ -1735,6 +1854,11 @@
       "code": 6027,
       "name": "CollectionNotAllowed",
       "msg": "The collection is not a Metaplex Core collection whose update authority is the pool"
+    },
+    {
+      "code": 6028,
+      "name": "DocumentHashRequired",
+      "msg": "The signed pagaré's hash is required"
     }
   ],
   "types": [
@@ -2404,6 +2528,135 @@
           {
             "name": "share_supply",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pagare",
+      "docs": [
+        "The program's own record of one pagaré (decision 24, pagaré design): the sidecar of the",
+        "Metaplex Core asset `draw` mints for a disposición. It holds no status and no folio: a",
+        "pagaré's state is derived from the line (covered oldest first by `draw_index`), and the",
+        "agreements engine maps the index to its folio off chain. `cancel_pagare` (step 6c) will close",
+        "it and return its rent to the relayer; until then the rent of every draw stays locked."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "line",
+            "type": "pubkey"
+          },
+          {
+            "name": "draw_index",
+            "docs": [
+              "Which disposición of the line, 0-based: the `draws` count at the time of the draw."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "asset",
+            "docs": [
+              "The Core asset at `[PAGARE_ASSET, line, draw_index]`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "pagare_hash",
+            "docs": [
+              "Hash of the signed pagaré data message, as `draw` received it."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "The tranche this pagaré documents."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "issued_at",
+            "type": "i64"
+          },
+          {
+            "name": "due_at",
+            "docs": [
+              "The line's last due date at issuance (D1): when the last payment is owed."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Room for later facts (an endoso count, the current holder) without a layout change."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PagareIssued",
+      "docs": [
+        "Emitted by `draw` after `LineDrawState` (decision 24): the pagaré of this disposición was",
+        "issued as the Metaplex Core asset `asset`, held frozen by `holder` (the pool PDA, the series",
+        "vehicle's custody account). `due_at` is the line's last due date at issuance."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "draw_index",
+            "type": "u16"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "pagare_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "due_at",
+            "type": "i64"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
           }
         ]
       }

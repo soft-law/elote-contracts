@@ -11,6 +11,10 @@ pub mod seeds {
     pub const VAULT: &[u8] = b"vault";
     /// `[DEAD, pool]`: the pool-owned share token account holding the dead shares.
     pub const DEAD: &[u8] = b"dead";
+    /// `[PAGARE, line, draw_index (u16 LE)]`: the program's record of one pagaré.
+    pub const PAGARE: &[u8] = b"pagare";
+    /// `[PAGARE_ASSET, line, draw_index (u16 LE)]`: the Metaplex Core asset that is the pagaré.
+    pub const PAGARE_ASSET: &[u8] = b"pagare_asset";
 }
 
 /// Shares the first deposit locks forever in the pool-owned dead account, so the supply never
@@ -261,6 +265,31 @@ pub struct CreditLine {
     /// Salted merkle root of the credit file in the agreements engine (decision 15 of the pagaré
     /// design). A commitment: no document, name or folio is derivable from it.
     pub expediente_root: [u8; 32],
+}
+
+/// The program's own record of one pagaré (decision 24, pagaré design): the sidecar of the
+/// Metaplex Core asset `draw` mints for a disposición. It holds no status and no folio: a
+/// pagaré's state is derived from the line (covered oldest first by `draw_index`), and the
+/// agreements engine maps the index to its folio off chain. `cancel_pagare` (step 6c) will close
+/// it and return its rent to the relayer; until then the rent of every draw stays locked.
+#[account]
+#[derive(InitSpace)]
+pub struct Pagare {
+    pub line: Pubkey,
+    /// Which disposición of the line, 0-based: the `draws` count at the time of the draw.
+    pub draw_index: u16,
+    /// The Core asset at `[PAGARE_ASSET, line, draw_index]`.
+    pub asset: Pubkey,
+    /// Hash of the signed pagaré data message, as `draw` received it.
+    pub pagare_hash: [u8; 32],
+    /// The tranche this pagaré documents.
+    pub amount: u64,
+    pub issued_at: i64,
+    /// The line's last due date at issuance (D1): when the last payment is owed.
+    pub due_at: i64,
+    pub bump: u8,
+    /// Room for later facts (an endoso count, the current holder) without a layout change.
+    pub reserved: [u8; 32],
 }
 
 /// Installment terms requested by `open_line`; fixed for the life of the line.

@@ -76,6 +76,7 @@ pub const E_ATTESTOR_REQUIRED: u32 = ERR_BASE + 24; // PoolError::AttestorRequir
 pub const E_AVAILABILITY_ENDED: u32 = ERR_BASE + 25; // PoolError::AvailabilityEnded
 pub const E_TOO_MANY_DRAWS: u32 = ERR_BASE + 26; // PoolError::TooManyDraws
 pub const E_COLLECTION_NOT_ALLOWED: u32 = ERR_BASE + 27; // PoolError::CollectionNotAllowed
+pub const E_DOCUMENT_HASH_REQUIRED: u32 = ERR_BASE + 28; // PoolError::DocumentHashRequired
 
 /// Token-2022's `TokenError::AccountFrozen`, surfaced as custom error 17 by a failed CPI.
 pub const SPL_TOKEN_ACCOUNT_FROZEN: u32 = 17;
@@ -113,6 +114,16 @@ pub fn dead_shares_pda(pool: &Pubkey) -> (Pubkey, u8) {
 
 pub fn line_pda(pool: &Pubkey, line_id: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"line", pool.as_ref(), &line_id.to_le_bytes()], &PROGRAM_ID)
+}
+
+/// The program's record of pagaré `draw_index` of `line`.
+pub fn pagare_pda(line: &Pubkey, draw_index: u16) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"pagare", line.as_ref(), &draw_index.to_le_bytes()], &PROGRAM_ID)
+}
+
+/// The Metaplex Core asset that is pagaré `draw_index` of `line`.
+pub fn pagare_asset_pda(line: &Pubkey, draw_index: u16) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"pagare_asset", line.as_ref(), &draw_index.to_le_bytes()], &PROGRAM_ID)
 }
 
 /// The addresses of one pool: the PDAs derived from the admin and the asset mint, the
@@ -886,27 +897,62 @@ impl Env {
         kp
     }
 
-    /// A tranche of `amount` against the fixed test pagaré hash, signed by the borrower and the
-    /// attestor (the attestor is added by `draw`/`draw_amount`; `draw_ix` only names it).
+    /// A tranche of `amount` against `document_hash`, with the borrower paying the pagaré's
+    /// rent; signed by the borrower and the attestor (the attestor is added by `draw` and
+    /// `draw_amount`; `draw_ix` only names it).
     pub fn draw_ix_amount(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey, amount: u64, document_hash: [u8; 32]) -> Instruction {
+        self.draw_ix_paid_by(k, line_id, borrower, borrower, amount, document_hash)
+    }
+
+    /// As `draw_ix_amount`, with `payer` (the relayer) paying the rent of the pagaré asset and
+    /// its sidecar. The asset and the sidecar are PDAs of the line and the next draw index, read
+    /// from the line when the instruction is built: build each draw after the previous one was
+    /// sent, or two instructions carry the same index and the second fails on the seeds.
+    pub fn draw_ix_paid_by(
+        &self,
+        k: &PoolKeys,
+        line_id: u64,
+        borrower: &Pubkey,
+        payer: &Pubkey,
+        amount: u64,
+        document_hash: [u8; 32],
+    ) -> Instruction {
         let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
+        let draw_index = self.line(k, line_id).draws;
         Instruction {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::Draw {
                 borrower: *borrower,
                 attestor: self.attestor.pubkey(),
                 pool: k.pool,
-                line: line_pda(&k.pool, line_id).0,
+                line,
                 asset_mint: k.asset_mint,
                 vault: k.vault,
                 borrower_asset_account: k.asset_ata(borrower),
                 token_program: k.asset_program,
+                payer: *payer,
+                asset: pagare_asset_pda(&line, draw_index).0,
+                pagare: pagare_pda(&line, draw_index).0,
+                collection: k.collection,
+                mpl_core_program: MPL_CORE_ID,
+                system_program: SYSTEM_PROGRAM_ID,
                 event_authority,
                 program,
             }
             .to_account_metas(None),
             data: elote_pool::instruction::Draw { amount, document_hash }.data(),
         }
+    }
+
+    /// The sidecar of pagaré `draw_index` of a line.
+    pub fn pagare(&self, k: &PoolKeys, line_id: u64, draw_index: u16) -> elote_pool::state::Pagare {
+        self.anchor_account(&pagare_pda(&line_pda(&k.pool, line_id).0, draw_index).0)
+    }
+
+    /// A Core asset with every plugin, read back through the crate's decoder.
+    pub fn asset_state(&self, asset: &Pubkey) -> Box<mpl_core::Asset> {
+        mpl_core::Asset::from_bytes(&self.account(asset).data).expect("asset")
     }
 
     /// A draw of everything still available on the line.

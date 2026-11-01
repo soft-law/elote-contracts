@@ -37,9 +37,12 @@ import {
 } from "@solana/program-client-core";
 import {
   getCreditLineCodec,
+  getPagareCodec,
   getPoolCodec,
   type CreditLine,
   type CreditLineArgs,
+  type Pagare,
+  type PagareArgs,
   type Pool,
   type PoolArgs,
 } from "../accounts";
@@ -105,6 +108,7 @@ export const ELOTE_POOL_PROGRAM_ADDRESS =
 
 export enum ElotePoolAccount {
   CreditLine,
+  Pagare,
   Pool,
 }
 
@@ -122,6 +126,17 @@ export function identifyElotePoolAccount(
     )
   ) {
     return ElotePoolAccount.CreditLine;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([140, 142, 27, 239, 147, 131, 73, 247]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolAccount.Pagare;
   }
   if (
     containsBytes(
@@ -156,6 +171,7 @@ export enum ElotePoolEvent {
   LineTermsSet,
   LineWrittenOff,
   NavUpdated,
+  PagareIssued,
   PoolCollectionSet,
   PoolConfigured,
   PoolFlags,
@@ -333,6 +349,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.NavUpdated;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([114, 100, 21, 201, 68, 46, 186, 138]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.PagareIssued;
   }
   if (
     containsBytes(
@@ -725,6 +752,8 @@ export type ElotePoolPlugin = {
 export type ElotePoolPluginAccounts = {
   creditLine: ReturnType<typeof getCreditLineCodec> &
     SelfFetchFunctions<CreditLineArgs, CreditLine>;
+  pagare: ReturnType<typeof getPagareCodec> &
+    SelfFetchFunctions<PagareArgs, Pagare>;
   pool: ReturnType<typeof getPoolCodec> & SelfFetchFunctions<PoolArgs, Pool>;
 };
 
@@ -739,7 +768,7 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getDepositInstructionAsync> & SelfPlanAndSendFunctions;
   draw: (
-    input: DrawAsyncInput,
+    input: MakeOptional<DrawAsyncInput, "payer">,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getDrawInstructionAsync> & SelfPlanAndSendFunctions;
   initPool: (
@@ -811,6 +840,7 @@ export function elotePoolProgram(
       elotePool: <ElotePoolPlugin>{
         accounts: {
           creditLine: addSelfFetchFunctions(client, getCreditLineCodec()),
+          pagare: addSelfFetchFunctions(client, getPagareCodec()),
           pool: addSelfFetchFunctions(client, getPoolCodec()),
         },
         instructions: {
@@ -833,10 +863,13 @@ export function elotePoolProgram(
           draw: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
-              getDrawInstructionAsync(input, {
-                programAddress:
-                  instructionConfig?.programAddress ?? config.programAddress,
-              }),
+              getDrawInstructionAsync(
+                { ...input, payer: input.payer ?? client.payer },
+                {
+                  programAddress:
+                    instructionConfig?.programAddress ?? config.programAddress,
+                },
+              ),
             ),
           initPool: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(

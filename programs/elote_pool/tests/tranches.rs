@@ -413,7 +413,7 @@ fn a_draw_carries_its_document_hash_and_refuses_a_zero_one() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, [0; 32]);
-    env.expect_err_with_attestor(ix, &borrower, E_WRONG_AMOUNT);
+    env.expect_err_with_attestor(ix, &borrower, E_DOCUMENT_HASH_REQUIRED);
     let hash = [0x5a; 32];
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, hash);
     let meta = env.send_with_attestor(ix, &borrower);

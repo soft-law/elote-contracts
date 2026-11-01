@@ -34,6 +34,7 @@ import {
   type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type WritableAccount,
+  type WritableSignerAccount,
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
@@ -64,6 +65,14 @@ export type DrawInstruction<
   TAccountBorrowerAssetAccount extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountAsset extends string | AccountMeta<string> = string,
+  TAccountPagare extends string | AccountMeta<string> = string,
+  TAccountCollection extends string | AccountMeta<string> = string,
+  TAccountMplCoreProgram extends string | AccountMeta<string> =
+    "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
+  TAccountSystemProgram extends string | AccountMeta<string> =
+    "11111111111111111111111111111111",
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
     "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
@@ -98,6 +107,25 @@ export type DrawInstruction<
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountPayer extends string
+        ? WritableSignerAccount<TAccountPayer> &
+            AccountSignerMeta<TAccountPayer>
+        : TAccountPayer,
+      TAccountAsset extends string
+        ? WritableAccount<TAccountAsset>
+        : TAccountAsset,
+      TAccountPagare extends string
+        ? WritableAccount<TAccountPagare>
+        : TAccountPagare,
+      TAccountCollection extends string
+        ? WritableAccount<TAccountCollection>
+        : TAccountCollection,
+      TAccountMplCoreProgram extends string
+        ? ReadonlyAccount<TAccountMplCoreProgram>
+        : TAccountMplCoreProgram,
+      TAccountSystemProgram extends string
+        ? ReadonlyAccount<TAccountSystemProgram>
+        : TAccountSystemProgram,
       TAccountEventAuthority extends string
         ? ReadonlyAccount<TAccountEventAuthority>
         : TAccountEventAuthority,
@@ -159,6 +187,14 @@ export type DrawAsyncInput<
     InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
+  TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
+  TAccountAsset extends InstructionAccountInput = InstructionAccountInput,
+  TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
+  TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
+  TAccountMplCoreProgram extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountSystemProgram extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -176,6 +212,22 @@ export type DrawAsyncInput<
   vault: TAccountVault;
   borrowerAssetAccount: TAccountBorrowerAssetAccount;
   tokenProgram?: TAccountTokenProgram;
+  /**
+   * Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets
+   * rarely hold SOL. Any signer.
+   */
+  payer: TAccountPayer;
+  /**
+   * The Metaplex Core asset that is the pagaré, created by the Core program in this
+   * instruction at a program-derived address, so clients need no keypair for it.
+   */
+  asset: TAccountAsset;
+  /** The program's record of the pagaré. */
+  pagare: TAccountPagare;
+  /** The series' collection the pool controls (validated at `init_pool`). */
+  collection: TAccountCollection;
+  mplCoreProgram?: TAccountMplCoreProgram;
+  systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   amount: DrawInstructionDataArgs["amount"];
@@ -191,6 +243,12 @@ export async function getDrawInstructionAsync<
   TAccountVault extends InstructionAccountInput,
   TAccountBorrowerAssetAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
+  TAccountPayer extends InstructionSignerInput,
+  TAccountAsset extends InstructionAccountInput,
+  TAccountPagare extends InstructionAccountInput,
+  TAccountCollection extends InstructionAccountInput,
+  TAccountMplCoreProgram extends InstructionAccountInput,
+  TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
@@ -204,6 +262,12 @@ export async function getDrawInstructionAsync<
     TAccountVault,
     TAccountBorrowerAssetAccount,
     TAccountTokenProgram,
+    TAccountPayer,
+    TAccountAsset,
+    TAccountPagare,
+    TAccountCollection,
+    TAccountMplCoreProgram,
+    TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -244,6 +308,30 @@ export async function getDrawInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountTokenProgram,
       InstructionAccountInputAddress<TAccountTokenProgram>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountPayer,
+      InstructionAccountInputAddress<TAccountPayer>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAsset,
+      InstructionAccountInputAddress<TAccountAsset>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountPagare,
+      InstructionAccountInputAddress<TAccountPagare>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountCollection,
+      InstructionAccountInputAddress<TAccountCollection>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMplCoreProgram,
+      InstructionAccountInputAddress<TAccountMplCoreProgram>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSystemProgram,
+      InstructionAccountInputAddress<TAccountSystemProgram>
     >,
     ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
@@ -296,6 +384,24 @@ export async function getDrawInstructionAsync<
       isSigner: false,
       isWritable: false,
     },
+    payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
+    asset: { value: input.asset ?? null, isSigner: false, isWritable: true },
+    pagare: { value: input.pagare ?? null, isSigner: false, isWritable: true },
+    collection: {
+      value: input.collection ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    mplCoreProgram: {
+      value: input.mplCoreProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    systemProgram: {
+      value: input.systemProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -320,6 +426,14 @@ export async function getDrawInstructionAsync<
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
   }
+  if (!accounts.mplCoreProgram.value) {
+    accounts.mplCoreProgram.value =
+      "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d" as Address<"CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d">;
+  }
+  if (!accounts.systemProgram.value) {
+    accounts.systemProgram.value =
+      "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
+  }
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
       programAddress,
@@ -341,6 +455,12 @@ export async function getDrawInstructionAsync<
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("borrowerAssetAccount", accounts.borrowerAssetAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("asset", accounts.asset),
+      getAccountMeta("pagare", accounts.pagare),
+      getAccountMeta("collection", accounts.collection),
+      getAccountMeta("mplCoreProgram", accounts.mplCoreProgram),
+      getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
@@ -383,6 +503,30 @@ export async function getDrawInstructionAsync<
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountPayer,
+      InstructionAccountInputAddress<TAccountPayer>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAsset,
+      InstructionAccountInputAddress<TAccountAsset>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountPagare,
+      InstructionAccountInputAddress<TAccountPagare>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountCollection,
+      InstructionAccountInputAddress<TAccountCollection>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMplCoreProgram,
+      InstructionAccountInputAddress<TAccountMplCoreProgram>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSystemProgram,
+      InstructionAccountInputAddress<TAccountSystemProgram>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -404,6 +548,14 @@ export type DrawInput<
     InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
+  TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
+  TAccountAsset extends InstructionAccountInput = InstructionAccountInput,
+  TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
+  TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
+  TAccountMplCoreProgram extends InstructionAccountInput =
+    InstructionAccountInput,
+  TAccountSystemProgram extends InstructionAccountInput =
+    InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -421,6 +573,22 @@ export type DrawInput<
   vault: TAccountVault;
   borrowerAssetAccount: TAccountBorrowerAssetAccount;
   tokenProgram?: TAccountTokenProgram;
+  /**
+   * Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets
+   * rarely hold SOL. Any signer.
+   */
+  payer: TAccountPayer;
+  /**
+   * The Metaplex Core asset that is the pagaré, created by the Core program in this
+   * instruction at a program-derived address, so clients need no keypair for it.
+   */
+  asset: TAccountAsset;
+  /** The program's record of the pagaré. */
+  pagare: TAccountPagare;
+  /** The series' collection the pool controls (validated at `init_pool`). */
+  collection: TAccountCollection;
+  mplCoreProgram?: TAccountMplCoreProgram;
+  systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   amount: DrawInstructionDataArgs["amount"];
@@ -436,6 +604,12 @@ export function getDrawInstruction<
   TAccountVault extends InstructionAccountInput,
   TAccountBorrowerAssetAccount extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
+  TAccountPayer extends InstructionSignerInput,
+  TAccountAsset extends InstructionAccountInput,
+  TAccountPagare extends InstructionAccountInput,
+  TAccountCollection extends InstructionAccountInput,
+  TAccountMplCoreProgram extends InstructionAccountInput,
+  TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
@@ -449,6 +623,12 @@ export function getDrawInstruction<
     TAccountVault,
     TAccountBorrowerAssetAccount,
     TAccountTokenProgram,
+    TAccountPayer,
+    TAccountAsset,
+    TAccountPagare,
+    TAccountCollection,
+    TAccountMplCoreProgram,
+    TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -488,6 +668,30 @@ export function getDrawInstruction<
   ResolvedInstructionAccountMeta<
     TAccountTokenProgram,
     InstructionAccountInputAddress<TAccountTokenProgram>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountPayer,
+    InstructionAccountInputAddress<TAccountPayer>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountAsset,
+    InstructionAccountInputAddress<TAccountAsset>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountPagare,
+    InstructionAccountInputAddress<TAccountPagare>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountCollection,
+    InstructionAccountInputAddress<TAccountCollection>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountMplCoreProgram,
+    InstructionAccountInputAddress<TAccountMplCoreProgram>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountSystemProgram,
+    InstructionAccountInputAddress<TAccountSystemProgram>
   >,
   ResolvedInstructionAccountMeta<
     TAccountEventAuthority,
@@ -539,6 +743,24 @@ export function getDrawInstruction<
       isSigner: false,
       isWritable: false,
     },
+    payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
+    asset: { value: input.asset ?? null, isSigner: false, isWritable: true },
+    pagare: { value: input.pagare ?? null, isSigner: false, isWritable: true },
+    collection: {
+      value: input.collection ?? null,
+      isSigner: false,
+      isWritable: true,
+    },
+    mplCoreProgram: {
+      value: input.mplCoreProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    systemProgram: {
+      value: input.systemProgram ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -563,6 +785,14 @@ export function getDrawInstruction<
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
   }
+  if (!accounts.mplCoreProgram.value) {
+    accounts.mplCoreProgram.value =
+      "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d" as Address<"CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d">;
+  }
+  if (!accounts.systemProgram.value) {
+    accounts.systemProgram.value =
+      "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
+  }
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
     accounts.program.isWritable = false;
@@ -578,6 +808,12 @@ export function getDrawInstruction<
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("borrowerAssetAccount", accounts.borrowerAssetAccount),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("asset", accounts.asset),
+      getAccountMeta("pagare", accounts.pagare),
+      getAccountMeta("collection", accounts.collection),
+      getAccountMeta("mplCoreProgram", accounts.mplCoreProgram),
+      getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
@@ -620,6 +856,30 @@ export function getDrawInstruction<
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountPayer,
+      InstructionAccountInputAddress<TAccountPayer>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountAsset,
+      InstructionAccountInputAddress<TAccountAsset>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountPagare,
+      InstructionAccountInputAddress<TAccountPagare>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountCollection,
+      InstructionAccountInputAddress<TAccountCollection>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMplCoreProgram,
+      InstructionAccountInputAddress<TAccountMplCoreProgram>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountSystemProgram,
+      InstructionAccountInputAddress<TAccountSystemProgram>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -649,8 +909,24 @@ export type ParsedDrawInstruction<
     vault: TAccountMetas[5];
     borrowerAssetAccount: TAccountMetas[6];
     tokenProgram: TAccountMetas[7];
-    eventAuthority: TAccountMetas[8];
-    program: TAccountMetas[9];
+    /**
+     * Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets
+     * rarely hold SOL. Any signer.
+     */
+    payer: TAccountMetas[8];
+    /**
+     * The Metaplex Core asset that is the pagaré, created by the Core program in this
+     * instruction at a program-derived address, so clients need no keypair for it.
+     */
+    asset: TAccountMetas[9];
+    /** The program's record of the pagaré. */
+    pagare: TAccountMetas[10];
+    /** The series' collection the pool controls (validated at `init_pool`). */
+    collection: TAccountMetas[11];
+    mplCoreProgram: TAccountMetas[12];
+    systemProgram: TAccountMetas[13];
+    eventAuthority: TAccountMetas[14];
+    program: TAccountMetas[15];
   };
   data: DrawInstructionData;
 };
@@ -663,12 +939,12 @@ export function parseDrawInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedDrawInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 10) {
+  if (instruction.accounts.length < 16) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 10,
+        expectedAccountMetas: 16,
       },
     );
   }
@@ -689,6 +965,12 @@ export function parseDrawInstruction<
       vault: getNextAccount(),
       borrowerAssetAccount: getNextAccount(),
       tokenProgram: getNextAccount(),
+      payer: getNextAccount(),
+      asset: getNextAccount(),
+      pagare: getNextAccount(),
+      collection: getNextAccount(),
+      mplCoreProgram: getNextAccount(),
+      systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },

@@ -126,6 +126,21 @@ pub struct LineSponsorRole {
     pub role: u8,
 }
 
+/// Emitted by `draw` after `LineDrawState` (decision 24): the pagaré of this disposición was
+/// issued as the Metaplex Core asset `asset`, held frozen by `holder` (the pool PDA, the series
+/// vehicle's custody account). `due_at` is the line's last due date at issuance.
+#[event]
+pub struct PagareIssued {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub draw_index: u16,
+    pub asset: Pubkey,
+    pub pagare_hash: [u8; 32],
+    pub amount: u64,
+    pub due_at: i64,
+    pub holder: Pubkey,
+}
+
 /// Emitted by `suspend_draws` (D10): the admin closed the draw window early; `available_forfeited`
 /// is the undrawn remainder that can no longer be drawn. Repayment is untouched.
 #[event]
