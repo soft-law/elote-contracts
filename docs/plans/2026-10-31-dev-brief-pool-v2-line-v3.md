@@ -358,6 +358,11 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `endorse_pagare` writes, nothing removes) plus governance, the same as for the delegates. This
   weakens A further: relinquishing the delegates does not remove the vehicle's power over the
   log. 6d and verifier held; nothing in progress on the dev side.
+- **Arrears refactor accepted** (`4a440c0`, pushed; origin tip of `v2/pool-and-lines`): the loop
+  carries the previous cumulative due instead of recomputing it and hoists the constant accrual
+  cap; same arithmetic in the same order, 416 vectors byte-identical, no regeneration. At 120
+  installments: repay 56,569 CU (was 63,946), mark_in_collection 33,453 (39,635), write_off
+  38,620 (44,802). 128 Rust + 11 JS, clippy clean. Dev holds on 6d and the verifier.
 
 ## Points the coordinator still owns
 
