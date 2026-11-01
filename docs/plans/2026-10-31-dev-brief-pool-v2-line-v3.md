@@ -402,6 +402,10 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   CU at 120 roughly unchanged; post-mark repay costs the worst-case figure. **Comment cleanup**
   ordered as its own commit before step 7 (Mario, 2026-11-01); a separate audit agent reviews
   the pushed tip in its own worktree, report under `docs/audits/`.
+- **Pushed** `fc7feba` and `017774a` (SECURITY sentence on the reliance on Core's check in
+  cancel's endorsed branch); origin tip `017774a`. Sessions paused on usage limits the night of
+  2026-11-01 and resumed 2026-11-02: dev on the cleanup then step 7 (proration last, behind one
+  function, pending research Q14); audit agent resumed; research on the supplement, Q14 first.
 
 ## Points the coordinator still owns
 
