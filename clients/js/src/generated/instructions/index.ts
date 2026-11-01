@@ -10,6 +10,7 @@ export * from "./cancelLine";
 export * from "./cancelPagare";
 export * from "./deposit";
 export * from "./draw";
+export * from "./endorsePagare";
 export * from "./initPool";
 export * from "./markInCollection";
 export * from "./openLine";

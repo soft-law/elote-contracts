@@ -591,3 +591,90 @@ fn a_draw_writes_the_issuance_entry_of_the_registry() {
     assert_eq!(second.entry_count, 1);
     assert_ne!(second.log_root, sidecar.log_root);
 }
+
+/// Endoso en procuración (LGTOC 35; decision 29: the only endoso the vehicle makes in v1): the pool
+/// stays the owner, the entry goes into the registry, and the power to extinguish the pagaré is lent
+/// through an owner-managed `BurnDelegate` whose authority is a program PDA nobody holds a key for,
+/// so the burn can only happen inside `cancel_pagare`. A second procuración after a revocation
+/// approves the existing plugin instead of adding it (the sidecar's flag says it exists).
+#[test]
+fn an_endoso_en_procuracion_appends_the_entry_and_lends_the_burn_to_a_program_address() {
+    use elote_pool::events::PagareEntry;
+    use elote_pool::state::{KIND_EMISION, KIND_PROCURACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let before = env.pagare(&k, line_id, 0);
+    assert_eq!((before.entry_count, before.last_kind, before.flags), (1, KIND_EMISION, 0));
+    let procurador = env.funded(1);
+    let (pda, _) = procurador_pda(&pagare_pda(&line_pda(&k.pool, line_id).0, 0).0, &procurador.pubkey());
+
+    let meta = env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
+    let now = env.now();
+    let after = env.pagare(&k, line_id, 0);
+    let expected = entry_hash(&after.asset, KIND_PROCURACION, &k.pool, &procurador.pubkey(), &ENDOSO_HASH, now, 2);
+    assert_eq!((after.entry_count, after.last_kind, after.flags), (2, KIND_PROCURACION, PAGARE_FLAG_BURN_DELEGATE | PAGARE_FLAG_PROCURACION));
+    assert_eq!(after.log_root, chain(&before.log_root, &expected));
+    assert_eq!((after.status, after.asset, after.drawn_through), (before.status, before.asset, before.drawn_through), "nothing else moves");
+    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
+    assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count, ev.recorded_at, ev.stated_at), (KIND_PROCURACION, k.pool, procurador.pubkey(), expected, 2, now, now));
+    // The asset: still the pool's, still frozen, with a BurnDelegate held by the program PDA.
+    let asset = env.asset_state(&after.asset);
+    assert_eq!(asset.base.owner, k.pool);
+    assert!(asset.plugin_list.permanent_freeze_delegate.as_ref().unwrap().permanent_freeze_delegate.frozen);
+    let burn = asset.plugin_list.burn_delegate.as_ref().expect("BurnDelegate");
+    assert_eq!((burn.base.authority.authority_type, burn.base.authority.address), (AuthorityType::Address, Some(pda)));
+    // The procurador's own key cannot burn, and a second procuración while one is in force is refused.
+    let ix = mpl_core::instructions::BurnV1Builder::new().asset(after.asset).collection(Some(k.collection)).payer(procurador.pubkey()).authority(Some(procurador.pubkey())).instruction();
+    assert!(env.try_send(ix, &procurador, &[]).is_err());
+    let admin = env.admin.insecure_clone();
+    let attestor = env.attestor.insecure_clone();
+    let other = env.funded(1);
+    let ix = env.endorse_pagare_ix(&k, line_id, 0, &admin.pubkey(), KIND_PROCURACION, other.pubkey(), ENDOSO_HASH);
+    env.expect_err(ix, &admin, &[&attestor], E_PROCURACION_STATE);
+}
+
+/// The refusals of `endorse_pagare` in v1: only a procuración by the pool, with the attestor; the
+/// endorsee named and not the pool; a hash; a line not written off; a pagaré outstanding.
+#[test]
+fn endorse_pagare_refuses_other_kinds_bad_endorsees_and_the_wrong_signers() {
+    use elote_pool::state::{KIND_ABONO, KIND_PROCURACION, KIND_PROPIEDAD, KIND_RECIBO};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let admin = env.admin.insecure_clone();
+    let attestor = env.attestor.insecure_clone();
+    let procurador = env.funded(1);
+    let a = admin.pubkey();
+    for kind in [KIND_PROPIEDAD, KIND_ABONO, KIND_RECIBO, KIND_RECIBO + 1] {
+        let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, kind, procurador.pubkey(), ENDOSO_HASH);
+        env.expect_err(ix, &admin, &[&attestor], E_ENDOSO_KIND_INVALID);
+    }
+    for to in [solana_pubkey::Pubkey::default(), k.pool] {
+        let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, to, ENDOSO_HASH);
+        env.expect_err(ix, &admin, &[&attestor], E_ENDORSEE_INVALID);
+    }
+    let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, procurador.pubkey(), [0; 32]);
+    env.expect_err(ix, &admin, &[&attestor], E_DOCUMENT_HASH_REQUIRED);
+    // The borrower is not the holder; without the attestor nothing happens.
+    let ix = env.endorse_pagare_ix(&k, line_id, 0, &borrower.pubkey(), KIND_PROCURACION, procurador.pubkey(), ENDOSO_HASH);
+    env.expect_err(ix, &borrower, &[&attestor], E_NOT_HOLDER);
+    let stranger = env.funded(1);
+    let mut ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, procurador.pubkey(), ENDOSO_HASH);
+    let i = ix.accounts.iter().position(|m| m.pubkey == attestor.pubkey()).unwrap();
+    ix.accounts[i].pubkey = stranger.pubkey();
+    env.expect_err(ix, &admin, &[&stranger], E_ATTESTOR_REQUIRED);
+    assert_eq!(env.pagare(&k, line_id, 0).entry_count, 1, "nothing was appended");
+    // A written-off line keeps its títulos out of any endoso.
+    env.warp(p.term_end + 1);
+    let ix = env.write_off_ix(&k, line_id, &a);
+    env.send(ix, &admin, &[]);
+    let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, procurador.pubkey(), ENDOSO_HASH);
+    env.expect_err(ix, &admin, &[&attestor], E_LINE_STATUS);
+}

@@ -612,6 +612,177 @@
       ]
     },
     {
+      "name": "endorse_pagare",
+      "docs": [
+        "Endorses pagaré `draw_index` en procuración to `to` (LGTOC 35): appends the entry and lends",
+        "the power to extinguish it to a program-signed delegate. The admin (the pool is the owner)",
+        "and the attestor sign; in this version `kind` must be `KIND_PROCURACION`."
+      ],
+      "discriminator": [
+        108,
+        224,
+        119,
+        211,
+        130,
+        180,
+        151,
+        180
+      ],
+      "accounts": [
+        {
+          "name": "holder",
+          "docs": [
+            "The pagaré's holder: the admin while the asset is in the pool."
+          ],
+          "signer": true
+        },
+        {
+          "name": "attestor",
+          "docs": [
+            "Attests the signed endoso behind `endoso_hash` and the endorsee's verification (v1 gate)."
+          ],
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Pays the rent the Core plugin may need. Any signer."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          },
+          "relations": [
+            "pagare"
+          ]
+        },
+        {
+          "name": "pagare",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "arg",
+                "path": "draw_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset",
+          "writable": true
+        },
+        {
+          "name": "collection",
+          "writable": true
+        },
+        {
+          "name": "mpl_core_program",
+          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_index",
+          "type": "u16"
+        },
+        {
+          "name": "kind",
+          "type": "u8"
+        },
+        {
+          "name": "to",
+          "type": "pubkey"
+        },
+        {
+          "name": "endoso_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "init_pool",
       "docs": [
         "Creates the pool, its vault and its dead-shares account around `asset_mint` and the",
@@ -2206,6 +2377,26 @@
       "code": 6038,
       "name": "CollectionPeriodTooShort",
       "msg": "The collection period is shorter than the minimum"
+    },
+    {
+      "code": 6039,
+      "name": "PagareAccountsMismatch",
+      "msg": "The sidecars passed are not the ones this payment touches, oldest first"
+    },
+    {
+      "code": 6040,
+      "name": "EndosoKindInvalid",
+      "msg": "This kind of endoso is not one the program records, or not in this version"
+    },
+    {
+      "code": 6041,
+      "name": "EndorseeInvalid",
+      "msg": "The endorsee is missing or is the pool itself"
+    },
+    {
+      "code": 6042,
+      "name": "ProcuracionState",
+      "msg": "The pagaré has no procuración in force, or already has one"
     }
   ],
   "types": [

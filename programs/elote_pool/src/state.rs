@@ -15,6 +15,9 @@ pub mod seeds {
     pub const PAGARE: &[u8] = b"pagare";
     /// `[PAGARE_ASSET, line, draw_index (u16 LE)]`: the Metaplex Core asset that is the pagaré.
     pub const PAGARE_ASSET: &[u8] = b"pagare_asset";
+    /// `[PROCURADOR, pagare, procurador]`: the program-signed authority of a pagaré's `BurnDelegate`
+    /// during an endoso en procuración; nobody holds a key for it.
+    pub const PROCURADOR: &[u8] = b"procurador";
 }
 
 /// Shares the first deposit locks forever in the pool-owned dead account, so the supply never
@@ -298,6 +301,9 @@ pub const PAGARE_PAID_PENDING_CANCEL: u8 = 2;
 /// `Pagare::flags` bit: the asset carries an owner-managed `BurnDelegate` plugin, so a later
 /// procuración approves its authority instead of adding the plugin again.
 pub const PAGARE_FLAG_BURN_DELEGATE: u8 = 1 << 0;
+/// `Pagare::flags` bit: an endoso en procuración is in force (set by `endorse_pagare`, cleared by
+/// `revoke_procuracion` and by the extinction).
+pub const PAGARE_FLAG_PROCURACION: u8 = 1 << 1;
 
 /// Registry entry kinds (`Pagare::last_kind`, `PagareEntry::kind`); an unknown kind is refused.
 pub const KIND_EMISION: u8 = 0;

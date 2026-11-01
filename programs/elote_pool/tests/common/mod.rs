@@ -89,6 +89,10 @@ pub const E_AGREEMENT_HASH_REQUIRED: u32 = ERR_BASE + 35; // PoolError::Agreemen
 pub const E_EXPEDIENTE_ROOT_REQUIRED: u32 = ERR_BASE + 36; // PoolError::ExpedienteRootRequired
 pub const E_SPONSOR_ROLE_INVALID: u32 = ERR_BASE + 37; // PoolError::SponsorRoleInvalid
 pub const E_COLLECTION_PERIOD_TOO_SHORT: u32 = ERR_BASE + 38; // PoolError::CollectionPeriodTooShort
+pub const E_PAGARE_ACCOUNTS_MISMATCH: u32 = ERR_BASE + 39; // PoolError::PagareAccountsMismatch
+pub const E_ENDOSO_KIND_INVALID: u32 = ERR_BASE + 40; // PoolError::EndosoKindInvalid
+pub const E_ENDORSEE_INVALID: u32 = ERR_BASE + 41; // PoolError::EndorseeInvalid
+pub const E_PROCURACION_STATE: u32 = ERR_BASE + 42; // PoolError::ProcuracionState
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
@@ -239,6 +243,13 @@ pub const CERT_FINGERPRINT: [u8; 32] = [0xcf; 32];
 pub const SIGNATURE_METHOD: u8 = elote_pool::state::SIGNATURE_PSC_WALLET;
 /// The hash of the FEA-signed receipt `cancel_pagare` is given in the tests.
 pub const RECEIPT_HASH: [u8; 32] = [0x4e; 32];
+/// The hash of the signed endoso the tests pass.
+pub const ENDOSO_HASH: [u8; 32] = [0x5e; 32];
+
+/// `["procurador", pagare, procurador]`: the program-signed authority of a pagaré's burn delegate.
+pub fn procurador_pda(pagare: &Pubkey, procurador: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"procurador", pagare.as_ref(), procurador.as_ref()], &PROGRAM_ID)
+}
 #[allow(unused_imports)]
 pub use elote_pool::state::{PAGARE_OUTSTANDING, PAGARE_PAID};
 
@@ -1097,6 +1108,40 @@ impl Env {
             .to_account_metas(None),
             data: elote_pool::instruction::CancelPagare { draw_index, receipt_hash }.data(),
         }
+    }
+
+    /// `endorse_pagare(draw_index, kind, to, endoso_hash)` by the admin as holder and payer.
+    #[allow(clippy::too_many_arguments)]
+    pub fn endorse_pagare_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, kind: u8, to: Pubkey, endoso_hash: [u8; 32]) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::EndorsePagare {
+                holder: *holder,
+                attestor: self.attestor.pubkey(),
+                payer: *holder,
+                pool: k.pool,
+                line,
+                pagare: pagare_pda(&line, draw_index).0,
+                asset: self.pagare(k, line_id, draw_index).asset,
+                collection: k.collection,
+                mpl_core_program: MPL_CORE_ID,
+                system_program: SYSTEM_PROGRAM_ID,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::EndorsePagare { draw_index, kind, to, endoso_hash }.data(),
+        }
+    }
+
+    /// An endoso en procuración of pagaré `draw_index` to `procurador`, signed by the admin and the attestor.
+    pub fn procuracion(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, procurador: &Pubkey, endoso_hash: [u8; 32]) -> TransactionMetadata {
+        let admin = self.admin.insecure_clone();
+        let attestor = self.attestor.insecure_clone();
+        let ix = self.endorse_pagare_ix(k, line_id, draw_index, &admin.pubkey(), elote_pool::state::KIND_PROCURACION, *procurador, endoso_hash);
+        self.send(ix, &admin, &[&attestor])
     }
 
     /// Cancels pagaré `draw_index` of a line: the admin as holder and payer, the attestor co-signing.

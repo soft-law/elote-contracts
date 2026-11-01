@@ -141,6 +141,13 @@ pub mod elote_pool {
         instructions::pagare::cancel_pagare(ctx, draw_index, receipt_hash)
     }
 
+    /// Endorses pagaré `draw_index` en procuración to `to` (LGTOC 35): appends the entry and lends
+    /// the power to extinguish it to a program-signed delegate. The admin (the pool is the owner)
+    /// and the attestor sign; in this version `kind` must be `KIND_PROCURACION`.
+    pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32]) -> Result<()> {
+        instructions::pagare::endorse_pagare(ctx, draw_index, kind, to, endoso_hash)
+    }
+
     /// Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then
     /// interest, then principal, and never more than is due. Anyone may pay. A full repayment
     /// closes the line and forfeits the undrawn remainder.

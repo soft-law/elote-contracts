@@ -93,6 +93,14 @@ export const ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED = 0x1794; // 6036
 export const ELOTE_POOL_ERROR__SPONSOR_ROLE_INVALID = 0x1795; // 6037
 /** CollectionPeriodTooShort: The collection period is shorter than the minimum */
 export const ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT = 0x1796; // 6038
+/** PagareAccountsMismatch: The sidecars passed are not the ones this payment touches, oldest first */
+export const ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH = 0x1797; // 6039
+/** EndosoKindInvalid: This kind of endoso is not one the program records, or not in this version */
+export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x1798; // 6040
+/** EndorseeInvalid: The endorsee is missing or is the pool itself */
+export const ELOTE_POOL_ERROR__ENDORSEE_INVALID = 0x1799; // 6041
+/** ProcuracionState: The pagaré has no procuración in force, or already has one */
+export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x179a; // 6042
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED
@@ -105,6 +113,8 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT
   | typeof ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED
+  | typeof ELOTE_POOL_ERROR__ENDORSEE_INVALID
+  | typeof ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID
   | typeof ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
@@ -117,9 +127,11 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__NOT_HOLDER
   | typeof ELOTE_POOL_ERROR__NOT_SCHEDULED
   | typeof ELOTE_POOL_ERROR__OVERFLOW
+  | typeof ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH
   | typeof ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID
   | typeof ELOTE_POOL_ERROR__PAGARE_NOT_COVERED
   | typeof ELOTE_POOL_ERROR__PAUSED
+  | typeof ELOTE_POOL_ERROR__PROCURACION_STATE
   | typeof ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM
   | typeof ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID
@@ -148,6 +160,8 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED]: `The collection is not a Metaplex Core collection whose update authority is the pool`,
     [ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT]: `The collection period is shorter than the minimum`,
     [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed pagaré's hash is required`,
+    [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing or is the pool itself`,
+    [ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID]: `This kind of endoso is not one the program records, or not in this version`,
     [ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED]: `The expediente root is required`,
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
@@ -160,9 +174,11 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__NOT_HOLDER]: `The pagaré's holder must sign`,
     [ELOTE_POOL_ERROR__NOT_SCHEDULED]: `The line has no installment schedule`,
     [ELOTE_POOL_ERROR__OVERFLOW]: `Arithmetic overflow`,
+    [ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH]: `The sidecars passed are not the ones this payment touches, oldest first`,
     [ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID]: `This pagaré is already marked paid`,
     [ELOTE_POOL_ERROR__PAGARE_NOT_COVERED]: `The line has not repaid enough to cover this pagaré`,
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,
+    [ELOTE_POOL_ERROR__PROCURACION_STATE]: `The pagaré has no procuración in force, or already has one`,
     [ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM]: `The last installment would fall due after the term`,
     [ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED]: `The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions`,
     [ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID]: `signature_method is unknown, or lacks its certificate fingerprint`,

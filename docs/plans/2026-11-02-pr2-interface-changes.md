@@ -83,3 +83,19 @@ generated client derives `findPagarePda` and the `cancelPagare` builder derives 
   `PermanentTransferDelegate`, no `PermanentBurnDelegate`, no `AppData` adapter. Anything that read
   the AppData adapter reads the sidecar's registry and the `PagareEntry` events instead.
 - `cancel_pagare` is unchanged in its interface; it now thaws before burning.
+
+## 6d part 1 (b): `endorse_pagare`, the endoso en procuración
+
+- **New instruction** `endorse_pagare(draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32])`.
+  Signers: holder (the admin while the asset is in the pool), attestor, payer. Accounts: `pool`,
+  `line`, `pagare`, `asset` (= `Pagare.asset`), `collection`, `mpl_core_program`,
+  `system_program`. In this version `kind` must be 2 (`Procuracion`); `to` is the procurador's key,
+  never the zero key or the pool; `endoso_hash` is the signed endoso's hash, non-zero. Appends entry
+  `Procuracion` (from = the pool, to = the procurador) and emits `PagareEntry`; the asset gains an
+  owner-managed `BurnDelegate` whose authority is the PDA `["procurador", pagare, to]` (helper to
+  come in `pagare.ts`); nothing else moves.
+- **Sidecar `flags`:** bit 0 = the `BurnDelegate` plugin exists on the asset; bit 1 = a procuración
+  is in force. Clients read bit 1 to show "en procuración".
+- **Errors added:** 6039 `PagareAccountsMismatch` (reserved for the repay entries), 6040
+  `EndosoKindInvalid`, 6041 `EndorseeInvalid`, 6042 `ProcuracionState`.
+- Compute: about 34 600 CU at 120 installments.

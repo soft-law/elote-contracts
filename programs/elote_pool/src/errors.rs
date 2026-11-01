@@ -82,4 +82,12 @@ pub enum PoolError {
     SponsorRoleInvalid,
     #[msg("The collection period is shorter than the minimum")]
     CollectionPeriodTooShort,
+    #[msg("The sidecars passed are not the ones this payment touches, oldest first")]
+    PagareAccountsMismatch,
+    #[msg("This kind of endoso is not one the program records, or not in this version")]
+    EndosoKindInvalid,
+    #[msg("The endorsee is missing or is the pool itself")]
+    EndorseeInvalid,
+    #[msg("The pagaré has no procuración in force, or already has one")]
+    ProcuracionState,
 }

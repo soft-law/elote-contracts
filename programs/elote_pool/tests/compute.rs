@@ -138,6 +138,24 @@ fn repay_after_the_mark_stays_under_the_ceiling_at_120_installments() {
     assert!(mark < CEILING && repay < CEILING && write_off < CEILING);
 }
 
+/// `endorse_pagare` en procuración: one registry entry and one Core CPI (the first time an
+/// `AddPluginV1`, later an approve).
+#[test]
+fn procuracion_stays_under_the_ceiling() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool_with_grace(0);
+    let investor = env.investor(&k, 200 * UNIT);
+    env.deposit(&k, &investor, 200 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(100 * UNIT, 1_200, 120, 5_000);
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw(&k, line_id, &borrower);
+    let procurador = env.funded(1);
+    let cu = env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH).compute_units_consumed;
+    println!("endorse_pagare (procuracion, plugin added) at 120 installments: {cu} CU");
+    assert!(cu < CEILING, "procuracion used {cu} CU, ceiling {CEILING}");
+}
+
 #[test]
 fn arrears_instructions_stay_under_the_ceiling_at_18_and_120_installments() {
     for n in [18u16, 120] {
