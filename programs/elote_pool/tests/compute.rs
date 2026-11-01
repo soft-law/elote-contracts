@@ -41,6 +41,8 @@ fn compute_units(installments: u16) -> [(&'static str, u64); 3] {
     let repay = env.send(ix, &borrower, &[]).compute_units_consumed;
     let ix = env.mark_in_collection_ix(&k, line_id);
     let mark = env.send(ix, &investor, &[]).compute_units_consumed;
+    // The write-off waits for the collection period from the mark.
+    env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     let write_off = env.send(ix, &admin, &[]).compute_units_consumed;
     [("repay", repay), ("mark_in_collection", mark), ("write_off", write_off)]
@@ -127,6 +129,7 @@ fn repay_after_the_mark_stays_under_the_ceiling_at_120_installments() {
     env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), late + 1_000);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), late + 1_000);
     let repay = env.send(ix, &borrower, &[]).compute_units_consumed;
+    env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     let write_off = env.send(ix, &admin, &[]).compute_units_consumed;
     println!("mark_in_collection at 120 installments, 3 missed: {mark} CU");

@@ -39,9 +39,22 @@ pub mod elote_pool {
 
     /// Creates the pool, its vault and its dead-shares account around `asset_mint` and the
     /// admin's share mint; fixes the grace period, the line cap (`1..=10_000` bps of the NAV)
-    /// and the attestor for the life of the pool. The admin signs.
-    pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey) -> Result<()> {
-        instructions::pool::init_pool(ctx, grace_period_seconds, max_line_bps, attestor)
+    /// and the attestor for the life of the pool, and the collection period (at least 30 days).
+    /// The admin signs; refused with the admin as attestor.
+    pub fn init_pool(
+        ctx: Context<InitPool>,
+        grace_period_seconds: u32,
+        max_line_bps: u16,
+        attestor: Pubkey,
+        collection_period_seconds: u32,
+    ) -> Result<()> {
+        instructions::pool::init_pool(ctx, grace_period_seconds, max_line_bps, attestor, collection_period_seconds)
+    }
+
+    /// Sets the seconds a line in collection waits, from its mark, before it can be written off.
+    /// Admin only; refused below the 30-day floor.
+    pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_period_seconds: u32) -> Result<()> {
+        instructions::pool::set_collection_period(ctx, collection_period_seconds)
     }
 
     /// Replaces the pool's attestor. The admin and the new attestor sign.

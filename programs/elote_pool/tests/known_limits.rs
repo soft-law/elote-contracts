@@ -109,6 +109,9 @@ fn limit_redeem_between_collection_and_write_off_exits_at_par() {
     let out = env.redeem(&k, &quick, quick_shares);
     assert_eq!(out.assets, quick_shares, "one unit per share: the par value");
 
+    // The collection period runs from the mark; the NAV does not move while it runs.
+    env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
+    assert_eq!(env.nav(&k), 20 * UNIT - quick_shares);
     let admin = env.admin.insecure_clone();
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.send(ix, &admin, &[]);

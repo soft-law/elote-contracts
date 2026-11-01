@@ -16,6 +16,7 @@ export * from "./openLine";
 export * from "./redeem";
 export * from "./repay";
 export * from "./setAttestor";
+export * from "./setCollectionPeriod";
 export * from "./setPaused";
 export * from "./suspendDraws";
 export * from "./writeOff";

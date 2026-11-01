@@ -57,6 +57,7 @@ import {
   getRedeemInstructionAsync,
   getRepayInstructionAsync,
   getSetAttestorInstructionAsync,
+  getSetCollectionPeriodInstructionAsync,
   getSetPausedInstructionAsync,
   getSuspendDrawsInstructionAsync,
   getWriteOffInstructionAsync,
@@ -70,6 +71,7 @@ import {
   parseRedeemInstruction,
   parseRepayInstruction,
   parseSetAttestorInstruction,
+  parseSetCollectionPeriodInstruction,
   parseSetPausedInstruction,
   parseSuspendDrawsInstruction,
   parseWriteOffInstruction,
@@ -90,12 +92,14 @@ import {
   type ParsedRedeemInstruction,
   type ParsedRepayInstruction,
   type ParsedSetAttestorInstruction,
+  type ParsedSetCollectionPeriodInstruction,
   type ParsedSetPausedInstruction,
   type ParsedSuspendDrawsInstruction,
   type ParsedWriteOffInstruction,
   type RedeemAsyncInput,
   type RepayAsyncInput,
   type SetAttestorAsyncInput,
+  type SetCollectionPeriodAsyncInput,
   type SetPausedAsyncInput,
   type SuspendDrawsAsyncInput,
   type WriteOffAsyncInput,
@@ -162,6 +166,7 @@ export function identifyElotePoolAccount(
 
 export enum ElotePoolEvent {
   AttestorSet,
+  CollectionPeriodSet,
   Deposited,
   LateInterestCollected,
   LineCancelled,
@@ -201,6 +206,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.AttestorSet;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([132, 133, 226, 56, 1, 168, 42, 132]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.CollectionPeriodSet;
   }
   if (
     containsBytes(
@@ -471,6 +487,7 @@ export enum ElotePoolInstruction {
   Redeem,
   Repay,
   SetAttestor,
+  SetCollectionPeriod,
   SetPaused,
   SuspendDraws,
   WriteOff,
@@ -594,6 +611,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([223, 72, 27, 167, 225, 143, 231, 15]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SetCollectionPeriod;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([91, 60, 125, 192, 176, 225, 166, 218]),
       ),
       0,
@@ -662,6 +690,9 @@ export type ParsedElotePoolInstruction<
   | ({
       instructionType: ElotePoolInstruction.SetAttestor;
     } & ParsedSetAttestorInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.SetCollectionPeriod;
+    } & ParsedSetCollectionPeriodInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.SetPaused;
     } & ParsedSetPausedInstruction<TProgram>)
@@ -745,6 +776,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.SetAttestor,
         ...parseSetAttestorInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.SetCollectionPeriod: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SetCollectionPeriod,
+        ...parseSetCollectionPeriodInstruction(instruction),
       };
     }
     case ElotePoolInstruction.SetPaused: {
@@ -842,6 +880,11 @@ export type ElotePoolPluginInstructions = {
     input: SetAttestorAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSetAttestorInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  setCollectionPeriod: (
+    input: SetCollectionPeriodAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSetCollectionPeriodInstructionAsync> &
     SelfPlanAndSendFunctions;
   setPaused: (
     input: SetPausedAsyncInput,
@@ -974,6 +1017,14 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getSetAttestorInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          setCollectionPeriod: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetCollectionPeriodInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),

@@ -262,9 +262,10 @@ await send("create the share token", admin, [
   getInitializeMint2Instruction({ mint: shareMintSigner.address, decimals: DECIMALS, mintAuthority: pool }),
 ]);
 const shareMint = shareMintSigner.address;
-// Pool v2 records the attestor (the agreements engine's key; the admin stands in for it in the
-// demo) and the series' Metaplex Core collection (a placeholder address until PR 3 creates one).
-const attestor = admin.address;
+// Pool v2 records the attestor (the agreements engine's key; a throwaway key stands in for it in
+// the demo, since the admin may not be the attestor) and the series' Metaplex Core collection (a placeholder address until PR 3 creates one).
+const attestorSigner = await generateKeyPairSigner();
+const attestor = attestorSigner.address;
 const collection = (await generateKeyPairSigner()).address;
 const ataOf = async (owner: Address, mint: Address) =>
   (await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
@@ -288,6 +289,7 @@ await send("init_pool", admin, [
     gracePeriodSeconds: graceSeconds,
     maxLineBps,
     attestor,
+    collectionPeriodSeconds: 30 * 86_400,
   }),
 ]);
 console.log(
@@ -354,7 +356,7 @@ await send("open_line", admin, [
     admin,
     borrower,
     ...(withSponsor ? { sponsor } : {}),
-    attestor: admin, // the admin stands in for the agreements engine's key in the demo
+    attestor: attestorSigner, // stands in for the agreements engine's key in the demo
     pool,
     line,
     vault,
@@ -381,7 +383,7 @@ const pagareAccounts = async (lineAddress: Address, drawIndex: number) => ({
 await send("draw: 6,000 tMXN (devnet test token, no value) to the borrower, pagaré 0 minted", borrower, [
   await getDrawInstructionAsync({
     borrower,
-    attestor: admin,
+    attestor: attestorSigner,
     pool,
     line,
     assetMint: assetMint.address,
@@ -484,7 +486,7 @@ async function scheduleDemo() {
     await getOpenLineInstructionAsync({
       admin,
       borrower,
-      attestor: admin,
+      attestor: attestorSigner,
       pool,
       line: sLine,
       vault,
@@ -502,7 +504,7 @@ async function scheduleDemo() {
   await send("draw: 600 tMXN (devnet test token, no value) to the borrower, pagaré 0 minted", borrower, [
     await getDrawInstructionAsync({
       borrower,
-      attestor: admin,
+      attestor: attestorSigner,
       pool,
       line: sLine,
       assetMint: assetMint.address,

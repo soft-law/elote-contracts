@@ -34,6 +34,14 @@ pub struct PoolFlags {
     pub permissioned: bool,
 }
 
+/// The pool's collection period, at `init_pool` and after every `set_collection_period`: seconds
+/// from the mark before a line in collection can be written off.
+#[event]
+pub struct CollectionPeriodSet {
+    pub pool: Pubkey,
+    pub collection_period_seconds: u32,
+}
+
 /// The pool's attestor, at `init_pool` and after every `set_attestor`.
 #[event]
 pub struct AttestorSet {

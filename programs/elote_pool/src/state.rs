@@ -48,6 +48,9 @@ pub const SPONSOR_GUARANTOR: u8 = 1;
 pub const MAX_INSTALLMENTS: u16 = 120;
 /// The fewest missed installments a schedule may set before collection.
 pub const MIN_MAX_MISSED: u8 = 3;
+/// The shortest collection period a pool may set (audit F-03): 30 days from the mark before a
+/// line in collection can be written off.
+pub const MIN_COLLECTION_PERIOD_SECONDS: u32 = 30 * 86_400;
 /// The year that annualizes `late_bps`: 365 days.
 pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
 /// `Pool::asset_controls` bit: the asset mint has a freeze authority.
@@ -83,10 +86,13 @@ pub struct Pool {
     /// | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
     /// | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
     /// | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
-    /// | 8..32   | unused                 | zero     |                                           |
+    /// | 8..12   | unused                 | zero     | reserved for `cancel_delay_seconds` (step 6d) |
+    /// | 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |
+    /// | 16..32  | unused                 | zero     |                                           |
     ///
     /// Read and written only through the accessors below (`grace_period_seconds`,
-    /// `max_line_bps`, `permissioned`, `asset_controls` and their setters).
+    /// `max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds` and their
+    /// setters).
     pub reserved: [u8; 32],
     pub bump: u8,
     // Appended after `bump`, so the earlier offsets hold.
@@ -178,6 +184,19 @@ impl Pool {
     pub fn set_grace_period_seconds(&mut self, seconds: u32) {
         self.reserved[0..4].copy_from_slice(&seconds.to_le_bytes());
     }
+
+    /// Seconds after the mark (`CreditLine::accelerated_at`) before a line in collection can be
+    /// written off (audit F-03). At least `MIN_COLLECTION_PERIOD_SECONDS`; set at `init_pool`,
+    /// changed by the admin with `set_collection_period`.
+    pub fn collection_period_seconds(&self) -> u32 {
+        let mut b = [0u8; 4];
+        b.copy_from_slice(&self.reserved[12..16]);
+        u32::from_le_bytes(b)
+    }
+
+    pub fn set_collection_period_seconds(&mut self, seconds: u32) {
+        self.reserved[12..16].copy_from_slice(&seconds.to_le_bytes());
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]
@@ -256,6 +275,8 @@ pub struct CreditLine {
     pub expediente_root: [u8; 32],
     /// When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.
     /// From then on every installment is due and late interest runs on all remaining principal.
+    /// Also the start of the collection period: `write_off` waits
+    /// `Pool::collection_period_seconds` from it.
     pub accelerated_at: i64,
 }
 

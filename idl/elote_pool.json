@@ -616,7 +616,8 @@
       "docs": [
         "Creates the pool, its vault and its dead-shares account around `asset_mint` and the",
         "admin's share mint; fixes the grace period, the line cap (`1..=10_000` bps of the NAV)",
-        "and the attestor for the life of the pool. The admin signs."
+        "and the attestor for the life of the pool, and the collection period (at least 30 days).",
+        "The admin signs; refused with the admin as attestor."
       ],
       "discriminator": [
         116,
@@ -766,6 +767,10 @@
         {
           "name": "attestor",
           "type": "pubkey"
+        },
+        {
+          "name": "collection_period_seconds",
+          "type": "u32"
         }
       ]
     },
@@ -1306,6 +1311,71 @@
       "args": []
     },
     {
+      "name": "set_collection_period",
+      "docs": [
+        "Sets the seconds a line in collection waits, from its mark, before it can be written off.",
+        "Admin only; refused below the 30-day floor."
+      ],
+      "discriminator": [
+        223,
+        72,
+        27,
+        167,
+        225,
+        143,
+        231,
+        15
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "collection_period_seconds",
+          "type": "u32"
+        }
+      ]
+    },
+    {
       "name": "set_paused",
       "docs": [
         "Pauses or resumes deposits, redemptions, openings and draws. Repayments, collection and",
@@ -1613,6 +1683,19 @@
         42,
         189,
         23
+      ]
+    },
+    {
+      "name": "CollectionPeriodSet",
+      "discriminator": [
+        132,
+        133,
+        226,
+        56,
+        1,
+        168,
+        42,
+        132
       ]
     },
     {
@@ -1979,7 +2062,7 @@
     {
       "code": 6012,
       "name": "TermEnded",
-      "msg": "The term has ended"
+      "msg": "The term has ended, or would end before the opening"
     },
     {
       "code": 6013,
@@ -2080,6 +2163,36 @@
       "code": 6032,
       "name": "NotHolder",
       "msg": "The pagaré's holder must sign"
+    },
+    {
+      "code": 6033,
+      "name": "AttestorIsAdmin",
+      "msg": "The attestor cannot be the admin"
+    },
+    {
+      "code": 6034,
+      "name": "BorrowerIsAttestor",
+      "msg": "The borrower cannot be the attestor"
+    },
+    {
+      "code": 6035,
+      "name": "AgreementHashRequired",
+      "msg": "The signed agreement's hash is required"
+    },
+    {
+      "code": 6036,
+      "name": "ExpedienteRootRequired",
+      "msg": "The expediente root is required"
+    },
+    {
+      "code": 6037,
+      "name": "SponsorRoleInvalid",
+      "msg": "sponsor_role is unknown"
+    },
+    {
+      "code": 6038,
+      "name": "CollectionPeriodTooShort",
+      "msg": "The collection period is shorter than the minimum"
     }
   ],
   "types": [
@@ -2098,6 +2211,26 @@
           {
             "name": "attestor",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CollectionPeriodSet",
+      "docs": [
+        "The pool's collection period, at `init_pool` and after every `set_collection_period`: seconds",
+        "from the mark before a line in collection can be written off."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "collection_period_seconds",
+            "type": "u32"
           }
         ]
       }
@@ -2285,7 +2418,9 @@
             "name": "accelerated_at",
             "docs": [
               "When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.",
-              "From then on every installment is due and late interest runs on all remaining principal."
+              "From then on every installment is due and late interest runs on all remaining principal.",
+              "Also the start of the collection period: `write_off` waits",
+              "`Pool::collection_period_seconds` from it."
             ],
             "type": "i64"
           }
@@ -3064,10 +3199,13 @@
               "| 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |",
               "| 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |",
               "| 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |",
-              "| 8..32   | unused                 | zero     |                                           |",
+              "| 8..12   | unused                 | zero     | reserved for `cancel_delay_seconds` (step 6d) |",
+              "| 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |",
+              "| 16..32  | unused                 | zero     |                                           |",
               "",
               "Read and written only through the accessors below (`grace_period_seconds`,",
-              "`max_line_bps`, `permissioned`, `asset_controls` and their setters)."
+              "`max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds` and their",
+              "setters)."
             ],
             "type": {
               "array": [

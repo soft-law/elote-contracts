@@ -72,6 +72,7 @@ All three program accounts keep 32 `reserved` bytes; new parameters live there s
 | Account | Bytes of `reserved` | Field |
 |---|---|---|
 | `Pool` | 0..4 | `grace_period_seconds`, u32 LE (zero: no grace) |
+| `Pool` | 12..16 | `collection_period_seconds`, u32 LE (at least 30 days) |
 | | 4..6 | `max_line_bps`, u16 LE: the largest line as a share of the NAV at `open_line`, 1 to 10,000. Zero on a pool created before the cap existed (the devnet demo pools): such a pool opens no new line |
 | | 6 | `permissioned`, u8: 1 when the share mint is frozen by default (Token ACL), so holders must be thawed |
 | | 7 | `asset_controls`, u8 bits: bit 0 the asset mint has a freeze authority; bit 1 it carries the Token-2022 `Pausable` extension |
@@ -93,19 +94,20 @@ added by line v3 (`drawn`, `draws`, `availability_end`, `first_due_at`, `sponsor
 
 | Instruction | Signers | Effect |
 |---|---|---|
-| `init_pool(grace_period_seconds, max_line_bps, attestor)` | admin | creates the pool, its vault and its dead-shares account around an asset mint and an admin-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the attestor (the agreements engine's key) and the series' Metaplex Core collection; the grace period and the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) are fixed for the life of the pool |
+| `init_pool(grace_period_seconds, max_line_bps, attestor, collection_period_seconds)` | admin | creates the pool, its vault and its dead-shares account around an asset mint and an admin-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the attestor (the agreements engine's key, never the admin) and the series' Metaplex Core collection (a bare one: no plugins, nothing minted); the grace period and the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) are fixed for the life of the pool; the collection period (at least 30 days) can be changed by the admin |
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit is at least 1.0 and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, sponsor_role, schedule, expediente_root)` | admin, borrower, attestor, sponsor if named | approves the next line as a commitment of `principal` at an annual `rate_bps`; moves no money; the borrower is not the admin and `principal <= NAV * max_line_bps / 10_000` (reads the vault); `schedule` (optional, with the contract's `first_due_at`) makes it an installment line; the draw window closes at `first_due_at`, or at `term_end` on a bullet line |
 | `draw(amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)` | borrower, attestor, payer | one tranche from the vault to the borrower while the window is open (strictly before it closes), at most what is still available, against the signed pagaré's hash; interest on the tranche, at the annual rate to the last due date, is fixed here; mints the pagaré token (a Metaplex Core asset in the series' collection, held frozen by the pool PDA) and its `Pagare` record, whose rent the `payer` (the app's relayer) funds; the client derives the two PDA bumps so the program verifies the addresses without a search; `cert_fingerprint` (the PSC certificate that signed the text) and `signature_method` (0 wallet, 1 PSC + wallet, 2 e.firma + wallet) go into the record and the asset's attributes |
-| `repay(amount)` | anyone | late interest (which `amount` must cover), then interest, then principal, never more than is due; what is owed is what was drawn plus the interest fixed at each draw. The line closes when nothing remains and the undrawn remainder lapses. Never paused |
+| `repay(amount)` | anyone | late interest (which `amount` must cover), then interest, then principal, never more than is due; what is owed is what was drawn plus the interest fixed at each draw. The line closes when nothing is due and nothing can be drawn any more; while it can still draw, a payment that clears the debt leaves it open and a payment on a zero debt is refused. Never paused |
 | `mark_in_collection` | anyone | moves an installment line to `InCollection` once `max_missed` installments are missed and the grace period of the last of them has run. Never paused |
-| `write_off` | admin | after the term plus grace, or for a line in collection after its oldest missed due date plus grace, the unpaid principal is recognised as a loss |
+| `write_off` | admin | after the term plus grace, or for a line in collection after its oldest missed due date plus grace and the pool's collection period from the mark, the unpaid principal is recognised as a loss |
 | `suspend_draws` | admin | closes a line's draw window now (a KYC failure, a default event); the undrawn remainder is forfeited, repayment is untouched, the pool is not paused |
 | `cancel_line` | admin | clears an approved commitment nobody drew (status `Cancelled`, terminal); refused once anything was drawn |
 | `cancel_pagare(draw_index, receipt_hash)` | holder (the admin while the asset is in the pool), attestor, payer | extinguishes a paid pagaré against the FEA-signed receipt's hash: only while the line is `Active` or `Repaid` and once the line's `principal_repaid` reaches the pagaré's `drawn_through` (pagarés are covered oldest first; interest alone covers nothing); writes the "PAGADO" mark on the `Pagare` record (status, paid_at, receipt_hash), which is never closed, emits `PagareCancelled`, then burns the asset through the pool's permanent burn delegate, its rent going to the `payer`. Never paused |
 | `set_paused(paused)` | admin | pause switch for deposits, redemptions, openings and draws |
-| `set_attestor` | admin, the new attestor | replaces the pool's attestor with the co-signing key, which proves the engine controls it; the recovery when the agreements engine's key rotates |
+| `set_attestor` | admin, the new attestor | replaces the pool's attestor with the co-signing key, which proves the engine controls it; never the admin itself; the recovery when the agreements engine's key rotates |
+| `set_collection_period(collection_period_seconds)` | admin | changes the seconds a line in collection waits, from its mark, before it can be written off; never below 30 days |
 
 Error codes start at 6000 in the order of `PoolError` in `programs/elote_pool/src/errors.rs`.
 
@@ -152,7 +154,7 @@ Without it the line is a bullet line (single maturity) and nothing below applies
   ordinary interest of the installments not yet due is forgiven. Repayments are still accepted there;
   there is no cure, and only a full repayment moves the line to `Repaid`.
 - **Write-off policy.** After the third month in arrears the line goes to out-of-court collection and the
-  admin records the write-off. The program allows `write_off` only when the line is in collection and its
+  admin records the write-off. The program allows `write_off` only when the pool's collection period has run from the mark and the line is in collection and its
   oldest missed installment fell due more than the grace period ago, or when the term ended more than the
   grace period ago. Only the admin may call it.
 
@@ -186,6 +188,7 @@ change fields; new information comes as new events.
 | `NavUpdated` | `deposit`, `redeem`, `repay`, `write_off`, last in each | pool, total_assets, share_supply |
 | `PoolPaused` | `set_paused` | pool, paused |
 | `AttestorSet` | `init_pool`, `set_attestor` | pool, attestor |
+| `CollectionPeriodSet` | `init_pool`, `set_collection_period` | pool, collection_period_seconds |
 | `PoolCollectionSet` | `init_pool` | pool, collection |
 
 ## Build and test
@@ -223,6 +226,7 @@ and the Associated Token Account program by default; the harness adds Metaplex C
 | `tranches.rs` | Tranched draws: the draw window, the payability floor, per-tranche interest, the cap on tranches, the attestor on every draw, `suspend_draws`, `cancel_line` |
 | `pagare.rs` | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused; `cancel_pagare`: the PAGADO mark, the burn, coverage oldest first, the refusals |
 | `core_capabilities.rs` | What Metaplex Core allows after an asset's creation (step 6d prework): handing off or extinguishing the permanent delegates, thawing, moving the update authority off the collection, adding plugins and adapters, writing and removing AppData, the cost of `AddBlocker`, an Owner-held AppData following the asset, owner-managed delegates for the procuración; pinned against the Core binary so an upgrade that changes an answer fails here |
+| `audit.rs` | Regression tests of the 2026-11-01 audit: F-01, F-02, F-03, F-05 |
 | `compute.rs` | Compute units of `init_pool`, `draw` (with the Core CPI), `cancel_pagare`, `repay`, `mark_in_collection` and `write_off` at 18 and 120 installments stay under 100,000 |
 | `math_props.rs` | Property tests (proptest) over the share accounting and the arrears arithmetic |
 | `vectors.rs` | Evaluates the arrears arithmetic on 421 cases (44 accelerated) and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |

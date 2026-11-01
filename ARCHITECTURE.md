@@ -142,7 +142,7 @@ filters.
 | 185 | 8 | `written_off` | informative running total |
 | 193 | 8 | `line_count` | next `line_id` |
 | 201 | 1 | `paused` | |
-| 202 | 32 | `reserved` | bytes 0..4: `grace_period_seconds` (u32 LE); bytes 4..6: `max_line_bps` (u16 LE); byte 6: `permissioned` flag; byte 7: `asset_controls` bits (0 freeze authority, 1 Pausable); rest zero |
+| 202 | 32 | `reserved` | bytes 12..16: `collection_period_seconds` (u32 LE, step 8); bytes 8..12 reserved for `cancel_delay_seconds` (step 6d); bytes 0..4: `grace_period_seconds` (u32 LE); bytes 4..6: `max_line_bps` (u16 LE); byte 6: `permissioned` flag; byte 7: `asset_controls` bits (0 freeze authority, 1 Pausable); rest zero |
 | 234 | 1 | `bump` | |
 | 235 | 32 | `attestor` | pool v2: the agreements engine's key; co-signs openings, draws and endosos; rotated by `set_attestor` |
 | 267 | 32 | `collection` | pool v2: the series' Metaplex Core collection the pagaré assets are minted into; admin-created, validated at `init_pool` (owner, `CollectionV1`, update authority = pool) |
@@ -182,7 +182,7 @@ when they were added. They are read and written only through `Pool::grace_period
 | 264 | 8 | `first_due_at` | line v3: the first due date from the signed contract; 0 on a bullet line |
 | 272 | 1 | `sponsor_role` | line v3: 0 promoter, 1 guarantor (decision 19); recorded, not enforced |
 | 273 | 32 | `expediente_root` | line v3: salted merkle root of the credit file; never zero |
-| 305 | 8 | `accelerated_at` | step 7 (decision 28): when `mark_in_collection` accelerated the balance; 0 before. From then on every installment is due and late interest runs on all remaining principal |
+| 305 | 8 | `accelerated_at` | step 7 (decision 28): when `mark_in_collection` accelerated the balance; 0 before. From then on every installment is due and late interest runs on all remaining principal. Also the start of the collection period (audit F-03): `write_off` waits `collection_period_seconds` from it. If a future version separates acceleration from the start of collection, a new field is added; this one keeps its name |
 
 `Schedule` packing inside `reserved` (scheduled lines only):
 
@@ -406,6 +406,13 @@ the `PagareEntry` events) together with `PagareIssued` and Core's ownership tran
 holder's own statements enter it only through program instructions; a transfer outside the program
 leaves no entry and is shown as such.
 
+**Two notes from the audit of 2026-11-01.** F-06: with the PAGADO mark written at the moment of
+payment (decision 30), `cancel_pagare` in 6d depends on the sidecar's status
+(`PAGARE_PAID_PENDING_CANCEL`) and no longer on the line's status, so a covered pagaré of a line
+in collection is extinguished like any other; F-06 closes with 6d. §8 item 1: the coverage rule
+after an endoso en propiedad (`principal_repaid` moves only with payments into the pool's vault)
+is undefined until the C32 extension design; it belongs to part 2 and is not built in v1.
+
 **Two traps, binding.** Thaw before any relinquish: a frozen asset whose freeze authority is
 `None` is immovable forever. And after the first endoso en propiedad the asset can never be frozen
 again, even if it returns to the pool: the freeze power is gone with the `None`.
@@ -492,9 +499,14 @@ can land first).
   early with `suspend_draws` (`availability_end = now`, status unchanged).
 - `Repaid`, `WrittenOff` and `Cancelled` are terminal. No instruction closes or reopens an
   account.
-- A payment that cures the arrears of a line in collection leaves it `InCollection`; only full
-  repayment moves it to `Repaid`. A cured line cannot be written off until it misses again
-  (`tests/schedule.rs::a_cured_line_in_collection_is_not_written_off_until_it_misses_again`).
+- After the mark there is no cure: the balance is accelerated and only full repayment moves the
+  line to `Repaid`; `write_off` waits for the pool's collection period from the mark
+  (`tests/schedule.rs::after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_grace_from_the_mark`,
+  `tests/audit.rs::f03_write_off_waits_for_the_pools_collection_period_from_the_mark`).
+- A line with nothing due stays `Active` while it can still draw; `Repaid` needs both nothing due
+  and nothing drawable (the window closed, the commitment fully drawn, or the line in
+  collection), so a third party cannot close an open line by paying its debt (audit F-01,
+  `tests/audit.rs`).
 
 **Pause matrix.** `set_paused(true)` blocks `deposit`, `redeem`, `open_line` and `draw`. It never
 blocks `repay`, `mark_in_collection`, `write_off` or `set_paused(false)`: money can always come
@@ -515,7 +527,7 @@ all. A full decoder run against an attacker-chosen account of the right owner ca
 the program aborts (an asset passed as the collection did exactly that in development); a fixed
 read fails closed. For the pagaré assets the program trusts its own sidecar and the CPIs.
 
-### 5.1 `init_pool(grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey)`
+### 5.1 `init_pool(grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey, collection_period_seconds: u32)`
 
 - **Signers:** `admin` (also pays rent).
 - **Constraints:** `pool` is `init` at `["pool", admin, asset_mint]`; `share_mint` is an
@@ -538,13 +550,19 @@ read fails closed. For the pagaré assets the program trusts its own sidecar and
   ones; `DefaultAccountState == Frozen` sets `permissioned` and then requires a freeze
   authority; `NonTransferable` is allowed (deposit mints, redeem burns); all failures are
   `ShareMintNotAllowed`. Who the freeze authority is (Token ACL's `MintConfig` or a key) is not
-  recorded. `attestor != Pubkey::default()` (`WrongAccount`). Any value of
-  `grace_period_seconds` is accepted, including zero. The `collection` account must be a
-  Metaplex Core collection the pool controls (`validate_collection`: owned by the Core
-  program, key `CollectionV1`, update authority = the pool PDA; `CollectionNotAllowed`); only
-  the fixed head of the account is read, never the length-prefixed strings.
+  recorded. `attestor != Pubkey::default()` (`WrongAccount`) and `attestor != admin`
+  (`AttestorIsAdmin`, audit F-05: the two-signature model must not collapse into one key). Any
+  value of `grace_period_seconds` is accepted, including zero; `collection_period_seconds >=
+  30 days` (`CollectionPeriodTooShort`, audit F-03). The `collection` account must be a bare
+  Metaplex Core collection the pool controls (`validate_collection`: owned by the Core program,
+  key `CollectionV1`, update authority = the pool PDA, the account exactly the base record with
+  no plugin header after it, `num_minted == 0` and `current_size == 0`; `CollectionNotAllowed`).
+  Core applies a collection's permanent plugins to every asset in it, so a collection-level
+  delegate would reach every pagaré (audit F-02). Every read is at a fixed offset or bounded by a
+  length read first; the strings are never decoded.
 - **Writes:** every `Pool` field (`version = 2`, `attestor`, `collection`); `reserved` zeroed
-  then the grace period, `max_line_bps`, `permissioned` and `asset_controls` packed in. On a
+  then the grace period, `max_line_bps`, `permissioned`, `asset_controls` and the collection
+  period packed in. On a
   permissioned share mint the dead account is born frozen: the freeze authority thaws it in this
   transaction or before the first deposit, or the first deposit fails inside Token-2022
   (`AccountFrozen`).
@@ -599,11 +617,13 @@ amount; the holder retries with fewer shares.
   is read-only and must be `pool.vault` (`WrongAccount`), for the NAV the cap is measured
   against.
 - **Checks, in order:** not paused; `line_id == pool.line_count` (`WrongAccount`);
-  `borrower != pool.admin` (`BorrowerIsAdmin`); `principal > 0` (`WrongAmount`);
+  `borrower != pool.admin` (`BorrowerIsAdmin`); `borrower != pool.attestor`
+  (`BorrowerIsAttestor`, audit F-05); `principal > 0` (`WrongAmount`);
   `principal <= (vault.amount + outstanding_principal) * max_line_bps / 10 000`
   (`LineTooLarge`; the NAV counts principal lent out, and an empty pool opens no line);
-  `rate_bps <= 10 000`; `term_end > now`; `agreement_hash != [0; 32]`;
-  `expediente_root != [0; 32]`; `sponsor_role <= 1` (all `WrongAmount`); if `sponsor` is
+  `rate_bps <= 10 000` (`WrongAmount`); `term_end > now` (`TermEnded`); `agreement_hash !=
+  [0; 32]` (`AgreementHashRequired`); `expediente_root != [0; 32]` (`ExpedienteRootRequired`);
+  `sponsor_role <= 1` (`SponsorRoleInvalid`); if `sponsor` is
   `Some(k)`, the `sponsor` account must be present and be `k` (`SponsorRequired`); if
   `schedule` is `Some`, `validate_schedule`: `1 <= installments <= 120`,
   `interval_seconds > 0`, `late_bps <= 10 000`, `3 <= max_missed <= installments`,
@@ -691,8 +711,13 @@ repays through `repay` like anyone else).
   interest_part + principal_part`, which can be less than `amount`:** no line takes more than
   is due and the surplus stays in the payer's account
   (`tests/schedule.rs::late_interest_is_capped_and_overpayment_stays_with_the_payer`,
-  `tests/lines.rs::repay_clamps_overpayment_and_rejects_wrong_status`). A full repayment
-  closes the line and the undrawn remainder lapses with it (D5).
+  `tests/lines.rs::repay_clamps_overpayment_and_rejects_wrong_status`). The line closes
+  (`Repaid`) when nothing is due and nothing can be drawn: the window has closed, the commitment
+  is fully drawn, or the line is in collection. While it can still draw, a payment that clears
+  the debt leaves it `Active`, a payment on a zero debt is refused (`WrongAmount`), and the
+  undrawn remainder stays drawable; once the window has closed, a payment on a zero debt closes
+  the line and moves nothing (audit F-01: a third party could otherwise pay one unit and forfeit
+  the borrower's commitment).
 - **CPIs:** one `transfer_checked` payer → vault (payer signs) for the computed total.
 - **Writes:** `pool.outstanding_principal -= principal_part`;
   `pool.interest_collected += interest_part` (late interest is *not* counted here);
@@ -700,7 +725,8 @@ repays through `repay` like anyone else).
   `late_collected += late` and `late_paid_until = now`, which stops the same seconds being
   charged twice. **When `late` is zero the watermark does not move** (R-11): the accrual that
   rounded down to zero keeps running, so a borrower cannot erase it by paying one unit every
-  few seconds; if `remaining` reaches zero, `status = Repaid` and `closed_at = now`.
+  few seconds; if `remaining` reaches zero and the line can no longer draw, `status = Repaid` and
+  `closed_at = now`.
 - **Events:** `LateInterestCollected` (only when `late > 0`), then `LineRepaid` (and `NavUpdated` last) with
   `remaining` after this payment (without late interest) and `nav_after`.
 
@@ -738,8 +764,11 @@ earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad th
 - **Constraints:** `line` has `has_one = pool`; `vault` is read only for the NAV in the event.
 - **Checks:** `after_term = now > term_end + grace`. If `status == Active`: require
   `after_term` (`TermNotEnded`). If `status == InCollection`: require `after_term` **or**
-  (`arrears(now).first_missed_due` is `Some(due)` and `now > due + grace`)
-  (`WriteOffTooEarly`). Any other status: `LineStatus`.
+  (`arrears(now).first_missed_due` is `Some(due)` and `now > due + grace`), **and** the
+  collection period has run, `now > accelerated_at + collection_period_seconds`
+  (`WriteOffTooEarly`; audit F-03: without it the write-off was available the instant the
+  keeper marked the line, since the grace of the third missed installment implies the grace of
+  the first). Any other status: `LineStatus`.
   After the mark `first_missed_due` is the instant the oldest unpaid installment became exigible:
   its due date, or the mark for an installment that fell due only by the acceleration, so once
   the pre-mark arrears are paid the write-off waits for the grace counted from the mark.
@@ -762,6 +791,7 @@ Unpaid interest is never part of the loss: it was never in the NAV.
   becomes the attestor: it signs, which proves the engine controls it (C14; the holder-facing
   and court-facing parts of a rotation stay off chain). A zero or uncontrolled key can therefore
   never be named.
+- **Checks:** `new_attestor != admin` (`AttestorIsAdmin`, audit F-05).
 - **Writes:** `pool.attestor = new_attestor`. **Events:** `AttestorSet`.
 
 The attestor can block every opening, draw and endoso by withholding its signature and can move
@@ -832,6 +862,14 @@ the payment must outlive the título.
   cannot be re-created as an asset) and sends the rest of the rent to `payer`; the collection's
   `current_size` drops by one and `num_minted` stays.
 - **Compute:** 26 891 CU on a 120-installment line (`tests/compute.rs`); no arrears loop runs.
+
+### 5.14 `set_collection_period(collection_period_seconds: u32)`
+
+- **Signers:** `admin` (`has_one = admin`, `Unauthorized`).
+- **Checks:** `collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS` (30 days;
+  `CollectionPeriodTooShort`).
+- **Writes:** `Pool.reserved[12..16]`. Applies to every line from its next `write_off` check,
+  marked or not. **Events:** `CollectionPeriodSet`.
 
 ## 6. Installments, arrears and late interest (`math.rs`)
 
@@ -934,7 +972,7 @@ What must hold between instructions, and which code keeps it:
 
 | role | identified by | can |
 |---|---|---|
-| admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `suspend_draws` (close a line's draw window now), `cancel_line` (clear an undrawn approval), `cancel_pagare` as the holder of the pagarés in the pool (only a covered one, with the attestor and a receipt), `set_paused`, `set_attestor` |
+| admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `suspend_draws` (close a line's draw window now), `cancel_line` (clear an undrawn approval), `cancel_pagare` as the holder of the pagarés in the pool (only a covered one, with the attestor and a receipt), `set_paused`, `set_attestor` (never to itself), `set_collection_period` (never below 30 days) |
 | attestor | `Pool.attestor`, set at `init_pool`, rotated by `set_attestor` (which the new key co-signs) | co-signs `open_line`, `draw` and `cancel_pagare` (and `endorse_pagare` in step 6d), so it can block every opening, draw, cancellation and endoso and move nothing |
 | share-mint freeze authority | the freeze authority of the admin-supplied share mint (Token ACL's `MintConfig` in production); not recorded by the program | thaw or freeze share accounts, the dead account included: admits and bars investors |
 | borrower | `CreditLine.borrower` | `draw` its own approved line before the term |
@@ -1005,12 +1043,13 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
 | `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
 | `tests/core_capabilities.rs` | LiteSVM + the pinned Core binary | what Core allows after creation, for the 6d design (§2.3): permanent delegate authorities hand off only by revoke then approve from the collection's authority and `None` is terminal; only the freeze delegate thaws and a frozen asset with no delegate is stuck; an asset's update authority cannot leave its collection; `AddBlocker` stops later plugins, costs about 4 200 CU and does not stop adapters; AppData is written by its fixed data authority and removed by the collection's authority; an Owner-held AppData authority follows the asset through `TransferV1` and a write replaces the data; owner-managed delegates are the owner's to add (AddBlocker or not), approve and revoke, reset to `Owner` on transfer, and the approved burn delegate burns a thawed asset; a burn delegate approved to a program address refuses the procurador's own key |
-| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (26 906 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 980 CU at 120, deterministic, of which the Core CPI is about 44 000; `repay` 56 992, `mark_in_collection` 34 114, `write_off` 39 093 at 120 with every installment missed; after the mark, `repay` 48 148 and `write_off` 39 094 early in a 120-installment schedule) |
+| `tests/audit.rs` | LiteSVM | the regression tests of the 2026-11-01 audit (`docs/audits/`): F-01 a third-party repayment does not close a line that can still draw, F-02 a collection with plugins or minted assets is refused, F-03 the collection period from the mark, F-05 the attestor is neither the admin nor a borrower |
+| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (26 904 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 959 CU at 120, deterministic, of which the Core CPI is about 44 000; `repay` 57 008, `mark_in_collection` 34 366, `write_off` 47 896 at 120 with every installment missed and the collection period run, so every installment takes the accrual branch; after an early mark, `repay` 48 181 and `write_off` 47 897) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 136 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 141 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.

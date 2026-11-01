@@ -41,7 +41,8 @@ Token-2022's `AccountFrozen`. The devnet demo uses a plain classic share mint an
 vencimiento anticipado (decision 28): from the mark every installment is due and late interest runs
 on all remaining principal. It records a fact (the line missed
 `max_missed` installments and the grace of the last of them has run); nothing moves. It must be
-called promptly because `write_off` on a line in collection is only allowed after it.
+called promptly because `write_off` on a line in collection is only allowed after it, and the
+pool's collection period counts from the mark.
 
 | Item | Value |
 |---|---|
@@ -65,7 +66,7 @@ reports those lines separately so the admin can act at the term.
 | Repayment | Anyone (borrower, sponsor, third party) | `repay` | Never paused. Screen the `payer` of every `LineRepaid` against sanctions lists (decision 6) |
 | Pagaré paid (after pool v2) | Admin (as holder while the asset is in the pool) and the attestor; the relayer as `payer` | `cancel_pagare(draw_index, receipt_hash)` | Line `Active` or `Repaid` and the line's `principal_repaid` at or above that pagaré's `drawn_through` (oldest first; interest paid covers nothing by itself). The engine issues the FEA-signed receipt (LGTOC 129), archives the asset's AppData log under NOM-151, then asks for the burn with the receipt's hash; the `Pagare` record stays as the PAGADO mark. Not possible in collection or after a write-off: the títulos stay in force for the collection |
 | Three installments missed | Keeper | `mark_in_collection` | Section 2 |
-| Loss recognised | Admin | `write_off` | `Active` and `now > term_end + grace`, or `InCollection` and `now > oldest missed due + grace`. Out-of-court collection has run its course per the credit policy |
+| Loss recognised | Admin | `write_off` | `Active` and `now > term_end + grace`, or `InCollection`, `now > oldest missed due + grace` and the pool's collection period (at least 30 days, `set_collection_period`) has run from the mark. Out-of-court collection has run its course per the credit policy |
 | Pause | Admin | `set_paused(true)` | Section 5 |
 | Resume | Admin | `set_paused(false)` | After the incident review |
 | Investor leaves | Holder | `redeem` | Paid from the vault balance only; a thin vault means a retry with fewer shares |

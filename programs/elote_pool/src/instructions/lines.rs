@@ -82,6 +82,7 @@ pub fn open_line(
     require!(!pool.paused, PoolError::Paused);
     require!(line_id == pool.line_count, PoolError::WrongAccount);
     require!(ctx.accounts.borrower.key() != pool.admin, PoolError::BorrowerIsAdmin);
+    require!(ctx.accounts.borrower.key() != pool.attestor, PoolError::BorrowerIsAttestor);
     require!(principal > 0, PoolError::WrongAmount);
     // The cap is measured against the NAV at this moment, principal lent out included; an empty
     // pool opens no line.
@@ -89,10 +90,10 @@ pub fn open_line(
     let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
     require!(principal <= cap, PoolError::LineTooLarge);
     require!(u64::from(rate_bps) <= BPS, PoolError::WrongAmount);
-    require!(term_end > now, PoolError::WrongAmount);
-    require!(agreement_hash != [0u8; 32], PoolError::WrongAmount);
-    require!(expediente_root != [0u8; 32], PoolError::WrongAmount);
-    require!(sponsor_role <= SPONSOR_GUARANTOR, PoolError::WrongAmount);
+    require!(term_end > now, PoolError::TermEnded);
+    require!(agreement_hash != [0u8; 32], PoolError::AgreementHashRequired);
+    require!(expediente_root != [0u8; 32], PoolError::ExpedienteRootRequired);
+    require!(sponsor_role <= SPONSOR_GUARANTOR, PoolError::SponsorRoleInvalid);
     if let Some(named) = sponsor {
         let signed = ctx.accounts.sponsor.as_ref().is_some_and(|s| s.key() == named);
         require!(signed, PoolError::SponsorRequired);
@@ -325,8 +326,9 @@ fn dec_u(mut m: u64) -> String {
 }
 
 /// Mints the pagaré: one Core asset in the pool's collection, owned by the pool PDA and frozen
-/// from creation; the three permanent delegates held by the pool PDA, so only the program can
-/// move or burn it; `ImmutableMetadata`; `Attributes` nobody can change (the nine facts, 32-byte
+/// from creation; the three permanent delegates held by the pool PDA (it is the freeze that stops
+/// anyone else, and `init_pool` admits only a bare collection, so no collection plugin reaches the
+/// asset); `ImmutableMetadata`; `Attributes` nobody can change (the nine facts, 32-byte
 /// values as hex); an empty `AppData` whose data authority is the pool PDA. The name is
 /// `PAGARE <line>-<index>` (C29), the URI empty, nothing personal.
 #[allow(clippy::too_many_arguments)]
@@ -611,8 +613,12 @@ pub struct Repay<'info> {
 /// `amount` must cover the late interest due (zero on a bullet line); the repayment settles the
 /// late interest, then interest, then principal, and takes at most what is due: the payer's
 /// account is debited only that, never `amount` when it is larger. Accepted in `Active` and
-/// `InCollection`. What is owed is what was drawn plus the interest fixed at each draw; a full
-/// repayment closes the line and the undrawn remainder lapses with it.
+/// `InCollection`. What is owed is what was drawn plus the interest fixed at each draw. The line
+/// closes (`Repaid`) when nothing is due and nothing can be drawn: the window has closed, the
+/// commitment is fully drawn, or the line is in collection. While it can still draw, a payment
+/// that clears the debt leaves it `Active`, and a payment on a zero debt is refused
+/// (`WrongAmount`); once the window has closed, a payment on a zero debt closes the line and
+/// moves nothing (audit F-01).
 ///
 /// Never blocked by the pause: a borrower can always pay.
 pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
@@ -632,6 +638,13 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
         None => 0,
     };
     require!(amount >= late_part, PoolError::LateInterestUnpaid);
+    // Audit F-01: while the line can still draw, a zero debt is nothing to pay, and a payment that
+    // clears the debt does not close the line; otherwise a third party could pay one unit and
+    // forfeit the borrower's commitment.
+    let can_draw = line.status == LineStatus::Active
+        && now < line.availability_end
+        && line.available().ok_or(PoolError::Overflow)? > 0;
+    require!(remaining > 0 || late_part > 0 || !can_draw, PoolError::WrongAmount);
     let rest = amount.checked_sub(late_part).ok_or(PoolError::Overflow)?.min(remaining);
     let interest_part = rest.min(interest_left);
     let principal_part = rest.checked_sub(interest_part).ok_or(PoolError::Overflow)?;
@@ -640,19 +653,21 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
         .and_then(|v| v.checked_add(principal_part))
         .ok_or(PoolError::Overflow)?;
 
-    token::transfer_checked(
-        CpiContext::new(
-            ctx.accounts.token_program.key(),
-            TransferChecked {
-                from: ctx.accounts.payer_asset_account.to_account_info(),
-                mint: ctx.accounts.asset_mint.to_account_info(),
-                to: ctx.accounts.vault.to_account_info(),
-                authority: ctx.accounts.payer.to_account_info(),
-            },
-        ),
-        transfer,
-        ctx.accounts.asset_mint.decimals,
-    )?;
+    if transfer > 0 {
+        token::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program.key(),
+                TransferChecked {
+                    from: ctx.accounts.payer_asset_account.to_account_info(),
+                    mint: ctx.accounts.asset_mint.to_account_info(),
+                    to: ctx.accounts.vault.to_account_info(),
+                    authority: ctx.accounts.payer.to_account_info(),
+                },
+            ),
+            transfer,
+            ctx.accounts.asset_mint.decimals,
+        )?;
+    }
 
     let pool = &mut ctx.accounts.pool;
     pool.outstanding_principal = pool
@@ -678,7 +693,7 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
         .checked_sub(interest_part)
         .and_then(|v| v.checked_sub(principal_part))
         .ok_or(PoolError::Overflow)?;
-    if remaining_after == 0 {
+    if remaining_after == 0 && !can_draw {
         line.status = LineStatus::Repaid;
         line.closed_at = now;
     }
@@ -830,7 +845,8 @@ pub struct WriteOff<'info> {
 /// pause. Allowed when
 ///
 /// - the line is `Active` and `now > term_end + grace` (else `TermNotEnded`), or
-/// - the line is `InCollection` and either a missed installment is still unpaid and
+/// - the line is `InCollection`, the collection period has run (`now > accelerated_at +
+///   collection_period_seconds`), and either a missed installment is still unpaid and
 ///   `now > first_missed_due + grace`, or `now > term_end + grace` (else `WriteOffTooEarly`).
 ///
 /// `grace` is the pool's grace period.
@@ -845,9 +861,15 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
         LineStatus::InCollection => {
             let after_missed = match line_arrears(line, pool, now)?.first_missed_due {
                 Some(due) => now > due.checked_add(grace).ok_or(PoolError::Overflow)?,
-                None => false, // cured: nothing is missed
+                None => false, // nothing is missed
             };
             require!(after_missed || after_term, PoolError::WriteOffTooEarly);
+            // Audit F-03: the collection period runs from the mark.
+            let period_end = line
+                .accelerated_at
+                .checked_add(i64::from(pool.collection_period_seconds()))
+                .ok_or(PoolError::Overflow)?;
+            require!(now > period_end, PoolError::WriteOffTooEarly);
         }
         _ => return err!(PoolError::LineStatus),
     }

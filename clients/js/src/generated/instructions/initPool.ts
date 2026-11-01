@@ -128,12 +128,14 @@ export type InitPoolInstructionData = {
   gracePeriodSeconds: number;
   maxLineBps: number;
   attestor: Address;
+  collectionPeriodSeconds: number;
 };
 
 export type InitPoolInstructionDataArgs = {
   gracePeriodSeconds: number;
   maxLineBps: number;
   attestor: Address | HasAddress;
+  collectionPeriodSeconds: number;
 };
 
 export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolInstructionDataArgs> {
@@ -143,6 +145,7 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
       ["gracePeriodSeconds", getU32Encoder()],
       ["maxLineBps", getU16Encoder()],
       ["attestor", getAddressEncoder()],
+      ["collectionPeriodSeconds", getU32Encoder()],
     ]),
     (value) => ({ ...value, discriminator: INIT_POOL_DISCRIMINATOR }),
   );
@@ -154,6 +157,7 @@ export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolIn
     ["gracePeriodSeconds", getU32Decoder()],
     ["maxLineBps", getU16Decoder()],
     ["attestor", getAddressDecoder()],
+    ["collectionPeriodSeconds", getU32Decoder()],
   ]);
 }
 
@@ -218,6 +222,7 @@ export type InitPoolAsyncInput<
   gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
   attestor: InitPoolInstructionDataArgs["attestor"];
+  collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
 };
 
 export async function getInitPoolInstructionAsync<
@@ -555,6 +560,7 @@ export type InitPoolInput<
   gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
   attestor: InitPoolInstructionDataArgs["attestor"];
+  collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
 };
 
 export function getInitPoolInstruction<

@@ -78,10 +78,13 @@ export type Pool = {
    * | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
    * | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
    * | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
-   * | 8..32   | unused                 | zero     |                                           |
+   * | 8..12   | unused                 | zero     | reserved for `cancel_delay_seconds` (step 6d) |
+   * | 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |
+   * | 16..32  | unused                 | zero     |                                           |
    *
    * Read and written only through the accessors below (`grace_period_seconds`,
-   * `max_line_bps`, `permissioned`, `asset_controls` and their setters).
+   * `max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds` and their
+   * setters).
    */
   reserved: ReadonlyUint8Array;
   bump: number;
@@ -124,10 +127,13 @@ export type PoolArgs = {
    * | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
    * | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
    * | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
-   * | 8..32   | unused                 | zero     |                                           |
+   * | 8..12   | unused                 | zero     | reserved for `cancel_delay_seconds` (step 6d) |
+   * | 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |
+   * | 16..32  | unused                 | zero     |                                           |
    *
    * Read and written only through the accessors below (`grace_period_seconds`,
-   * `max_line_bps`, `permissioned`, `asset_controls` and their setters).
+   * `max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds` and their
+   * setters).
    */
   reserved: ReadonlyUint8Array;
   bump: number;

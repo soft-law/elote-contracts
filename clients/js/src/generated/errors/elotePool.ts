@@ -39,7 +39,7 @@ export const ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL = 0x1779; // 6009
 export const ELOTE_POOL_ERROR__WRONG_ACCOUNT = 0x177a; // 6010
 /** SlippageExceeded: The result is below the minimum the caller accepts */
 export const ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED = 0x177b; // 6011
-/** TermEnded: The term has ended */
+/** TermEnded: The term has ended, or would end before the opening */
 export const ELOTE_POOL_ERROR__TERM_ENDED = 0x177c; // 6012
 /** InvalidSchedule: The installment schedule is not valid */
 export const ELOTE_POOL_ERROR__INVALID_SCHEDULE = 0x177d; // 6013
@@ -81,14 +81,31 @@ export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x178e; // 6030
 export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x178f; // 6031
 /** NotHolder: The pagaré's holder must sign */
 export const ELOTE_POOL_ERROR__NOT_HOLDER = 0x1790; // 6032
+/** AttestorIsAdmin: The attestor cannot be the admin */
+export const ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN = 0x1791; // 6033
+/** BorrowerIsAttestor: The borrower cannot be the attestor */
+export const ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR = 0x1792; // 6034
+/** AgreementHashRequired: The signed agreement's hash is required */
+export const ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED = 0x1793; // 6035
+/** ExpedienteRootRequired: The expediente root is required */
+export const ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED = 0x1794; // 6036
+/** SponsorRoleInvalid: sponsor_role is unknown */
+export const ELOTE_POOL_ERROR__SPONSOR_ROLE_INVALID = 0x1795; // 6037
+/** CollectionPeriodTooShort: The collection period is shorter than the minimum */
+export const ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT = 0x1796; // 6038
 
 export type ElotePoolError =
+  | typeof ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
+  | typeof ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN
   | typeof ELOTE_POOL_ERROR__ATTESTOR_REQUIRED
   | typeof ELOTE_POOL_ERROR__AVAILABILITY_ENDED
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_ADMIN
+  | typeof ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR
   | typeof ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED
+  | typeof ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT
   | typeof ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED
+  | typeof ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
   | typeof ELOTE_POOL_ERROR__INVALID_SCHEDULE
@@ -108,6 +125,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID
   | typeof ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED
   | typeof ELOTE_POOL_ERROR__SPONSOR_REQUIRED
+  | typeof ELOTE_POOL_ERROR__SPONSOR_ROLE_INVALID
   | typeof ELOTE_POOL_ERROR__TERM_ENDED
   | typeof ELOTE_POOL_ERROR__TERM_NOT_ENDED
   | typeof ELOTE_POOL_ERROR__TOO_MANY_DRAWS
@@ -120,12 +138,17 @@ export type ElotePoolError =
 let elotePoolErrorMessages: Record<ElotePoolError, string> | undefined;
 if (process.env["NODE_ENV"] !== "production") {
   elotePoolErrorMessages = {
+    [ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED]: `The signed agreement's hash is required`,
     [ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED]: `The asset mint carries a Token-2022 extension the pool does not accept`,
+    [ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN]: `The attestor cannot be the admin`,
     [ELOTE_POOL_ERROR__ATTESTOR_REQUIRED]: `The pool's attestor must sign`,
     [ELOTE_POOL_ERROR__AVAILABILITY_ENDED]: `The draw window of this line has closed`,
     [ELOTE_POOL_ERROR__BORROWER_IS_ADMIN]: `The pool admin cannot be the borrower`,
+    [ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR]: `The borrower cannot be the attestor`,
     [ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED]: `The collection is not a Metaplex Core collection whose update authority is the pool`,
+    [ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT]: `The collection period is shorter than the minimum`,
     [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed pagaré's hash is required`,
+    [ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED]: `The expediente root is required`,
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
     [ELOTE_POOL_ERROR__INVALID_SCHEDULE]: `The installment schedule is not valid`,
@@ -145,7 +168,8 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID]: `signature_method is unknown, or lacks its certificate fingerprint`,
     [ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED]: `The result is below the minimum the caller accepts`,
     [ELOTE_POOL_ERROR__SPONSOR_REQUIRED]: `The sponsor named on this line must sign`,
-    [ELOTE_POOL_ERROR__TERM_ENDED]: `The term has ended`,
+    [ELOTE_POOL_ERROR__SPONSOR_ROLE_INVALID]: `sponsor_role is unknown`,
+    [ELOTE_POOL_ERROR__TERM_ENDED]: `The term has ended, or would end before the opening`,
     [ELOTE_POOL_ERROR__TERM_NOT_ENDED]: `The term has not ended`,
     [ELOTE_POOL_ERROR__TOO_MANY_DRAWS]: `The line has reached its maximum number of draws`,
     [ELOTE_POOL_ERROR__UNAUTHORIZED]: `Only the pool admin may do this`,

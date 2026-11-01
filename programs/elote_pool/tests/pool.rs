@@ -318,7 +318,9 @@ fn init_pool_records_the_grace_period() {
     assert_eq!(pool.grace_period_seconds(), grace);
     assert_eq!(&pool.reserved[0..4], &grace.to_le_bytes(), "bytes 0..4 of reserved, little endian");
     assert_eq!(&pool.reserved[4..6], &BPS.to_le_bytes(), "bytes 4..6: the harness default cap of 10,000 bps");
-    assert_eq!(&pool.reserved[6..], &[0u8; 26], "the rest of reserved stays zero");
+    assert_eq!(&pool.reserved[6..12], &[0u8; 6], "flags are zero, bytes 8..12 are kept for cancel_delay_seconds");
+    assert_eq!(&pool.reserved[12..16], &COLLECTION_PERIOD.to_le_bytes(), "bytes 12..16: the collection period");
+    assert_eq!(&pool.reserved[16..], &[0u8; 16], "the rest of reserved stays zero");
 
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!(ev.pool, k.pool);
@@ -564,7 +566,7 @@ fn init_pool_records_the_attestor_and_the_collection_as_version_2() {
     let admin = env.admin.insecure_clone();
     let mint = env.create_mint(&admin.pubkey(), 6);
     let (k2, mut ix) = env.init_pool_plain(&mint);
-    ix.data = elote_pool::instruction::InitPool { grace_period_seconds: 0, max_line_bps: BPS, attestor: Pubkey::default() }.data();
+    ix.data = elote_pool::instruction::InitPool { grace_period_seconds: 0, max_line_bps: BPS, attestor: Pubkey::default(), collection_period_seconds: COLLECTION_PERIOD }.data();
     env.expect_err(ix, &admin, &[], E_WRONG_ACCOUNT);
     assert!(env.svm.get_account(&k2.pool).is_none());
 }
@@ -744,6 +746,16 @@ fn init_pool_rejects_share_mints_the_pool_cannot_own_or_price() {
     expect_share_rejected(&mut env, &asset, &m);
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::InterestBearingConfig], |mint| {
         vec![ext::interest_bearing_mint::instruction::initialize(&p, mint, Some(admin.pubkey()), 500).unwrap()]
+    });
+    expect_share_rejected(&mut env, &asset, &m);
+    // Audit F-05: a display multiplier misleads wallets like a display rate, and a pause of the
+    // share mint would stop every deposit and redemption outside `set_paused` and its event.
+    let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::ScaledUiAmount], |mint| {
+        vec![ext::scaled_ui_amount::instruction::initialize(&p, mint, Some(admin.pubkey()), 1.0).unwrap()]
+    });
+    expect_share_rejected(&mut env, &asset, &m);
+    let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::Pausable], |mint| {
+        vec![ext::pausable::instruction::initialize(&p, mint, &admin.pubkey()).unwrap()]
     });
     expect_share_rejected(&mut env, &asset, &m);
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::ConfidentialTransferMint], |mint| {

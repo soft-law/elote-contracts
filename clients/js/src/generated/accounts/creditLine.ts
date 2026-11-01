@@ -134,6 +134,8 @@ export type CreditLine = {
   /**
    * When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.
    * From then on every installment is due and late interest runs on all remaining principal.
+   * Also the start of the collection period: `write_off` waits
+   * `Pool::collection_period_seconds` from it.
    */
   acceleratedAt: bigint;
 };
@@ -209,6 +211,8 @@ export type CreditLineArgs = {
   /**
    * When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.
    * From then on every installment is due and late interest runs on all remaining principal.
+   * Also the start of the collection period: `write_off` waits
+   * `Pool::collection_period_seconds` from it.
    */
   acceleratedAt: number | bigint;
 };

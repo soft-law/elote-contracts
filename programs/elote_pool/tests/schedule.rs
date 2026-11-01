@@ -452,8 +452,11 @@ fn late_interest_on_the_maximum_installments_stays_within_the_compute_budget() {
 // Write-off policy
 // -----------------------------------------------------------------------------------------------
 
+/// A line in collection is written off only once the pool's collection period has run from the
+/// mark (audit F-03): the grace of the third missed installment implies the grace of the first, so
+/// without the period the write-off was available the instant the keeper marked the line.
 #[test]
-fn write_off_in_collection_only_after_the_oldest_missed_due_date_plus_grace() {
+fn write_off_in_collection_waits_for_the_collection_period_from_the_mark() {
     let mut env = Env::new();
     let grace: u32 = 15 * 24 * 3600;
     let k = pool_with(&mut env, 10 * UNIT, grace);
@@ -468,10 +471,18 @@ fn write_off_in_collection_only_after_the_oldest_missed_due_date_plus_grace() {
     env.expect_err(ix, &admin, &[], E_TERM_NOT_ENDED);
 
     // Collection once the third missed installment's grace has run. The oldest missed installment
-    // fell due at t0 + p.interval(), so its grace has run too and the admin may write off now.
+    // fell due at t0 + p.interval(), so its grace has run too; the write-off still waits for the
+    // pool's collection period, counted from the mark.
     env.warp(t0 + 3 * p.interval() + i64::from(grace) + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
+    let marked_at = env.now();
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    env.warp(marked_at + i64::from(COLLECTION_PERIOD));
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    env.warp(marked_at + i64::from(COLLECTION_PERIOD) + 1);
     let ix = env.write_off_ix(&k, line_id, &b.pubkey());
     env.expect_err(ix, &b, &[], E_UNAUTHORIZED);
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
@@ -505,17 +516,19 @@ fn collection_waits_for_the_grace_of_the_third_missed_installment() {
     env.send(ix, &b, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
 
-    // The oldest missed installment (t0 + 2 months) is past its grace: the write-off is allowed.
+    // The oldest missed installment (t0 + 2 months) is past its grace; the write-off is allowed
+    // once the collection period has run from the mark.
+    env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.send(ix, &admin, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
 }
 
 /// After the mark there is no cure: the installments not yet due became exigible at the mark, so
-/// paying the pre-mark arrears leaves them missed, and the write-off waits only for the grace
-/// counted from the mark.
+/// paying the pre-mark arrears leaves them missed, and the write-off waits for the grace and for
+/// the pool's collection period, both counted from the mark.
 #[test]
-fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_grace_from_the_mark() {
+fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_collection_period_from_the_mark() {
     let mut env = Env::new();
     let grace: u32 = 10 * 24 * 3600;
     let k = pool_with(&mut env, 10 * UNIT, grace);
@@ -537,11 +550,14 @@ fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_grace_from_th
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
 
-    // The grace runs from the mark.
-    env.warp(marked_at + i64::from(grace));
+    // The grace (10 days) and the collection period (30 days) both run from the mark.
+    env.warp(marked_at + i64::from(grace) + 1);
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
-    env.warp(marked_at + i64::from(grace) + 1);
+    env.warp(marked_at + i64::from(COLLECTION_PERIOD));
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    env.warp(marked_at + i64::from(COLLECTION_PERIOD) + 1);
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
     env.send(ix, &admin, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);

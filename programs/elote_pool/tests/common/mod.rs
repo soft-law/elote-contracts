@@ -83,6 +83,12 @@ pub const E_SIGNATURE_METHOD_INVALID: u32 = ERR_BASE + 29; // PoolError::Signatu
 pub const E_PAGARE_NOT_COVERED: u32 = ERR_BASE + 30; // PoolError::PagareNotCovered
 pub const E_PAGARE_ALREADY_PAID: u32 = ERR_BASE + 31; // PoolError::PagareAlreadyPaid
 pub const E_NOT_HOLDER: u32 = ERR_BASE + 32; // PoolError::NotHolder
+pub const E_ATTESTOR_IS_ADMIN: u32 = ERR_BASE + 33; // PoolError::AttestorIsAdmin
+pub const E_BORROWER_IS_ATTESTOR: u32 = ERR_BASE + 34; // PoolError::BorrowerIsAttestor
+pub const E_AGREEMENT_HASH_REQUIRED: u32 = ERR_BASE + 35; // PoolError::AgreementHashRequired
+pub const E_EXPEDIENTE_ROOT_REQUIRED: u32 = ERR_BASE + 36; // PoolError::ExpedienteRootRequired
+pub const E_SPONSOR_ROLE_INVALID: u32 = ERR_BASE + 37; // PoolError::SponsorRoleInvalid
+pub const E_COLLECTION_PERIOD_TOO_SHORT: u32 = ERR_BASE + 38; // PoolError::CollectionPeriodTooShort
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
@@ -103,6 +109,8 @@ pub const UNIT: u64 = 1_000_000;
 
 /// The installment interval the schedule tests use: 30 days.
 pub const MONTH: i64 = 30 * 24 * 3600;
+/// The collection period every pool of the harness is created with: the 30-day floor.
+pub const COLLECTION_PERIOD: u32 = elote_pool::state::MIN_COLLECTION_PERIOD_SECONDS;
 
 // -----------------------------------------------------------------------------------------------
 // PDAs: the seed layouts of `state::seeds`.
@@ -502,6 +510,11 @@ impl Env {
     /// Creates a Metaplex Core collection (the series' collection of pagaré assets) with
     /// `update_authority`, paid by the admin, through the mpl-core crate's builder.
     pub fn create_collection(&mut self, update_authority: &Pubkey) -> Pubkey {
+        self.create_collection_with(update_authority, vec![])
+    }
+
+    /// As `create_collection`, with collection-level plugins.
+    pub fn create_collection_with(&mut self, update_authority: &Pubkey, plugins: Vec<mpl_core::types::PluginAuthorityPair>) -> Pubkey {
         let collection = Keypair::new();
         let ix = mpl_core::instructions::CreateCollectionV2Builder::new()
             .collection(collection.pubkey())
@@ -509,6 +522,7 @@ impl Env {
             .payer(self.admin.pubkey())
             .name("ELOTE-CR-TEST".to_string())
             .uri(String::new())
+            .plugins(plugins)
             .instruction();
         let admin = self.admin.insecure_clone();
         self.send(ix, &admin, &[&collection]);
@@ -550,6 +564,23 @@ impl Env {
 
     /// `init_pool` for the pool described by `k`.
     pub fn init_pool_ix_for(&self, k: &PoolKeys, grace_period_seconds: u32, max_line_bps: u16) -> Instruction {
+        self.init_pool_ix_with_attestor(k, grace_period_seconds, max_line_bps, self.attestor.pubkey())
+    }
+
+    /// `init_pool` naming `attestor` instead of the env's.
+    pub fn init_pool_ix_with_attestor(&self, k: &PoolKeys, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey) -> Instruction {
+        self.init_pool_ix_full(k, grace_period_seconds, max_line_bps, attestor, COLLECTION_PERIOD)
+    }
+
+    /// `init_pool` with every argument explicit.
+    pub fn init_pool_ix_full(
+        &self,
+        k: &PoolKeys,
+        grace_period_seconds: u32,
+        max_line_bps: u16,
+        attestor: Pubkey,
+        collection_period_seconds: u32,
+    ) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
@@ -568,8 +599,17 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::InitPool { grace_period_seconds, max_line_bps, attestor: self.attestor.pubkey() }
-                .data(),
+            data: elote_pool::instruction::InitPool { grace_period_seconds, max_line_bps, attestor, collection_period_seconds }.data(),
+        }
+    }
+
+    pub fn set_collection_period_ix(&self, k: &PoolKeys, admin: &Pubkey, seconds: u32) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::SetCollectionPeriod { admin: *admin, pool: k.pool, event_authority, program }
+                .to_account_metas(None),
+            data: elote_pool::instruction::SetCollectionPeriod { collection_period_seconds: seconds }.data(),
         }
     }
 

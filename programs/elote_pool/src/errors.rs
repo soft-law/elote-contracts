@@ -28,7 +28,7 @@ pub enum PoolError {
     WrongAccount,
     #[msg("The result is below the minimum the caller accepts")]
     SlippageExceeded,
-    #[msg("The term has ended")]
+    #[msg("The term has ended, or would end before the opening")]
     TermEnded,
     #[msg("The installment schedule is not valid")]
     InvalidSchedule,
@@ -70,4 +70,16 @@ pub enum PoolError {
     PagareAlreadyPaid,
     #[msg("The pagaré's holder must sign")]
     NotHolder,
+    #[msg("The attestor cannot be the admin")]
+    AttestorIsAdmin,
+    #[msg("The borrower cannot be the attestor")]
+    BorrowerIsAttestor,
+    #[msg("The signed agreement's hash is required")]
+    AgreementHashRequired,
+    #[msg("The expediente root is required")]
+    ExpedienteRootRequired,
+    #[msg("sponsor_role is unknown")]
+    SponsorRoleInvalid,
+    #[msg("The collection period is shorter than the minimum")]
+    CollectionPeriodTooShort,
 }

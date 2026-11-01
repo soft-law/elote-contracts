@@ -172,7 +172,7 @@ fn sponsor_must_cosign_when_named_and_its_role_is_recorded() {
     let mut bad = p;
     bad.sponsor_role = 2;
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &bad, Some(sponsor.pubkey()));
-    env.expect_err(ix, &admin, &[&borrower, &attestor, &sponsor], E_WRONG_AMOUNT);
+    env.expect_err(ix, &admin, &[&borrower, &attestor, &sponsor], E_SPONSOR_ROLE_INVALID);
     assert_eq!(env.pool(&k).line_count, 0);
 
     let (line_id, meta) = env.open_line_with(&k, &borrower, &p, Some(&sponsor));
@@ -371,18 +371,18 @@ fn open_rejects_bad_params() {
     let mut p = good;
     p.term_end = env.now();
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &signers, E_WRONG_AMOUNT);
+    env.expect_err(ix, &admin, &signers, E_TERM_ENDED);
 
     let mut p = good;
     p.agreement_hash = [0; 32];
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &signers, E_WRONG_AMOUNT);
+    env.expect_err(ix, &admin, &signers, E_AGREEMENT_HASH_REQUIRED);
 
     // The expediente root is a commitment the line cannot do without.
     let mut p = good;
     p.expediente_root = [0; 32];
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &signers, E_WRONG_AMOUNT);
+    env.expect_err(ix, &admin, &signers, E_EXPEDIENTE_ROOT_REQUIRED);
 
     // Out of sequence: the next id is 0.
     let ix = env.open_line_ix(&k, &admin.pubkey(), 1, &borrower.pubkey(), &good, None);

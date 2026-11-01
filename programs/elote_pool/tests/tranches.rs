@@ -258,10 +258,10 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
 }
 
-/// Full repayment of a half-drawn line closes it and forfeits the rest; a
-/// further draw fails with `LineStatus`.
+/// A half-drawn line repaid in full while its window is open stays `Active` and keeps drawing
+/// (audit F-01); it closes only once nothing can be drawn.
 #[test]
-fn full_repayment_of_a_half_drawn_line_closes_it() {
+fn full_repayment_of_a_half_drawn_line_leaves_it_open_while_it_can_draw() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
@@ -274,11 +274,17 @@ fn full_repayment_of_a_half_drawn_line_closes_it() {
     let ev = env.repay(&k, line_id, &borrower, 2_200_000);
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (200_000, 2 * UNIT, 0));
     let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.drawn, line.principal), (LineStatus::Repaid, 2 * UNIT, 4 * UNIT));
+    assert_eq!((line.status, line.drawn, line.principal), (LineStatus::Active, 2 * UNIT, 4 * UNIT));
     assert!(env.now() < line.availability_end, "the window was still open");
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
-    env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
     assert_eq!(env.pool(&k).outstanding_principal, 0);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    assert_eq!(env.pool(&k).outstanding_principal, UNIT);
+    // The window closes: the next full repayment closes the line.
+    env.warp(p.term_end);
+    let interest = env.line(&k, line_id).interest_due - env.line(&k, line_id).interest_repaid;
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.repay(&k, line_id, &borrower, UNIT + interest);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
 
 /// The write-off of a half-drawn line books `drawn - repaid`, and `MAX_DRAWS`

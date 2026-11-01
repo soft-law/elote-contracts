@@ -8,12 +8,13 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    AttestorSet, Deposited, NavUpdated, PoolCollectionSet, PoolConfigured, PoolFlags, PoolInitialized, PoolLineCapSet,
-    PoolPaused, Redeemed,
+    AttestorSet, CollectionPeriodSet, Deposited, NavUpdated, PoolCollectionSet, PoolConfigured, PoolFlags, PoolInitialized,
+    PoolLineCapSet, PoolPaused, Redeemed,
 };
 use crate::math;
 use crate::state::{
-    min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES, POOL_VERSION,
+    min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
+    MIN_COLLECTION_PERIOD_SECONDS, POOL_VERSION,
 };
 
 /// Signs CPIs as the pool PDA.
@@ -136,8 +137,9 @@ fn asset_controls(asset_mint: &AccountInfo) -> Result<u8> {
 /// The share-mint policy: the pool must be able to own and price the mint. Owned by
 /// `share_token_program`, mint authority = the pool PDA, supply 0, the asset's decimals. Refused
 /// extensions: `TransferFeeConfig`, `TransferHook`, `MintCloseAuthority`, `PermanentDelegate`,
-/// `InterestBearingConfig` (a display rate on a NAV-priced share misleads wallets), the
-/// confidential ones (a hidden supply breaks the price per share). `DefaultAccountState = Frozen`
+/// `InterestBearingConfig` and `ScaledUiAmount` (a display rate or multiplier on a NAV-priced
+/// share misleads wallets), `Pausable` (a pause of every deposit and redemption outside
+/// `set_paused` and its event), the confidential ones (a hidden supply breaks the price per share). `DefaultAccountState = Frozen`
 /// makes the shares permissioned and then requires a freeze authority, or nothing could ever be
 /// thawed. `NonTransferable` is allowed: deposit mints and redeem burns. Who the freeze authority
 /// is stays the admin's choice and is not recorded. Returns `permissioned`.
@@ -162,6 +164,8 @@ fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
             | ExtensionType::MintCloseAuthority
             | ExtensionType::PermanentDelegate
             | ExtensionType::InterestBearingConfig
+            | ExtensionType::ScaledUiAmount
+            | ExtensionType::Pausable
             | ExtensionType::ConfidentialTransferMint
             | ExtensionType::ConfidentialTransferFeeConfig
             | ExtensionType::ConfidentialMintBurn => return err!(PoolError::ShareMintNotAllowed),
@@ -181,10 +185,13 @@ fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
     Ok(permissioned)
 }
 
-/// The series' collection: a Metaplex Core `CollectionV1` whose update authority is this pool's
-/// PDA, so only the program can add assets to it. Only the fixed head of `BaseCollectionV1` is
-/// read (`key: u8`, then `update_authority: Pubkey` at bytes 1..33): a full decoder would allocate
-/// the name and URI from a length prefix that, on a foreign account, can be anything.
+/// The series' collection: a bare Metaplex Core `CollectionV1` whose update authority is this
+/// pool's PDA, so only the program can add assets to it. Bare (audit F-02): Core applies a
+/// collection's permanent plugins to every asset in it, so the account must be exactly the base
+/// record (key, update authority, name, URI, `num_minted`, `current_size`) with no plugin header
+/// after it, and nothing minted yet. Every read is at a fixed offset or bounded by a length read
+/// before it; a full decoder would allocate the name and URI from a length prefix that, on a
+/// foreign account, can be anything.
 fn validate_collection(collection: &AccountInfo, pool: &Pubkey) -> Result<()> {
     require!(*collection.owner == mpl_core::ID, PoolError::CollectionNotAllowed);
     let data = collection.data.borrow();
@@ -192,15 +199,38 @@ fn validate_collection(collection: &AccountInfo, pool: &Pubkey) -> Result<()> {
     require!(data[0] == mpl_core::types::Key::CollectionV1 as u8, PoolError::CollectionNotAllowed);
     let update_authority = Pubkey::try_from(&data[1..33]).map_err(|_| PoolError::CollectionNotAllowed)?;
     require!(update_authority == *pool, PoolError::CollectionNotAllowed);
+    let u32_at = |at: usize| -> Result<u32> {
+        let end = at.checked_add(4).ok_or(PoolError::CollectionNotAllowed)?;
+        require!(data.len() >= end, PoolError::CollectionNotAllowed);
+        Ok(u32::from_le_bytes(data[at..end].try_into().map_err(|_| PoolError::CollectionNotAllowed)?))
+    };
+    let name_len = usize::try_from(u32_at(33)?).map_err(|_| PoolError::CollectionNotAllowed)?;
+    let uri_at = 37usize.checked_add(name_len).ok_or(PoolError::CollectionNotAllowed)?;
+    let uri_len = usize::try_from(u32_at(uri_at)?).map_err(|_| PoolError::CollectionNotAllowed)?;
+    let counts_at = uri_at.checked_add(4).and_then(|v| v.checked_add(uri_len)).ok_or(PoolError::CollectionNotAllowed)?;
+    let num_minted = u32_at(counts_at)?;
+    let current_size = u32_at(counts_at + 4)?;
+    require!(data.len() == counts_at + 8, PoolError::CollectionNotAllowed);
+    require!(num_minted == 0 && current_size == 0, PoolError::CollectionNotAllowed);
     Ok(())
 }
 
 /// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the life of
-/// the pool.
-pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey) -> Result<()> {
+/// the pool; `collection_period_seconds` (at least `MIN_COLLECTION_PERIOD_SECONDS`) can be
+/// changed by the admin.
+pub fn init_pool(
+    ctx: Context<InitPool>,
+    grace_period_seconds: u32,
+    max_line_bps: u16,
+    attestor: Pubkey,
+    collection_period_seconds: u32,
+) -> Result<()> {
     require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);
-    // The zero key could never co-sign: a pool with it would open no line.
+    require!(collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
+    // The zero key could never co-sign: a pool with it would open no line. The admin as attestor
+    // would collapse the two-signature model into one key (audit F-05).
     require!(attestor != Pubkey::default(), PoolError::WrongAccount);
+    require!(attestor != ctx.accounts.admin.key(), PoolError::AttestorIsAdmin);
     // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
     require!(min_first_deposit(ctx.accounts.asset_mint.decimals).is_some(), PoolError::WrongAccount);
     let controls = asset_controls(&ctx.accounts.asset_mint.to_account_info())?;
@@ -223,6 +253,7 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps
     pool.set_max_line_bps(max_line_bps);
     pool.set_asset_controls(controls);
     pool.set_permissioned(permissioned);
+    pool.set_collection_period_seconds(collection_period_seconds);
     pool.bump = ctx.bumps.pool;
     pool.attestor = attestor;
     pool.collection = ctx.accounts.collection.key();
@@ -238,6 +269,35 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps
     emit_cpi!(PoolFlags { pool: pool.key(), asset_controls: controls, permissioned: pool.permissioned() });
     emit_cpi!(AttestorSet { pool: pool.key(), attestor });
     emit_cpi!(PoolCollectionSet { pool: pool.key(), collection: pool.collection });
+    emit_cpi!(CollectionPeriodSet { pool: pool.key(), collection_period_seconds });
+    Ok(())
+}
+
+// -----------------------------------------------------------------------------------------------
+// set_collection_period
+// -----------------------------------------------------------------------------------------------
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct SetCollectionPeriod<'info> {
+    pub admin: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+        has_one = admin @ PoolError::Unauthorized,
+    )]
+    pub pool: Account<'info, Pool>,
+}
+
+/// Admin only; refused below `MIN_COLLECTION_PERIOD_SECONDS`. Applies to every line from its
+/// next `write_off` check, marked or not.
+pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_period_seconds: u32) -> Result<()> {
+    require!(collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
+    let pool = &mut ctx.accounts.pool;
+    pool.set_collection_period_seconds(collection_period_seconds);
+    emit_cpi!(CollectionPeriodSet { pool: pool.key(), collection_period_seconds });
     Ok(())
 }
 
@@ -527,6 +587,7 @@ pub struct SetAttestor<'info> {
 /// cancellation by withholding its signature and can move nothing.
 pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
     let attestor = ctx.accounts.new_attestor.key();
+    require!(attestor != ctx.accounts.admin.key(), PoolError::AttestorIsAdmin);
     let pool = &mut ctx.accounts.pool;
     pool.attestor = attestor;
     emit_cpi!(AttestorSet { pool: pool.key(), attestor });
