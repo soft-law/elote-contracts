@@ -59,6 +59,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 |---|---|---|
 | `Pool` | PDA `["pool", admin, asset_mint]` | admin, asset, vault, share token, outstanding principal, running totals, pause flag, packed parameters and flags, and (pool v2) the attestor and the series' Metaplex Core collection |
 | share token | a mint the admin creates and hands to `init_pool` | classic SPL Token or Token-2022 with the asset's decimals, mint authority = the pool PDA, supply 0, no extension that takes or hides value; frozen by default (Token-2022 `DefaultAccountState`) for a permissioned series under Token ACL |
+| collection | a Metaplex Core collection the admin creates and hands to `init_pool` | the series' collection of pagaré assets; its update authority must be the pool PDA, so only the program mints into it |
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
 | dead shares | PDA token account `["dead", pool]`, owned by the pool PDA | the 1,000 shares locked by the first deposit |
 | `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | terms, agreement hash and expediente root, what was drawn and repaid, status, the draw window and the first due date, the installment schedule (scheduled lines) |
@@ -205,8 +206,10 @@ in `declare_id!` and `Anchor.toml` would change. Anchor 1.2 refuses to build on 
 the Solana 3.x runtime inside LiteSVM 0.11 cannot load. Moving to v3 goes together with
 `anchor-lang`'s `solana-v4` feature and a LiteSVM on the Agave 4.x line.
 
-The integration tests run the compiled program in LiteSVM 0.11.0, which loads SPL Token and the
-Associated Token Account program by default. `programs/elote_pool/tests/` holds:
+The integration tests run the compiled program in LiteSVM 0.11.0, which loads SPL Token, Token-2022
+and the Associated Token Account program by default; the harness adds Metaplex Core from
+`programs/elote_pool/tests/fixtures/` (pinned by sha256, see the README there).
+`programs/elote_pool/tests/` holds:
 
 | File | What it checks |
 |---|---|

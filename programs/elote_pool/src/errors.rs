@@ -58,4 +58,6 @@ pub enum PoolError {
     AvailabilityEnded,
     #[msg("The line has reached its maximum number of draws")]
     TooManyDraws,
+    #[msg("The collection is not a Metaplex Core collection whose update authority is the pool")]
+    CollectionNotAllowed,
 }

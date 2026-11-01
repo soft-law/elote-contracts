@@ -552,6 +552,13 @@ fn init_pool_records_the_attestor_and_the_collection_as_version_2() {
     assert_eq!((ev.pool, ev.attestor), (k.pool, env.attestor.pubkey()));
     let ev: PoolCollectionSet = find_event(&meta).expect("PoolCollectionSet");
     assert_eq!((ev.pool, ev.collection), (k.pool, k.collection));
+    // The collection is a real Metaplex Core collection the pool controls, read back through the
+    // crate's decoder against the pinned program binary.
+    let c = env.collection_state(&k.collection);
+    assert_eq!(c.key, mpl_core::types::Key::CollectionV1);
+    assert_eq!(c.update_authority, k.pool);
+    assert_eq!((c.num_minted, c.current_size), (0, 0));
+    assert_eq!(env.account(&k.collection).owner, MPL_CORE_ID);
 
     // The zero key is not an attestor: nobody could ever co-sign.
     let admin = env.admin.insecure_clone();
@@ -560,6 +567,40 @@ fn init_pool_records_the_attestor_and_the_collection_as_version_2() {
     ix.data = elote_pool::instruction::InitPool { grace_period_seconds: 0, max_line_bps: BPS, attestor: Pubkey::default() }.data();
     env.expect_err(ix, &admin, &[], E_WRONG_ACCOUNT);
     assert!(env.svm.get_account(&k2.pool).is_none());
+}
+
+/// Decision 24: the collection the pool records must be a Metaplex Core collection whose update
+/// authority is the pool PDA, so only the program mints into it. Anything else is refused.
+#[test]
+fn init_pool_rejects_a_collection_the_pool_does_not_control() {
+    let mut env = Env::new();
+    let admin = env.admin.insecure_clone();
+    let mint = env.create_mint(&admin.pubkey(), 6);
+    let (mut k, _) = env.init_pool_plain(&mint);
+
+    // A collection whose update authority is the admin, not the pool.
+    k.collection = env.create_collection(&admin.pubkey());
+    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    // A Core asset, not a collection.
+    k.collection = env.create_core_asset(&k.pool);
+    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    // An account the Core program does not own.
+    k.collection = k.asset_mint;
+    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    // An account that does not exist.
+    k.collection = Pubkey::new_unique();
+    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    assert!(env.svm.get_account(&k.pool).is_none());
+
+    // The right one is accepted.
+    k.collection = env.create_collection(&k.pool);
+    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    env.send(ix, &admin, &[]);
+    assert_eq!(env.pool(&k).collection, k.collection);
 }
 
 /// `set_attestor` is the recovery when the agreements engine's key rotates or is lost: admin
@@ -730,7 +771,8 @@ fn non_transferable_shares_still_deposit_and_redeem() {
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::NonTransferable], |mint| {
         vec![spl_token_2022::instruction::initialize_non_transferable_mint(&p, mint).unwrap()]
     });
-    let k = PoolKeys::new(&admin.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, p);
+    let mut k = PoolKeys::new(&admin.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, p);
+    k.collection = env.create_collection(&pool);
     let ix = env.init_pool_ix_for(&k, 0, BPS);
     env.send(ix, &admin, &[]);
 
@@ -785,7 +827,8 @@ fn permissioned_shares_need_a_thaw_before_the_first_deposit() {
     let asset = env.create_mint(&admin.pubkey(), 6);
     let pool = pool_pda(&admin.pubkey(), &asset).0;
     let m = env.create_share_mint(&pool, 6, Some(&gate.pubkey()), true);
-    let k2 = PoolKeys::new(&admin.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
+    let mut k2 = PoolKeys::new(&admin.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
+    k2.collection = env.create_collection(&pool);
     let init = env.init_pool_ix_for(&k2, 0, BPS);
     let thaw = env.thaw_ix(&m, &k2.dead_shares, &gate.pubkey());
     env.send_all(&[init, thaw], &admin, &[&gate]);

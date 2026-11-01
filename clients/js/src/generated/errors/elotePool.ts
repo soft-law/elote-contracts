@@ -69,12 +69,15 @@ export const ELOTE_POOL_ERROR__ATTESTOR_REQUIRED = 0x1788; // 6024
 export const ELOTE_POOL_ERROR__AVAILABILITY_ENDED = 0x1789; // 6025
 /** TooManyDraws: The line has reached its maximum number of draws */
 export const ELOTE_POOL_ERROR__TOO_MANY_DRAWS = 0x178a; // 6026
+/** CollectionNotAllowed: The collection is not a Metaplex Core collection whose update authority is the pool */
+export const ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED = 0x178b; // 6027
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__ATTESTOR_REQUIRED
   | typeof ELOTE_POOL_ERROR__AVAILABILITY_ENDED
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_ADMIN
+  | typeof ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
   | typeof ELOTE_POOL_ERROR__INVALID_SCHEDULE
@@ -106,6 +109,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__ATTESTOR_REQUIRED]: `The pool's attestor must sign`,
     [ELOTE_POOL_ERROR__AVAILABILITY_ENDED]: `The draw window of this line has closed`,
     [ELOTE_POOL_ERROR__BORROWER_IS_ADMIN]: `The pool admin cannot be the borrower`,
+    [ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED]: `The collection is not a Metaplex Core collection whose update authority is the pool`,
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
     [ELOTE_POOL_ERROR__INVALID_SCHEDULE]: `The installment schedule is not valid`,

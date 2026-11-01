@@ -204,8 +204,9 @@ export type InitPoolAsyncInput<
    */
   deadShares?: TAccountDeadShares;
   /**
-   * The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch
-   * adds the check that it is a Core collection the pool can mint into.
+   * The series' Metaplex Core collection the pagaré assets are minted into: created by the
+   * admin beforehand with the pool PDA as update authority, validated in the handler
+   * (`validate_collection`), like the share mint.
    */
   collection: TAccountCollection;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
@@ -541,8 +542,9 @@ export type InitPoolInput<
    */
   deadShares: TAccountDeadShares;
   /**
-   * The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch
-   * adds the check that it is a Core collection the pool can mint into.
+   * The series' Metaplex Core collection the pagaré assets are minted into: created by the
+   * admin beforehand with the pool PDA as update authority, validated in the handler
+   * (`validate_collection`), like the share mint.
    */
   collection: TAccountCollection;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
@@ -821,8 +823,9 @@ export type ParsedInitPoolInstruction<
      */
     deadShares: TAccountMetas[5];
     /**
-     * The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch
-     * adds the check that it is a Core collection the pool can mint into.
+     * The series' Metaplex Core collection the pagaré assets are minted into: created by the
+     * admin beforehand with the pool PDA as update authority, validated in the handler
+     * (`validate_collection`), like the share mint.
      */
     collection: TAccountMetas[6];
     /** The token program of `asset_mint` (classic SPL Token or Token-2022). */

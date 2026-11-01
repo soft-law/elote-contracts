@@ -31,6 +31,15 @@ pub const PROGRAM_ID: Pubkey = pubkey!("BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEE
 pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 /// Token-2022, loaded by `LiteSVM::new()` as `spl_token_2022-10.0.0.so`.
 pub const TOKEN_2022_PROGRAM_ID: Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+/// Metaplex Core, loaded by `Env::new()` from `tests/fixtures/mpl_core_program-0.15.3.so`
+/// (GitHub release `release/core@0.15.3`, 2026-10-07; see `tests/fixtures/README.md`). The
+/// program's own `mpl_core::ID`.
+pub const MPL_CORE_ID: Pubkey = pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
+pub const MPL_CORE_RELEASE: &str = "release/core@0.15.3";
+pub const MPL_CORE_FIXTURE: &str = "programs/elote_pool/tests/fixtures/mpl_core_program-0.15.3.so";
+/// sha256 of the fixture, checked at load so a swapped binary fails the suite instead of
+/// silently changing it.
+pub const MPL_CORE_SHA256: &str = "5b4dacdae4af476d3c9d8aa6712883f559ba0e13705f9b244d96d1fd0dd56ce5";
 pub const ATA_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 pub const SYSTEM_PROGRAM_ID: Pubkey = pubkey!("11111111111111111111111111111111");
 
@@ -66,6 +75,7 @@ pub const E_SHARE_MINT_NOT_ALLOWED: u32 = ERR_BASE + 23; // PoolError::ShareMint
 pub const E_ATTESTOR_REQUIRED: u32 = ERR_BASE + 24; // PoolError::AttestorRequired
 pub const E_AVAILABILITY_ENDED: u32 = ERR_BASE + 25; // PoolError::AvailabilityEnded
 pub const E_TOO_MANY_DRAWS: u32 = ERR_BASE + 26; // PoolError::TooManyDraws
+pub const E_COLLECTION_NOT_ALLOWED: u32 = ERR_BASE + 27; // PoolError::CollectionNotAllowed
 
 /// Token-2022's `TokenError::AccountFrozen`, surfaced as custom error 17 by a failed CPI.
 pub const SPL_TOKEN_ACCOUNT_FROZEN: u32 = 17;
@@ -117,8 +127,8 @@ pub struct PoolKeys {
     pub dead_shares: Pubkey,
     pub asset_program: Pubkey,
     pub share_program: Pubkey,
-    /// The series' Metaplex Core collection the pool records (pool v2). A fresh placeholder
-    /// address here; step 6 of the batch validates it as a Core collection.
+    /// The series' Metaplex Core collection the pool records (pool v2): a real collection whose
+    /// update authority is the pool PDA when built by `pool_keys_for`, a placeholder from `new`.
     pub collection: Pubkey,
 }
 
@@ -230,6 +240,13 @@ impl Env {
         let so = workspace_root().join("target/deploy/elote_pool.so");
         assert!(so.exists(), "{} missing — run `NO_DNA=1 anchor build` first", so.display());
         svm.add_program_from_file(PROGRAM_ID, &so).expect("load elote_pool.so");
+
+        // Metaplex Core, pinned by sha256 (the pagaré asset of decision 24 is minted into it).
+        let core = std::fs::read(workspace_root().join(MPL_CORE_FIXTURE)).expect("read the Metaplex Core fixture");
+        let digest = <sha2::Sha256 as sha2::Digest>::digest(&core);
+        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(hex, MPL_CORE_SHA256, "{MPL_CORE_FIXTURE} is not the {MPL_CORE_RELEASE} binary");
+        svm.add_program(MPL_CORE_ID, &core).expect("load mpl_core_program.so");
 
         let admin = Keypair::new();
         svm.airdrop(&admin.pubkey(), 500 * LAMPORTS_PER_SOL).expect("airdrop admin");
@@ -456,14 +473,53 @@ impl Env {
         }
     }
 
+    /// Creates a Metaplex Core collection (the series' collection of pagaré assets) with
+    /// `update_authority`, paid by the admin, through the mpl-core crate's builder.
+    pub fn create_collection(&mut self, update_authority: &Pubkey) -> Pubkey {
+        let collection = Keypair::new();
+        let ix = mpl_core::instructions::CreateCollectionV2Builder::new()
+            .collection(collection.pubkey())
+            .update_authority(Some(*update_authority))
+            .payer(self.admin.pubkey())
+            .name("ELOTE-CR-TEST".to_string())
+            .uri(String::new())
+            .instruction();
+        let admin = self.admin.insecure_clone();
+        self.send(ix, &admin, &[&collection]);
+        collection.pubkey()
+    }
+
+    /// Creates a plain Metaplex Core asset (no collection, no plugins) owned by `owner`.
+    pub fn create_core_asset(&mut self, owner: &Pubkey) -> Pubkey {
+        let asset = Keypair::new();
+        let ix = mpl_core::instructions::CreateV2Builder::new()
+            .asset(asset.pubkey())
+            .payer(self.admin.pubkey())
+            .owner(Some(*owner))
+            .name("asset".to_string())
+            .uri(String::new())
+            .instruction();
+        let admin = self.admin.insecure_clone();
+        self.send(ix, &admin, &[&asset]);
+        asset.pubkey()
+    }
+
+    /// The base record of a Core collection, read back through the crate's decoder.
+    pub fn collection_state(&self, collection: &Pubkey) -> mpl_core::accounts::BaseCollectionV1 {
+        mpl_core::accounts::BaseCollectionV1::from_bytes(&self.account(collection).data).expect("collection")
+    }
+
     /// The keys of a pool for `asset_mint` (whatever its token program), with a fresh plain
-    /// Token-2022 share mint created for it. Does not run `init_pool`.
+    /// Token-2022 share mint and a fresh Core collection (update authority = the pool PDA)
+    /// created for it. Does not run `init_pool`.
     pub fn pool_keys_for(&mut self, asset_mint: &Pubkey) -> PoolKeys {
         let admin = self.admin.pubkey();
         let pool = pool_pda(&admin, asset_mint).0;
         let decimals = self.mint_decimals(asset_mint);
         let share_mint = self.create_share_mint(&pool, decimals, None, false);
-        PoolKeys::new(&admin, asset_mint, &share_mint, self.mint_program(asset_mint), TOKEN_2022_PROGRAM_ID)
+        let mut k = PoolKeys::new(&admin, asset_mint, &share_mint, self.mint_program(asset_mint), TOKEN_2022_PROGRAM_ID);
+        k.collection = self.create_collection(&pool);
+        k
     }
 
     /// `init_pool` for the pool described by `k`.
@@ -547,7 +603,8 @@ impl Env {
         let asset_mint = self.create_mint(&admin.pubkey(), 6);
         let pool = pool_pda(&admin.pubkey(), &asset_mint).0;
         let share_mint = self.create_share_mint(&pool, 6, Some(gate), true);
-        let k = PoolKeys::new(&admin.pubkey(), &asset_mint, &share_mint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
+        let mut k = PoolKeys::new(&admin.pubkey(), &asset_mint, &share_mint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
+        k.collection = self.create_collection(&pool);
         let ix = self.init_pool_ix_for(&k, 0, BPS);
         let meta = self.send(ix, &admin, &[]);
         (k, meta)

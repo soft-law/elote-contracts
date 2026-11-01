@@ -442,8 +442,9 @@
         {
           "name": "collection",
           "docs": [
-            "The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch",
-            "adds the check that it is a Core collection the pool can mint into."
+            "The series' Metaplex Core collection the pagaré assets are minted into: created by the",
+            "admin beforehand with the pool PDA as update authority, validated in the handler",
+            "(`validate_collection`), like the share mint."
           ]
         },
         {
@@ -1729,6 +1730,11 @@
       "code": 6026,
       "name": "TooManyDraws",
       "msg": "The line has reached its maximum number of draws"
+    },
+    {
+      "code": 6027,
+      "name": "CollectionNotAllowed",
+      "msg": "The collection is not a Metaplex Core collection whose update authority is the pool"
     }
   ],
   "types": [

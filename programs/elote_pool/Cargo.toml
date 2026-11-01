@@ -29,6 +29,10 @@ solana-security-txt = "1.1.3"
 # unconditionally (`idl-build` names `token_interface`; the `mint::` init constraint codegen names
 # the extension initialisers). The program itself uses classic SPL Token only.
 anchor-spl = { version = "=1.2.1", default-features = false, features = ["solana-v3", "token", "associated_token", "token_2022", "token_2022_extensions"] }
+# Metaplex Core: the pagaré asset (decision 24). Without its `anchor` feature the crate sits on the
+# same solana-program 3.x and borsh 1.x line as anchor-lang 1.2.1, so its CPI builders are used
+# directly. The program binary the tests run is `tests/fixtures/mpl_core_program-0.15.3.so`.
+mpl-core = "0.12.1"
 
 # LiteSVM integration tests (programs/elote_pool/tests/).
 #
@@ -48,6 +52,7 @@ anchor-spl = { version = "=1.2.1", default-features = false, features = ["solana
 litesvm = "=0.11.0"
 proptest = "1"
 serde_json = "1"
+sha2 = "0.10"
 solana-account = "3"
 solana-instruction = "3"
 solana-keypair = "3"

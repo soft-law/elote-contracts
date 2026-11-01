@@ -132,7 +132,7 @@ filters.
 | 202 | 32 | `reserved` | bytes 0..4: `grace_period_seconds` (u32 LE); bytes 4..6: `max_line_bps` (u16 LE); byte 6: `permissioned` flag; byte 7: `asset_controls` bits (0 freeze authority, 1 Pausable); rest zero |
 | 234 | 1 | `bump` | |
 | 235 | 32 | `attestor` | pool v2: the agreements engine's key; co-signs openings, draws and endosos; rotated by `set_attestor` |
-| 267 | 32 | `collection` | pool v2: the series' Metaplex Core collection the pagaré assets are minted into; validated from step 6 |
+| 267 | 32 | `collection` | pool v2: the series' Metaplex Core collection the pagaré assets are minted into; admin-created, validated at `init_pool` (owner, `CollectionV1`, update authority = pool) |
 
 `grace_period_seconds` and `max_line_bps` live inside `reserved` so the layout did not change
 when they were added. They are read and written only through `Pool::grace_period_seconds()` /
@@ -299,8 +299,10 @@ makes and which events it emits. Error codes are `PoolError` variants (6000 + in
   authority; `NonTransferable` is allowed (deposit mints, redeem burns); all failures are
   `ShareMintNotAllowed`. Who the freeze authority is (Token ACL's `MintConfig` or a key) is not
   recorded. `attestor != Pubkey::default()` (`WrongAccount`). Any value of
-  `grace_period_seconds` is accepted, including zero. The `collection` account is recorded by
-  key only until step 6 validates it as a Metaplex Core collection.
+  `grace_period_seconds` is accepted, including zero. The `collection` account must be a
+  Metaplex Core collection the pool controls (`validate_collection`: owned by the Core
+  program, key `CollectionV1`, update authority = the pool PDA; `CollectionNotAllowed`); only
+  the fixed head of the account is read, never the length-prefixed strings.
 - **Writes:** every `Pool` field (`version = 2`, `attestor`, `collection`); `reserved` zeroed
   then the grace period, `max_line_bps`, `permissioned` and `asset_controls` packed in. On a
   permissioned share mint the dead account is born frozen: the freeze authority thaws it in this

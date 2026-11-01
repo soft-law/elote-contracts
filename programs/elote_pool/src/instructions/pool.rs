@@ -82,9 +82,10 @@ pub struct InitPool<'info> {
     )]
     pub dead_shares: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// The series' Metaplex Core collection, recorded on the pool. Step 6 of the pool v2 batch
-    /// adds the check that it is a Core collection the pool can mint into.
-    /// CHECK: recorded by key only until the pagaré-token step validates it.
+    /// The series' Metaplex Core collection the pagaré assets are minted into: created by the
+    /// admin beforehand with the pool PDA as update authority, validated in the handler
+    /// (`validate_collection`), like the share mint.
+    /// CHECK: owner, key and update authority are checked in `validate_collection`.
     pub collection: UncheckedAccount<'info>,
 
     /// The token program of `asset_mint` (classic SPL Token or Token-2022).
@@ -184,6 +185,24 @@ fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
     Ok(permissioned)
 }
 
+/// The series' collection (decision 24, pagaré design): a Metaplex Core `CollectionV1` account
+/// whose update authority is this pool's PDA, so only the program can add assets to it and the
+/// pagarés it mints at `draw` are the only members. Created by the admin beforehand (the pool
+/// address is known before `init_pool`), the same pattern as the share mint.
+///
+/// Only the fixed head of `BaseCollectionV1` is read (`key: u8`, then `update_authority: Pubkey`
+/// at bytes 1..33): the borsh decoder would allocate the name and URI strings from a length
+/// prefix, and on a foreign account that prefix can be anything.
+fn validate_collection(collection: &AccountInfo, pool: &Pubkey) -> Result<()> {
+    require!(*collection.owner == mpl_core::ID, PoolError::CollectionNotAllowed);
+    let data = collection.data.borrow();
+    require!(data.len() >= 33, PoolError::CollectionNotAllowed);
+    require!(data[0] == mpl_core::types::Key::CollectionV1 as u8, PoolError::CollectionNotAllowed);
+    let update_authority = Pubkey::try_from(&data[1..33]).map_err(|_| PoolError::CollectionNotAllowed)?;
+    require!(update_authority == *pool, PoolError::CollectionNotAllowed);
+    Ok(())
+}
+
 /// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the life of
 /// the pool.
 pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey) -> Result<()> {
@@ -194,6 +213,7 @@ pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps
     require!(min_first_deposit(ctx.accounts.asset_mint.decimals).is_some(), PoolError::WrongAccount);
     let controls = asset_controls(&ctx.accounts.asset_mint.to_account_info())?;
     let permissioned = validate_share_mint(&ctx)?;
+    validate_collection(&ctx.accounts.collection.to_account_info(), &ctx.accounts.pool.key())?;
     let pool = &mut ctx.accounts.pool;
     pool.version = POOL_VERSION;
     pool.admin = ctx.accounts.admin.key();

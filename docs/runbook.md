@@ -19,7 +19,10 @@ attestor, pagaré token) are marked "after pool v2" and become binding when that
 
 The admin is part of the pool PDA's seeds and cannot be rotated. Members rotate inside Squads.
 
-**Creating a series (pool v2).** The admin creates the share mint before `init_pool`: the first
+**Creating a series (pool v2).** The admin creates two things before `init_pool`. The Metaplex
+Core collection of the series' pagarés, with the pool PDA (derivable from the admin key and the
+asset mint) as update authority and a name and URI that identify the series and nothing else
+(no folio, no person). And the share mint: the first
 mainnet pool, and every CR series after it, uses a Token-2022 mint with `DefaultAccountState =
 Frozen` and Token ACL's `MintConfig` as freeze authority, mint authority = the pool PDA, the
 asset's decimals, no other extension. `init_pool` then records `permissioned = true`, and
