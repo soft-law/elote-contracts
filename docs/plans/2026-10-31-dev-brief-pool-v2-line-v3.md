@@ -473,6 +473,13 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   in v1 = admin alone after the delay (SECURITY wording); zero-debt closing payment named for
   indexers; interface change list opened at `docs/plans/2026-11-02-pr2-interface-changes.md` on
   the dev branch. A re-audit of the post-`4a440c0` delta is planned before PR 3.
+- **Closures confirmed, 6d part 1 started** (`05a7b2e` accepted and pushed with the interface
+  list through step 8): `pagares_paid: u16` in CreditLine.reserved 30..32 (free; layout stays
+  313), repay must pass exactly the sidecars [cursor ..= last_touched] (`PagareAccountsMismatch`
+  6039); receipt hash zero on repay means "to follow", `annotate_payment(draw_index, entry_count,
+  receipt_hash)` by holder or attestor appends a Recibo entry (kind 11); attestor co-signature is
+  the v1 gate on the procurador. Part 1 order: registry chain at draw → procuración → revocation
+  → court annotation → cancel branches → backstop → repay entries.
 
 ## Points the coordinator still owns
 
