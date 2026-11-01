@@ -505,6 +505,14 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   status, refused only on a burnt title (`status == PAGARE_PAID`); entry from = to = pool; 14.4k
   CU. (e) next: cancel's procurador branch, both branches keep the coverage check until (g),
   both append a Terminacion entry before the burn.
+- **Part 1 (e) accepted** (`d24c6d8`; 148 Rust + 11 JS): cancel picks the branch by the signer
+  (admin, or the recorded procurador with flags bit 1 and the optional `procurador_authority`
+  PDA compared before any write); both branches keep coverage + Active|Repaid until (g), append
+  Terminacion before the burn, write `cancel_receipt_hash`, end any procuración. CU at 120:
+  48.6k as owner, 52.0k via the procurador. (f) next: `request_cancellation`,
+  `cancel_delay_seconds` (Pool.reserved 8..12, floor 7 days, `set_cancel_delay`), attestor
+  optional on cancel when the backstop conditions hold; a request needs the same coverage checks,
+  one pending at a time, a delay change never shortens a pending request.
 
 ## Points the coordinator still owns
 
