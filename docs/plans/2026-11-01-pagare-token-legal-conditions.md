@@ -71,7 +71,7 @@ the design as it was. Status: **adopted** (sent to the developer or written into
 | C29 ⚠ [G] | No "programa", "serie", "emisión", "inversión" in names and metadata | program, ops | **adopted**: asset named `PAGARE <line>-<draw>`, neutral collection name |
 | C30 [G] | Assets denominated in pesos, not used as a means of payment | design | holds (currency attribute = the peso asset mint) |
 | C31 [U] | Prior consultation with the CNBV before endorsing to investors | counsel | counsel |
-| C32 [new, DA Phase 5] | After an endoso en propiedad by the vehicle: to whom does the debtor pay, how are the line's cash flows redirected, what happens to NAV and outstanding principal | **design + counsel** | **open; gates the en propiedad code.** Options: whole-line sale with repay redirection; per-pagaré routing by the engine; no en propiedad endosos from the vehicle in v1 (procuración only). Design note requested from theOffice; research states the legal consequences |
+| C32 [new, DA Phase 5] | After an endoso en propiedad by the vehicle: to whom does the debtor pay, how are the line's cash flows redirected, what happens to NAV and outstanding principal | **design + counsel** | **decided for the pilot (decision 29): procuración only, no en propiedad endosos by the vehicle in v1**; whole-line sale with repay redirection is the first extension, per-pagaré sale rejected for any visible version (theOffice design note 2026-11-02). Research states the legal consequences in Phase 6; the en propiedad code waits |
 
 ## Supplement of 2026-11-02 (endosos, procuración, acceleration): what it changed
 
