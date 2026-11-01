@@ -126,6 +126,22 @@ pub struct LineSponsorRole {
     pub role: u8,
 }
 
+/// Emitted by `suspend_draws` (D10): the admin closed the draw window early; `available_forfeited`
+/// is the undrawn remainder that can no longer be drawn. Repayment is untouched.
+#[event]
+pub struct LineDrawsSuspended {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub available_forfeited: u64,
+}
+
+/// Emitted by `cancel_line` (decision 25): an approved commitment nobody drew is cleared.
+#[event]
+pub struct LineCancelled {
+    pub pool: Pubkey,
+    pub line_id: u64,
+}
+
 /// One tranche. Since line v3 `amount` is the tranche, not the whole principal, and `draw`
 /// emits it once per tranche, so indexers that sum it keep working.
 #[event]

@@ -51,6 +51,17 @@ pub mod elote_pool {
         instructions::pool::set_attestor(ctx, attestor)
     }
 
+    /// Closes the draw window of an approved or active line now (a KYC failure, a default
+    /// event). Admin only. Repayment is untouched; it is not a pause.
+    pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
+        instructions::lines::suspend_draws(ctx)
+    }
+
+    /// Clears an approved commitment nobody drew. Admin only; refused once anything was drawn.
+    pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {
+        instructions::lines::cancel_line(ctx)
+    }
+
     /// Deposits `assets` into the vault and receives shares at the current NAV, at least
     /// `min_shares_out`. The first deposit locks `DEAD_SHARES` in the pool.
     pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Result<()> {

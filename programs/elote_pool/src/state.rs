@@ -196,6 +196,9 @@ pub enum LineStatus {
     /// collection. Repayments are still accepted; it leaves this state only when repaid in full
     /// or written off.
     InCollection,
+    /// An approved commitment nobody drew, cleared by the admin (`cancel_line`, decision 25).
+    /// Terminal; nothing was ever owed.
+    Cancelled,
 }
 
 #[account]

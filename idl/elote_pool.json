@@ -7,6 +7,93 @@
   },
   "instructions": [
     {
+      "name": "cancel_line",
+      "docs": [
+        "Clears an approved commitment nobody drew. Admin only; refused once anything was drawn."
+      ],
+      "discriminator": [
+        190,
+        237,
+        154,
+        226,
+        138,
+        55,
+        5,
+        8
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "deposit",
       "docs": [
         "Deposits `assets` into the vault and receives shares at the current NAV, at least",
@@ -1000,6 +1087,94 @@
       ]
     },
     {
+      "name": "suspend_draws",
+      "docs": [
+        "Closes the draw window of an approved or active line now (a KYC failure, a default",
+        "event). Admin only. Repayment is untouched; it is not a pause."
+      ],
+      "discriminator": [
+        126,
+        141,
+        160,
+        9,
+        245,
+        206,
+        250,
+        213
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "write_off",
       "docs": [
         "Recognises the unpaid principal of a line as a loss. Admin only. Allowed on an active line",
@@ -1172,6 +1347,19 @@
       ]
     },
     {
+      "name": "LineCancelled",
+      "discriminator": [
+        172,
+        209,
+        243,
+        138,
+        148,
+        91,
+        12,
+        90
+      ]
+    },
+    {
       "name": "LineDrawState",
       "discriminator": [
         81,
@@ -1195,6 +1383,19 @@
         91,
         185,
         148
+      ]
+    },
+    {
+      "name": "LineDrawsSuspended",
+      "discriminator": [
+        38,
+        114,
+        193,
+        152,
+        165,
+        133,
+        216,
+        204
       ]
     },
     {
@@ -1789,6 +1990,25 @@
       }
     },
     {
+      "name": "LineCancelled",
+      "docs": [
+        "Emitted by `cancel_line` (decision 25): an approved commitment nobody drew is cleared."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "LineDrawState",
       "docs": [
         "Emitted by `draw` after `LineDrawn`: the line after the tranche and the hash of the signed",
@@ -1860,6 +2080,30 @@
           },
           {
             "name": "outstanding_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineDrawsSuspended",
+      "docs": [
+        "Emitted by `suspend_draws` (D10): the admin closed the draw window early; `available_forfeited`",
+        "is the undrawn remainder that can no longer be drawn. Repayment is untouched."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "available_forfeited",
             "type": "u64"
           }
         ]
@@ -2065,6 +2309,9 @@
           },
           {
             "name": "InCollection"
+          },
+          {
+            "name": "Cancelled"
           }
         ]
       }

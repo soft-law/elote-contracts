@@ -6,6 +6,7 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./cancelLine";
 export * from "./deposit";
 export * from "./draw";
 export * from "./initPool";
@@ -15,4 +16,5 @@ export * from "./redeem";
 export * from "./repay";
 export * from "./setAttestor";
 export * from "./setPaused";
+export * from "./suspendDraws";
 export * from "./writeOff";

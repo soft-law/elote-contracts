@@ -20,7 +20,7 @@ See "Deployments and upgrade authority" in the README for the deployed clusters,
 
 | Role | How it is identified | What it can do |
 |---|---|---|
-| Pool admin | `Pool.admin`, a signer fixed at `init_pool` and part of the pool's address; it cannot be changed | `open_line` (approve a credit line of up to `max_line_bps` of the NAV to any borrower other than itself, any number of times), `write_off` (recognise a loss once the line is overdue past the grace), `set_paused`, `set_attestor` (replace the attestor) |
+| Pool admin | `Pool.admin`, a signer fixed at `init_pool` and part of the pool's address; it cannot be changed | `open_line` (approve a credit line of up to `max_line_bps` of the NAV to any borrower other than itself, any number of times), `write_off` (recognise a loss once the line is overdue past the grace), `suspend_draws` (close a line's draw window now), `cancel_line` (clear an approved line nobody drew), `set_paused`, `set_attestor` (replace the attestor) |
 | Attestor | `Pool.attestor`, named at `init_pool`, rotated by the admin with `set_attestor`; the agreements engine's key | Co-signs `open_line` (attesting the signed agreement matches the arguments) and `draw` (attesting the pagaré behind the hash was signed and is conserved); in step 6 also `endorse_pagare`. It can block every opening, draw and endoso by withholding its signature and cannot move funds or títulos |
 | Borrower | `CreditLine.borrower`, a co-signer of `open_line` | `draw` tranches of its approved line, with the attestor, while the draw window is open (until the first due date, or the term on a bullet line) |
 | Sponsor | `CreditLine.sponsor`, an optional co-signer of `open_line` | Nothing after the opening; it is a recorded party, not an authority |
@@ -51,10 +51,10 @@ No instruction closes a `Pool` or a `CreditLine` account, and no instruction mov
 
 ## Known risks by design
 
-These are documented limits of the current program, not open vulnerabilities. All but the missing cancel instruction are pinned by a test in `programs/elote_pool/tests/known_limits.rs`; the planned changes are on the docs site under "Roadmap and limits".
+These are documented limits of the current program, not open vulnerabilities. All but the hold item are pinned by a test in `programs/elote_pool/tests/known_limits.rs`; the planned changes are on the docs site under "Roadmap and limits".
 
 - **Step-function NAV.** Interest counts when it is collected and a loss when it is written off, so the share price moves in steps. A deposit placed just before a known repayment captures part of that interest; a redemption between `mark_in_collection` and `write_off` exits at the pre-loss value and leaves the loss to the remaining holders.
-- **No cancel.** There is no instruction to revoke an approved line: it is an option for the borrower to draw until the term ends.
+- **No hold on a drawn line.** Since line v3 the admin can clear an approved line nobody drew (`cancel_line`) and close any line's draw window early (`suspend_draws`), which closes register R-19's cancel half. A line with a tranche drawn cannot be revoked or frozen: it is repaid, collected or written off, and `repay` is never blocked.
 - **No recovery after write-off.** A written-off line takes no repayment. If every line is written off and the NAV reaches zero while shares exist, `deposit` fails until value is transferred into the vault directly.
 - **Collection can be unreachable.** `mark_in_collection` requires `covered + max_missed <= installments`; on a short schedule a borrower who paid early installments and then stopped can only be written off after the term.
 - **First-deposit floor on low-decimal assets.** The first-deposit minimum is 1.0 of the asset, but never fewer base units than 1,000 times the dead shares (1,000,000), so on an asset with fewer than six decimals the minimum is more than one whole unit (10,000.00 on a two-decimal asset). Pinned by `first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor`.

@@ -98,6 +98,8 @@ added by line v3 (`drawn`, `draws`, `availability_end`, `first_due_at`, `sponsor
 | `repay(amount)` | anyone | late interest (which `amount` must cover), then interest, then principal, never more than is due; what is owed is what was drawn plus the interest fixed at each draw. The line closes when nothing remains and the undrawn remainder lapses. Never paused |
 | `mark_in_collection` | anyone | moves an installment line to `InCollection` once `max_missed` installments are missed and the grace period of the last of them has run. Never paused |
 | `write_off` | admin | after the term plus grace, or for a line in collection after its oldest missed due date plus grace, the unpaid principal is recognised as a loss |
+| `suspend_draws` | admin | closes a line's draw window now (a KYC failure, a default event); the undrawn remainder is forfeited, repayment is untouched, the pool is not paused |
+| `cancel_line` | admin | clears an approved commitment nobody drew (status `Cancelled`, terminal); refused once anything was drawn |
 | `set_paused(paused)` | admin | pause switch for deposits, redemptions, openings and draws |
 | `set_attestor(attestor)` | admin | replaces the pool's attestor (never the zero key); the recovery when the agreements engine's key rotates |
 
@@ -165,7 +167,12 @@ change fields; new information comes as new events.
 | `Redeemed` | `redeem` | pool, holder, shares, assets, nav_after, supply_after |
 | `LineOpened` | `open_line` | pool, line_id, borrower, sponsor, agreement_hash, principal, rate_bps, interest_due, term_end |
 | `LineScheduled` | `open_line` with a schedule, after `LineOpened` | pool, line_id, interval_seconds, installments, late_bps, max_missed |
-| `LineDrawn` | `draw` | pool, line_id, amount, outstanding_after |
+| `LineTermsSet` | `open_line`, after `LineOpened` (and `LineScheduled`) | pool, line_id, first_due_at (0 on a bullet line), availability_end, expediente_root |
+| `LineSponsorRole` | `open_line`, after `LineTermsSet` | pool, line_id, sponsor, role (0 promoter, 1 guarantor) |
+| `LineDrawn` | `draw`, once per tranche | pool, line_id, amount (the tranche), outstanding_after |
+| `LineDrawState` | `draw`, after `LineDrawn` | pool, line_id, amount, drawn, available, interest_due, availability_end, document_hash (the signed pagaré's) |
+| `LineDrawsSuspended` | `suspend_draws` | pool, line_id, available_forfeited |
+| `LineCancelled` | `cancel_line` | pool, line_id |
 | `LateInterestCollected` | `repay` with late interest, before `LineRepaid` | pool, line_id, amount |
 | `LineRepaid` | `repay` | pool, line_id, payer, principal_part, interest_part, remaining (without late interest), nav_after |
 | `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining |

@@ -254,8 +254,12 @@ can land first).
                        WrittenOff
 ```
 
-- `Approved` lines hold no money; an undrawn line past `term_end` simply can never be drawn.
-- `Repaid` and `WrittenOff` are terminal. No instruction closes or reopens an account.
+- `Approved` lines hold no money. `draw` keeps the status `Active` on later tranches. An
+  undrawn line past its draw window can never be drawn; the admin clears it with `cancel_line`
+  (`Approved` and `drawn == 0` → `Cancelled`, terminal) and can close any line's draw window
+  early with `suspend_draws` (`availability_end = now`, status unchanged).
+- `Repaid`, `WrittenOff` and `Cancelled` are terminal. No instruction closes or reopens an
+  account.
 - A payment that cures the arrears of a line in collection leaves it `InCollection`; only full
   repayment moves it to `Repaid`. A cured line cannot be written off until it misses again
   (`tests/schedule.rs::a_cured_line_in_collection_is_not_written_off_until_it_misses_again`).
@@ -484,6 +488,24 @@ Unpaid interest is never part of the loss: it was never in the NAV.
 The attestor can block every opening, draw and endoso by withholding its signature and can move
 nothing; this instruction is the recovery when its key rotates or is lost.
 
+### 5.11 `suspend_draws()`
+
+- **Signers:** `admin` (`has_one = admin`, `Unauthorized`).
+- **Constraints:** `line` has `has_one = pool`.
+- **Checks:** `status` is `Approved` or `Active` (`LineStatus`).
+- **Writes:** `availability_end = now` (D10). Nothing else: repayment, collection and
+  write-off are untouched, and the pool is not paused.
+- **Events:** `LineDrawsSuspended` with `available_forfeited = principal - drawn`.
+
+### 5.12 `cancel_line()`
+
+- **Signers:** `admin` (`has_one = admin`, `Unauthorized`).
+- **Constraints:** `line` has `has_one = pool`.
+- **Checks:** `status == Approved` and `drawn == 0` (`LineStatus`): once a tranche exists
+  something is owed and the line follows repayment, collection or write-off.
+- **Writes:** `status = Cancelled` (terminal), `closed_at = now`. The line id stays taken.
+- **Events:** `LineCancelled`.
+
 ## 6. Installments, arrears and late interest (`math.rs`)
 
 A scheduled line stores its terms and its repayments; everything else is recomputed on every
@@ -520,7 +542,8 @@ cap      = ceil(10 000 * SECONDS_PER_YEAR / late_bps)      seconds after which a
 
 Every installment repays principal and interest in the proportion of the whole line, so the
 share is the same whatever order the repayment allocation follows; it depends only on the total
-paid. The due dates count from an *anchor*, one interval before the first due date: on a
+paid. This is the reading that does not punish interest-first allocation: a borrower who paid
+part of an installment is not charged as if none of that payment had reached the principal. The due dates count from an *anchor*, one interval before the first due date: on a
 version-3 line `first_due_at - interval`, fixed by the signed contract (decision 25).
 
 The weighted sum is accumulated in `u128` and divided once, so rounding happens once per
@@ -575,7 +598,7 @@ What must hold between instructions, and which code keeps it:
 
 | role | identified by | can |
 |---|---|---|
-| admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `set_paused`, `set_attestor` |
+| admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `suspend_draws` (close a line's draw window now), `cancel_line` (clear an undrawn approval), `set_paused`, `set_attestor` |
 | attestor | `Pool.attestor`, set at `init_pool`, rotated by `set_attestor` | co-signs `open_line` and `draw` (and `endorse_pagare` in step 6), so it can block every opening, draw and endoso and move nothing |
 | share-mint freeze authority | the freeze authority of the admin-supplied share mint (Token ACL's `MintConfig` in production); not recorded by the program | thaw or freeze share accounts, the dead account included: admits and bars investors |
 | borrower | `CreditLine.borrower` | `draw` its own approved line before the term |

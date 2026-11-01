@@ -13,8 +13,8 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 
 use crate::errors::PoolError;
 use crate::events::{
-    LateInterestCollected, LineDrawState, LineDrawn, LineInCollection, LineOpened, LineRepaid, LineScheduled,
-    LineSponsorRole, LineTermsSet, LineWrittenOff, NavUpdated,
+    LateInterestCollected, LineCancelled, LineDrawState, LineDrawn, LineDrawsSuspended, LineInCollection, LineOpened,
+    LineRepaid, LineScheduled, LineSponsorRole, LineTermsSet, LineWrittenOff, NavUpdated,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
 use crate::pool_signer;
@@ -627,5 +627,82 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
         nav_after,
     });
     emit_cpi!(NavUpdated { pool: pool.key(), total_assets: nav_after, share_supply });
+    Ok(())
+}
+
+// -----------------------------------------------------------------------------------------------
+// suspend_draws
+// -----------------------------------------------------------------------------------------------
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct SuspendDraws<'info> {
+    pub admin: Signer<'info>,
+
+    #[account(
+        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+        has_one = admin @ PoolError::Unauthorized,
+    )]
+    pub pool: Account<'info, Pool>,
+
+    #[account(
+        mut,
+        seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
+        bump = line.bump,
+        has_one = pool @ PoolError::WrongAccount,
+    )]
+    pub line: Account<'info, CreditLine>,
+}
+
+/// D10: the admin closes the draw window of an `Approved` or `Active` line now, so no further
+/// tranche is drawn (a KYC or KYB failure, a default event). The undrawn remainder is forfeited;
+/// repayment, collection and write-off are untouched. It is not a pause: the pool-wide
+/// `set_paused` stays as it is.
+pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let line = &mut ctx.accounts.line;
+    require!(matches!(line.status, LineStatus::Approved | LineStatus::Active), PoolError::LineStatus);
+    let available_forfeited = line.available().ok_or(PoolError::Overflow)?;
+    line.availability_end = now;
+    emit_cpi!(LineDrawsSuspended { pool: ctx.accounts.pool.key(), line_id: line.line_id, available_forfeited });
+    Ok(())
+}
+
+// -----------------------------------------------------------------------------------------------
+// cancel_line
+// -----------------------------------------------------------------------------------------------
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct CancelLine<'info> {
+    pub admin: Signer<'info>,
+
+    #[account(
+        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+        has_one = admin @ PoolError::Unauthorized,
+    )]
+    pub pool: Account<'info, Pool>,
+
+    #[account(
+        mut,
+        seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
+        bump = line.bump,
+        has_one = pool @ PoolError::WrongAccount,
+    )]
+    pub line: Account<'info, CreditLine>,
+}
+
+/// Decision 25: an approved commitment nobody drew (`Approved`, `drawn == 0`) is cleared. Once a
+/// tranche exists something is owed, and the line follows repayment, collection or write-off
+/// instead. `Cancelled` is terminal; the line id stays taken.
+pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let line = &mut ctx.accounts.line;
+    require!(line.status == LineStatus::Approved && line.drawn == 0, PoolError::LineStatus);
+    line.status = LineStatus::Cancelled;
+    line.closed_at = now;
+    emit_cpi!(LineCancelled { pool: ctx.accounts.pool.key(), line_id: line.line_id });
     Ok(())
 }

@@ -931,6 +931,38 @@ impl Env {
         }
     }
 
+    pub fn suspend_draws_ix(&self, k: &PoolKeys, line_id: u64, admin: &Pubkey) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::SuspendDraws {
+                admin: *admin,
+                pool: k.pool,
+                line: line_pda(&k.pool, line_id).0,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::SuspendDraws {}.data(),
+        }
+    }
+
+    pub fn cancel_line_ix(&self, k: &PoolKeys, line_id: u64, admin: &Pubkey) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::CancelLine {
+                admin: *admin,
+                pool: k.pool,
+                line: line_pda(&k.pool, line_id).0,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::CancelLine {}.data(),
+        }
+    }
+
     pub fn mark_in_collection_ix(&self, k: &PoolKeys, line_id: u64) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {

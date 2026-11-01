@@ -44,6 +44,7 @@ import {
   type PoolArgs,
 } from "../accounts";
 import {
+  getCancelLineInstructionAsync,
   getDepositInstructionAsync,
   getDrawInstructionAsync,
   getInitPoolInstructionAsync,
@@ -53,7 +54,9 @@ import {
   getRepayInstructionAsync,
   getSetAttestorInstructionAsync,
   getSetPausedInstructionAsync,
+  getSuspendDrawsInstructionAsync,
   getWriteOffInstructionAsync,
+  parseCancelLineInstruction,
   parseDepositInstruction,
   parseDrawInstruction,
   parseInitPoolInstruction,
@@ -63,12 +66,15 @@ import {
   parseRepayInstruction,
   parseSetAttestorInstruction,
   parseSetPausedInstruction,
+  parseSuspendDrawsInstruction,
   parseWriteOffInstruction,
+  type CancelLineAsyncInput,
   type DepositAsyncInput,
   type DrawAsyncInput,
   type InitPoolAsyncInput,
   type MarkInCollectionAsyncInput,
   type OpenLineAsyncInput,
+  type ParsedCancelLineInstruction,
   type ParsedDepositInstruction,
   type ParsedDrawInstruction,
   type ParsedInitPoolInstruction,
@@ -78,11 +84,13 @@ import {
   type ParsedRepayInstruction,
   type ParsedSetAttestorInstruction,
   type ParsedSetPausedInstruction,
+  type ParsedSuspendDrawsInstruction,
   type ParsedWriteOffInstruction,
   type RedeemAsyncInput,
   type RepayAsyncInput,
   type SetAttestorAsyncInput,
   type SetPausedAsyncInput,
+  type SuspendDrawsAsyncInput,
   type WriteOffAsyncInput,
 } from "../instructions";
 import {
@@ -136,8 +144,10 @@ export enum ElotePoolEvent {
   AttestorSet,
   Deposited,
   LateInterestCollected,
+  LineCancelled,
   LineDrawState,
   LineDrawn,
+  LineDrawsSuspended,
   LineInCollection,
   LineOpened,
   LineRepaid,
@@ -196,6 +206,17 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([172, 209, 243, 138, 148, 91, 12, 90]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LineCancelled;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([81, 134, 178, 53, 221, 181, 252, 207]),
       ),
       0,
@@ -213,6 +234,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.LineDrawn;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([38, 114, 193, 152, 165, 133, 216, 204]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LineDrawsSuspended;
   }
   if (
     containsBytes(
@@ -385,6 +417,7 @@ export function identifyElotePoolEvent(
 }
 
 export enum ElotePoolInstruction {
+  CancelLine,
   Deposit,
   Draw,
   InitPool,
@@ -394,6 +427,7 @@ export enum ElotePoolInstruction {
   Repay,
   SetAttestor,
   SetPaused,
+  SuspendDraws,
   WriteOff,
 }
 
@@ -401,6 +435,17 @@ export function identifyElotePoolInstruction(
   instruction: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
 ): ElotePoolInstruction {
   const data = "data" in instruction ? instruction.data : instruction;
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([190, 237, 154, 226, 138, 55, 5, 8]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.CancelLine;
+  }
   if (
     containsBytes(
       data,
@@ -504,6 +549,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([126, 141, 160, 9, 245, 206, 250, 213]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SuspendDraws;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([42, 219, 118, 129, 76, 117, 45, 177]),
       ),
       0,
@@ -520,6 +576,9 @@ export function identifyElotePoolInstruction(
 export type ParsedElotePoolInstruction<
   TProgram extends string = "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
 > =
+  | ({
+      instructionType: ElotePoolInstruction.CancelLine;
+    } & ParsedCancelLineInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.Deposit;
     } & ParsedDepositInstruction<TProgram>)
@@ -548,6 +607,9 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.SetPaused;
     } & ParsedSetPausedInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.SuspendDraws;
+    } & ParsedSuspendDrawsInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.WriteOff;
     } & ParsedWriteOffInstruction<TProgram>);
 
@@ -556,6 +618,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
 ): ParsedElotePoolInstruction<TProgram> {
   const instructionType = identifyElotePoolInstruction(instruction);
   switch (instructionType) {
+    case ElotePoolInstruction.CancelLine: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.CancelLine,
+        ...parseCancelLineInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.Deposit: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -619,6 +688,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseSetPausedInstruction(instruction),
       };
     }
+    case ElotePoolInstruction.SuspendDraws: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SuspendDraws,
+        ...parseSuspendDrawsInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.WriteOff: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -653,6 +729,11 @@ export type ElotePoolPluginAccounts = {
 };
 
 export type ElotePoolPluginInstructions = {
+  cancelLine: (
+    input: CancelLineAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getCancelLineInstructionAsync> &
+    SelfPlanAndSendFunctions;
   deposit: (
     input: DepositAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -694,6 +775,11 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSetPausedInstructionAsync> &
     SelfPlanAndSendFunctions;
+  suspendDraws: (
+    input: SuspendDrawsAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSuspendDrawsInstructionAsync> &
+    SelfPlanAndSendFunctions;
   writeOff: (
     input: WriteOffAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -728,6 +814,14 @@ export function elotePoolProgram(
           pool: addSelfFetchFunctions(client, getPoolCodec()),
         },
         instructions: {
+          cancelLine: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCancelLineInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
           deposit: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -799,6 +893,14 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getSetPausedInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          suspendDraws: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSuspendDrawsInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
