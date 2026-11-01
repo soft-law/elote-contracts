@@ -8,5 +8,6 @@
 
 export * from "./deadShares";
 export * from "./line";
+export * from "./pagare";
 export * from "./pool";
 export * from "./vault";

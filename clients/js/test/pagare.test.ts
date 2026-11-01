@@ -1,11 +1,13 @@
 // The pagaré PDAs the program derives in `draw` (`["pagare" | "pagare_asset", line, draw_index as
-// u16 LE]`). Codama generates no helper for them because their seed is a field of the line
-// account, so `src/pagare.ts` derives them by hand; the expected addresses come from the Solana
+// u16 LE]`). Codama derives the sidecar from `cancel_pagare` (`findPagarePda` in `generated/pdas`)
+// and nothing for the asset, whose seed in `draw` is a field of the line account, so `src/pagare.ts`
+// derives that one by hand; the expected addresses come from the Solana
 // CLI (`solana find-program-derived-address <program> string:pagare pubkey:<line> u16le:<n>`).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { address } from "@solana/kit";
-import { MPL_CORE_PROGRAM_ADDRESS, drawPagareAccounts, findPagareAssetPda, findPagarePda } from "../src/pagare";
+import { MPL_CORE_PROGRAM_ADDRESS, drawPagareAccounts, findPagareAssetPda } from "../src/pagare";
+import { findPagarePda } from "../src/generated";
 
 const line = address("11111111111111111111111111111112");
 

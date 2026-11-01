@@ -7,6 +7,7 @@
  */
 
 export * from "./cancelLine";
+export * from "./cancelPagare";
 export * from "./deposit";
 export * from "./draw";
 export * from "./initPool";

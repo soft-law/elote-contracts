@@ -103,6 +103,7 @@ added by line v3 (`drawn`, `draws`, `availability_end`, `first_due_at`, `sponsor
 | `write_off` | admin | after the term plus grace, or for a line in collection after its oldest missed due date plus grace, the unpaid principal is recognised as a loss |
 | `suspend_draws` | admin | closes a line's draw window now (a KYC failure, a default event); the undrawn remainder is forfeited, repayment is untouched, the pool is not paused |
 | `cancel_line` | admin | clears an approved commitment nobody drew (status `Cancelled`, terminal); refused once anything was drawn |
+| `cancel_pagare(draw_index, receipt_hash)` | holder (the admin while the asset is in the pool), attestor, payer | extinguishes a paid pagaré against the FEA-signed receipt's hash: only while the line is `Active` or `Repaid` and once the line's `principal_repaid` reaches the pagaré's `drawn_through` (pagarés are covered oldest first; interest alone covers nothing); writes the "PAGADO" mark on the `Pagare` record (status, paid_at, receipt_hash), which is never closed, emits `PagareCancelled`, then burns the asset through the pool's permanent burn delegate, its rent going to the `payer`. Never paused |
 | `set_paused(paused)` | admin | pause switch for deposits, redemptions, openings and draws |
 | `set_attestor` | admin, the new attestor | replaces the pool's attestor with the co-signing key, which proves the engine controls it; the recovery when the agreements engine's key rotates |
 
@@ -175,6 +176,7 @@ change fields; new information comes as new events.
 | `LineDrawn` | `draw`, once per tranche | pool, line_id, amount (the tranche), outstanding_after |
 | `LineDrawState` | `draw`, after `LineDrawn` | pool, line_id, amount, drawn, available, interest_due, availability_end, document_hash (the signed pagaré's) |
 | `PagareIssued` | `draw`, after `LineDrawState` | pool, line_id, draw_index, asset (the Core asset), pagare_hash, amount, due_at, holder (the pool PDA) |
+| `PagareCancelled` | `cancel_pagare`, before the burn | pool, line_id, draw_index, asset, receipt_hash, holder (the key that extinguished it; no AppData length: the engine archives the log off chain before the burn) |
 | `LineDrawsSuspended` | `suspend_draws` | pool, line_id, available_forfeited |
 | `LineCancelled` | `cancel_line` | pool, line_id |
 | `LateInterestCollected` | `repay` with late interest, before `LineRepaid` | pool, line_id, amount |
@@ -219,8 +221,8 @@ and the Associated Token Account program by default; the harness adds Metaplex C
 | `pool.rs`, `lines.rs`, `schedule.rs` | Behaviour of every instruction, happy paths and each error code |
 | `known_limits.rs` | Documentation tests that pin the known design limits listed in SECURITY.md; they pass by design and must be inverted when a limit is removed |
 | `tranches.rs` | Tranched draws: the draw window, the payability floor, per-tranche interest, the cap on tranches, the attestor on every draw, `suspend_draws`, `cancel_line` |
-| `pagare.rs` | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused |
-| `compute.rs` | Compute units of `init_pool`, `draw` (with the Core CPI), `repay`, `mark_in_collection` and `write_off` at 18 and 120 installments stay under 100,000 |
+| `pagare.rs` | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused; `cancel_pagare`: the PAGADO mark, the burn, coverage oldest first, the refusals |
+| `compute.rs` | Compute units of `init_pool`, `draw` (with the Core CPI), `cancel_pagare`, `repay`, `mark_in_collection` and `write_off` at 18 and 120 installments stay under 100,000 |
 | `math_props.rs` | Property tests (proptest) over the share accounting and the arrears arithmetic |
 | `vectors.rs` | Evaluates the arrears arithmetic on 416 cases and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
 

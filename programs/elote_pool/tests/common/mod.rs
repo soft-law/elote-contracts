@@ -80,6 +80,11 @@ pub const E_TOO_MANY_DRAWS: u32 = ERR_BASE + 26; // PoolError::TooManyDraws
 pub const E_COLLECTION_NOT_ALLOWED: u32 = ERR_BASE + 27; // PoolError::CollectionNotAllowed
 pub const E_DOCUMENT_HASH_REQUIRED: u32 = ERR_BASE + 28; // PoolError::DocumentHashRequired
 pub const E_SIGNATURE_METHOD_INVALID: u32 = ERR_BASE + 29; // PoolError::SignatureMethodInvalid
+pub const E_PAGARE_NOT_COVERED: u32 = ERR_BASE + 30; // PoolError::PagareNotCovered
+pub const E_PAGARE_ALREADY_PAID: u32 = ERR_BASE + 31; // PoolError::PagareAlreadyPaid
+pub const E_NOT_HOLDER: u32 = ERR_BASE + 32; // PoolError::NotHolder
+/// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
+pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
 /// Token-2022's `TokenError::AccountFrozen`, surfaced as custom error 17 by a failed CPI.
 pub const SPL_TOKEN_ACCOUNT_FROZEN: u32 = 17;
@@ -224,6 +229,8 @@ pub const DOCUMENT_HASH: [u8; 32] = [0xd0; 32];
 /// The fingerprint of the PSC certificate behind the default test signature (method 1, PSC + wallet).
 pub const CERT_FINGERPRINT: [u8; 32] = [0xcf; 32];
 pub const SIGNATURE_METHOD: u8 = elote_pool::state::SIGNATURE_PSC_WALLET;
+/// The hash of the FEA-signed receipt `cancel_pagare` is given in the tests.
+pub const RECEIPT_HASH: [u8; 32] = [0x4e; 32];
 #[allow(unused_imports)]
 pub use elote_pool::state::{PAGARE_OUTSTANDING, PAGARE_PAID};
 
@@ -997,6 +1004,75 @@ impl Env {
             .to_account_metas(None),
             data: elote_pool::instruction::Draw { amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method }.data(),
         }
+    }
+
+    /// `cancel_pagare(draw_index, receipt_hash)`: the holder (the admin while the asset is in the
+    /// pool) and the attestor sign; `payer` receives the asset's rent back from the Core program.
+    /// The asset is read from the sidecar, as a client would.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cancel_pagare_ix(
+        &self,
+        k: &PoolKeys,
+        line_id: u64,
+        draw_index: u16,
+        holder: &Pubkey,
+        payer: &Pubkey,
+        receipt_hash: [u8; 32],
+    ) -> Instruction {
+        let asset = self.pagare(k, line_id, draw_index).asset;
+        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection)
+    }
+
+    /// As `cancel_pagare_ix`, with the asset and the collection given explicitly.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cancel_pagare_ix_full(
+        &self,
+        k: &PoolKeys,
+        line_id: u64,
+        draw_index: u16,
+        holder: &Pubkey,
+        payer: &Pubkey,
+        receipt_hash: [u8; 32],
+        asset: Pubkey,
+        collection: Pubkey,
+    ) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::CancelPagare {
+                holder: *holder,
+                attestor: self.attestor.pubkey(),
+                payer: *payer,
+                pool: k.pool,
+                line,
+                pagare: pagare_pda(&line, draw_index).0,
+                asset,
+                collection,
+                mpl_core_program: MPL_CORE_ID,
+                system_program: SYSTEM_PROGRAM_ID,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::CancelPagare { draw_index, receipt_hash }.data(),
+        }
+    }
+
+    /// Cancels pagaré `draw_index` of a line: the admin as holder and payer, the attestor co-signing.
+    pub fn cancel_pagare(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16) -> TransactionMetadata {
+        let admin = self.admin.insecure_clone();
+        let attestor = self.attestor.insecure_clone();
+        let ix = self.cancel_pagare_ix(k, line_id, draw_index, &admin.pubkey(), &admin.pubkey(), RECEIPT_HASH);
+        self.send(ix, &admin, &[&attestor])
+    }
+
+    /// Asserts a cancellation of pagaré `draw_index` by the admin and the attestor fails with `code`.
+    pub fn expect_cancel_err(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, code: u32) {
+        let admin = self.admin.insecure_clone();
+        let attestor = self.attestor.insecure_clone();
+        let ix = self.cancel_pagare_ix(k, line_id, draw_index, &admin.pubkey(), &admin.pubkey(), RECEIPT_HASH);
+        self.expect_err(ix, &admin, &[&attestor], code);
     }
 
     /// The sidecar of pagaré `draw_index` of a line.

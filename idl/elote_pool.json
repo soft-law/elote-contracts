@@ -94,6 +94,182 @@
       "args": []
     },
     {
+      "name": "cancel_pagare",
+      "docs": [
+        "Extinguishes pagaré `draw_index` of a line against the FEA-signed receipt whose hash is",
+        "`receipt_hash`, once the line has repaid enough to cover it: the holder (the admin while the",
+        "asset is in the pool) and the attestor sign; the sidecar is marked paid and kept, the asset",
+        "is burnt. Refused on a line in collection or written off. Not paused."
+      ],
+      "discriminator": [
+        90,
+        9,
+        227,
+        98,
+        84,
+        183,
+        29,
+        9
+      ],
+      "accounts": [
+        {
+          "name": "holder",
+          "docs": [
+            "The pagaré's current holder. While the asset is in the pool that is the admin, the",
+            "vehicle's signer (step 6d extends this to the holder of record after an endoso)."
+          ],
+          "signer": true
+        },
+        {
+          "name": "attestor",
+          "docs": [
+            "The pool's attestor: the agreements engine attests the receipt behind `receipt_hash` was",
+            "signed and is conserved, and that the AppData log was archived before the burn."
+          ],
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Receives the asset's rent from the Core program when it is burnt (the relayer that funded",
+            "it at the draw, as a rule). Any signer."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.admin",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          },
+          "relations": [
+            "pagare"
+          ]
+        },
+        {
+          "name": "pagare",
+          "docs": [
+            "The sidecar of pagaré `draw_index` of the line; it is written, never closed."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "arg",
+                "path": "draw_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset",
+          "docs": [
+            "The Core asset the sidecar names; burnt by the Core program."
+          ],
+          "writable": true
+        },
+        {
+          "name": "collection",
+          "docs": [
+            "The series' collection the asset belongs to."
+          ],
+          "writable": true
+        },
+        {
+          "name": "mpl_core_program",
+          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_index",
+          "type": "u16"
+        },
+        {
+          "name": "receipt_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "deposit",
       "docs": [
         "Deposits `assets` into the vault and receives shares at the current NAV, at least",
@@ -1413,6 +1589,19 @@
       ]
     },
     {
+      "name": "Pagare",
+      "discriminator": [
+        140,
+        142,
+        27,
+        239,
+        147,
+        131,
+        73,
+        247
+      ]
+    },
+    {
       "name": "Pool",
       "discriminator": [
         241,
@@ -1620,6 +1809,19 @@
         24,
         110,
         154
+      ]
+    },
+    {
+      "name": "PagareCancelled",
+      "discriminator": [
+        52,
+        176,
+        158,
+        29,
+        111,
+        2,
+        28,
+        70
       ]
     },
     {
@@ -1877,6 +2079,21 @@
       "code": 6029,
       "name": "SignatureMethodInvalid",
       "msg": "signature_method is unknown, or lacks its certificate fingerprint"
+    },
+    {
+      "code": 6030,
+      "name": "PagareNotCovered",
+      "msg": "The line has not repaid enough to cover this pagaré"
+    },
+    {
+      "code": 6031,
+      "name": "PagareAlreadyPaid",
+      "msg": "This pagaré is already marked paid"
+    },
+    {
+      "code": 6032,
+      "name": "NotHolder",
+      "msg": "The pagaré's holder must sign"
     }
   ],
   "types": [
@@ -2546,6 +2763,185 @@
           {
             "name": "share_supply",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pagare",
+      "docs": [
+        "The program's own record of one pagaré (decision 24, pagaré design): the sidecar of the",
+        "Metaplex Core asset `draw` mints for a disposición. Per the legal brief (2026-11-01), the signed",
+        "data message is the pagaré and the asset is its registration and circulation record; the",
+        "sidecar is the program's half of that record. It holds no folio (the agreements engine maps the",
+        "index to its folio off chain) and nothing personal. It is never closed: after `cancel_pagare`",
+        "it stays as the \"PAGADO\" mark, so its rent is a cost of every draw."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "line",
+            "type": "pubkey"
+          },
+          {
+            "name": "draw_index",
+            "docs": [
+              "Which disposición of the line, 0-based: the `draws` count at the time of the draw."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "asset",
+            "docs": [
+              "The Core asset at `[PAGARE_ASSET, line, draw_index]`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "pagare_hash",
+            "docs": [
+              "Hash of the signed pagaré data message, as `draw` received it."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "amount",
+            "docs": [
+              "The tranche this pagaré documents."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "issued_at",
+            "type": "i64"
+          },
+          {
+            "name": "due_at",
+            "docs": [
+              "The line's last due date at issuance (D1): when the last payment is owed."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "drawn_through",
+            "docs": [
+              "The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.",
+              "The coverage rule reads it instead of summing earlier sidecars (pagarés are covered oldest",
+              "first): pagaré k is paid once the line's `principal_repaid` reaches `drawn_through`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "cert_fingerprint",
+            "docs": [
+              "Hash of the PSC certificate that signed the pagaré text (condition C6a); zero only when",
+              "`signature_method` is `SIGNATURE_WALLET`."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "signature_method",
+            "docs": [
+              "`SIGNATURE_WALLET`, `SIGNATURE_PSC_WALLET` or `SIGNATURE_EFIRMA_WALLET`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "docs": [
+              "`PAGARE_OUTSTANDING` or `PAGARE_PAID`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "paid_at",
+            "docs": [
+              "When `cancel_pagare` marked it paid; zero while outstanding."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "receipt_hash",
+            "docs": [
+              "Hash of the FEA-signed receipt `cancel_pagare` was given (LGTOC 129); zero while outstanding."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "Room for later facts (an endoso count, the current holder) without a layout change."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PagareCancelled",
+      "docs": [
+        "Emitted by `cancel_pagare` (C22, LGTOC 129): the pagaré was paid and extinguished against the",
+        "FEA-signed receipt whose hash is `receipt_hash`; the asset is burnt in the same instruction and",
+        "the sidecar stays as the \"PAGADO\" mark. `holder` is the key that extinguished it (the admin",
+        "while the asset is in the pool; the holder of record after an endoso). The AppData log is",
+        "archived off chain before the burn, so the event does not carry its length."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "draw_index",
+            "type": "u16"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "receipt_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
           }
         ]
       }

@@ -60,18 +60,20 @@ share one thing that cannot be split: the money.
   logic, or one loan funded by several pools (the loan becomes an account of its own program and
   pools hold positions). None of these exists today.
 
-## 1. One program, five modules
+## 1. One program, six modules
 
 ```
 programs/elote_pool/src/
-├── lib.rs            declare_id!, security.txt, the #[program] module: nine thin entry points
-├── state.rs          Pool and CreditLine layouts, PDA seeds, constants, Schedule packing
-├── errors.rs         PoolError (19 codes, 6000..6018)
-├── events.rs         12 events, all emitted through emit_cpi!
+├── lib.rs            declare_id!, security.txt, the #[program] module: thirteen thin entry points
+├── state.rs          Pool, CreditLine and Pagare layouts, PDA seeds, constants, Schedule packing
+├── errors.rs         PoolError (33 codes, 6000..6032)
+├── events.rs         24 events, all emitted through emit_cpi!
 ├── math.rs           pure arithmetic: share pricing, installments, late interest, arrears
 └── instructions/
-    ├── pool.rs       init_pool, deposit, redeem, set_paused, and the pool_signer! macro
-    └── lines.rs      open_line, draw, repay, mark_in_collection, write_off
+    ├── pool.rs       init_pool, deposit, redeem, set_paused, set_attestor, and the pool_signer! macro
+    ├── lines.rs      open_line, draw (which mints the pagaré), repay, mark_in_collection, write_off,
+    │                 suspend_draws, cancel_line
+    └── pagare.rs     cancel_pagare (and, in step 6d, endorse_pagare)
 ```
 
 `math.rs` has no Anchor dependency and no I/O: every function takes integers and returns
@@ -243,7 +245,9 @@ as lower-case hex (a base58 encoding on chain costs tens of thousands of CU); an
 `AppData` external adapter, schema `Binary`, data authority = pool PDA, for the endoso log. The
 name is `PAGARE <line_id>-<draw_index>`: no series label, none of the words a court read as an
 offering in 2016609 (C29); the URI is empty. The program never reads the asset
-back: later instructions trust the sidecar and the Core program's own checks in the CPIs.
+back: `cancel_pagare` trusts the sidecar (`asset` must be `Pagare.asset`) and the Core program's
+own checks in the `BurnV1` CPI, which the permanent burn delegate force-approves through the
+freeze (`tests/pagare.rs` burns a frozen asset).
 
 ### 2.4 Constants (`state.rs`)
 
@@ -598,6 +602,54 @@ nothing; this instruction is the recovery when its key rotates or is lost.
 - **Writes:** `status = Cancelled` (terminal), `closed_at = now`. The line id stays taken.
 - **Events:** `LineCancelled`.
 
+### 5.13 `cancel_pagare(draw_index: u16, receipt_hash: [u8; 32])`
+
+Legal brief of 2026-11-01, condition C22 (LGTOC 17 and 129, CCF 2088): the extinction of a
+pagaré is an act of its holder against a receipt, not a permissionless burn, and the record of
+the payment must outlive the título.
+
+- **Signers:** `holder`, the pagaré's current holder, which while the asset is in the pool is
+  `pool.admin`, the vehicle's signer (`NotHolder`; step 6d extends this to the holder of record
+  after an endoso); `attestor` (`AttestorRequired`: the engine attests the FEA-signed receipt
+  behind `receipt_hash` exists and is conserved, and that it archived the asset's AppData log
+  under NOM-151 before asking for the burn); `payer`, any signer, which receives the asset's rent
+  from the Core program (the relayer that funded it at the draw, as a rule).
+- **Constraints:** `line` has `has_one = pool`; `pagare` is at `["pagare", line, draw_index]`
+  with its stored bump (`ConstraintSeeds`) and has `has_one = line` (`WrongAccount`); `asset` is
+  `pagare.asset` (`WrongAccount`: the sidecar, not a derivation, names the asset, which is why a
+  non-canonical bump at the draw is tolerable, §9); `collection` is `pool.collection`;
+  `mpl_core_program` is the Core program id. A line that never drew has no sidecar, so a
+  cancellation on a `Cancelled` line fails on the account (`AccountNotInitialized`).
+- **Checks, in order (all before any write):** `pagare.status` is outstanding
+  (`PagareAlreadyPaid`: paid is terminal and the asset is gone); `receipt_hash != [0; 32]`
+  (`DocumentHashRequired`); `line.status` is `Active` or `Repaid` (`LineStatus`: in collection or
+  written off the títulos stay in force for the collection; a line in collection that pays in
+  full is `Repaid` and its pagarés cancel then); the coverage rule, `principal_repaid >=
+  pagare.drawn_through` (`PagareNotCovered`). `drawn_through` is the line's drawn after the
+  tranche, so the rule is one comparison and repayments cover the pagarés oldest first: a later
+  pagaré cannot be cancelled while an earlier one is uncovered, and among covered ones the order
+  is free. Interest covers nothing by itself: `repay` settles interest before principal, so when
+  the principal of pagarés `0..=k` is repaid every unit of interest fixed up to that payment is
+  too, and a título is never extinguished while any of its principal is owed (a payment the size
+  of the pagaré on a line whose interest equals its principal covers nothing). The program does not
+  check that the receipt differs from other receipts: the engine issues one per pagaré and the
+  attestor's signature is the guard. Not blocked by the pause: it records a payment and moves no funds.
+- **Writes:** the "PAGADO" mark on the sidecar, `status = PAGARE_PAID`, `paid_at = now`,
+  `receipt_hash`; nothing else changes and the account is never closed (its rent stays locked, a
+  cost of every draw).
+- **Events:** `PagareCancelled` (`pool`, `line_id`, `draw_index`, `asset`, `receipt_hash`,
+  `holder`: the key that extinguished it, as `PagareIssued` names the first holder). It
+  carries no AppData length: reading it would mean decoding the asset's external adapter header on
+  chain (the rule at the top of §5), and the engine reads and archives the log off chain before the
+  burn.
+- **CPI, last:** Metaplex Core `BurnV1` with the pool PDA as authority (the permanent burn
+  delegate, also the owner while the asset is in the pool), the collection, `payer`, the system
+  program. The permanent burn delegate force-approves the burn through the permanent freeze, so
+  no thaw precedes it. Core leaves a one-byte `Uninitialized` tombstone at the address (so it
+  cannot be re-created as an asset) and sends the rest of the rent to `payer`; the collection's
+  `current_size` drops by one and `num_minted` stays.
+- **Compute:** 26 891 CU on a 120-installment line (`tests/compute.rs`); no arrears loop runs.
+
 ## 6. Installments, arrears and late interest (`math.rs`)
 
 A scheduled line stores its terms and its repayments; everything else is recomputed on every
@@ -690,18 +742,19 @@ What must hold between instructions, and which code keeps it:
 
 | role | identified by | can |
 |---|---|---|
-| admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `suspend_draws` (close a line's draw window now), `cancel_line` (clear an undrawn approval), `set_paused`, `set_attestor` |
-| attestor | `Pool.attestor`, set at `init_pool`, rotated by `set_attestor` | co-signs `open_line` and `draw` (and `endorse_pagare` in step 6), so it can block every opening, draw and endoso and move nothing |
+| admin | `Pool.admin`, fixed forever | `open_line` (up to `max_line_bps` of the NAV per line: `LineTooLarge`; any borrower other than itself: `BorrowerIsAdmin`; no limit on the number of lines), `write_off` (only when overdue past grace), `suspend_draws` (close a line's draw window now), `cancel_line` (clear an undrawn approval), `cancel_pagare` as the holder of the pagarés in the pool (only a covered one, with the attestor and a receipt), `set_paused`, `set_attestor` |
+| attestor | `Pool.attestor`, set at `init_pool`, rotated by `set_attestor` (which the new key co-signs) | co-signs `open_line`, `draw` and `cancel_pagare` (and `endorse_pagare` in step 6d), so it can block every opening, draw, cancellation and endoso and move nothing |
 | share-mint freeze authority | the freeze authority of the admin-supplied share mint (Token ACL's `MintConfig` in production); not recorded by the program | thaw or freeze share accounts, the dead account included: admits and bars investors |
 | borrower | `CreditLine.borrower` | `draw` its own approved line before the term |
-| payer (relayer) | any signer passed as `draw`'s `payer` | pays the rent of the pagaré asset and its sidecar; nothing else |
+| payer (relayer) | any signer passed as `draw`'s or `cancel_pagare`'s `payer` | pays the rent of the pagaré asset and its sidecar at the draw and receives the asset's rent back at the cancellation; nothing else |
 | sponsor | `CreditLine.sponsor` | nothing after co-signing the opening |
 | depositor / holder | any signer with the asset or shares | `deposit`, `redeem` |
 | anyone | | `repay` any drawn line, `mark_in_collection` |
 | upgrade authority | BPF loader authority of the program id | replace the program; a single key on devnet |
 
-There is no operator role, no fee switch, no admin withdrawal, no account closing and no way to
-change the asset, the admin or the grace period after `init_pool`.
+There is no operator role, no fee switch, no admin withdrawal and no way to change the asset, the
+admin or the grace period after `init_pool`. No account of this program is ever closed; the only
+account that disappears is the pagaré asset, burnt by the Core program in `cancel_pagare`.
 
 Besides the token programs, the one foreign program the pool depends on is Metaplex Core
 (`CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d`, crate `mpl-core` 0.12.1, tests against the
@@ -758,13 +811,13 @@ Other points outside the test file, from the same review and from the Etherfuse 
 | `tests/schedule.rs` | LiteSVM, clock warped | schedule validation, installments on their due dates, missed count over time, late interest after grace, caps, repayment order, collection after three missed, cure beats collection, write-off timing in both paths |
 | `tests/known_limits.rs` | LiteSVM | the nine tests in §9: six limits still in force and three inverted on 2026-10-31 |
 | `tests/tranches.rs` | LiteSVM, clock warped | tranched draws: the strict window, the payability floor, per-tranche interest to the last due date, `MAX_DRAWS`, the attestor on every draw, `suspend_draws` and `cancel_line` |
-| `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); wrong asset, sidecar or collection refused |
-| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 869 CU at 120, deterministic, of which the Core CPI is about 44 000) |
+| `tests/pagare.rs` | LiteSVM + the pinned Core binary | one frozen asset and one sidecar per draw, held by the pool PDA in the pool's collection, the relayer paying the rent; every plugin read back through the `mpl-core` decoders (the crate-vs-program compatibility proof); `drawn_through` and the signature rules; wrong asset, sidecar or collection refused; `cancel_pagare`: the PAGADO mark and the burn, coverage oldest first by principal (interest alone covers nothing), refused in collection, after write-off and without a sidecar, the holder, the attestor, the receipt and the accounts |
+| `tests/compute.rs` | LiteSVM | `init_pool`, `draw` (with the Core CPI), `cancel_pagare` (26 891 CU) and the arrears instructions under a 100 000 CU ceiling at 18 and 120 installments (worst: `draw` at 89 869 CU at 120, deterministic, of which the Core CPI is about 44 000) |
 | `tests/common/mod.rs` | | the LiteSVM fixture: loads `target/deploy/elote_pool.so`, builds every instruction, warps the clock |
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 112 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 123 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.
@@ -780,8 +833,9 @@ anchor build ──► target/idl/elote_pool.json ──npm run idl:sync──�
                                    clients/js/src/generated/   (Codama, @solana/kit, do not edit)
                                    clients/js/src/schedule.ts  (hand-written: reserved-byte
                                                                 decoding and arrears, mirrors math.rs)
-                                   clients/js/src/pagare.ts    (hand-written: the pagaré PDAs, whose
-                                                                seed is a field of the line account)
+                                   clients/js/src/pagare.ts    (hand-written: the asset PDA, whose seed
+                                                                is a field of the line account, and the
+                                                                draw account helper)
                                    clients/js/src/index.ts
                                                      │
                                                      ▼

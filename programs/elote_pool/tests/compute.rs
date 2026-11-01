@@ -79,6 +79,28 @@ fn draw_stays_under_the_ceiling_at_120_installments() {
     assert!(first < CEILING && second < CEILING, "draw used {first} / {second} CU, ceiling {CEILING}");
 }
 
+/// `cancel_pagare` runs no arrears loop: one coverage comparison, the sidecar's mark and the Core
+/// `BurnV1` CPI. Measured on a 120-installment line repaid in full, the shape of a real
+/// cancellation.
+#[test]
+fn cancel_pagare_stays_under_the_ceiling() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool_with_grace(0);
+    let investor = env.investor(&k, 200 * UNIT);
+    env.deposit(&k, &investor, 200 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(100 * UNIT, 1_200, 120, 5_000);
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw(&k, line_id, &borrower);
+    let interest = env.line(&k, line_id).interest_due;
+    let admin = env.admin.insecure_clone();
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.repay(&k, line_id, &borrower, 100 * UNIT + interest);
+    let cancel = env.cancel_pagare(&k, line_id, 0).compute_units_consumed;
+    println!("cancel_pagare at 120 installments: {cancel} CU");
+    assert!(cancel < CEILING, "cancel_pagare used {cancel} CU, ceiling {CEILING}");
+}
+
 #[test]
 fn arrears_instructions_stay_under_the_ceiling_at_18_and_120_installments() {
     for n in [18u16, 120] {

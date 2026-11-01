@@ -75,6 +75,12 @@ export const ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED = 0x178b; // 6027
 export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x178c; // 6028
 /** SignatureMethodInvalid: signature_method is unknown, or lacks its certificate fingerprint */
 export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x178d; // 6029
+/** PagareNotCovered: The line has not repaid enough to cover this pagaré */
+export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x178e; // 6030
+/** PagareAlreadyPaid: This pagaré is already marked paid */
+export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x178f; // 6031
+/** NotHolder: The pagaré's holder must sign */
+export const ELOTE_POOL_ERROR__NOT_HOLDER = 0x1790; // 6032
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
@@ -91,8 +97,11 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__LINE_STATUS
   | typeof ELOTE_POOL_ERROR__LINE_TOO_LARGE
   | typeof ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED
+  | typeof ELOTE_POOL_ERROR__NOT_HOLDER
   | typeof ELOTE_POOL_ERROR__NOT_SCHEDULED
   | typeof ELOTE_POOL_ERROR__OVERFLOW
+  | typeof ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID
+  | typeof ELOTE_POOL_ERROR__PAGARE_NOT_COVERED
   | typeof ELOTE_POOL_ERROR__PAUSED
   | typeof ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM
   | typeof ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED
@@ -125,8 +134,11 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__LINE_STATUS]: `The line is not in the required status`,
     [ELOTE_POOL_ERROR__LINE_TOO_LARGE]: `The principal exceeds the pool's maximum line, max_line_bps of the NAV`,
     [ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED]: `Fewer installments missed than the line allows before collection`,
+    [ELOTE_POOL_ERROR__NOT_HOLDER]: `The pagaré's holder must sign`,
     [ELOTE_POOL_ERROR__NOT_SCHEDULED]: `The line has no installment schedule`,
     [ELOTE_POOL_ERROR__OVERFLOW]: `Arithmetic overflow`,
+    [ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID]: `This pagaré is already marked paid`,
+    [ELOTE_POOL_ERROR__PAGARE_NOT_COVERED]: `The line has not repaid enough to cover this pagaré`,
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,
     [ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM]: `The last installment would fall due after the term`,
     [ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED]: `The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions`,

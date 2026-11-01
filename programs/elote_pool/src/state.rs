@@ -303,7 +303,7 @@ pub struct Pagare {
     pub due_at: i64,
     /// The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.
     /// The coverage rule reads it instead of summing earlier sidecars (pagarés are covered oldest
-    /// first): pagaré k is paid once principal and interest repaid reach `drawn_through`.
+    /// first): pagaré k is paid once the line's `principal_repaid` reaches `drawn_through`.
     pub drawn_through: u64,
     /// Hash of the PSC certificate that signed the pagaré text (condition C6a); zero only when
     /// `signature_method` is `SIGNATURE_WALLET`.

@@ -6,7 +6,8 @@
 mod common;
 
 use common::*;
-use elote_pool::events::PagareIssued;
+use elote_pool::events::{PagareCancelled, PagareIssued};
+use elote_pool::state::LineStatus;
 use mpl_core::types::{ExternalPluginAdapterSchema, Key, UpdateAuthority};
 use mpl_core::{AuthorityType, BaseAuthority};
 use anchor_lang::Space;
@@ -281,4 +282,254 @@ fn a_draw_with_the_wrong_pagare_accounts_is_refused() {
     env.expect_err(ix, &borrower, &[&attestor], E_WRONG_ACCOUNT);
     assert_eq!(env.line(&k, line_id).draws, 0);
     assert_eq!(env.collection_state(&k.collection).num_minted, 0);
+}
+
+// -----------------------------------------------------------------------------------------------
+// cancel_pagare (6c; legal brief C22, LGTOC 17 and 129, CCF 2088)
+// -----------------------------------------------------------------------------------------------
+
+/// Opens a bullet line of `principal` at `rate_bps`, draws `tranches` and repays in full, so every
+/// pagaré is covered.
+fn drawn_and_repaid(env: &mut Env, k: &PoolKeys, principal: u64, rate_bps: u16, tranches: &[u64]) -> (Keypair, u64) {
+    let borrower = env.borrower(k);
+    let p = env.line_params(principal, rate_bps);
+    let line_id = open(env, k, &borrower, &p);
+    for amount in tranches {
+        env.draw_amount(k, line_id, &borrower, *amount);
+    }
+    let line = env.line(k, line_id);
+    let admin = env.admin.insecure_clone();
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), line.interest_due);
+    env.repay(k, line_id, &borrower, line.drawn + line.interest_due);
+    assert_eq!(env.line(k, line_id).status, LineStatus::Repaid);
+    (borrower, line_id)
+}
+
+/// Extinction is an act of the holder with a receipt (C22): the sidecar becomes the lasting
+/// "PAGADO" mark (status, `paid_at`, the receipt's hash; nothing else changes and it is not
+/// closed), the event names the asset and the receipt, and the asset is burnt last through the
+/// permanent burn delegate, its rent going back to the payer. A second cancellation is refused.
+#[test]
+fn cancel_pagare_marks_the_sidecar_paid_and_burns_the_asset() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let (_, line_id) = drawn_and_repaid(&mut env, &k, 4 * UNIT, 1_000, &[UNIT, 3 * UNIT]);
+    let line_key = line_pda(&k.pool, line_id).0;
+    let asset0 = pagare_asset_pda(&line_key, 0).0;
+    let sidecar_key = pagare_pda(&line_key, 0).0;
+    let before = env.pagare(&k, line_id, 0);
+    let sidecar_lamports = env.account(&sidecar_key).lamports;
+    let asset_lamports = env.account(&asset0).lamports;
+    assert_eq!(env.collection_state(&k.collection).current_size, 2);
+
+    let admin = env.admin.insecure_clone();
+    let attestor = env.attestor.insecure_clone();
+    let relayer = env.funded(1);
+    let relayer_before = env.account(&relayer.pubkey()).lamports;
+    let ix = env.cancel_pagare_ix(&k, line_id, 0, &admin.pubkey(), &relayer.pubkey(), RECEIPT_HASH);
+    let meta = env.send(ix, &relayer, &[&admin, &attestor]);
+    let now = env.now();
+    let ev: PagareCancelled = find_event(&meta).expect("PagareCancelled");
+    assert_eq!(
+        (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.receipt_hash, ev.holder),
+        (k.pool, line_id, 0, asset0, RECEIPT_HASH, admin.pubkey())
+    );
+
+    // The sidecar: the mark written, everything else as issued, the account kept with its rent.
+    let after = env.pagare(&k, line_id, 0);
+    assert_eq!((after.status, after.paid_at, after.receipt_hash), (PAGARE_PAID, now, RECEIPT_HASH));
+    assert_eq!(
+        (after.line, after.draw_index, after.asset, after.pagare_hash, after.amount, after.issued_at, after.due_at),
+        (before.line, before.draw_index, before.asset, before.pagare_hash, before.amount, before.issued_at, before.due_at)
+    );
+    assert_eq!(
+        (after.drawn_through, after.cert_fingerprint, after.signature_method, after.bump, after.reserved),
+        (before.drawn_through, before.cert_fingerprint, before.signature_method, before.bump, before.reserved)
+    );
+    assert_eq!(env.account(&sidecar_key).lamports, sidecar_lamports, "the PAGADO mark is never closed");
+    // The asset: burnt. Core leaves a one-byte `Uninitialized` tombstone (so the address cannot be
+    // re-created as an asset) and sends the rest of the rent to the payer; the collection is one
+    // smaller.
+    let tomb = env.account(&asset0);
+    assert_eq!((tomb.data.len(), tomb.data[0], tomb.owner), (1, Key::Uninitialized as u8, MPL_CORE_ID), "the asset is burnt");
+    let returned = asset_lamports - tomb.lamports;
+    let relayer_after = env.account(&relayer.pubkey()).lamports;
+    assert!(returned > 2_000_000 && relayer_after > relayer_before && relayer_after <= relayer_before + returned, "the asset's rent returns to the payer");
+    let collection = env.collection_state(&k.collection);
+    assert_eq!((collection.num_minted, collection.current_size), (2, 1));
+    // The other pagaré is untouched and cancels in turn.
+    assert_eq!(env.pagare(&k, line_id, 1).status, PAGARE_OUTSTANDING);
+    env.cancel_pagare(&k, line_id, 1);
+    assert_eq!(env.pagare(&k, line_id, 1).status, PAGARE_PAID);
+    assert_eq!(env.collection_state(&k.collection).current_size, 0);
+    // Paid is terminal: the asset is gone and the mark says so.
+    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_ALREADY_PAID);
+    assert_eq!(env.pagare(&k, line_id, 0).receipt_hash, RECEIPT_HASH);
+}
+
+/// The coverage rule: pagaré `k` is paid once the line's principal repaid reaches its
+/// `drawn_through`, so repayments cover the pagarés oldest first and a later one cannot be
+/// cancelled while an earlier one is uncovered. Interest covers nothing by itself: `repay` settles
+/// it before principal, so a payment the size of the pagaré leaves principal owed, and a título is
+/// never extinguished while any of its principal is.
+#[test]
+fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let admin = env.admin.insecure_clone();
+
+    // At 0%: coverage is the principal repaid, to the unit.
+    let borrower = env.borrower(&k);
+    let p = env.line_params(6 * UNIT, 0);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    for amount in [UNIT, 2 * UNIT, 3 * UNIT] {
+        env.draw_amount(&k, line_id, &borrower, amount);
+    }
+    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
+    env.repay(&k, line_id, &borrower, UNIT - 1);
+    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
+    env.repay(&k, line_id, &borrower, 1);
+    env.cancel_pagare(&k, line_id, 0);
+    env.expect_cancel_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    env.expect_cancel_err(&k, line_id, 2, E_PAGARE_NOT_COVERED);
+    env.repay(&k, line_id, &borrower, 2 * UNIT);
+    env.expect_cancel_err(&k, line_id, 2, E_PAGARE_NOT_COVERED);
+    env.repay(&k, line_id, &borrower, 3 * UNIT);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    // Order among covered pagarés is free: the last one first.
+    env.cancel_pagare(&k, line_id, 2);
+    env.cancel_pagare(&k, line_id, 1);
+    assert_eq!(env.collection_state(&k.collection).current_size, 0);
+
+    // At 10%, two tranches of 1.0 with 0.1 of interest each: a repayment of 1.0 settles the 0.2
+    // of interest and only 0.8 of principal, so the first pagaré is not covered until 0.2 more
+    // arrives.
+    let borrower = env.borrower(&k);
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), UNIT);
+    let ev = env.repay(&k, line_id, &borrower, UNIT);
+    assert_eq!((ev.interest_part, ev.principal_part), (200_000, 800_000));
+    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
+    env.repay(&k, line_id, &borrower, 200_000);
+    env.cancel_pagare(&k, line_id, 0);
+    env.expect_cancel_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+
+    // At 100% for a year the interest equals the principal: a payment the size of the pagaré is
+    // all interest and covers nothing; the second payment repays the principal and closes the line.
+    let borrower = env.borrower(&k);
+    let p = env.line_params(UNIT, 10_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), UNIT);
+    let ev = env.repay(&k, line_id, &borrower, UNIT);
+    assert_eq!((ev.interest_part, ev.principal_part), (UNIT, 0));
+    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
+    env.repay(&k, line_id, &borrower, UNIT);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    env.cancel_pagare(&k, line_id, 0);
+}
+
+/// A pagaré is cancelled only while its line is `Active` or `Repaid`: in collection or written
+/// off the títulos stay in force for the collection (and a line in collection that pays in full
+/// is repaid again, so its pagarés cancel then); a cancelled line never drew, so it has no
+/// sidecar to cancel.
+#[test]
+fn cancel_pagare_is_refused_in_collection_after_write_off_and_without_a_sidecar() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let admin = env.admin.insecure_clone();
+
+    // In collection: refused even for a covered pagaré; repaid in full afterwards: allowed.
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let t0 = env.now();
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.draw_amount(&k, line_id, &borrower, 5 * UNIT);
+    env.repay(&k, line_id, &borrower, UNIT);
+    env.warp(t0 + 3 * p.interval() + 1);
+    let keeper = env.funded(1);
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.send(ix, &keeper, &[]);
+    env.expect_cancel_err(&k, line_id, 0, E_LINE_STATUS);
+    let line = env.line(&k, line_id);
+    let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), owed);
+    env.repay(&k, line_id, &borrower, owed);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    env.cancel_pagare(&k, line_id, 0);
+    env.cancel_pagare(&k, line_id, 1);
+
+    // Written off: refused, the pagaré outlives the loss.
+    let borrower = env.borrower(&k);
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.repay(&k, line_id, &borrower, UNIT);
+    env.warp(p.term_end + 1);
+    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    env.send(ix, &admin, &[]);
+    env.expect_cancel_err(&k, line_id, 0, E_LINE_STATUS);
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_OUTSTANDING);
+
+    // Cancelled: no sidecar was ever created.
+    let borrower = env.borrower(&k);
+    let p = env.line_params(UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let ix = env.cancel_line_ix(&k, line_id, &admin.pubkey());
+    env.send(ix, &admin, &[]);
+    let line_key = line_pda(&k.pool, line_id).0;
+    let attestor = env.attestor.insecure_clone();
+    let a = admin.pubkey();
+    let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, pagare_asset_pda(&line_key, 0).0, k.collection);
+    env.expect_err(ix, &admin, &[&attestor], E_ACCOUNT_NOT_INITIALIZED);
+}
+
+/// The holder (the admin while the asset is in the pool) and the attestor sign, the receipt is
+/// required, and the sidecar, asset and collection must be the pagaré's own.
+#[test]
+fn cancel_pagare_requires_the_holder_the_attestor_the_receipt_and_the_right_accounts() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let (borrower, line_id) = drawn_and_repaid(&mut env, &k, 2 * UNIT, 1_000, &[UNIT, UNIT]);
+    let line_key = line_pda(&k.pool, line_id).0;
+    let admin = env.admin.insecure_clone();
+    let attestor = env.attestor.insecure_clone();
+    let a = admin.pubkey();
+
+    // The borrower is not the holder.
+    let ix = env.cancel_pagare_ix(&k, line_id, 0, &borrower.pubkey(), &a, RECEIPT_HASH);
+    env.expect_err(ix, &admin, &[&borrower, &attestor], E_NOT_HOLDER);
+    // Without the attestor.
+    let stranger = env.funded(1);
+    let mut ix = env.cancel_pagare_ix(&k, line_id, 0, &a, &a, RECEIPT_HASH);
+    let i = ix.accounts.iter().position(|m| m.pubkey == attestor.pubkey()).unwrap();
+    ix.accounts[i].pubkey = stranger.pubkey();
+    env.expect_err(ix, &admin, &[&stranger], E_ATTESTOR_REQUIRED);
+    // Without a receipt.
+    let ix = env.cancel_pagare_ix(&k, line_id, 0, &a, &a, [0; 32]);
+    env.expect_err(ix, &admin, &[&attestor], E_DOCUMENT_HASH_REQUIRED);
+    // Another pagaré's asset, or a stranger's.
+    for wrong in [pagare_asset_pda(&line_key, 1).0, solana_pubkey::Pubkey::new_unique()] {
+        let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, wrong, k.collection);
+        env.expect_err(ix, &admin, &[&attestor], E_WRONG_ACCOUNT);
+    }
+    // Another pagaré's sidecar for this index.
+    let mut ix = env.cancel_pagare_ix(&k, line_id, 0, &a, &a, RECEIPT_HASH);
+    let i = ix.accounts.iter().position(|m| m.pubkey == pagare_pda(&line_key, 0).0).unwrap();
+    ix.accounts[i].pubkey = pagare_pda(&line_key, 1).0;
+    env.expect_err(ix, &admin, &[&attestor], E_CONSTRAINT_SEEDS);
+    // A collection that is not the pool's.
+    let other = env.create_collection(&k.pool);
+    let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, pagare_asset_pda(&line_key, 0).0, other);
+    env.expect_err(ix, &admin, &[&attestor], E_WRONG_ACCOUNT);
+
+    // Nothing happened.
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_OUTSTANDING);
+    assert_eq!(env.asset_state(&pagare_asset_pda(&line_key, 0).0).base.owner, k.pool);
+    assert_eq!(env.collection_state(&k.collection).current_size, 2);
 }

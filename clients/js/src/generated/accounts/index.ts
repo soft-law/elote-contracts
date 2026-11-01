@@ -7,4 +7,5 @@
  */
 
 export * from "./creditLine";
+export * from "./pagare";
 export * from "./pool";

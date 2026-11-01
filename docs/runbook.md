@@ -1,4 +1,4 @@
-and the relayer (`payer`) funds about 0.006 SOL of rent for the asset and its record, locked until `cancel_pagare` (step 6c) ships |# Operations runbook: `elote_pool`
+# Operations runbook: `elote_pool`
 
 Status: **draft for the owner's approval** (review register item R-14, 2026-10-31). Nothing here
 is in force until Mario signs it off. Names and contact details are placeholders in angle
@@ -59,8 +59,9 @@ reports those lines separately so the admin can act at the term.
 | Event | Who | Instruction | Preconditions and notes |
 |---|---|---|---|
 | New credit approved | Admin (Squads vault), borrower, sponsor if named; after pool v2 also the attestor | `open_line` | Agreement signed and hashed by the agreements engine; `principal <= NAV * max_line_bps / 10_000`; borrower is not the admin |
-| Borrower takes the money | Borrower | `draw` | Before `term_end`; vault has the liquidity. After pool v2: per tranche, with the attestor and the signed pagaré hash; each tranche mints its pagaré token into the series' collection, and the relayer (`payer`) funds about 0.006 SOL of rent for the asset and its record |
+| Borrower takes the money | Borrower | `draw` | Before `term_end`; vault has the liquidity. After pool v2: per tranche, with the attestor and the signed pagaré hash; each tranche mints its pagaré token into the series' collection, and the relayer (`payer`) funds about 0.006 SOL of rent for the asset and its record; the asset's half comes back at `cancel_pagare`, the record's stays locked as the PAGADO mark |
 | Repayment | Anyone (borrower, sponsor, third party) | `repay` | Never paused. Screen the `payer` of every `LineRepaid` against sanctions lists (decision 6) |
+| Pagaré paid (after pool v2) | Admin (as holder while the asset is in the pool) and the attestor; the relayer as `payer` | `cancel_pagare(draw_index, receipt_hash)` | Line `Active` or `Repaid` and the line's `principal_repaid` at or above that pagaré's `drawn_through` (oldest first; interest paid covers nothing by itself). The engine issues the FEA-signed receipt (LGTOC 129), archives the asset's AppData log under NOM-151, then asks for the burn with the receipt's hash; the `Pagare` record stays as the PAGADO mark. Not possible in collection or after a write-off: the títulos stay in force for the collection |
 | Three installments missed | Keeper | `mark_in_collection` | Section 2 |
 | Loss recognised | Admin | `write_off` | `Active` and `now > term_end + grace`, or `InCollection` and `now > oldest missed due + grace`. Out-of-court collection has run its course per the credit policy |
 | Pause | Admin | `set_paused(true)` | Section 5 |

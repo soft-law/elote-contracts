@@ -64,4 +64,10 @@ pub enum PoolError {
     DocumentHashRequired,
     #[msg("signature_method is unknown, or lacks its certificate fingerprint")]
     SignatureMethodInvalid,
+    #[msg("The line has not repaid enough to cover this pagaré")]
+    PagareNotCovered,
+    #[msg("This pagaré is already marked paid")]
+    PagareAlreadyPaid,
+    #[msg("The pagaré's holder must sign")]
+    NotHolder,
 }

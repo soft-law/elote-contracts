@@ -122,6 +122,14 @@ pub mod elote_pool {
         instructions::lines::draw(ctx, amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
+    /// Extinguishes pagaré `draw_index` of a line against the FEA-signed receipt whose hash is
+    /// `receipt_hash`, once the line has repaid enough to cover it: the holder (the admin while the
+    /// asset is in the pool) and the attestor sign; the sidecar is marked paid and kept, the asset
+    /// is burnt. Refused on a line in collection or written off. Not paused.
+    pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
+        instructions::pagare::cancel_pagare(ctx, draw_index, receipt_hash)
+    }
+
     /// Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then
     /// interest, then principal, and never more than is due. Anyone may pay. A full repayment
     /// closes the line and forfeits the undrawn remainder.

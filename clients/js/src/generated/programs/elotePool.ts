@@ -37,14 +37,18 @@ import {
 } from "@solana/program-client-core";
 import {
   getCreditLineCodec,
+  getPagareCodec,
   getPoolCodec,
   type CreditLine,
   type CreditLineArgs,
+  type Pagare,
+  type PagareArgs,
   type Pool,
   type PoolArgs,
 } from "../accounts";
 import {
   getCancelLineInstructionAsync,
+  getCancelPagareInstructionAsync,
   getDepositInstructionAsync,
   getDrawInstructionAsync,
   getInitPoolInstructionAsync,
@@ -57,6 +61,7 @@ import {
   getSuspendDrawsInstructionAsync,
   getWriteOffInstructionAsync,
   parseCancelLineInstruction,
+  parseCancelPagareInstruction,
   parseDepositInstruction,
   parseDrawInstruction,
   parseInitPoolInstruction,
@@ -69,12 +74,14 @@ import {
   parseSuspendDrawsInstruction,
   parseWriteOffInstruction,
   type CancelLineAsyncInput,
+  type CancelPagareAsyncInput,
   type DepositAsyncInput,
   type DrawAsyncInput,
   type InitPoolAsyncInput,
   type MarkInCollectionAsyncInput,
   type OpenLineAsyncInput,
   type ParsedCancelLineInstruction,
+  type ParsedCancelPagareInstruction,
   type ParsedDepositInstruction,
   type ParsedDrawInstruction,
   type ParsedInitPoolInstruction,
@@ -96,6 +103,7 @@ import {
 import {
   findDeadSharesPda,
   findLinePda,
+  findPagarePda,
   findPoolPda,
   findVaultPda,
 } from "../pdas";
@@ -105,6 +113,7 @@ export const ELOTE_POOL_PROGRAM_ADDRESS =
 
 export enum ElotePoolAccount {
   CreditLine,
+  Pagare,
   Pool,
 }
 
@@ -122,6 +131,17 @@ export function identifyElotePoolAccount(
     )
   ) {
     return ElotePoolAccount.CreditLine;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([140, 142, 27, 239, 147, 131, 73, 247]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolAccount.Pagare;
   }
   if (
     containsBytes(
@@ -156,6 +176,7 @@ export enum ElotePoolEvent {
   LineTermsSet,
   LineWrittenOff,
   NavUpdated,
+  PagareCancelled,
   PagareIssued,
   PoolCollectionSet,
   PoolConfigured,
@@ -339,6 +360,17 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([52, 176, 158, 29, 111, 2, 28, 70]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.PagareCancelled;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([114, 100, 21, 201, 68, 46, 186, 138]),
       ),
       0,
@@ -430,6 +462,7 @@ export function identifyElotePoolEvent(
 
 export enum ElotePoolInstruction {
   CancelLine,
+  CancelPagare,
   Deposit,
   Draw,
   InitPool,
@@ -457,6 +490,17 @@ export function identifyElotePoolInstruction(
     )
   ) {
     return ElotePoolInstruction.CancelLine;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([90, 9, 227, 98, 84, 183, 29, 9]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.CancelPagare;
   }
   if (
     containsBytes(
@@ -592,6 +636,9 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.CancelLine;
     } & ParsedCancelLineInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.CancelPagare;
+    } & ParsedCancelPagareInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.Deposit;
     } & ParsedDepositInstruction<TProgram>)
   | ({
@@ -635,6 +682,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.CancelLine,
         ...parseCancelLineInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.CancelPagare: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.CancelPagare,
+        ...parseCancelPagareInstruction(instruction),
       };
     }
     case ElotePoolInstruction.Deposit: {
@@ -737,6 +791,8 @@ export type ElotePoolPlugin = {
 export type ElotePoolPluginAccounts = {
   creditLine: ReturnType<typeof getCreditLineCodec> &
     SelfFetchFunctions<CreditLineArgs, CreditLine>;
+  pagare: ReturnType<typeof getPagareCodec> &
+    SelfFetchFunctions<PagareArgs, Pagare>;
   pool: ReturnType<typeof getPoolCodec> & SelfFetchFunctions<PoolArgs, Pool>;
 };
 
@@ -745,6 +801,11 @@ export type ElotePoolPluginInstructions = {
     input: CancelLineAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getCancelLineInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  cancelPagare: (
+    input: MakeOptional<CancelPagareAsyncInput, "payer">,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getCancelPagareInstructionAsync> &
     SelfPlanAndSendFunctions;
   deposit: (
     input: DepositAsyncInput,
@@ -800,6 +861,7 @@ export type ElotePoolPluginInstructions = {
 };
 
 export type ElotePoolPluginPdas = {
+  pagare: typeof findPagarePda;
   pool: typeof findPoolPda;
   vault: typeof findVaultPda;
   deadShares: typeof findDeadSharesPda;
@@ -823,6 +885,7 @@ export function elotePoolProgram(
       elotePool: <ElotePoolPlugin>{
         accounts: {
           creditLine: addSelfFetchFunctions(client, getCreditLineCodec()),
+          pagare: addSelfFetchFunctions(client, getPagareCodec()),
           pool: addSelfFetchFunctions(client, getPoolCodec()),
         },
         instructions: {
@@ -833,6 +896,17 @@ export function elotePoolProgram(
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
+            ),
+          cancelPagare: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCancelPagareInstructionAsync(
+                { ...input, payer: input.payer ?? client.payer },
+                {
+                  programAddress:
+                    instructionConfig?.programAddress ?? config.programAddress,
+                },
+              ),
             ),
           deposit: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
@@ -930,6 +1004,11 @@ export function elotePoolProgram(
             ),
         },
         pdas: {
+          pagare: (seeds, pdaConfig) =>
+            findPagarePda(seeds, {
+              programAddress:
+                pdaConfig?.programAddress ?? config.programAddress,
+            }),
           pool: (seeds, pdaConfig) =>
             findPoolPda(seeds, {
               programAddress:

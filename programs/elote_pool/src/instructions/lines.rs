@@ -528,8 +528,8 @@ pub fn draw(
         bump: pagare_bump,
         reserved: [0; 32],
     };
-    issue_pagare(&ctx.accounts, asset_bump, &record)?;
-    create_sidecar(&ctx.accounts, pagare_bump, &record)?;
+    issue_pagare(ctx.accounts, asset_bump, &record)?;
+    create_sidecar(ctx.accounts, pagare_bump, &record)?;
 
     let pool = &mut ctx.accounts.pool;
     pool.outstanding_principal = pool.outstanding_principal.checked_add(amount).ok_or(PoolError::Overflow)?;

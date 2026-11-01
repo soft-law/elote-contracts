@@ -141,6 +141,21 @@ pub struct PagareIssued {
     pub holder: Pubkey,
 }
 
+/// Emitted by `cancel_pagare` (C22, LGTOC 129): the pagaré was paid and extinguished against the
+/// FEA-signed receipt whose hash is `receipt_hash`; the asset is burnt in the same instruction and
+/// the sidecar stays as the "PAGADO" mark. `holder` is the key that extinguished it (the admin
+/// while the asset is in the pool; the holder of record after an endoso). The AppData log is
+/// archived off chain before the burn, so the event does not carry its length.
+#[event]
+pub struct PagareCancelled {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub draw_index: u16,
+    pub asset: Pubkey,
+    pub receipt_hash: [u8; 32],
+    pub holder: Pubkey,
+}
+
 /// Emitted by `suspend_draws` (D10): the admin closed the draw window early; `available_forfeited`
 /// is the undrawn remainder that can no longer be drawn. Repayment is untouched.
 #[event]
