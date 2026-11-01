@@ -375,6 +375,20 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   outside the program are allowed by construction and C28 binds only program-routed endosos;
   traps: thaw before relinquish, never frozen again after the first endoso. Deliverables in order:
   Owner-authority finding, endoso CU numbers, then a written 6d spec.
+- **6d prework accepted; creation set decided** (facts pinned in `tests/core_capabilities.rs`,
+  seven tests, prework commit pending): AppData with data authority `Owner` works and follows
+  `TransferV1` (a holder's write replaces the data, so the immutable history is the events plus
+  Core's ownership transactions); the owner adds owner-managed delegates even under `AddBlocker`,
+  approves and revokes them alone, and `TransferV1` resets them to `Owner`; an approved burn
+  delegate burns a thawed asset. Numbers at 120: today's set makes the first endoso 190k CU;
+  freeze delegate with authority `UpdateAuthority` + `AddBlocker` + AppData `Owner`, no transfer
+  or burn delegates: draw 84.8k, first endoso en propiedad 79.3k, procuración 45.8k, in-pool
+  cancel 45.2k (thaw then burn as owner). **That set is adopted.** Spec additions: sidecar keeps
+  `endoso_count` and `last_endoso_hash` for program-routed endosos; `endorse_pagare(kind, to,
+  endoso_hash)` with kinds Propiedad and Procuracion, `revoke_procuracion`; cancel's endorsed
+  branch accepts the owner or the approved burn delegate. **Decision 28** (per draw, partial
+  payments, acceleration at the third missed installment): impact assessment ordered on late
+  interest over all remaining principal from `mark_in_collection`, fields, vectors, CU; no code.
 
 ## Points the coordinator still owns
 
