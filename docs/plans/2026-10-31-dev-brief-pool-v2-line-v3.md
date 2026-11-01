@@ -347,6 +347,17 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   the AppData data authority can change after creation and whether `AddBlocker` blocks updating
   an existing adapter. Traps for the 6d spec: thaw before any relinquish; approving the endorsee
   as permanent delegate is leaky (the delegate can revoke back to the pool). 6d and verifier held.
+- **6c follow-up accepted** (`5092994`, pushed with `1024104`; 128 Rust + 11 JS): the AddBlocker
+  refusal pins `InvalidAuthority`; the two measurements are pinned. `AddBlocker` costs 4,199 CU
+  at creation (39,408 → 43,607; band 3,000-6,000), so draw at 120 would sit near 94k, inside the
+  ceiling with about half the room gone; still an option, not a change to `draw`. AppData: the
+  data authority is fixed at creation and cannot be moved or set to `None`; only it writes the data
+  or changes the schema; adding or removing an adapter is the collection's authority alone and
+  `AddBlocker` does not stop it. So under A or B alike the pool PDA is the endoso log's only writer
+  and, as the collection's authority, could remove it: the answer is the instruction set (only
+  `endorse_pagare` writes, nothing removes) plus governance, the same as for the delegates. This
+  weakens A further: relinquishing the delegates does not remove the vehicle's power over the
+  log. 6d and verifier held; nothing in progress on the dev side.
 
 ## Points the coordinator still owns
 
