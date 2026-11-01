@@ -284,6 +284,11 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `programs/elote_pool/tests/fixtures` (< 1 MB, sha256 verified at load, tag and URL in a README);
   collection admin-supplied and validated at `init_pool` (Core-owned, `CollectionV1`, update
   authority = pool PDA).
+- **6a accepted** (`53dd606`): fixture 809,936 bytes, sha256
+  `5b4dacdae4af476d3c9d8aa6712883f559ba0e13705f9b244d96d1fd0dd56ce5` asserted at load;
+  `CollectionNotAllowed` 6027; 109 Rust + 7 JS. Rule learned the hard way (the crate's borsh
+  decoder panicked on an asset passed as a collection): on chain, read foreign Core accounts by
+  fixed offsets and bounded lengths, never with the crate's full decoders. 6b under way.
 
 ## Points the coordinator still owns
 
