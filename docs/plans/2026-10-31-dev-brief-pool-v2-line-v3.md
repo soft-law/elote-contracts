@@ -265,7 +265,18 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `LineSponsorRole`, `LineDrawState`.
 - **Pushed 2026-10-31 with Mario's approval:** `poc/kyc-identity-eval` and `hardening/phase-1`;
   `v2/pool-and-lines` is pushed by the developer after each accepted step (remote at `08006a7`).
-- **Next:** step 5 report, then the step 6 conditions from the legal brief.
+- **2026-11-01, step 5 accepted** (`277b213` on origin: 5a `d3d0ac5`, 5b `e24b023`, 5c
+  `277b213`; 108 Rust + 7 JS; 416 vectors). CreditLine 305 bytes (offsets 246 drawn, 254 draws,
+  256 availability_end, 264 first_due_at, 272 sponsor_role, 273 expediente_root), `LINE_VERSION 3`
+  for every line, `MAX_DRAWS 64`; R-10 and the cancel half of R-19 closed; new terminal status
+  `Cancelled`; events `LineTermsSet`, `LineSponsorRole`, `LineDrawState`, `LineDrawsSuspended`,
+  `LineCancelled`; errors 6024-6026. CU at 120 installments: repay 84,381, mark 60,106, write_off
+  65,271, draw 22,111.
+- **Ordered next:** step 5d (recover CU headroom by computing the principal share once for the
+  equal middle installments, vectors byte-identical), then step 6 in parts: 6a harness with the
+  Metaplex Core binary and the collection check at `init_pool`; 6b issuance of the Core asset and
+  the `Pagare` sidecar at `draw`; 6c `cancel_pagare`. **6d `endorse_pagare` and the verifier stay
+  gated on the legal brief.**
 
 ## Points the coordinator still owns
 
