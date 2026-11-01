@@ -424,6 +424,12 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   v1 to procuración (registry, `endorse_pagare` kind Procuracion by the pool, revocation, court
   annotation, payment entries, cancellation by the procurador via the program PDA); en propiedad
   specified, not built. Dev now on the §2.3 amendments and the two assessments, then step 7.
+- **Final legal brief applied (2026-11-02)**: three more §2.3 points sent: payment entries at
+  `repay` are valid under the template's mandate clause (holder/procurador-signed entries remain
+  the alternative); the covering payment writes a Pagado entry and sets the sidecar to
+  paid-pending-cancel, `cancel_pagare` requires that status and burns; the time-locked holder-only
+  cancellation (`cancel_delay_seconds` on the pool) is specified and built in part 1 if small;
+  with no AppData adapter the "removing adapters alters the title" objection dissolves.
 
 ## Points the coordinator still owns
 

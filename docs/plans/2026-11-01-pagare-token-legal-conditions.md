@@ -73,6 +73,42 @@ the design as it was. Status: **adopted** (sent to the developer or written into
 | C31 [U] | Prior consultation with the CNBV before endorsing to investors | counsel | counsel |
 | C32 [new, DA Phase 5] | After an endoso en propiedad by the vehicle: to whom does the debtor pay, how are the line's cash flows redirected, what happens to NAV and outstanding principal | **design + counsel** | **decided for the pilot (decision 29): procuración only, no en propiedad endosos by the vehicle in v1**; whole-line sale with repay redirection is the first extension, per-pagaré sale rejected for any visible version (theOffice design note 2026-11-02). Research states the legal consequences in Phase 6; the en propiedad code waits |
 
+## Final brief of 2026-11-02: what it changed
+
+Final at `/Users/wario/Documents/softlaw/loans-gov-mexico/brief-tok/T-pagare-token-legal.md`
+(revision log `pt-ars/phase6/revision_log.md`). 34 conditions (12 legal, 16 good practice, 6
+uncertain; 11 ⚠ measured against the 31-10 design, so adoption does not remove the mark). New:
+C32 (payment destination, decided for the pilot in decision 29), C33 (H3a paper pagaré as the
+collection contingency), C34 (evidence package for the lawsuit: engine deliverable). H2 is graded
+"indeterminado, con ruta definida"; "sí, con condiciones" is the ceiling. Nothing marked
+[requisito legal] is final until counsel answers Q1-Q4.
+
+- **Payment entries (C-1)**: a payment or court entry is not an endoso, but art. 130 puts the
+  payment annotation on the holder; an entry written by the program at `repay` needs a mandate
+  clause in the pagaré text, otherwise the holder or procurador signs it. Template carries the
+  mandate; shape decided on CU.
+- **Attestor on cancellation (C-2)**: acceptable only if the receipt and the PAGADO mark exist at
+  the moment of payment and only the burn waits. Adopted: the covering payment writes the Pagado
+  entry and sets the sidecar to paid-pending-cancel; `cancel_pagare` burns later. Backstop
+  adopted: holder-only cancellation after a short published delay (compatible with 17/129; the
+  debtor also has consignación, CCF 2097-2102). Rotation stays the primary path but is slow.
+- **Procuración pilot (§6.6)**: the procurador's standing rests on LGTOC 35 and CCom 1061 fr. II;
+  the endoso en procuración must carry FEA (C5, C7, the 2031392 lesson); no notice to the debtor
+  required (39, 41); one receipt per payment with FEA, NOM-151 and the art. 130 entry.
+- **Conflicts the brief keeps**: holder endosos signed only with a wallet key remain exposed to
+  the FEA requirement of 2031392 (Q1; none in v1); the power to remove adapters conflicts with
+  append-only if an adapter holds title data (dissolved: the registry is in the sidecar and the
+  asset carries only immutable attributes); never structure collection as a "pagaré domiciliado"
+  with a third-party payer (LGTOC 173 párr. 2).
+- **G7**: PAGADO mark plus NOM-151 archive before the burn closes the payment objection in good
+  measure and the integrity objection only in part; the text must designate the sidecar and the
+  archive as part of the system (C8) and access must not depend on the operator (C4).
+- **Vehicle**: LGOAAC 11 Bis gives the system rules to the CNBV; 87-F gives a SOFOM an independent
+  título ejecutivo (contract plus certified statement), a parallel route to the pagaré.
+- **Still unverified by research (§8)**: consignación in the relevant venue, CNPCF 348-350, the
+  85/2011 ejecutoria, whether the SAT e.firma suffices, oficio P090/2024, and every design fact we
+  reported (the Core facts are now pinned in `tests/core_capabilities.rs`).
+
 ## Supplement of 2026-11-02 (endosos, procuración, acceleration): what it changed
 
 Source: `loans-gov-mexico/brief-tok/T-pagare-token-legal-supplement-endosos.md`. Applied to the 6d
