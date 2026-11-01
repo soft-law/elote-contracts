@@ -459,6 +459,20 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `LineInCollection`. CU at 120 all-missed: repay 56,992 / mark 34,114 / write_off 39,093; after
   an early mark repay 48,148. **F-03 decision:** `accelerated_at` doubles as the collection
   start; `write_off` gates on `accelerated_at + collection_period_seconds`; layout stays 313.
+- **Step 8 accepted** (`f366ff5`, push authorised; 141 Rust + 11 JS): F-01 Repaid needs nothing
+  due and nothing drawable (regression tests in `tests/audit.rs`); F-02 bare collection only
+  (base record, no plugin header, nothing minted); F-03 `collection_period_seconds` (Pool.reserved
+  12..16, floor 30 days, `set_collection_period` + `CollectionPeriodSet`), `write_off` waits for
+  it from `accelerated_at`; F-05 `AttestorIsAdmin`, `BorrowerIsAttestor`, share mint without
+  ScaledUiAmount/Pausable; F-07 codes 6033-6038; F-06, §8-1, F-08 documented. write_off at 120
+  now 47,896 CU (real worst case, 30 days of accrual on every installment). **6d part 1
+  released** with three spec closures to confirm before the repay changes: a `pagares_paid`
+  cursor on the line so repay must pass exactly the covered sidecars oldest first; a repair path
+  `annotate_payment(k, receipt_hash)` (holder or attestor) for payer-supplied or missing receipt
+  hashes; no SAS read on the procurador in v1 (attestor co-signature is the gate). Also: backstop
+  in v1 = admin alone after the delay (SECURITY wording); zero-debt closing payment named for
+  indexers; interface change list opened at `docs/plans/2026-11-02-pr2-interface-changes.md` on
+  the dev branch. A re-audit of the post-`4a440c0` delta is planned before PR 3.
 
 ## Points the coordinator still owns
 
