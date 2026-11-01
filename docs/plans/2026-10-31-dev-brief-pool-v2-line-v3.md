@@ -522,6 +522,18 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   cancellation clears the request. CU: request 14.1k, holder alone 48.3k. (g) next: every
   payment writes an Abono (interest included) on the cursor's pagaré; ceiling case to report =
   eight sidecars at 120 all missed.
+- **Part 1 (g) accepted, PR 2 complete as scoped** (`60a1cff`; 155 Rust + 14 JS):
+  `repay(amount, receipt_hash)` with the sidecars `[pagares_paid ..= last_touched]` as writable
+  remaining accounts (verified by owner, discriminator, line, draw_index, outstanding; the seeds
+  are not recomputed since only draw creates them at their seeds); Pagado entries set
+  paid-pending-cancel with `paid_at` and `receipt_hash`, the first uncovered gets an Abono (every
+  payment, interest included); `PagarePayment` sibling event carries the split and the per-sidecar
+  list; cancel and request require the mark instead of the coverage rule; `annotate_payment`
+  (admin or attestor) appends a Recibo entry (`EntryNotFound` 6046) and emits
+  `PagareReceiptAnnotated`. **Client rule: six sidecars per repay** (six at 120 all missed =
+  95.6k CU; eight = 107.6k). Repay with one sidecar 66.2k. Procuración must precede payment
+  (paid titles are not endorsable). Open: a 1,500 CU swing on the procurador's cancel between
+  runs. Next: re-audit of the delta since `4a440c0`, then PR 3 only with Mario's word.
 
 ## Points the coordinator still owns
 
