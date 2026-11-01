@@ -288,7 +288,16 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `5b4dacdae4af476d3c9d8aa6712883f559ba0e13705f9b244d96d1fd0dd56ce5` asserted at load;
   `CollectionNotAllowed` 6027; 109 Rust + 7 JS. Rule learned the hard way (the crate's borsh
   decoder panicked on an asset passed as a collection): on chain, read foreign Core accounts by
-  fixed offsets and bounded lengths, never with the crate's full decoders. 6b under way.
+  fixed offsets and bounded lengths, never with the crate's full decoders.
+- **6b accepted** (`16467fa`; 115 Rust + 11 JS): `draw` mints the pagaré Core asset in the pool's
+  collection (update authority expressed as `UpdateAuthority::Collection`, whose authority is the
+  pool PDA) and the `Pagare` sidecar (163 bytes with 32 reserved); attributes in hex; a real
+  griefing vector (pre-funding the predictable asset PDA bricked every draw) is closed by sweeping
+  lamports before the CPI, with a test; `DocumentHashRequired` 6028; client helpers in
+  `clients/js/src/pagare.ts`. **Decided:** add `PermanentBurnDelegate` (pool PDA) at creation so
+  cancellation is one `BurnV1` whatever the holder; `draw` takes `asset_bump` and `pagare_bump`
+  as arguments, verified with `create_program_address`, so its CU is deterministic (~82.5k at
+  120) instead of 82k to 87k with an unbounded tail. 6c next; 6d and the verifier still gated.
 
 ## Points the coordinator still owns
 
