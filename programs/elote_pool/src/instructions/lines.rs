@@ -750,7 +750,10 @@ pub struct MarkInCollection<'info> {
 /// `now > anchor + (covered + max_missed) * interval + grace`, where the anchor is one interval
 /// before `first_due_at`. The mark accelerates the balance (vencimiento anticipado):
 /// `accelerated_at = now`, from which every installment is due and late interest runs on all
-/// remaining principal. It records facts and moves no funds, so it is not blocked by the pause.
+/// remaining principal, and the ordinary interest of the installments not yet due is forgiven
+/// (`interest_due` shrinks to the share of the installments due, never below what was repaid; no
+/// NAV effect, since interest counts when collected). It records facts and moves no funds, so it
+/// is not blocked by the pause.
 pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
@@ -769,15 +772,23 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
         .ok_or(PoolError::Overflow)?;
     require!(now > grace_end, PoolError::NotEnoughMissed);
 
+    // The ordinary interest of the installments not yet due is forgiven (decision 28, Q14): the
+    // line keeps the share of the installments due at the mark, at least the ones that put it in
+    // collection, and never less than what was already repaid.
+    let due_count = a.due.max(k);
+    let (kept, _) = math::accelerated_interest(line.interest_due, due_count, s.installments).ok_or(PoolError::Overflow)?;
+    let kept = kept.max(line.interest_repaid);
+    let interest_forgiven = line.interest_due.checked_sub(kept).ok_or(PoolError::Overflow)?;
     let remaining = line
         .drawn
         .checked_sub(line.principal_repaid)
-        .and_then(|v| v.checked_add(line.interest_due.checked_sub(line.interest_repaid)?))
+        .and_then(|v| v.checked_add(kept.checked_sub(line.interest_repaid)?))
         .ok_or(PoolError::Overflow)?;
     let line = &mut ctx.accounts.line;
     line.status = LineStatus::InCollection;
     line.accelerated_at = now;
-    emit_cpi!(LineInCollection { pool: pool.key(), line_id: line.line_id, missed: a.missed, remaining });
+    line.interest_due = kept;
+    emit_cpi!(LineInCollection { pool: pool.key(), line_id: line.line_id, missed: a.missed, remaining, interest_forgiven });
     Ok(())
 }
 

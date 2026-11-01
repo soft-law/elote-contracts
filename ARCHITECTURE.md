@@ -722,8 +722,14 @@ earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad th
   anticipado): from the mark every installment is due, `overdue` is the whole unpaid balance and
   late interest runs on all remaining principal (§6). There is no cure after the mark: paying the
   installments that were missed before it leaves the others missed, exigible since the mark, and
-  the line leaves collection only by full repayment or write-off.
-- **Events:** `LineInCollection` with `missed` and `remaining` (principal + interest, no late
+  the line leaves collection only by full repayment or write-off. The ordinary interest of the
+  installments not yet due is forgiven (decision 28, Q14): `interest_due` becomes
+  `interest_due * due_count / installments` rounded down, with `due_count` the installments due
+  at the mark under the calendar and at least `covered + max_missed`, and never less than the
+  interest already repaid (`math::accelerated_interest`, one function, so a different ruling
+  changes one place). No NAV effect: interest counts when it is collected. Example: 6.0 at 12% in
+  six installments, marked with three due, keeps 0.36 of the 0.72 and forgives 0.36.
+- **Events:** `LineInCollection` with `missed`, `interest_forgiven` and `remaining` (principal + interest after the forgiveness, no late
   interest).
 
 ### 5.8 `write_off()`
@@ -1004,7 +1010,7 @@ Other points outside the test file, from the same review and from the Etherfuse 
 
 ```sh
 NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
-cargo test -p elote_pool                           # 135 tests, LiteSVM in-process, no validator
+cargo test -p elote_pool                           # 136 tests, LiteSVM in-process, no validator
 ```
 
 The LiteSVM tests load the `.so` from `target/deploy`, so `anchor build` must run first.

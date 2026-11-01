@@ -370,7 +370,8 @@ fn mark_in_collection_after_three_missed_installments() {
     let meta = env.send(ix, &keeper, &[]);
     env.set_paused(&k, false);
     let ev: LineInCollection = find_event(&meta).expect("LineInCollection");
-    assert_eq!((ev.pool, ev.line_id, ev.missed, ev.remaining), (k.pool, line_id, 3, 6_720_000));
+    assert_eq!((ev.pool, ev.line_id, ev.missed, ev.remaining, ev.interest_forgiven), (k.pool, line_id, 3, 6_360_000, 360_000));
+    assert_eq!(env.line(&k, line_id).interest_due, 360_000, "the interest of the three installments not yet due is forgiven");
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.expect_err(ix, &keeper, &[], E_LINE_STATUS);
@@ -409,18 +410,19 @@ fn a_line_in_collection_still_accepts_repayments_and_closes_when_repaid() {
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
 
-    // The mark accelerated the balance: all 6.72 is overdue. The borrower pays half of it with
-    // the late interest: the line stays in collection with the other half still missed.
+    // The mark accelerated the balance and forgave the interest of the three installments not yet
+    // due: 6.36 is overdue. The borrower pays half of it with the late interest: the line stays in
+    // collection with the other half still missed.
     let a = env.arrears(&k, line_id);
     assert!(a.late_due > 0);
-    assert_eq!(a.overdue, 6_720_000);
-    let ev = env.repay(&k, line_id, &b, 3_360_000 + a.late_due);
-    assert_eq!(ev.remaining, 3_360_000);
+    assert_eq!(a.overdue, 6_360_000);
+    let ev = env.repay(&k, line_id, &b, 3_180_000 + a.late_due);
+    assert_eq!(ev.remaining, 3_180_000);
     assert_eq!(env.arrears(&k, line_id).missed, 3);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
 
     // Paying the rest closes it.
-    let ev = env.repay(&k, line_id, &b, 6_720_000);
+    let ev = env.repay(&k, line_id, &b, 6_360_000);
     assert_eq!(ev.remaining, 0);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     assert_eq!(env.pool(&k).outstanding_principal, 0);
@@ -529,7 +531,7 @@ fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_grace_from_th
     // The borrower pays the three installments that were missed before the mark, with the late
     // interest: the other three are still missed, exigible since the mark.
     let a = env.arrears(&k, line_id);
-    env.repay(&k, line_id, &b, 3_360_000 + a.late_due);
+    env.repay(&k, line_id, &b, 3_180_000 + a.late_due);
     let a = env.arrears(&k, line_id);
     assert_eq!((a.missed, a.first_missed_due), (3, Some(marked_at)));
     let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
@@ -701,27 +703,29 @@ fn the_mark_accelerates_the_balance() {
     let marked_at = env.now();
     assert_eq!(env.line(&k, line_id).accelerated_at, marked_at);
 
-    // Everything is due now: the whole 6.72 is overdue, late interest accrues on all 6.0 of
-    // principal, the first three installments from their own due dates, the other three from the mark.
+    // Everything is due now: the whole balance, 6.0 plus the 0.36 of interest kept, is overdue;
+    // late interest accrues on all 6.0 of principal, the first three installments from their own
+    // due dates, the other three from the mark.
+    assert_eq!(env.line(&k, line_id).interest_due, 360_000);
     let a = env.arrears(&k, line_id);
     assert_eq!((a.due, a.covered, a.missed), (6, 0, 6));
-    assert_eq!((a.overdue, a.overdue_principal), (6_720_000, 6_000_000));
+    assert_eq!((a.overdue, a.overdue_principal), (6_360_000, 6_000_000));
     env.warp(marked_at + 10 * 24 * 3600);
     let a = env.arrears(&k, line_id);
-    let part_principal = 1_000_000u128; // 1.12 per installment, 1.0 of it principal
+    let part_principal = 1_000_000u128; // 1.06 per installment after the mark, 1.0 of it principal
     let seconds = |due: i64| (env.now() - due) as u128;
     let weighted = part_principal * (seconds(t0 + p.interval()) + seconds(t0 + 2 * p.interval()) + seconds(t0 + 3 * p.interval()))
         + 3 * part_principal * seconds(marked_at);
     assert_eq!(a.late_due, (weighted * 10_000 / (10_000 * YEAR as u128)) as u64);
 
     // Paying what was missed before the mark leaves three installments missed and the line in collection.
-    env.repay(&k, line_id, &b, 3_360_000 + a.late_due);
+    env.repay(&k, line_id, &b, 3_180_000 + a.late_due);
     let a = env.arrears(&k, line_id);
-    assert_eq!((a.covered, a.missed, a.overdue), (3, 3, 3_360_000));
+    assert_eq!((a.covered, a.missed, a.overdue), (3, 3, 3_180_000));
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
     // Paying the rest closes it.
     let a = env.arrears(&k, line_id);
-    env.repay(&k, line_id, &b, 3_360_000 + a.late_due);
+    env.repay(&k, line_id, &b, 3_180_000 + a.late_due);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     assert_eq!(env.line(&k, line_id).accelerated_at, marked_at, "the record stays");
 }

@@ -148,8 +148,9 @@ Without it the line is a bullet line (single maturity) and nothing below applies
   and the grace period of the last of them has run (`now > first_due_at + (covered + max_missed - 1) * interval
   + grace`, with `covered` installments paid), anyone may call `mark_in_collection`, which moves the line
   to `InCollection` and records the acceleration (`accelerated_at`): from the mark every installment is
-  due and late interest runs on all remaining principal (vencimiento anticipado, decision 28). Repayments
-  are still accepted there; there is no cure, and only a full repayment moves the line to `Repaid`.
+  due and late interest runs on all remaining principal (vencimiento anticipado, decision 28), while the
+  ordinary interest of the installments not yet due is forgiven. Repayments are still accepted there;
+  there is no cure, and only a full repayment moves the line to `Repaid`.
 - **Write-off policy.** After the third month in arrears the line goes to out-of-court collection and the
   admin records the write-off. The program allows `write_off` only when the line is in collection and its
   oldest missed installment fell due more than the grace period ago, or when the term ended more than the
@@ -180,7 +181,7 @@ change fields; new information comes as new events.
 | `LineCancelled` | `cancel_line` | pool, line_id |
 | `LateInterestCollected` | `repay` with late interest, before `LineRepaid` | pool, line_id, amount |
 | `LineRepaid` | `repay` | pool, line_id, payer, principal_part, interest_part, remaining (without late interest), nav_after |
-| `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining |
+| `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining (after the forgiveness), interest_forgiven (the ordinary interest of the installments not yet due at the mark) |
 | `LineWrittenOff` | `write_off` | pool, line_id, loss, nav_after |
 | `NavUpdated` | `deposit`, `redeem`, `repay`, `write_off`, last in each | pool, total_assets, share_supply |
 | `PoolPaused` | `set_paused` | pool, paused |

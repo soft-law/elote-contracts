@@ -45,6 +45,7 @@ export type LineInCollectionEvent = {
   lineId: bigint;
   missed: number;
   remaining: bigint;
+  interestForgiven: bigint;
 };
 
 export type LineInCollectionEventArgs = {
@@ -52,6 +53,7 @@ export type LineInCollectionEventArgs = {
   lineId: number | bigint;
   missed: number;
   remaining: number | bigint;
+  interestForgiven: number | bigint;
 };
 
 /** Gets the encoder for {@link LineInCollectionEventArgs} event data. */
@@ -62,6 +64,7 @@ export function getLineInCollectionEventEncoder(): FixedSizeEncoder<LineInCollec
       ["lineId", getU64Encoder()],
       ["missed", getU16Encoder()],
       ["remaining", getU64Encoder()],
+      ["interestForgiven", getU64Encoder()],
     ]),
     [getConstantEncoder(LINE_IN_COLLECTION_EVENT_DISCRIMINATOR)],
   );
@@ -75,6 +78,7 @@ export function getLineInCollectionEventDecoder(): FixedSizeDecoder<LineInCollec
       ["lineId", getU64Decoder()],
       ["missed", getU16Decoder()],
       ["remaining", getU64Decoder()],
+      ["interestForgiven", getU64Decoder()],
     ]),
     [getConstantDecoder(LINE_IN_COLLECTION_EVENT_DISCRIMINATOR)],
   );

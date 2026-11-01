@@ -207,14 +207,17 @@ pub struct LateInterestCollected {
     pub amount: u64,
 }
 
-/// A scheduled line moved to collection. `remaining` is the principal and interest still due,
-/// without late interest.
+/// A scheduled line moved to collection and its balance accelerated. `remaining` is the principal
+/// and interest still due after the acceleration, without late interest; `interest_forgiven` is
+/// the ordinary interest of the installments not yet due at the mark, which the line no longer
+/// owes (appended, events are append-only).
 #[event]
 pub struct LineInCollection {
     pub pool: Pubkey,
     pub line_id: u64,
     pub missed: u16,
     pub remaining: u64,
+    pub interest_forgiven: u64,
 }
 
 #[event]

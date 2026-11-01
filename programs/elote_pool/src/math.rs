@@ -163,6 +163,21 @@ pub struct ScheduleTerms {
     pub accelerated_at: i64,
 }
 
+/// The ordinary interest kept and forgiven at the acceleration (decision 28, Q14): the line owes
+/// the interest of the installments due at the mark, `interest_due * due_count / installments`
+/// rounded down, and the rest is forgiven. `(kept, forgiven)`; `None` on overflow or when
+/// `due_count > installments`.
+pub fn accelerated_interest(interest_due: u64, due_count: u16, installments: u16) -> Option<(u64, u64)> {
+    if due_count > installments || installments == 0 {
+        return None;
+    }
+    let kept = (interest_due as u128)
+        .checked_mul(u128::from(due_count))?
+        .checked_div(u128::from(installments))
+        .and_then(|v| u64::try_from(v).ok())?;
+    Some((kept, interest_due.checked_sub(kept)?))
+}
+
 /// The principal share of a `part` of the installments: `part * principal / total`, rounded down.
 /// Every installment repays principal and interest in the proportion of the whole, so the share is
 /// the same whatever the order the repayment allocation follows.
@@ -478,6 +493,20 @@ mod tests {
         // Far in the future the per-settlement cap is the overdue principal, not the overdue total.
         let a = arrears(&t, 0, t.anchor + 60 * YEAR as i64).unwrap();
         assert_eq!((a.overdue, a.overdue_principal, a.late_due), (600, 498, 498));
+    }
+
+    /// The interest kept at the mark is the share of the installments then due; the rest is
+    /// forgiven. Rounded down, nothing forgiven when every installment was due, everything but the
+    /// due share otherwise.
+    #[test]
+    fn accelerated_interest_keeps_the_share_of_the_installments_due() {
+        assert_eq!(accelerated_interest(720_000, 3, 6), Some((360_000, 360_000)));
+        assert_eq!(accelerated_interest(720_000, 6, 6), Some((720_000, 0)));
+        assert_eq!(accelerated_interest(720_000, 0, 6), Some((0, 720_000)));
+        assert_eq!(accelerated_interest(100, 1, 3), Some((33, 67)), "rounded down, the forgiven part carries the remainder");
+        assert_eq!(accelerated_interest(u64::MAX, 119, 120), Some((u64::MAX / 120 * 119 + (u64::MAX % 120) * 119 / 120, u64::MAX - (u64::MAX / 120 * 119 + (u64::MAX % 120) * 119 / 120))));
+        assert_eq!(accelerated_interest(100, 7, 6), None);
+        assert_eq!(accelerated_interest(100, 0, 0), None);
     }
 
     /// Vencimiento anticipado: once accelerated, every installment is due, the whole balance is
