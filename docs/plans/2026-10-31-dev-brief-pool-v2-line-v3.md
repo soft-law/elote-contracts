@@ -448,6 +448,17 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   days) and `collection_started_at` on the line (layout grows once with step 7: 305 → 321);
   F-05 role separation and share-mint policy; F-07 error hygiene; F-06 closes with 6d (cancel by
   sidecar status); F-08 and F-04 documentation/ops. Order: step 7 → step 8 → 6d part 1.
+- **Step 7 accepted** (`c149700`, `4cb372a`, plus the §2.3 sentences `e4b2144`; push authorised;
+  136 Rust + 11 JS): `accelerated_at: i64` on CreditLine (313 bytes), set by
+  `mark_in_collection`; one-loop arrears with every installment exigible at
+  min(due_k, accelerated_at) and accruing from max(min(due_k + grace, accelerated_at),
+  late_paid_until); no cure after the mark; vectors 421 (original 416 unchanged, 44 new in kind
+  via a second random stream), mirrored in schedule.ts; `math::accelerated_interest` keeps
+  interest_due × due_count / installments with due_count = max(due at the mark, covered +
+  max_missed), floored at interest already repaid, `interest_forgiven` appended to
+  `LineInCollection`. CU at 120 all-missed: repay 56,992 / mark 34,114 / write_off 39,093; after
+  an early mark repay 48,148. **F-03 decision:** `accelerated_at` doubles as the collection
+  start; `write_off` gates on `accelerated_at + collection_period_seconds`; layout stays 313.
 
 ## Points the coordinator still owns
 
