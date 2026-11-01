@@ -38,21 +38,19 @@ pub mod elote_pool {
     use super::*;
 
     /// Creates the pool, its vault and its dead-shares account around `asset_mint` and the
-    /// admin-supplied share mint, with the grace period (seconds) that applies to every line of
-    /// the pool, the largest line `open_line` accepts as a share of the NAV in basis points
-    /// (`1..=10_000`), and the attestor (the agreements engine's key).
+    /// admin's share mint; fixes the grace period, the line cap (`1..=10_000` bps of the NAV)
+    /// and the attestor for the life of the pool. The admin signs.
     pub fn init_pool(ctx: Context<InitPool>, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey) -> Result<()> {
         instructions::pool::init_pool(ctx, grace_period_seconds, max_line_bps, attestor)
     }
 
-    /// Replaces the pool's attestor. Admin only; the recovery when the agreements engine's key
-    /// rotates or is lost.
+    /// Replaces the pool's attestor. The admin and the new attestor sign.
     pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
         instructions::pool::set_attestor(ctx)
     }
 
-    /// Closes the draw window of an approved or active line now (a KYC failure, a default
-    /// event). Admin only. Repayment is untouched; it is not a pause.
+    /// Closes a line's draw window now. Admin only; refused unless the line is approved or
+    /// active. Repayment is untouched.
     pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
         instructions::lines::suspend_draws(ctx)
     }
@@ -62,23 +60,22 @@ pub mod elote_pool {
         instructions::lines::cancel_line(ctx)
     }
 
-    /// Deposits `assets` into the vault and receives shares at the current NAV, at least
-    /// `min_shares_out`. The first deposit locks `DEAD_SHARES` in the pool.
+    /// Deposits `assets` for shares at the current NAV, at least `min_shares_out`; the first
+    /// deposit locks `DEAD_SHARES`. Refused while paused.
     pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Result<()> {
         instructions::pool::deposit(ctx, assets, min_shares_out)
     }
 
-    /// Burns `shares` and receives assets at the current NAV, at least `min_assets_out`, up to
-    /// the vault's liquidity.
+    /// Burns `shares` for assets at the current NAV, at least `min_assets_out`, up to the vault's
+    /// liquidity. Refused while paused.
     pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<()> {
         instructions::pool::redeem(ctx, shares, min_assets_out)
     }
 
-    /// Approves credit line `line_id` (the next in sequence): a commitment of `principal` to
-    /// `borrower` at an annual `rate_bps`, drawable in tranches until the first due date (or the
-    /// term on a bullet line). The admin, the borrower, the attestor and a named sponsor sign.
-    /// With `schedule`, the line is repaid in installments on the contract's calendar; without
-    /// it, at `term_end`. Moves no money.
+    /// Approves line `line_id` (the next): a commitment of `principal` at an annual `rate_bps`,
+    /// repaid at `term_end` or on the `schedule`'s calendar. The admin, the borrower, the attestor
+    /// and the named sponsor sign; refused while paused, with the admin as borrower, or above the
+    /// line cap. Moves no money.
     #[allow(clippy::too_many_arguments)]
     pub fn open_line(
         ctx: Context<OpenLine>,
@@ -106,9 +103,9 @@ pub mod elote_pool {
         )
     }
 
-    /// Draws a tranche of `amount` from the vault to the borrower while the draw window is open,
-    /// against the signed pagaré whose hash is `document_hash`. The borrower and the attestor
-    /// sign. Interest on the tranche, at the annual rate to the last due date, is fixed here.
+    /// Draws a tranche of `amount` to the borrower against the signed pagaré `document_hash` and
+    /// mints the pagaré asset with its record. The borrower, the attestor and the rent payer
+    /// sign; refused while paused, once the draw window has closed, or above what is available.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         ctx: Context<Draw>,
@@ -122,10 +119,10 @@ pub mod elote_pool {
         instructions::lines::draw(ctx, amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
-    /// Extinguishes pagaré `draw_index` of a line against the FEA-signed receipt whose hash is
-    /// `receipt_hash`, once the line has repaid enough to cover it: the holder (the admin while the
-    /// asset is in the pool) and the attestor sign; the sidecar is marked paid and kept, the asset
-    /// is burnt. Refused on a line in collection or written off. Not paused.
+    /// Marks pagaré `draw_index` paid against the receipt `receipt_hash` and burns its asset; the
+    /// record is kept. The holder (the admin while the asset is in the pool) and the attestor
+    /// sign; refused until the line's principal repaid covers the pagaré, and in collection or
+    /// after a write-off. Never paused.
     pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::cancel_pagare(ctx, draw_index, receipt_hash)
     }
@@ -143,10 +140,8 @@ pub mod elote_pool {
         instructions::lines::mark_in_collection(ctx)
     }
 
-    /// Recognises the unpaid principal of a line as a loss. Admin only. Allowed on an active line
-    /// once `now > term_end + grace`, and on a line in collection once its oldest missed
-    /// installment is more than `grace` past due (or the term is). It does not wait: the call
-    /// books the loss the moment one of those conditions holds.
+    /// Books the unpaid principal of a line as a loss. Admin only; refused before
+    /// `term_end + grace`, or on a line in collection before its oldest missed due date plus grace.
     pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
         instructions::lines::write_off(ctx)
     }

@@ -1,4 +1,4 @@
-//! Tranched draws on a line (multi-draw plan D1 to D9, decision 25): partial draws until the
+//! Tranched draws on a line: partial draws until the
 //! first due date, interest proportional to time per tranche, the schedule re-amortising what is
 //! drawn, and the line's states around the tranches.
 
@@ -27,7 +27,7 @@ fn interest(amount: u64, rate_bps: u64, seconds: i64) -> u64 {
     (amount as u128 * rate_bps as u128 * seconds as u128 / (10_000 * YEAR as u128)) as u64
 }
 
-/// Plan test 1: two tranches add up to the commitment, a third is refused, and the pool's
+/// Two tranches add up to the commitment, a third is refused, and the pool's
 /// outstanding principal and NAV move per tranche.
 #[test]
 fn two_tranches_sum_to_the_commitment_and_a_third_is_refused() {
@@ -53,7 +53,7 @@ fn two_tranches_sum_to_the_commitment_and_a_third_is_refused() {
     assert_eq!(env.line(&k, line_id).draws, 2);
 }
 
-/// Plan test 2 (D1): a tranche drawn with half the time left owes half the interest of one drawn
+/// A tranche drawn with half the time left owes half the interest of one drawn
 /// at the start, to the unit; a half-drawn line repaid in full needs exactly drawn + Σ interest.
 #[test]
 fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
@@ -81,7 +81,7 @@ fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
 
-/// Plan test 2, second half: on a scheduled line whose last due date is before `term_end`, the
+/// On a scheduled line whose last due date is before `term_end`, the
 /// tranche accrues to the last due date, not to the term.
 #[test]
 fn tranche_interest_runs_to_the_last_due_date_not_the_term() {
@@ -100,7 +100,7 @@ fn tranche_interest_runs_to_the_last_due_date_not_the_term() {
     assert_ne!(ev.interest_due, interest(6 * UNIT, 1_200, p.term_end - env.now()));
 }
 
-/// Plan test 3 (D4): a second tranche before the first due date raises every installment; the
+/// A second tranche before the first due date raises every installment; the
 /// arrears before and after are what `math::arrears` predicts.
 #[test]
 fn a_second_tranche_raises_every_installment() {
@@ -134,7 +134,7 @@ fn a_second_tranche_raises_every_installment() {
     assert_eq!((a.due, a.overdue), (1, expected_total / 6), "every installment is now a sixth of the larger total");
 }
 
-/// Plan test 4 (D3b): a tranche that would leave an installment below one unit is refused; the
+/// A tranche that would leave an installment below one unit is refused; the
 /// tranche that brings `drawn + interest_due` to the installment count is accepted and repays.
 #[test]
 fn a_tranche_may_not_leave_the_schedule_unpayable() {
@@ -157,7 +157,7 @@ fn a_tranche_may_not_leave_the_schedule_unpayable() {
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
 
-/// Plan test 5: weekly, quincenal and monthly calendars each run a full cycle with two tranches,
+/// Weekly, quincenal and monthly calendars each run a full cycle with two tranches,
 /// three partial payments and one installment missed past the grace; `mark_in_collection`
 /// behaves as before.
 #[test]
@@ -215,7 +215,7 @@ fn weekly_quincenal_and_monthly_calendars_run_a_full_cycle() {
     }
 }
 
-/// Plan test 6: no tranche while in collection, while paused, or after the window; a tranche
+/// No tranche while in collection, while paused, or after the window; a tranche
 /// larger than the vault fails and succeeds after a deposit.
 #[test]
 fn tranches_are_refused_in_collection_paused_or_after_the_window() {
@@ -258,7 +258,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
 }
 
-/// Plan test 7 (D5): full repayment of a half-drawn line closes it and forfeits the rest; a
+/// Full repayment of a half-drawn line closes it and forfeits the rest; a
 /// further draw fails with `LineStatus`.
 #[test]
 fn full_repayment_of_a_half_drawn_line_closes_it() {
@@ -281,7 +281,7 @@ fn full_repayment_of_a_half_drawn_line_closes_it() {
     assert_eq!(env.pool(&k).outstanding_principal, 0);
 }
 
-/// Plan test 8: the write-off of a half-drawn line books `drawn - repaid`, and `MAX_DRAWS`
+/// The write-off of a half-drawn line books `drawn - repaid`, and `MAX_DRAWS`
 /// tranches are the limit.
 #[test]
 fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
@@ -313,7 +313,7 @@ fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
     assert_eq!(env.line(&k, many).available(), Some(36));
 }
 
-/// D10: the admin closes the draw window early on a KYC or KYB failure or a default event. The
+/// The admin closes the draw window early on a KYC or KYB failure or a default event. The
 /// undrawn remainder is forfeited, repayment is untouched, and it is not a pause.
 #[test]
 fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
@@ -404,7 +404,7 @@ fn cancel_line_clears_an_undrawn_commitment_only() {
     assert_eq!(env.pool(&k).outstanding_principal, UNIT);
 }
 
-/// D9: the pagaré hash travels in the event; a zero hash is refused like a zero agreement hash.
+/// The pagaré hash travels in the event; a zero hash is refused like a zero agreement hash.
 #[test]
 fn a_draw_carries_its_document_hash_and_refuses_a_zero_one() {
     let mut env = Env::new();

@@ -38,7 +38,7 @@ fn init_pool_creates_share_mint_and_vault() {
     assert!(!pool.paused);
     assert_eq!(pool.bump, pool_pda(&env.admin.pubkey(), &k.asset_mint).1);
 
-    // The share mint is supplied by the admin (series-shelf 2c), not created here: Token-2022,
+    // The share mint is supplied by the admin, not created here: Token-2022,
     // mint authority = the pool PDA, the asset's decimals, nothing minted yet.
     let (share_mint, extensions) = env.mint_state(&k.share_mint);
     assert_eq!(env.mint_program(&k.share_mint), TOKEN_2022_PROGRAM_ID);
@@ -333,7 +333,7 @@ fn init_pool_records_the_grace_period() {
     assert_eq!(ev.grace_period_seconds, 0);
 }
 
-/// Decision 20 / D13: `max_line_bps` is fixed at `init_pool`, lives in `reserved[4..6]` and is
+/// `max_line_bps` is fixed at `init_pool`, lives in `reserved[4..6]` and is
 /// announced by `PoolLineCapSet`. Zero and anything above 10,000 bps are refused.
 #[test]
 fn init_pool_records_the_line_cap_and_bounds_it() {
@@ -405,7 +405,7 @@ fn init_accepting(env: &mut Env, mint: &Pubkey) -> (PoolKeys, PoolFlags) {
     (k, find_event(&meta).expect("PoolFlags"))
 }
 
-/// Series-shelf 2b, decision 15: the asset mint may not carry an extension that takes or hides
+/// The asset mint may not carry an extension that takes or hides
 /// value (transfer fee, permanent delegate, transfer hook, non-transferable, any confidential
 /// extension, mint close authority) or that would freeze the vault at creation.
 #[test]
@@ -532,7 +532,7 @@ fn init_pool_records_the_asset_issuer_controls_it_accepts() {
     assert_eq!((flags.asset_controls, flags.permissioned, env.pool(&k).asset_controls()), (0, false, 0));
 }
 
-/// Pool v2 (decision 24, series-shelf 2d): `attestor` and `collection` are appended after `bump`
+/// `attestor` and `collection` are appended after `bump`
 /// so every earlier offset holds, the account grows by exactly 64 bytes and `version` is 2.
 #[test]
 fn init_pool_records_the_attestor_and_the_collection_as_version_2() {
@@ -787,7 +787,7 @@ fn non_transferable_shares_still_deposit_and_redeem() {
     assert_eq!(out.assets, minted);
 }
 
-/// Series-shelf 2d/2e, decision 3: with `DefaultAccountState = Frozen` the shares are
+/// With `DefaultAccountState = Frozen` the shares are
 /// permissioned. Every share account is born frozen, the dead account included, so the first
 /// deposit fails until the freeze authority (Token ACL's `MintConfig` in production, a plain
 /// keypair here) has thawed both the dead account and the depositor's account. The thaw can

@@ -15,7 +15,7 @@ use elote_pool::state::LineStatus;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 
-/// Inverted 2026-10-31 (R-01 delta). The admin can no longer name itself as the borrower: the
+/// Inverted 2026-10-31. The admin can no longer name itself as the borrower: the
 /// one-key path "open a line to self, draw the vault" is closed. Everything else about the
 /// admin's lending power (any other borrower, no allowlist) still holds; see the trust table.
 #[test]
@@ -35,7 +35,7 @@ fn admin_cannot_be_the_borrower_of_its_own_line() {
     assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
 }
 
-/// Inverted 2026-10-31 (decision 20, register P1-1). A line for the whole vault is refused once
+/// Inverted 2026-10-31. A line for the whole vault is refused once
 /// the pool carries a concentration cap: with the scripts' default of 1,000 bps, the largest
 /// line is a tenth of the NAV. The harness opens its pools at 10,000 bps, where the cap is
 /// inert, which is why this test sets its own.
@@ -194,7 +194,7 @@ fn limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installm
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
 }
 
-/// Inverted 2026-10-31 (R-07 delta). The first-deposit minimum is derived from the asset's
+/// Inverted 2026-10-31. The first-deposit minimum is derived from the asset's
 /// decimals: 1.0 of the asset, and never fewer base units than 1,000 times `DEAD_SHARES`, the
 /// ratio the dead-shares defence relies on. On a 9-decimal asset (MXNe) that is 1.0, not 0.001.
 #[test]
@@ -257,7 +257,7 @@ fn limit_late_interest_is_settled_at_execution_time_so_clients_must_pad() {
     assert_eq!(before - env.token_balance(&ata(&borrower.pubkey(), &k.asset_mint)), due_now + 100_000);
 }
 
-/// Limit (2026-11-01, decision 2 of step 6c): `draw` takes the pagaré PDA bumps from the client
+/// Limit: `draw` takes the pagaré PDA bumps from the client
 /// and verifies each with one `create_program_address`, so its compute does not depend on the
 /// line's key. The price: a valid bump that is not the canonical one (the highest valid) is
 /// accepted too, and the asset and sidecar then sit at addresses `find_program_address` never

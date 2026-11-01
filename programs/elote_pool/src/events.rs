@@ -17,18 +17,16 @@ pub struct PoolConfigured {
     pub grace_period_seconds: u32,
 }
 
-/// Emitted by `init_pool` after `PoolConfigured` (a new event, since events are append-only):
-/// the concentration cap, the largest line as a share of the NAV in basis points.
+/// Emitted by `init_pool` after `PoolConfigured`: the largest line as a share of the NAV, in bps.
 #[event]
 pub struct PoolLineCapSet {
     pub pool: Pubkey,
     pub max_line_bps: u16,
 }
 
-/// Emitted by `init_pool` after `PoolLineCapSet`: the read-only facts about the two mints.
-/// `asset_controls`: the issuer controls on the asset mint, as `Pool::asset_controls` bits
-/// (bit 0 freeze authority, bit 1 Pausable). `permissioned`: the share mint is frozen by
-/// default, so holders must be thawed (Token ACL).
+/// Emitted by `init_pool` after `PoolLineCapSet`. `asset_controls` are the `Pool::asset_controls`
+/// bits (bit 0 freeze authority, bit 1 Pausable); `permissioned`: the share mint is frozen by
+/// default.
 #[event]
 pub struct PoolFlags {
     pub pool: Pubkey,
@@ -50,9 +48,8 @@ pub struct PoolCollectionSet {
     pub collection: Pubkey,
 }
 
-/// The NAV and the share supply after every instruction that moves either (`deposit`,
-/// `redeem`, `repay`, `write_off`), read back after the CPIs. For indexers, the shelf page and a
-/// later secondary venue: `price per share = total_assets / share_supply`.
+/// The NAV and the share supply after every instruction that moves either (`deposit`, `redeem`,
+/// `repay`, `write_off`), read back after the CPIs: `price per share = total_assets / share_supply`.
 #[event]
 pub struct NavUpdated {
     pub pool: Pubkey,
@@ -104,8 +101,8 @@ pub struct LineScheduled {
     pub max_missed: u8,
 }
 
-/// Emitted by `open_line` after `LineOpened` (and `LineScheduled`): the facts of a version-3
-/// opening that the earlier events cannot carry. `first_due_at` is zero on a bullet line.
+/// Emitted by `open_line` after `LineOpened` (and `LineScheduled`). `first_due_at` is zero on a
+/// bullet line.
 #[event]
 pub struct LineTermsSet {
     pub pool: Pubkey,
@@ -115,9 +112,8 @@ pub struct LineTermsSet {
     pub expediente_root: [u8; 32],
 }
 
-/// Emitted by `open_line` after `LineTermsSet`: which kind of promise the sponsor made
-/// (decision 19, D12). `role` is `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; emitted with
-/// `sponsor == None` and role 0 when no sponsor is named.
+/// Emitted by `open_line` after `LineTermsSet`. `role` is `SPONSOR_PROMOTER` or
+/// `SPONSOR_GUARANTOR`; `sponsor == None` and role 0 when no sponsor is named.
 #[event]
 pub struct LineSponsorRole {
     pub pool: Pubkey,
@@ -126,9 +122,8 @@ pub struct LineSponsorRole {
     pub role: u8,
 }
 
-/// Emitted by `draw` after `LineDrawState` (decision 24): the pagaré of this disposición was
-/// issued as the Metaplex Core asset `asset`, held frozen by `holder` (the pool PDA, the series
-/// vehicle's custody account). `due_at` is the line's last due date at issuance.
+/// Emitted by `draw` after `LineDrawState`: the pagaré issued as the Metaplex Core asset `asset`,
+/// held frozen by `holder` (the pool PDA). `due_at` is the line's last due date at issuance.
 #[event]
 pub struct PagareIssued {
     pub pool: Pubkey,
@@ -141,11 +136,9 @@ pub struct PagareIssued {
     pub holder: Pubkey,
 }
 
-/// Emitted by `cancel_pagare` (C22, LGTOC 129): the pagaré was paid and extinguished against the
-/// FEA-signed receipt whose hash is `receipt_hash`; the asset is burnt in the same instruction and
-/// the sidecar stays as the "PAGADO" mark. `holder` is the key that extinguished it (the admin
-/// while the asset is in the pool; the holder of record after an endoso). The AppData log is
-/// archived off chain before the burn, so the event does not carry its length.
+/// Emitted by `cancel_pagare` (C22, LGTOC 129), before the burn. `holder` is the key that
+/// extinguished the pagaré; the sidecar stays as the PAGADO mark. No AppData length: the engine
+/// archives the log off chain before the burn.
 #[event]
 pub struct PagareCancelled {
     pub pool: Pubkey,
@@ -156,8 +149,7 @@ pub struct PagareCancelled {
     pub holder: Pubkey,
 }
 
-/// Emitted by `suspend_draws` (D10): the admin closed the draw window early; `available_forfeited`
-/// is the undrawn remainder that can no longer be drawn. Repayment is untouched.
+/// Emitted by `suspend_draws`; `available_forfeited` is the undrawn remainder.
 #[event]
 pub struct LineDrawsSuspended {
     pub pool: Pubkey,
@@ -165,15 +157,14 @@ pub struct LineDrawsSuspended {
     pub available_forfeited: u64,
 }
 
-/// Emitted by `cancel_line` (decision 25): an approved commitment nobody drew is cleared.
+/// Emitted by `cancel_line`.
 #[event]
 pub struct LineCancelled {
     pub pool: Pubkey,
     pub line_id: u64,
 }
 
-/// One tranche. Since line v3 `amount` is the tranche, not the whole principal, and `draw`
-/// emits it once per tranche, so indexers that sum it keep working.
+/// One tranche; `amount` is the tranche, emitted once per draw.
 #[event]
 pub struct LineDrawn {
     pub pool: Pubkey,
@@ -182,8 +173,8 @@ pub struct LineDrawn {
     pub outstanding_after: u64,
 }
 
-/// Emitted by `draw` after `LineDrawn`: the line after the tranche and the hash of the signed
-/// pagaré of this disposición (D9, decision 13). The hash is not stored on the line.
+/// Emitted by `draw` after `LineDrawn`: the line after the tranche and the signed pagaré's hash,
+/// which is not stored on the line.
 #[event]
 pub struct LineDrawState {
     pub pool: Pubkey,

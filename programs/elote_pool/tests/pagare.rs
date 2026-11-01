@@ -1,4 +1,4 @@
-//! The pagaré token (decision 24): one Metaplex Core asset per disposición, minted by `draw`
+//! The pagaré token: one Metaplex Core asset per disposición, minted by `draw`
 //! into the series' collection, held frozen by the pool PDA, with a sidecar record. These tests
 //! create through the mpl-core crate's builders and read back through its decoders against the
 //! pinned program binary, which is the crate-vs-program compatibility proof.

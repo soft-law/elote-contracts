@@ -411,7 +411,7 @@ fn app_data_is_written_only_by_its_fixed_data_authority_and_removed_only_by_the_
     }
 }
 
-/// Question for design A (decision 27, Mario's reading of C9: the history travels with the pagaré):
+/// Question for design A (C9: the history travels with the pagaré):
 /// can an AppData adapter be created with data authority `Owner`, and does that authority follow
 /// the asset through `TransferV1`, so that each holder writes its own entry and the pool has no
 /// write power once the asset has left it?

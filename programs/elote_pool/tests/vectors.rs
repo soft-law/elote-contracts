@@ -89,7 +89,7 @@ fn hand_cases() -> Vec<Value> {
     v.push(case(&t, 0, 1_000 + 600 + 50 * YEAR as i64));
     // A partial payment lowers the overdue part.
     v.push(case(&terms(600, 6, 0, 0), 60, 1_200));
-    // Late interest on the principal share only (decision 11): 500 of principal in 600, yearly
+    // Late interest on the principal share only: 500 of principal in 600, yearly
     // installments.
     let mut t = terms(600, 6, 10_000, 0);
     t.principal = 500;

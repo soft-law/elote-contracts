@@ -27,9 +27,8 @@ pub fn assets_for_redeem(shares: u64, supply: u64, nav: u64) -> Option<u64> {
         .and_then(|v| u64::try_from(v).ok())
 }
 
-/// Ordinary interest on a tranche of `amount` outstanding for `seconds` at an annual `rate_bps`
-/// (version 3, decision 9): `amount * rate_bps * seconds / (10_000 * SECONDS_PER_YEAR)`, rounded
-/// down once per tranche.
+/// Ordinary interest on a tranche of `amount` outstanding for `seconds` at an annual `rate_bps`:
+/// `amount * rate_bps * seconds / (10_000 * SECONDS_PER_YEAR)`, rounded down once per tranche.
 pub fn tranche_interest(amount: u64, rate_bps: u16, seconds: u64) -> Option<u64> {
     (amount as u128)
         .checked_mul(rate_bps as u128)?
@@ -45,7 +44,7 @@ pub fn tranche_interest(amount: u64, rate_bps: u16, seconds: u64) -> Option<u64>
 /// Installments whose due date has arrived: installment `k` (1-based) is due at
 /// `anchor + k * interval`, and at that very second it already counts as due. Zero before the
 /// first due date, never more than `installments`. The anchor is one interval before the first
-/// due date (a version-3 line's `first_due_at - interval`).
+/// due date.
 pub fn installments_due(now: i64, anchor: i64, interval: i64, installments: u16) -> u16 {
     if interval <= 0 || now <= anchor {
         return 0;
@@ -97,10 +96,9 @@ pub fn late_interest(amount: u64, late_bps: u16, seconds: u64) -> Option<u64> {
     late_from_weighted(weighted, late_bps, amount)
 }
 
-/// `seconds` clamped to the time after which late interest would exceed the amount it accrues
-/// on; this also bounds every product below `u128::MAX`.
 /// The seconds after which late interest at `late_bps` a year reaches the amount itself: the
-/// per-part cap on the accrual period. Zero when there is no late interest.
+/// per-part cap on the accrual period, which also bounds every product below `u128::MAX`. Zero
+/// when there is no late interest.
 fn seconds_cap(late_bps: u16) -> u64 {
     if late_bps == 0 {
         return 0;
@@ -133,7 +131,7 @@ pub struct Arrears {
     pub missed: u16,
     /// Principal and interest fallen due and not paid.
     pub overdue: u64,
-    /// The principal share of `overdue`: what late interest accrues on (decision 11).
+    /// The principal share of `overdue`: what late interest accrues on.
     pub overdue_principal: u64,
     /// Late interest owed now and not yet settled.
     pub late_due: u64,
@@ -155,8 +153,8 @@ pub struct ScheduleTerms {
     pub grace: u32,
     /// Late interest is settled up to this time (zero: never).
     pub late_paid_until: i64,
-    /// The principal the installments repay (`drawn` on a version-3 line): the share of each
-    /// installment that late interest accrues on, and the lifetime cap on late interest.
+    /// The principal the installments repay (the line's `drawn`): the share of each installment
+    /// that late interest accrues on, and the lifetime cap on late interest.
     pub principal: u64,
     /// Late interest collected so far.
     pub late_collected: u64,
@@ -174,8 +172,8 @@ fn principal_share(part: u64, principal: u64, total: u64) -> Option<u64> {
 
 /// Arrears of a scheduled line that has repaid `paid` (principal plus interest) by `now`.
 ///
-/// Late interest accrues on the principal share of each overdue part separately (decision 11: no
-/// interest on overdue interest): the unpaid part of installment `k` accrues from
+/// Late interest accrues on the principal share of each overdue part separately (no interest on
+/// overdue interest): the unpaid part of installment `k` accrues from
 /// `start_k = max(due_k + grace, late_paid_until)` until `now`, at `late_bps` a year, and never
 /// beyond its own amount. The sum is divided once:
 ///
@@ -191,9 +189,8 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
     let mut overdue_principal: u64 = 0;
     let mut weighted: u128 = 0;
     let mut first_missed_due = None;
-    // Every installment but the first overdue one (partly paid) and the last (it carries the
-    // rounding remainder) is the regular installment, so its principal share is computed once;
-    // the per-part figure is identical, only the u128 division is saved (step 5d).
+    // Every installment but the first overdue one (partly paid) and the last (the rounding
+    // remainder) is the regular installment, so its principal share is computed once.
     let base = installment_amount(t.total, t.installments)?;
     let base_share = principal_share(base, t.principal, t.total)?;
     let cap = seconds_cap(t.late_bps);

@@ -1,12 +1,9 @@
 //! Credit lines approved from the pool: open, draw, repay, collection and write off.
 //!
-//! A line moves `Approved -> Active -> Repaid | WrittenOff`, and a scheduled line can also move
-//! `Active -> InCollection -> Repaid | WrittenOff`. The pause blocks openings and draws (and, in
-//! `pool.rs`, deposits and redemptions); `repay`, `mark_in_collection` and `write_off` always
-//! run. On a single-maturity line (version 1) repayments go to principal first, then to the fixed
-//! interest. On a scheduled line (version 2) they go to late interest, then interest, then
-//! principal. Collected interest and late interest raise the NAV; a written-off principal lowers
-//! it once.
+//! A line moves `Approved -> Active -> Repaid | WrittenOff`; a scheduled line can also move
+//! `Active -> InCollection -> Repaid | WrittenOff`. The pause blocks openings and draws; `repay`,
+//! `mark_in_collection` and `write_off` always run. Repayments go to late interest, then interest,
+//! then principal. Collected interest raises the NAV; a written-off principal lowers it once.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterface, TransferChecked};
@@ -39,8 +36,7 @@ pub struct OpenLine<'info> {
     /// The sponsor named in the arguments; required (and signing) when one is named.
     pub sponsor: Option<Signer<'info>>,
 
-    /// The pool's attestor (D16): the agreements engine attests that the signed agreement behind
-    /// `agreement_hash` exists and matches the arguments.
+    /// Attests that the signed agreement behind `agreement_hash` exists and matches the arguments.
     #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
     pub attestor: Signer<'info>,
 
@@ -87,8 +83,8 @@ pub fn open_line(
     require!(line_id == pool.line_count, PoolError::WrongAccount);
     require!(ctx.accounts.borrower.key() != pool.admin, PoolError::BorrowerIsAdmin);
     require!(principal > 0, PoolError::WrongAmount);
-    // Concentration cap (decision 20): the commitment is at most `max_line_bps` of the NAV at
-    // this moment, principal lent out included. An empty pool opens no line.
+    // The cap is measured against the NAV at this moment, principal lent out included; an empty
+    // pool opens no line.
     let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
     let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
     require!(principal <= cap, PoolError::LineTooLarge);
@@ -101,8 +97,8 @@ pub fn open_line(
         let signed = ctx.accounts.sponsor.as_ref().is_some_and(|s| s.key() == named);
         require!(signed, PoolError::SponsorRequired);
     }
-    // The draw window (D3, decision 25): until the first due date on a scheduled line, until the
-    // term on a bullet line; fixed here, since the calendar comes from the contract.
+    // The draw window closes at the first due date on a scheduled line, at the term on a bullet
+    // line.
     let (first_due_at, availability_end) = match schedule {
         Some(s) => {
             validate_schedule(&s, principal, rate_bps, now, term_end)?;
@@ -180,9 +176,8 @@ pub fn open_line(
 /// installments, a positive interval, `late_bps <= BPS`, `MIN_MAX_MISSED <= max_missed <=
 /// installments`, a first due date after the opening, the last due date
 /// (`first_due_at + (installments - 1) * interval`) no later than `term_end`, and at least one
-/// unit per installment if the whole commitment were drawn now (the fully-drawn-today interest;
-/// `draw` re-checks payability on what is actually drawn, D3b). Nothing is re-checked at the
-/// draw about the dates: they are fixed by the contract (decision 25).
+/// unit per installment if the whole commitment were drawn now (`draw` re-checks on what is
+/// actually drawn). The dates are fixed by the contract and not re-checked at the draw.
 fn validate_schedule(s: &ScheduleParams, principal: u64, rate_bps: u16, now: i64, term_end: i64) -> Result<()> {
     require!(s.installments >= 1 && s.installments <= MAX_INSTALLMENTS, PoolError::InvalidSchedule);
     require!(s.interval_seconds > 0, PoolError::InvalidSchedule);
@@ -217,8 +212,7 @@ fn last_due_of(s: &ScheduleParams) -> Result<i64> {
 pub struct Draw<'info> {
     pub borrower: Signer<'info>,
 
-    /// The pool's attestor (D14): the agreements engine attests that the pagaré behind
-    /// `document_hash` was signed by the borrower and is conserved. No money moves without it.
+    /// Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved.
     #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
     pub attestor: Signer<'info>,
 
@@ -254,17 +248,15 @@ pub struct Draw<'info> {
 
     pub token_program: Interface<'info, TokenInterface>,
 
-    // -- the pagaré (decision 24) --
+    // -- the pagaré --
 
-    /// Pays the rent of the pagaré asset and its sidecar: the app's relayer, since SME wallets
-    /// rarely hold SOL. Any signer.
+    /// Pays the rent of the pagaré asset and its sidecar. Any signer.
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// The Metaplex Core asset that is the pagaré, created by the Core program in this
-    /// instruction at `["pagare_asset", line, line.draws]`, so clients need no keypair for it.
-    /// The client derives the bump, so the constraint runs one `create_program_address` and no
-    /// search: the compute of a draw does not depend on the line's key.
+    /// The Core asset that is the pagaré, created by the Core program here. The client passes
+    /// the bump, so the constraint runs one `create_program_address` and the compute of a draw
+    /// does not depend on the line's key.
     /// CHECK: the seeds; the Core program initialises it.
     #[account(
         mut,
@@ -273,8 +265,7 @@ pub struct Draw<'info> {
     )]
     pub asset: UncheckedAccount<'info>,
 
-    /// The program's record of the pagaré, created by the handler (Anchor's `init` always
-    /// searches for the bump) at `["pagare", line, line.draws]`.
+    /// The pagaré's record, created by the handler (Anchor's `init` would search for the bump).
     /// CHECK: the seeds; the handler initialises it.
     #[account(
         mut,
@@ -307,8 +298,7 @@ fn hex(bytes: &[u8]) -> String {
     String::from_utf8(s).unwrap_or_default()
 }
 
-/// Decimal text of `n`, without the formatting machinery (`to_string` on an integer costs a few
-/// hundred CU on chain; the pagaré carries five of them and the name two more).
+/// Decimal text of `n` without the formatting machinery, which costs a few hundred CU per call.
 fn dec(n: i64) -> String {
     let mut s = dec_u(n.unsigned_abs());
     if n < 0 {
@@ -333,14 +323,11 @@ fn dec_u(mut m: u64) -> String {
     String::from_utf8(digits[i..].to_vec()).unwrap_or_default()
 }
 
-/// Mints the pagaré of a disposición (decision 24): one Metaplex Core asset in the pool's
-/// collection, owned by the pool PDA (the vehicle's custody) and frozen from creation, with
-/// `PermanentFreezeDelegate`, `PermanentTransferDelegate` and `PermanentBurnDelegate` held by the
-/// pool PDA (so only the program can ever move or burn it, whoever holds it), `ImmutableMetadata`, an `Attributes` plugin nobody can change
-/// (`pagare_hash`, `amount`, `currency`, `issued_at`, `due_at`, `line`, `draw_index`,
-/// `cert_fingerprint`, `signature_method`) and an empty `AppData` section whose data authority is
-/// the pool PDA, for the endoso log. The name carries the line id and the draw index and nothing
-/// else; the URI is empty. Nothing personal.
+/// Mints the pagaré: one Core asset in the pool's collection, owned by the pool PDA and frozen
+/// from creation; the three permanent delegates held by the pool PDA, so only the program can
+/// move or burn it; `ImmutableMetadata`; `Attributes` nobody can change (the nine facts, 32-byte
+/// values as hex); an empty `AppData` whose data authority is the pool PDA. The name is
+/// `PAGARE <line>-<index>` (C29), the URI empty, nothing personal.
 #[allow(clippy::too_many_arguments)]
 fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) -> Result<()> {
     let (draw_index, amount, document_hash, issued_at, due_at) =
@@ -397,7 +384,7 @@ fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) 
         .payer(&accounts.payer.to_account_info())
         .owner(Some(&accounts.pool.to_account_info()))
         .system_program(&accounts.system_program.to_account_info())
-        // No series label and none of the words a court read as an offering (condition C29).
+        // No series label and no offering vocabulary (C29).
         .name(["PAGARE ", &dec_u(line.line_id), "-", &dec_u(draw_index.into())].concat())
         .uri(String::new())
         .plugins(plugins)
@@ -425,8 +412,8 @@ fn sweep_to_payer<'info>(accounts: &Draw<'info>, account: &AccountInfo<'info>, s
     Ok(())
 }
 
-/// Creates the sidecar (Anchor's `init` always searches for the bump; the seeds constraint
-/// already verified the address with the client's bump) and writes `record` into it.
+/// Creates the sidecar by hand (the seeds constraint verified the address with the client's bump)
+/// and writes `record` into it.
 fn create_sidecar<'info>(accounts: &Draw<'info>, pagare_bump: u8, record: &Pagare) -> Result<()> {
     use anchor_lang::system_program::{create_account, CreateAccount};
     let space = 8 + Pagare::INIT_SPACE;
@@ -450,13 +437,13 @@ fn create_sidecar<'info>(accounts: &Draw<'info>, pagare_bump: u8, record: &Pagar
     Ok(())
 }
 
-/// One tranche (D2 to D9). Every check runs before anything is written (D8), in this order: not
-/// paused; `Approved` or `Active`; `0 < amount <= principal - drawn`; `now < availability_end`,
-/// strictly, since an installment counts as due at the second it falls due; on a scheduled line
+/// One tranche. Every check runs before anything is written, in this order: not paused;
+/// `Approved` or `Active`; `0 < amount <= principal - drawn`; `now < availability_end`, strictly
+/// (an installment counts as due at the second it falls due); on a scheduled line
 /// `drawn + interest_due >= installments` after the tranche, so every installment keeps at least
-/// one unit (D3b); fewer than `MAX_DRAWS` tranches; the vault has the liquidity; a non-zero
-/// `document_hash`. The tranche's interest, at the annual rate from now to the last due date, is
-/// added to `interest_due` and never changes again.
+/// one unit; fewer than `MAX_DRAWS` tranches; the vault has the liquidity; a non-zero
+/// `document_hash`; a valid signature method. The tranche's interest, at the annual rate from now
+/// to the last due date, is added to `interest_due` and never changes again.
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ctx: Context<Draw>,
@@ -487,8 +474,7 @@ pub fn draw(
     require!(line.draws < MAX_DRAWS, PoolError::TooManyDraws);
     require!(amount <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
     require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
-    // Condition C6a: how the pagaré text was signed; the certificate fingerprint may be zero only
-    // for a wallet-only signature.
+    // C6a: the certificate fingerprint may be zero only for a wallet-only signature.
     require!(
         signature_method <= SIGNATURE_EFIRMA_WALLET && (signature_method == SIGNATURE_WALLET || cert_fingerprint != [0u8; 32]),
         PoolError::SignatureMethodInvalid
@@ -509,7 +495,7 @@ pub fn draw(
         ctx.accounts.asset_mint.decimals,
     )?;
 
-    // The pagaré: the Core asset (the título) and its sidecar, indexed by the draw being made.
+    // The pagaré asset and its sidecar, indexed by this draw.
     let draw_index = ctx.accounts.line.draws;
     let record = Pagare {
         line: ctx.accounts.line.key(),
@@ -625,7 +611,7 @@ pub struct Repay<'info> {
 /// late interest, then interest, then principal, and takes at most what is due: the payer's
 /// account is debited only that, never `amount` when it is larger. Accepted in `Active` and
 /// `InCollection`. What is owed is what was drawn plus the interest fixed at each draw; a full
-/// repayment closes the line and the undrawn remainder lapses with it (D5).
+/// repayment closes the line and the undrawn remainder lapses with it.
 ///
 /// Never blocked by the pause: a borrower can always pay.
 pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
@@ -716,8 +702,8 @@ pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
 }
 
 /// The arrears of a scheduled line at `now`: the installments repay `drawn + interest_due` on the
-/// contract's calendar (`first_due_at`, decision 25), and late interest accrues on the principal
-/// share, `drawn`, of what is overdue.
+/// contract's calendar, and late interest accrues on the principal share, `drawn`, of what is
+/// overdue.
 fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
     let s = line.schedule().ok_or(PoolError::NotScheduled)?;
     let terms = ScheduleTerms {
@@ -760,8 +746,7 @@ pub struct MarkInCollection<'info> {
 /// Anyone may move an active scheduled line to `InCollection` once `max_missed` installments are
 /// missed and the grace period of the last of them has run: with `covered` installments paid,
 /// `now > anchor + (covered + max_missed) * interval + grace`, where the anchor is one interval
-/// before `first_due_at`. It only records facts, so it is not blocked by the pause (repayments
-/// are not either).
+/// before `first_due_at`. It only records facts, so it is not blocked by the pause.
 pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
@@ -832,7 +817,7 @@ pub struct WriteOff<'info> {
 /// - the line is `InCollection` and either a missed installment is still unpaid and
 ///   `now > first_missed_due + grace`, or `now > term_end + grace` (else `WriteOffTooEarly`).
 ///
-/// `grace` is the pool's grace period; with zero grace a single-maturity line behaves as before.
+/// `grace` is the pool's grace period.
 pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
@@ -898,10 +883,8 @@ pub struct SuspendDraws<'info> {
     pub line: Account<'info, CreditLine>,
 }
 
-/// D10: the admin closes the draw window of an `Approved` or `Active` line now, so no further
-/// tranche is drawn (a KYC or KYB failure, a default event). The undrawn remainder is forfeited;
-/// repayment, collection and write-off are untouched. It is not a pause: the pool-wide
-/// `set_paused` stays as it is.
+/// Closes the draw window of an `Approved` or `Active` line now. The undrawn remainder is
+/// forfeited; repayment, collection and write-off are untouched; the pool is not paused.
 pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let line = &mut ctx.accounts.line;
@@ -937,9 +920,9 @@ pub struct CancelLine<'info> {
     pub line: Account<'info, CreditLine>,
 }
 
-/// Decision 25: an approved commitment nobody drew (`Approved`, `drawn == 0`) is cleared. Once a
-/// tranche exists something is owed, and the line follows repayment, collection or write-off
-/// instead. `Cancelled` is terminal; the line id stays taken.
+/// Clears an approved commitment nobody drew (`Approved`, `drawn == 0`); once a tranche exists the
+/// line follows repayment, collection or write-off instead. `Cancelled` is terminal; the line id
+/// stays taken.
 pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let line = &mut ctx.accounts.line;

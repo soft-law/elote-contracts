@@ -62,7 +62,7 @@ fn init_pool_stays_under_the_ceiling_with_and_without_extensions() {
 }
 
 /// `draw` on a 120-installment line: the payability check and the tranche interest add a few
-/// multiplications; the Metaplex Core CPI of step 6 lands here too (about 44 000 CU of the
+/// multiplications; the Metaplex Core CPI lands here too (about 44 000 CU of the
 /// total, fixed by the plugin set). Deterministic since the client passes the PDA bumps. At
 /// about 90 000 CU there are some 10 000 CU of room before any growth in `draw` needs a
 /// compute-budget request from clients; trimming attributes is the lever if it comes to that.

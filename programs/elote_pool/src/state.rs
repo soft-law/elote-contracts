@@ -21,8 +21,7 @@ pub mod seeds {
 /// returns below this floor and a donation cannot round later deposits down to nothing.
 pub const DEAD_SHARES: u64 = 1_000;
 /// The first deposit is at least this many times `DEAD_SHARES`, whatever the asset's decimals,
-/// so the inflation attack keeps needing a donation of about a thousand times the victim's
-/// deposit (the ratio the original 1_000_000 minimum on a 6-decimal asset gave).
+/// so the inflation attack keeps needing a donation of about a thousand times the victim's deposit.
 pub const MIN_FIRST_DEPOSIT_DEAD_RATIO: u64 = 1_000;
 
 /// Smallest first deposit for an asset with `decimals`: one whole unit (`10^decimals`), and never
@@ -33,27 +32,21 @@ pub fn min_first_deposit(decimals: u8) -> Option<u64> {
     Some(one_unit.max(MIN_FIRST_DEPOSIT_DEAD_RATIO.checked_mul(DEAD_SHARES)?))
 }
 pub const BPS: u64 = 10_000;
-/// Pool v2 (2026-10-31): token interface, asset and share mint policies, `attestor` and
-/// `collection`. Version 1 pools (the devnet demo) do not deserialize under this layout.
+/// Layout version of `Pool`; earlier versions do not deserialize under this layout.
 pub const POOL_VERSION: u8 = 2;
-/// Line v3 (2026-10-31, multi-draw plan and decision 25): every line the program opens, bullet
-/// or scheduled. Tranched draws, an annual `rate_bps` charged per tranche, a payment calendar
-/// fixed by the signed contract (`first_due_at`), one repayment order (late interest, interest,
-/// principal) with clamped overpayment. Version 1 and 2 lines do not deserialize under this
-/// layout.
+/// Layout version of `CreditLine`; earlier versions do not deserialize under this layout.
 pub const LINE_VERSION: u8 = 3;
 /// Upper bound on the tranches of one line.
 pub const MAX_DRAWS: u16 = 64;
 /// `CreditLine::sponsor_role`: a public sponsor that refers, trains and shares data, with no
-/// payment obligation (decision 19).
+/// payment obligation.
 pub const SPONSOR_PROMOTER: u8 = 0;
 /// `CreditLine::sponsor_role`: a private sponsor (or development banking through a SOFOM) with
 /// full liability. The program enforces nothing on it; it is the on-chain record of the promise.
 pub const SPONSOR_GUARANTOR: u8 = 1;
 /// Upper bound on the installments of one line, so the arrears computation is bounded.
 pub const MAX_INSTALLMENTS: u16 = 120;
-/// The fewest missed installments a schedule may set before collection: the owner's policy is
-/// three months of arrears.
+/// The fewest missed installments a schedule may set before collection.
 pub const MIN_MAX_MISSED: u8 = 3;
 /// The year that annualizes `late_bps`: 365 days.
 pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
@@ -96,14 +89,12 @@ pub struct Pool {
     /// `max_line_bps`, `permissioned`, `asset_controls` and their setters).
     pub reserved: [u8; 32],
     pub bump: u8,
-    // Pool v2 (decision 24): appended after `bump` so every v1 offset holds.
-    /// The agreements engine's key. It co-signs `open_line`, `draw` and `endorse_pagare`,
-    /// attesting that the signed document behind the hash exists and matches the arguments.
-    /// Rotated by the admin with `set_attestor`; never the zero key.
+    // Appended after `bump`, so the earlier offsets hold.
+    /// The agreements engine's key; co-signs `open_line`, `draw` and `cancel_pagare`, attesting
+    /// the signed document behind the hash. Rotated with `set_attestor`; never the zero key.
     pub attestor: Pubkey,
-    /// The series' Metaplex Core collection, in which `draw` mints one pagaré asset per
-    /// disposición. Recorded at `init_pool`; validated as a Core collection from step 6 of the
-    /// pool v2 batch.
+    /// The series' Metaplex Core collection `draw` mints the pagaré assets into; validated at
+    /// `init_pool`.
     pub collection: Pubkey,
 }
 
@@ -140,9 +131,8 @@ impl Pool {
     }
 
     /// The issuer controls the asset mint carries that can stop the vault without touching the
-    /// program, as bits (decision 15: accepted and recorded, never rejected): bit 0, a freeze
-    /// authority (MEXe has one, CETES none); bit 1, the Token-2022 `Pausable` extension.
-    /// Read-only facts recorded at `init_pool`.
+    /// program, as bits: bit 0, a freeze authority; bit 1, the Token-2022 `Pausable` extension.
+    /// Accepted and recorded at `init_pool`, never rejected.
     pub fn asset_controls(&self) -> u8 {
         self.reserved[7]
     }
@@ -169,7 +159,7 @@ impl Pool {
             .and_then(|v| u64::try_from(v).ok())
     }
 
-    /// The invariants every money instruction re-checks before it returns (R-25), on balances
+    /// The invariants every money instruction re-checks before it returns, on balances
     /// reloaded after the CPIs: `vault + outstanding_principal` fits a `u64` (the NAV exists),
     /// and, where the share mint is an account of the instruction, its supply is zero (nothing
     /// deposited yet) or at least `DEAD_SHARES` (the dead account is never burned). A failure
@@ -200,8 +190,8 @@ pub enum LineStatus {
     /// collection. Repayments are still accepted; it leaves this state only when repaid in full
     /// or written off.
     InCollection,
-    /// An approved commitment nobody drew, cleared by the admin (`cancel_line`, decision 25).
-    /// Terminal; nothing was ever owed.
+    /// An approved commitment nobody drew, cleared by the admin (`cancel_line`). Terminal; nothing
+    /// was ever owed.
     Cancelled,
 }
 
@@ -219,7 +209,7 @@ pub struct CreditLine {
     /// The approved commitment; `available = principal - drawn`.
     pub principal: u64,
     /// Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
-    /// the last due date (decision 9).
+    /// the last due date.
     pub rate_bps: u16,
     /// Ordinary interest charged so far: the sum over tranches of
     /// `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its
@@ -230,7 +220,7 @@ pub struct CreditLine {
     pub interest_repaid: u64,
     pub status: LineStatus,
     pub opened_at: i64,
-    /// Time of the first draw; informational since decision 25 (the calendar is `first_due_at`).
+    /// Time of the first draw; informational (the calendar is `first_due_at`).
     pub drawn_at: i64,
     pub closed_at: i64,
     /// Zero on a bullet line (single maturity). On a scheduled line, the installment schedule,
@@ -238,7 +228,7 @@ pub struct CreditLine {
     ///
     /// | bytes  | field              | type    | meaning                                         |
     /// |--------|--------------------|---------|-------------------------------------------------|
-    /// | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates, from `drawn_at`      |
+    /// | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates                       |
     /// | 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |
     /// | 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |
     /// | 12     | `max_missed`       | u8      | missed installments that allow collection       |
@@ -248,8 +238,7 @@ pub struct CreditLine {
     /// | 30..32 | unused             | zero    |                                                 |
     pub reserved: [u8; 32],
     pub bump: u8,
-    // Line v3 (multi-draw plan, decisions 12, 15 and 25): appended after `bump` so every earlier
-    // offset holds.
+    // Appended after `bump`, so the earlier offsets hold.
     /// Principal transferred to the borrower so far; `drawn <= principal`, never decreases.
     pub drawn: u64,
     /// Number of tranches drawn; at most `MAX_DRAWS`.
@@ -262,12 +251,12 @@ pub struct CreditLine {
     pub first_due_at: i64,
     /// `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named.
     pub sponsor_role: u8,
-    /// Salted merkle root of the credit file in the agreements engine (decision 15 of the pagaré
-    /// design). A commitment: no document, name or folio is derivable from it.
+    /// Salted merkle root of the credit file in the agreements engine. A commitment: no document,
+    /// name or folio is derivable from it.
     pub expediente_root: [u8; 32],
 }
 
-/// How the pagaré text was signed (condition C6a): the borrower's wallet alone.
+/// How the pagaré text was signed (C6a): the borrower's wallet alone.
 pub const SIGNATURE_WALLET: u8 = 0;
 /// A PSC (prestador de servicios de certificación) certificate and the wallet.
 pub const SIGNATURE_PSC_WALLET: u8 = 1;
@@ -280,12 +269,9 @@ pub const PAGARE_OUTSTANDING: u8 = 0;
 /// stays as the "PAGADO" record with the receipt's hash).
 pub const PAGARE_PAID: u8 = 1;
 
-/// The program's own record of one pagaré (decision 24, pagaré design): the sidecar of the
-/// Metaplex Core asset `draw` mints for a disposición. Per the legal brief (2026-11-01), the signed
-/// data message is the pagaré and the asset is its registration and circulation record; the
-/// sidecar is the program's half of that record. It holds no folio (the agreements engine maps the
-/// index to its folio off chain) and nothing personal. It is never closed: after `cancel_pagare`
-/// it stays as the "PAGADO" mark, so its rent is a cost of every draw.
+/// The program's record of one pagaré, the sidecar of the Core asset `draw` mints (C22). It holds
+/// no folio and nothing personal, and is never closed: after `cancel_pagare` it stays as the
+/// PAGADO mark.
 #[account]
 #[derive(InitSpace)]
 pub struct Pagare {
@@ -299,13 +285,13 @@ pub struct Pagare {
     /// The tranche this pagaré documents.
     pub amount: u64,
     pub issued_at: i64,
-    /// The line's last due date at issuance (D1): when the last payment is owed.
+    /// The line's last due date at issuance: when the last payment is owed.
     pub due_at: i64,
     /// The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.
     /// The coverage rule reads it instead of summing earlier sidecars (pagarés are covered oldest
     /// first): pagaré k is paid once the line's `principal_repaid` reaches `drawn_through`.
     pub drawn_through: u64,
-    /// Hash of the PSC certificate that signed the pagaré text (condition C6a); zero only when
+    /// Hash of the PSC certificate that signed the pagaré text (C6a); zero only when
     /// `signature_method` is `SIGNATURE_WALLET`.
     pub cert_fingerprint: [u8; 32],
     /// `SIGNATURE_WALLET`, `SIGNATURE_PSC_WALLET` or `SIGNATURE_EFIRMA_WALLET`.
@@ -317,7 +303,7 @@ pub struct Pagare {
     /// Hash of the FEA-signed receipt `cancel_pagare` was given (LGTOC 129); zero while outstanding.
     pub receipt_hash: [u8; 32],
     pub bump: u8,
-    /// Room for later facts (an endoso count, the current holder) without a layout change.
+    /// Room for later facts without a layout change.
     pub reserved: [u8; 32],
 }
 
@@ -336,7 +322,7 @@ pub struct ScheduleParams {
     pub max_missed: u8,
 }
 
-/// The schedule of a version-2 line, unpacked from `CreditLine.reserved`.
+/// The schedule of a scheduled line, unpacked from `CreditLine.reserved`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Schedule {
     pub interval_seconds: i64,
@@ -392,8 +378,8 @@ impl CreditLine {
     }
 
     /// The instant one interval before the first due date, from which `math` counts the
-    /// installments (`anchor + k * interval`): the single place the calendar is anchored
-    /// (decision 25). `None` on a bullet line.
+    /// installments (`anchor + k * interval`): the single place the calendar is anchored. `None`
+    /// on a bullet line.
     pub fn anchor(&self) -> Option<i64> {
         let s = self.schedule()?;
         self.first_due_at.checked_sub(s.interval_seconds)
@@ -401,7 +387,7 @@ impl CreditLine {
 
     /// When the last payment is owed: the last due date,
     /// `first_due_at + (installments - 1) * interval`, on a scheduled line; `term_end` on a bullet
-    /// line. Each tranche's interest runs from its draw to this instant (D1).
+    /// line. Each tranche's interest runs from its draw to this instant.
     pub fn last_due(&self) -> Option<i64> {
         match self.schedule() {
             Some(s) => s
@@ -442,7 +428,7 @@ mod tests {
         }
     }
 
-    /// R-25: the invariants every money instruction re-checks before returning.
+    /// The invariants every money instruction re-checks before returning.
     #[test]
     fn check_accepts_a_consistent_pool_and_refuses_a_broken_one() {
         let p = pool(5);

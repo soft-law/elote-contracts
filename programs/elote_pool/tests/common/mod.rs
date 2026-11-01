@@ -237,8 +237,8 @@ pub use elote_pool::state::{PAGARE_OUTSTANDING, PAGARE_PAID};
 pub struct Env {
     pub svm: LiteSVM,
     pub admin: Keypair,
-    /// The attestor every pool of this env is created with (pool v2, decision 24): the
-    /// agreements engine's key, which co-signs openings, draws and endosos from step 5 on.
+    /// The attestor every pool of this env is created with : the agreements
+    /// engine's key, which co-signs openings, draws and cancellations.
     pub attestor: Keypair,
 }
 
@@ -267,7 +267,7 @@ impl Env {
         assert!(so.exists(), "{} missing — run `NO_DNA=1 anchor build` first", so.display());
         svm.add_program_from_file(PROGRAM_ID, &so).expect("load elote_pool.so");
 
-        // Metaplex Core, pinned by sha256 (the pagaré asset of decision 24 is minted into it).
+        // Metaplex Core, pinned by sha256 (the pagaré assets are minted into it).
         let core = std::fs::read(workspace_root().join(MPL_CORE_FIXTURE)).expect("read the Metaplex Core fixture");
         let digest = <sha2::Sha256 as sha2::Digest>::digest(&core);
         let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();

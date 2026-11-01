@@ -51,9 +51,9 @@ pub struct InitPool<'info> {
     )]
     pub pool: Account<'info, Pool>,
 
-    /// The share mint, created by the admin beforehand and validated here (series-shelf 2c):
-    /// mint authority = this pool's PDA, supply 0, the asset's decimals, and no extension that
-    /// takes or hides value. `DefaultAccountState = Frozen` makes the shares permissioned.
+    /// The share mint, created by the admin beforehand and validated here: mint authority = this
+    /// pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.
+    /// `DefaultAccountState = Frozen` makes the shares permissioned.
     pub share_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// A PDA token account, so nobody can pre-create it and block the pool.
@@ -82,9 +82,8 @@ pub struct InitPool<'info> {
     )]
     pub dead_shares: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// The series' Metaplex Core collection the pagaré assets are minted into: created by the
-    /// admin beforehand with the pool PDA as update authority, validated in the handler
-    /// (`validate_collection`), like the share mint.
+    /// The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as
+    /// update authority.
     /// CHECK: owner, key and update authority are checked in `validate_collection`.
     pub collection: UncheckedAccount<'info>,
 
@@ -95,16 +94,14 @@ pub struct InitPool<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// The asset-mint policy (series-shelf 2b, decision 15). Refused, because they take or hide
-/// value or would freeze the vault at creation: `TransferFeeConfig`, `PermanentDelegate`,
-/// `TransferHook`, `NonTransferable`, every confidential extension (`ConfidentialTransferMint`,
-/// `ConfidentialTransferFeeConfig`, `ConfidentialMintBurn`: a mint that can hold confidential
-/// balances makes `vault.amount` unreliable as the NAV's first term), `MintCloseAuthority`, and
-/// `DefaultAccountState` unless the state is `Initialized`. Accepted and recorded as
-/// `asset_controls` bits: a freeze authority and `Pausable`, the issuer controls that can stop
-/// the vault without touching the program. Everything else (metadata, interest-bearing display
-/// rate, scaled UI amount, group membership) is accepted and not recorded. Works on a classic
-/// mint too: it has no extensions and may have a freeze authority.
+/// The asset-mint policy. Refused, because they take or hide value or would freeze the vault at
+/// creation: `TransferFeeConfig`, `PermanentDelegate`, `TransferHook`, `NonTransferable`, the
+/// confidential extensions (a mint that can hold confidential balances makes `vault.amount`
+/// unreliable as the NAV's first term), `MintCloseAuthority`, and `DefaultAccountState` unless the
+/// state is `Initialized`. Accepted and recorded as `asset_controls` bits: a freeze authority and
+/// `Pausable`, the issuer controls that can stop the vault without touching the program.
+/// Everything else is accepted and not recorded. A classic mint has no extensions and may have a
+/// freeze authority.
 fn asset_controls(asset_mint: &AccountInfo) -> Result<u8> {
     let data = asset_mint.data.borrow();
     let state = StateWithExtensions::<MintState>::unpack(&data)?;
@@ -136,15 +133,14 @@ fn asset_controls(asset_mint: &AccountInfo) -> Result<u8> {
     Ok(controls)
 }
 
-/// The share-mint policy (series-shelf 2c, decision 15). The admin creates the mint and the
-/// pool must be able to own and price it: owned by `share_token_program`, mint authority = the
-/// pool PDA, supply 0, the asset's decimals. Refused extensions: `TransferFeeConfig`,
-/// `TransferHook`, `MintCloseAuthority`, `PermanentDelegate`, `InterestBearingConfig` (a display
-/// rate on a NAV-priced share misleads wallets), the three confidential ones (a hidden supply
-/// breaks the price per share). `DefaultAccountState = Frozen` makes the shares permissioned and
-/// then requires a freeze authority, or nothing could ever be thawed. `NonTransferable` is
-/// allowed: deposit mints and redeem burns. Who the freeze authority is (Token ACL's
-/// `MintConfig` or a key) is the admin's choice and not recorded. Returns `permissioned`.
+/// The share-mint policy: the pool must be able to own and price the mint. Owned by
+/// `share_token_program`, mint authority = the pool PDA, supply 0, the asset's decimals. Refused
+/// extensions: `TransferFeeConfig`, `TransferHook`, `MintCloseAuthority`, `PermanentDelegate`,
+/// `InterestBearingConfig` (a display rate on a NAV-priced share misleads wallets), the
+/// confidential ones (a hidden supply breaks the price per share). `DefaultAccountState = Frozen`
+/// makes the shares permissioned and then requires a freeze authority, or nothing could ever be
+/// thawed. `NonTransferable` is allowed: deposit mints and redeem burns. Who the freeze authority
+/// is stays the admin's choice and is not recorded. Returns `permissioned`.
 fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
     let share_mint = &ctx.accounts.share_mint;
     require!(
@@ -185,14 +181,10 @@ fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
     Ok(permissioned)
 }
 
-/// The series' collection (decision 24, pagaré design): a Metaplex Core `CollectionV1` account
-/// whose update authority is this pool's PDA, so only the program can add assets to it and the
-/// pagarés it mints at `draw` are the only members. Created by the admin beforehand (the pool
-/// address is known before `init_pool`), the same pattern as the share mint.
-///
-/// Only the fixed head of `BaseCollectionV1` is read (`key: u8`, then `update_authority: Pubkey`
-/// at bytes 1..33): the borsh decoder would allocate the name and URI strings from a length
-/// prefix, and on a foreign account that prefix can be anything.
+/// The series' collection: a Metaplex Core `CollectionV1` whose update authority is this pool's
+/// PDA, so only the program can add assets to it. Only the fixed head of `BaseCollectionV1` is
+/// read (`key: u8`, then `update_authority: Pubkey` at bytes 1..33): a full decoder would allocate
+/// the name and URI from a length prefix that, on a foreign account, can be anything.
 fn validate_collection(collection: &AccountInfo, pool: &Pubkey) -> Result<()> {
     require!(*collection.owner == mpl_core::ID, PoolError::CollectionNotAllowed);
     let data = collection.data.borrow();
@@ -519,7 +511,7 @@ pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
 pub struct SetAttestor<'info> {
     pub admin: Signer<'info>,
 
-    /// The key that becomes the attestor; it signs, proving control of the key (condition C14).
+    /// The key that becomes the attestor; it signs, proving control of the key (C14).
     pub new_attestor: Signer<'info>,
 
     #[account(
@@ -531,10 +523,8 @@ pub struct SetAttestor<'info> {
     pub pool: Account<'info, Pool>,
 }
 
-/// Admin and the new attestor, which proves control of its key by signing (condition C14; the
-/// holder-facing and court-facing parts of a rotation stay off chain). The attestor can block
-/// every opening, draw and endoso by withholding its signature and can move nothing; replacing it
-/// is the recovery when its key rotates or is lost.
+/// The admin and the new attestor sign. The attestor can block every opening, draw and
+/// cancellation by withholding its signature and can move nothing.
 pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
     let attestor = ctx.accounts.new_attestor.key();
     let pool = &mut ctx.accounts.pool;

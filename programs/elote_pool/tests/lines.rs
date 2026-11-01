@@ -94,7 +94,7 @@ fn open_draw_repay_full_cycle_raises_share_value() {
     assert_eq!(ev.assets, 1_040_000);
 }
 
-/// D16: the attestor co-signs every opening; D14: and every draw. A stranger in its place, or
+/// The attestor co-signs every opening and every draw. A stranger in its place, or
 /// the right key without a signature, is refused.
 #[test]
 fn the_attestor_must_sign_openings_and_draws() {
@@ -218,7 +218,7 @@ fn sponsor_pays_interest_on_behalf() {
 }
 
 /// Overpayment is clamped on every line: the payer is debited what is due and no more, and the
-/// line closes. The version-1 rejection is gone (and with it register R-10).
+/// line closes.
 #[test]
 fn repay_clamps_overpayment_and_rejects_wrong_status() {
     let mut env = Env::new();
@@ -378,7 +378,7 @@ fn open_rejects_bad_params() {
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
     env.expect_err(ix, &admin, &signers, E_WRONG_AMOUNT);
 
-    // The expediente root is a commitment the line cannot do without (D15).
+    // The expediente root is a commitment the line cannot do without.
     let mut p = good;
     p.expediente_root = [0; 32];
     let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
@@ -410,8 +410,8 @@ fn open_rejects_bad_params() {
     assert_eq!(env.pool(&k).line_count, 2);
 }
 
-/// D3: the window closes strictly, at `term_end` on a bullet line. An approved line nobody drew
-/// stays `Approved` and lapses; `cancel_line` (step 5c) clears it.
+/// The window closes strictly, at `term_end` on a bullet line. An approved line nobody drew
+/// stays `Approved` and lapses; `cancel_line` clears it.
 #[test]
 fn the_draw_window_of_a_bullet_line_closes_at_the_term_exactly() {
     let mut env = Env::new();
@@ -435,7 +435,7 @@ fn the_draw_window_of_a_bullet_line_closes_at_the_term_exactly() {
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT);
 }
 
-/// Decision 20 / D13. `open_line` refuses a principal above `max_line_bps` of the NAV at the
+/// `open_line` refuses a principal above `max_line_bps` of the NAV at the
 /// opening (`LineTooLarge`). The NAV counts principal lent out, so drawing one line does not
 /// shrink the room for the next; a pool with nothing deposited opens no line at all.
 #[test]
@@ -480,7 +480,7 @@ fn open_line_refuses_a_principal_above_max_line_bps_of_the_nav() {
 }
 
 /// The first tranche is the only one to flip `Approved -> Active`; later tranches keep
-/// `drawn_at` (informational since decision 25) and the status.
+/// `drawn_at` (informational) and the status.
 #[test]
 fn draw_state_follows_the_tranches() {
     let mut env = Env::new();

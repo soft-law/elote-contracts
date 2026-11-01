@@ -149,7 +149,7 @@ fn open_rejects_invalid_schedules() {
     assert_eq!(env.pool(&k).line_count, 2);
 }
 
-/// D3 and decision 25: the draw window closes at the first due date, strictly, because an
+/// The draw window closes at the first due date, strictly, because an
 /// installment counts as due at the second it falls due. The dates are fixed by the contract, so
 /// nothing about them is re-checked at the draw.
 #[test]
@@ -251,7 +251,7 @@ fn late_interest_accrues_after_grace_and_is_collected_first() {
     let a = env.arrears(&k, line_id);
     assert_eq!((a.missed, a.overdue, a.late_due), (1, 1_120_000, 0));
 
-    // 1% of a year after grace, on the principal share of the 1.12 installment (1.0; decision 11,
+    // 1% of a year after grace, on the principal share of the 1.12 installment (1.0;
     // no interest on overdue interest): 1.0 * 100% * 0.01 = 0.01.
     let year = elote_pool::state::SECONDS_PER_YEAR as i64;
     env.warp(t0 + p.interval() + i64::from(grace) + year / 100);
@@ -317,7 +317,7 @@ fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
 
 /// One repayment order for every line since line v3: late interest, then interest, then
 /// principal, and never more than is due. The version-1 "principal first, reject overpayment"
-/// branch is gone, which also closes register R-10 (a zero-loss write-off can no longer forfeit
+/// branch is gone (a zero-loss write-off can no longer forfeit
 /// the interest, since a line with principal left always has interest left too).
 #[test]
 fn repayment_order_is_interest_first_and_clamps_overpayment_on_every_line() {
@@ -643,7 +643,7 @@ fn late_interest_caps_each_overdue_part_separately() {
     assert_eq!(find_event::<LateInterestCollected>(&meta).unwrap().amount, expected);
 }
 
-/// R-11. A repayment settles the late interest accrued until its own time and moves the
+/// A repayment settles the late interest accrued until its own time and moves the
 /// watermark. When the accrued amount rounds down to zero, the watermark must not move: otherwise
 /// a borrower paying one unit every few seconds would keep the accrual below one unit forever
 /// and never owe late interest at all.

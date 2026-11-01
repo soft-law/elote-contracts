@@ -1,10 +1,6 @@
-//! The pagaré after its issuance: `cancel_pagare` extinguishes a paid pagaré (step 6c); the endoso
-//! (`endorse_pagare`, step 6d) will live here too. Issuance stays in `lines.rs`, inside `draw`.
-//!
-//! Per the legal brief of 2026-11-01 (C22; LGTOC 17 and 129; CCF 2088), extinction is an act of
-//! the holder against a receipt, not a permissionless burn: the holder and the attestor sign, the
-//! sidecar becomes the lasting "PAGADO" mark, and the asset is burnt last through the permanent
-//! burn delegate the pool PDA holds.
+//! The pagaré after its issuance (issuance is `draw`, in `lines.rs`). Extinction is an act of the
+//! holder against a receipt (C22; LGTOC 17, 129): the holder and the attestor sign, the sidecar
+//! becomes the lasting PAGADO mark, and the asset is burnt last.
 
 use anchor_lang::prelude::*;
 
@@ -21,18 +17,15 @@ use crate::state::{seeds, CreditLine, LineStatus, Pagare, Pool, PAGARE_OUTSTANDI
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct CancelPagare<'info> {
-    /// The pagaré's current holder. While the asset is in the pool that is the admin, the
-    /// vehicle's signer (step 6d extends this to the holder of record after an endoso).
+    /// The pagaré's holder: the admin while the asset is in the pool.
     #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
     pub holder: Signer<'info>,
 
-    /// The pool's attestor: the agreements engine attests the receipt behind `receipt_hash` was
-    /// signed and is conserved, and that the AppData log was archived before the burn.
+    /// Attests the receipt behind `receipt_hash` and that the AppData log was archived.
     #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
     pub attestor: Signer<'info>,
 
-    /// Receives the asset's rent from the Core program when it is burnt (the relayer that funded
-    /// it at the draw, as a rule). Any signer.
+    /// Receives the asset's rent from the Core program. Any signer.
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -75,23 +68,14 @@ pub struct CancelPagare<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Extinguishes pagaré `draw_index` of the line against the FEA-signed receipt whose hash is
-/// `receipt_hash` (LGTOC 129). Checks, all before any write: the pagaré is outstanding
-/// (`PagareAlreadyPaid`); `receipt_hash` is not zero (`DocumentHashRequired`); the line is
-/// `Active` or `Repaid` (`LineStatus`: in collection or written off the títulos stay in force);
-/// the coverage rule, `principal_repaid >= drawn_through` (`PagareNotCovered`): the principal of
-/// pagarés `0..=k` is repaid, and since `repay` settles interest before principal, so is every unit
-/// of interest fixed up to that payment. Repayments cover the pagarés oldest first, so a later one
-/// cannot be cancelled while an earlier one is uncovered. Interest alone covers nothing: a título
-/// is never extinguished while any of its principal is owed. The program does not check that the
-/// receipt is distinct from other receipts; the engine issues one per pagaré and the attestor's
-/// signature is the guard. Writes the "PAGADO" mark (`status`, `paid_at`, `receipt_hash`), emits
-/// `PagareCancelled`, then burns the asset through the permanent burn delegate, last. Not blocked
-/// by the pause: it records a payment and moves no funds.
-///
-/// The event carries no AppData length: reading it back would mean decoding the asset's external
-/// adapter header on chain (§5 fixed-offset rule), and the engine archives the log (NOM-151)
-/// before it asks for the burn.
+/// Checks, all before any write: the pagaré is outstanding (`PagareAlreadyPaid`); `receipt_hash`
+/// is not zero (`DocumentHashRequired`); the line is `Active` or `Repaid` (`LineStatus`: in
+/// collection or written off the títulos stay in force); `principal_repaid >= drawn_through`
+/// (`PagareNotCovered`). Coverage counts principal only, oldest pagaré first: `repay` settles
+/// interest before principal, so when the principal of pagarés `0..=k` is repaid every unit of
+/// interest fixed up to that payment is too, and a título never goes while its principal is owed.
+/// Receipt uniqueness is the engine's and the attestor's, not checked here. Never paused: it
+/// records a payment and moves no funds.
 pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
