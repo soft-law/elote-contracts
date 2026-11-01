@@ -439,6 +439,15 @@ investor-side thaw relayer (backend); the agreements engine (NOM-151, salts, doc
   `repay` (~5k CU per touched sidecar, client splits beyond eight), Pagado entry at coverage sets
   paid-pending-cancel; backstop built in part 1 (`cancel_delay_seconds` in Pool.reserved 8..12,
   floor 7 days). Dev on step 7; 6d part 1 released after step 7 and the audit report.
+- **Audit report received** (`docs/audits/2026-11-01-elote-pool-audit.md`, branch
+  `audit/2026-11-01-elote-pool`, commit `b0d7ce2`): risk 5, eight findings (one sev 5, three sev 3,
+  four informational), no funds path, baseline reproduced, refactor `4a440c0` verified. **Step 8
+  "audit fixes"** ordered after step 7: F-01 Repaid only when the window is closed or nothing
+  remains to draw (PoC as regression test, D5 reworded); F-02 collection must carry no plugin
+  header and no minted assets; F-03 `collection_period_seconds` (Pool.reserved 12..16, floor 30
+  days) and `collection_started_at` on the line (layout grows once with step 7: 305 → 321);
+  F-05 role separation and share-mint policy; F-07 error hygiene; F-06 closes with 6d (cancel by
+  sidecar status); F-08 and F-04 documentation/ops. Order: step 7 → step 8 → 6d part 1.
 
 ## Points the coordinator still owns
 
