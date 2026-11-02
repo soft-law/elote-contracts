@@ -429,49 +429,59 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     env.cancel_pagare(&k, line_id, 0);
 }
 
-/// A pagaré is cancelled only while its line is `Active` or `Repaid`: in collection or written
-/// off the títulos stay in force for the collection (and a line in collection that pays in full
-/// is repaid again, so its pagarés cancel then); a cancelled line never drew, so it has no
-/// sidecar to cancel.
+/// Cancellation follows the sidecar's PAGADO mark, not the line's status (re-audit F-06): a
+/// pagaré a payment covered cancels while its line is in collection or written off, and the
+/// backstop request works there too; the pagarés no payment covered stay in force for the
+/// collection. A cancelled line never drew, so it has no sidecar to cancel.
 #[test]
-fn cancel_pagare_is_refused_in_collection_after_write_off_and_without_a_sidecar() {
+fn cancel_pagare_follows_the_mark_whatever_the_line_status() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
     let admin = env.admin.insecure_clone();
+    let a = admin.pubkey();
 
-    // In collection: refused even for a covered pagaré; repaid in full afterwards: allowed.
+    // In collection: a payment after the mark covers pagaré 0; it cancels, the line stays in
+    // collection, pagaré 1 stays in force.
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     let t0 = env.now();
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.draw_amount(&k, line_id, &borrower, 5 * UNIT);
-    env.repay(&k, line_id, &borrower, UNIT);
     env.warp(t0 + 3 * p.interval() + 1);
     let keeper = env.funded(1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &keeper, &[]);
-    env.expect_cancel_err(&k, line_id, 0, E_LINE_STATUS);
     let line = env.line(&k, line_id);
-    let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), owed);
-    env.repay(&k, line_id, &borrower, owed);
-    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    let cover0 = env.arrears(&k, line_id).late_due + line.interest_due - line.interest_repaid + UNIT;
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), cover0);
+    env.repay(&k, line_id, &borrower, cover0);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
+    assert_eq!(env.pagare(&k, line_id, 0).status, elote_pool::state::PAGARE_PAID_PENDING_CANCEL);
     env.cancel_pagare(&k, line_id, 0);
-    env.cancel_pagare(&k, line_id, 1);
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
+    env.expect_cancel_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
 
-    // Written off: refused, the pagaré outlives the loss.
+    // Written off: the covered pagaré is requested and cancelled; the other outlives the loss.
     let borrower = env.borrower(&k);
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.draw_amount(&k, line_id, &borrower, UNIT);
-    env.repay(&k, line_id, &borrower, UNIT);
+    let cover0 = env.line(&k, line_id).interest_due + UNIT;
+    env.repay(&k, line_id, &borrower, cover0);
     env.warp(p.term_end + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
+    let ix = env.write_off_ix(&k, line_id, &a);
     env.send(ix, &admin, &[]);
-    env.expect_cancel_err(&k, line_id, 0, E_LINE_STATUS);
-    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_OUTSTANDING);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
+    let ix = env.request_cancellation_ix(&k, line_id, 0, &a, RECEIPT_HASH);
+    env.send(ix, &admin, &[]);
+    env.cancel_pagare(&k, line_id, 0);
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
+    env.expect_cancel_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    let ix = env.request_cancellation_ix(&k, line_id, 1, &a, RECEIPT_HASH);
+    env.expect_err(ix, &admin, &[], E_PAGARE_NOT_COVERED);
+    assert_eq!(env.pagare(&k, line_id, 1).status, PAGARE_OUTSTANDING);
 
     // Cancelled: no sidecar was ever created.
     let borrower = env.borrower(&k);
@@ -481,7 +491,6 @@ fn cancel_pagare_is_refused_in_collection_after_write_off_and_without_a_sidecar(
     env.send(ix, &admin, &[]);
     let line_key = line_pda(&k.pool, line_id).0;
     let attestor = env.attestor.insecure_clone();
-    let a = admin.pubkey();
     let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, pagare_asset_pda(&line_key, 0).0, k.collection, None, Some(attestor.pubkey()));
     env.expect_err(ix, &admin, &[&attestor], E_ACCOUNT_NOT_INITIALIZED);
 }

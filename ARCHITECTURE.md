@@ -452,7 +452,9 @@ leaves no entry and is shown as such.
 **Two notes from the audit of 2026-11-01.** F-06: with the PAGADO mark written at the moment of
 payment (decision 30), `cancel_pagare` in 6d depends on the sidecar's status
 (`PAGARE_PAID_PENDING_CANCEL`) and no longer on the line's status, so a covered pagaré of a line
-in collection is extinguished like any other; F-06 closes with 6d. §8 item 1: the coverage rule
+in collection or written off is extinguished like any other. The re-audit of 2026-11-02 found the
+line-status check still in `cancel_pagare` and `request_cancellation`; it was removed, and F-06 is
+closed. §8 item 1: the coverage rule
 after an endoso en propiedad (`principal_repaid` moves only with payments into the pool's vault)
 is undefined until the C32 extension design; it belongs to part 2 and is not built in v1.
 
@@ -912,9 +914,9 @@ the payment must outlive the título.
   (`NotHolder`, then `ProcuracionState` if the recorded procurador had no procuración in force,
   unreachable while the two are cleared together); `pagare.status` is outstanding
   (`PagareAlreadyPaid`: paid is terminal and the asset is gone); `receipt_hash != [0; 32]`
-  (`DocumentHashRequired`); `line.status` is `Active` or `Repaid` (`LineStatus`: in collection or
-  written off the títulos stay in force for the collection; a line in collection that pays in
-  full is `Repaid` and its pagarés cancel then); the PAGADO mark a repayment wrote,
+  (`DocumentHashRequired`); the PAGADO mark a repayment wrote, whatever the line's status (a
+  pagaré a payment covered cancels in collection or after a write-off; the uncovered ones stay in
+  force for the collection),
   `status == PAGARE_PAID_PENDING_CANCEL` (`PagareNotCovered` while outstanding). The mark replaces
   the coverage rule of the first version and keeps its order: `repay` marks the pagarés oldest
   first as its principal reaches each `drawn_through` (`drawn_through` is the line's drawn after

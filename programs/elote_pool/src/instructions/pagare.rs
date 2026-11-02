@@ -89,9 +89,8 @@ pub struct CancelPagare<'info> {
 /// request's deadline has passed and `receipt_hash` is the requested one (the backstop on the
 /// attestor, LGTOC 17 and 129; `AttestorRequired` otherwise). Checks, all before any write: the
 /// pagaré is outstanding (`PagareAlreadyPaid`); `receipt_hash` is not zero
-/// (`DocumentHashRequired`); the line is
-/// `Active` or `Repaid` (`LineStatus`: in collection or written off the títulos stay in force);
-/// the title carries the PAGADO mark a repayment wrote, `PAGARE_PAID_PENDING_CANCEL`
+/// (`DocumentHashRequired`); the title carries the PAGADO mark a repayment wrote,
+/// `PAGARE_PAID_PENDING_CANCEL`, whatever the line's status
 /// (`PagareNotCovered` while outstanding: `repay` marks the pagarés oldest first as its principal
 /// reaches each `drawn_through`, interest covering nothing by itself). Writes the `Terminacion`
 /// entry (from the signer's role, to the pool), `status = PAGARE_PAID`, `cancel_receipt_hash`
@@ -112,7 +111,6 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
     }
     require!(pagare.status != PAGARE_PAID, PoolError::PagareAlreadyPaid);
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
-    require!(matches!(line.status, LineStatus::Active | LineStatus::Repaid), PoolError::LineStatus);
     require!(pagare.status == PAGARE_PAID_PENDING_CANCEL, PoolError::PagareNotCovered);
     let now = Clock::get()?.unix_timestamp;
     // The attestor, or the backstop: the holder alone, once a recorded request's deadline has
@@ -549,7 +547,6 @@ pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, 
     let pagare = &ctx.accounts.pagare;
     require!(pagare.status != PAGARE_PAID, PoolError::PagareAlreadyPaid);
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
-    require!(matches!(line.status, LineStatus::Active | LineStatus::Repaid), PoolError::LineStatus);
     require!(pagare.status == PAGARE_PAID_PENDING_CANCEL, PoolError::PagareNotCovered);
     require!(pagare.cancel_after == 0, PoolError::CancellationPending);
     let now = Clock::get()?.unix_timestamp;
