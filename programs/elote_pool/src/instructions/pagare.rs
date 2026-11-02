@@ -265,7 +265,7 @@ pub struct EndorsePagare<'info> {
 /// an owner-managed `BurnDelegate` whose authority is the program PDA `["procurador", pagare, to]`,
 /// which nobody holds a key for, so the burn can only happen inside `cancel_pagare` with the
 /// receipt and the PAGADO mark. Checks, before any write: `kind == KIND_PROCURACION`
-/// (`EndosoKindInvalid`); `to` is not the zero key nor the pool (`EndorseeInvalid`);
+/// (`EndosoKindInvalid`); `to` is not the zero key, the pool, the attestor or the admin (`EndorseeInvalid`);
 /// `endoso_hash != 0` (`DocumentHashRequired`); the line is not `WrittenOff` (`LineStatus`); the
 /// pagaré is outstanding (`PagareAlreadyPaid`); no procuración is in force (`ProcuracionState`).
 /// The plugin is added the first time and its authority approved afterwards (Core refuses a second
@@ -273,9 +273,13 @@ pub struct EndorsePagare<'info> {
 pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32]) -> Result<()> {
     use mpl_core::instructions::{AddPluginV1CpiBuilder, ApprovePluginAuthorityV1CpiBuilder};
     use mpl_core::types::{BurnDelegate, Plugin, PluginAuthority, PluginType};
-    let pool_key = ctx.accounts.pool.key();
+    let pool = &ctx.accounts.pool;
+    let pool_key = pool.key();
     require!(kind == KIND_PROCURACION, PoolError::EndosoKindInvalid);
-    require!(to != Pubkey::default() && to != pool_key, PoolError::EndorseeInvalid);
+    require!(
+        to != Pubkey::default() && to != pool_key && to != pool.attestor && to != pool.admin,
+        PoolError::EndorseeInvalid
+    );
     require!(endoso_hash != [0u8; 32], PoolError::DocumentHashRequired);
     require!(ctx.accounts.line.status != LineStatus::WrittenOff, PoolError::LineStatus);
     let pagare = &ctx.accounts.pagare;

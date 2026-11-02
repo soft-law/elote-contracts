@@ -967,8 +967,9 @@ The endoso en procuración (LGTOC 35), the only kind the pool makes in this vers
   has `has_one = line`; `asset` is `pagare.asset`; `collection` is `pool.collection`;
   `mpl_core_program` is the Core program id.
 - **Checks, in order (all before any write):** `kind == KIND_PROCURACION` (`EndosoKindInvalid`;
-  the other kinds are specified in §2.3 and not built); `to` is neither the zero key nor the pool
-  (`EndorseeInvalid`); `endoso_hash != 0` (`DocumentHashRequired`); the line is not
+  the other kinds are specified in §2.3 and not built); `to` is not the zero key, the pool, the attestor or
+  the admin (`EndorseeInvalid`: the procurador is a third party, and naming the attestor would
+  collapse the two signatures its cancellation needs into one key, re-audit N-03); `endoso_hash != 0` (`DocumentHashRequired`); the line is not
   `WrittenOff` (`LineStatus`); the pagaré is outstanding (`PagareAlreadyPaid`); no procuración is
   in force (`ProcuracionState`, `flags` bit 1).
 - **Writes:** the entry appended to the sidecar's chain (`kind`, from = the pool, `to`,

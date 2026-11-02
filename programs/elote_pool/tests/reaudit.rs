@@ -86,3 +86,24 @@ fn n01_the_entry_counter_is_wide_enough() {
     assert_eq!(u64::from(env.pagare(&k, line_id, 0).entry_count), u64::from(u16::MAX) + 1);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
+
+/// N-03: the procurador is a third party: neither the attestor (whose signature the procurador's
+/// cancellation also needs) nor the admin (the holder) may be named.
+#[test]
+fn n03_the_attestor_and_the_admin_cannot_be_procurador() {
+    use elote_pool::state::KIND_PROCURACION;
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = env.open_line_with(&k, &borrower, &p, None).0;
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let admin = env.admin.insecure_clone();
+    let attestor = env.attestor.insecure_clone();
+    let a = admin.pubkey();
+    for to in [attestor.pubkey(), a] {
+        let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, to, [0x44; 32]);
+        env.expect_err(ix, &admin, &[&attestor], E_ENDORSEE_INVALID);
+    }
+    assert_eq!(env.pagare(&k, line_id, 0).entry_count, 1, "nothing was appended");
+}
