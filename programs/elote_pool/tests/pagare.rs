@@ -650,7 +650,7 @@ fn an_endoso_en_procuracion_appends_the_entry_and_lends_the_burn_to_a_program_ad
 /// endorsee named and not the pool; a hash; a line not written off; a pagaré outstanding.
 #[test]
 fn endorse_pagare_refuses_other_kinds_bad_endorsees_and_the_wrong_signers() {
-    use elote_pool::state::{KIND_ABONO, KIND_PROCURACION, KIND_PROPIEDAD, KIND_RECIBO};
+    use elote_pool::state::{KIND_ABONO, KIND_PROCURACION, KIND_RECIBO};
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
@@ -661,7 +661,8 @@ fn endorse_pagare_refuses_other_kinds_bad_endorsees_and_the_wrong_signers() {
     let attestor = env.attestor.insecure_clone();
     let procurador = env.funded(1);
     let a = admin.pubkey();
-    for kind in [KIND_PROPIEDAD, KIND_ABONO, KIND_RECIBO, KIND_RECIBO + 1] {
+    // 1 is the reserved code of the endoso en propiedad.
+    for kind in [1, KIND_ABONO, KIND_RECIBO, KIND_RECIBO + 1] {
         let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, kind, procurador.pubkey(), ENDOSO_HASH);
         env.expect_err(ix, &admin, &[&attestor], E_ENDOSO_KIND_INVALID);
     }

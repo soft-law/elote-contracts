@@ -302,8 +302,7 @@ pool. The procuración lends the power to extinguish the pagaré through an owne
 `BurnDelegate` whose authority is the program address `["procurador", pagare, procurador]`, never
 the procurador's key: an approved owner-managed delegate can call `BurnV1` directly, which would
 extinguish the title without payment, receipt or PAGADO mark. Only the program signs for that
-address, so the burn happens only inside `cancel_pagare` (§5.13–§5.15). The kinds `Propiedad` and
-`EndosoTardio` have codes in the registry; no instruction writes them.
+address, so the burn happens only inside `cancel_pagare` (§5.13–§5.15).
 
 **The registry: a hash chain in the sidecar** (`registry.rs`). The registry is program-owned so
 that no holder can block or erase an entry: a payment entry must not depend on a third-party
@@ -328,10 +327,10 @@ for the holder ("el tenedor autoriza al sistema de información a asentar los ab
   chain from the events and compare it with `log_root`. `stated_at` is the date the entry states
   and `recorded_at` the slot's time; every entry the program writes has both at `now`.
 - Kinds are fixed codes, and an instruction refuses a kind it does not write (art. 30 presumes
-  propiedad when the class is missing, so it is never left blank): `Emision` (0), `Propiedad`
-  (1), `Procuracion` (2), `Revocacion` (3), `Terminacion` (4), `Abono` (5), `AnotacionJudicial`
-  (6), `ConstanciaJudicial` (7), `EndosoTardio` (8), `Pagado` (9), `SolicitudCancelacion` (10),
-  `Recibo` (11).
+  propiedad when the class is missing, so it is never left blank): `Emision` (0), reserved (1,
+  for the endoso en propiedad), `Procuracion` (2), `Revocacion` (3), `Terminacion` (4), `Abono`
+  (5), `AnotacionJudicial` (6), `ConstanciaJudicial` (7), reserved (8, for the late endoso),
+  `Pagado` (9), `SolicitudCancelacion` (10), `Recibo` (11). The reserved codes are never reused.
 
 | instruction | kind | from | to | hash |
 |---|---|---|---|---|
@@ -1245,13 +1244,5 @@ remaining accounts of a `repay`, and a payment that would touch more than
 
 ## 12. Deployment
 
-| cluster | program id | upgrade authority | built from |
-|---|---|---|---|
-| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single hot key) | the `colosseum-2026` build (Anchor 1.1.2 / Solana 3.1.10; same program logic as tag `pre-audit-2026-10-19`), **not `main`** |
-| mainnet-beta | not deployed | | |
-
-The devnet program data (`4CfrXy4vai6ETomrEqrHKMCdUM532UkdXG92BJh7oSLs`) was compared byte for
-byte on 2026-10-19 with the hackathon build (sha256 `a88121a6…`). Builds are path-dependent on a
-developer machine (the same `main` commit produced two different `.so` hashes in two directories),
-so only a `solana-verify` build in its container is comparable with the on-chain hash. Before
+devnet still runs the hackathon build, which is not v1; the PR 3 redeploy replaces it. Before
 mainnet: deploy from `main`, Squads multisig as upgrade authority, IDL on chain, verified build.

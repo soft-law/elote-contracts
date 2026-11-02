@@ -240,15 +240,14 @@ pub const PAGARE_FLAG_BURN_DELEGATE: u8 = 1 << 0;
 pub const PAGARE_FLAG_PROCURACION: u8 = 1 << 1;
 
 /// Registry entry kinds (`Pagare::last_kind`, `PagareEntry::kind`).
+// Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso; never reuse them.
 pub const KIND_EMISION: u8 = 0;
-pub const KIND_PROPIEDAD: u8 = 1;
 pub const KIND_PROCURACION: u8 = 2;
 pub const KIND_REVOCACION: u8 = 3;
 pub const KIND_TERMINACION: u8 = 4;
 pub const KIND_ABONO: u8 = 5;
 pub const KIND_ANOTACION_JUDICIAL: u8 = 6;
 pub const KIND_CONSTANCIA_JUDICIAL: u8 = 7;
-pub const KIND_ENDOSO_TARDIO: u8 = 8;
 pub const KIND_PAGADO: u8 = 9;
 pub const KIND_SOLICITUD_CANCELACION: u8 = 10;
 pub const KIND_RECIBO: u8 = 11;
