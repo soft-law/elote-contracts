@@ -2,8 +2,9 @@
 # The scripts end to end on a local validator: the demo (pool, deposits, a line drawn and repaid,
 # a redemption), then open-line.ts, six draws with draw.ts, one payoff with repay.ts (split into
 # parts of at most five pagaré records) and every cancel-pagare.ts branch that does not need the
-# clock moved forward. The procurador's branch needs an endoso (no script) and the backstop's
-# success needs seven days to pass; the Rust suite covers both.
+# clock moved forward. A third line covers endorse-pagare.ts (an endoso en procuración, a revocation)
+# and the procurador's cancellation. The backstop's success needs seven days to pass; the Rust suite
+# covers it.
 #
 #   scripts/local-e2e.sh            (after `NO_DNA=1 anchor build --ignore-keys --arch v0`)
 #
@@ -90,5 +91,37 @@ grep -q "attestor must sign" "$WORK/backstop.err" || { echo "error: unexpected r
 echo "  refused as expected: $(cat "$WORK/backstop.err")"
 echo "== cancel-pagare.ts: pagaré 1, with the attestor despite the pending request"
 run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 1 --receipt-hash "$RECEIPT"
+
+echo "== endorse-pagare.ts: a third line, pagaré 0 en procuración, pagaré 1 endorsed and revoked"
+solana-keygen new --no-bip39-passphrase --silent -o "$KEYS/procurador.json" >/dev/null
+PROCURADOR="$(solana-keygen pubkey "$KEYS/procurador.json")"
+run open-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --principal 300 --agreement-hash "$HASH"
+for i in 0 1 2; do
+  run draw.ts --pool "$POOL" --line-id 2 --borrower-keypair "$KEYS/borrower.json" --amount 100 --document-hash "$HASH"
+done
+run endorse-pagare.ts --pool "$POOL" --line-id 2 --draw-index 0 --procurador "$PROCURADOR" | tee "$WORK/endorse.log"
+grep -q "procuración in force, procurador $PROCURADOR" "$WORK/endorse.log" || { echo "error: no procuración recorded" >&2; exit 1; }
+run endorse-pagare.ts --pool "$POOL" --line-id 2 --draw-index 1 --procurador "$PROCURADOR"
+run endorse-pagare.ts --pool "$POOL" --line-id 2 --draw-index 1 --revoke | tee "$WORK/revoke.log"
+grep -q "procuración none" "$WORK/revoke.log" || { echo "error: the procuración was not revoked" >&2; exit 1; }
+if run endorse-pagare.ts --pool "$POOL" --line-id 2 --draw-index 2 --procurador "$POOL" 2>"$WORK/endorsee.err"; then
+  echo "error: the pool was accepted as procurador" >&2; exit 1
+fi
+echo "  refused as expected: $(cat "$WORK/endorsee.err")"
+
+echo "== repay.ts: the sponsor pays the interest, the borrower the principal"
+run repay.ts --pool "$POOL" --line-id 2 --amount 15 --payer-keypair "$KEYS/sponsor.json"
+run repay.ts --pool "$POOL" --line-id 2 --all | tee "$WORK/repay2.log"
+grep -q 'status       Repaid' "$WORK/repay2.log" || { echo "error: the third line is not repaid" >&2; exit 1; }
+
+echo "== cancel-pagare.ts: pagaré 0 by the procurador, pagarés 1 and 2 by the holder with the attestor"
+if run cancel-pagare.ts --pool "$POOL" --line-id 2 --draw-index 1 --receipt-hash "$RECEIPT" --procurador-keypair "$KEYS/procurador.json" 2>"$WORK/revoked.err"; then
+  echo "error: the procurador cancelled a pagaré whose procuración was revoked" >&2; exit 1
+fi
+echo "  refused as expected: $(cat "$WORK/revoked.err")"
+run cancel-pagare.ts --pool "$POOL" --line-id 2 --draw-index 0 --receipt-hash "$RECEIPT" --procurador-keypair "$KEYS/procurador.json" | tee "$WORK/procurador.log"
+grep -q 'PAID (extinguished).*burnt' "$WORK/procurador.log" || { echo "error: the procurador's cancellation did not burn the asset" >&2; exit 1; }
+run cancel-pagare.ts --pool "$POOL" --line-id 2 --draw-index 1 --receipt-hash "$RECEIPT"
+run cancel-pagare.ts --pool "$POOL" --line-id 2 --draw-index 2 --receipt-hash "$RECEIPT"
 
 echo "== local e2e passed"

@@ -325,6 +325,12 @@ follow"). A payment that would touch more than five pagaré records is split int
 calls (`MAX_SIDECARS_PER_REPAY`); a part refused because another payment landed first is rebuilt
 and sent again.
 
+`scripts/endorse-pagare.ts --pool <address> --line-id <n> --draw-index <n> --procurador <address>`
+endorses an outstanding pagaré en procuración (the admin as holder and the attestor sign;
+`--endoso-hash`), and `--revoke` (with `--revocation-hash`) revokes the procuración in force. The
+procurador can never be the pool, the admin or the attestor; endorse before the payment marks the
+pagaré paid.
+
 `scripts/cancel-pagare.ts --pool <address> --line-id <n> --draw-index <n> --receipt-hash <64 hex>`
 extinguishes a pagaré a repayment marked paid: by default the admin as holder with the attestor;
 `--request` files the holder's cancellation request; `--backstop` cancels without the attestor
