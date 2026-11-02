@@ -615,7 +615,10 @@ pub struct AnnotatePayment<'info> {
 /// as a `Recibo` entry over `receipt_hash` (`DocumentHashRequired`), from the annotator to the
 /// pool. The chain does not keep the kinds of past entries, so the reference is not checked to be
 /// a payment entry beyond existing; the engine checks it. Allowed whatever the title's status, a
-/// burnt one included: the sidecar persists and a receipt may arrive late.
+/// burnt one included: the sidecar persists and a receipt may arrive late. The payer's
+/// `receipt_hash` on the PAGADO mark is provisional: the holder's annotation replaces it while the
+/// burn is still owed (`PAGARE_PAID_PENDING_CANCEL`); after the burn it stays the receipt the
+/// cancellation rested on, and the attestor's annotation never touches it.
 pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32]) -> Result<()> {
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     let pagare = &mut ctx.accounts.pagare;
@@ -624,6 +627,9 @@ pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_co
     let pool_key = ctx.accounts.pool.key();
     let annotator = ctx.accounts.annotator.key();
     let hash = registry::append(pagare, KIND_RECIBO, &annotator, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
+    if annotator == ctx.accounts.pool.admin && pagare.status == PAGARE_PAID_PENDING_CANCEL {
+        pagare.receipt_hash = receipt_hash;
+    }
     let line_id = ctx.accounts.line.line_id;
     emit_cpi!(PagareEntry {
         pool: pool_key,

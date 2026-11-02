@@ -649,7 +649,7 @@ pub struct Repay<'info> {
 /// whose cursor has passed its last draw (or never drew) passes none. Each covered pagaré gets a
 /// `Pagado` entry, `PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash` (the PAGADO mark at
 /// the moment of payment; only the burn waits) and the cursor moves past it; the uncovered one
-/// gets an `Abono`. `receipt_hash` is the payer's and unverified; zero means "receipt to follow"
+/// gets an `Abono`. `receipt_hash` is the payer's, unverified and provisional until the holder annotates it; zero means "receipt to follow"
 /// (`annotate_payment` attaches it later).
 pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash: [u8; 32]) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;

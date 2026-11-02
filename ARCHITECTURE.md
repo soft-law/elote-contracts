@@ -1054,7 +1054,7 @@ title if the attestor fails.
 - **Writes:** `Pool.reserved[8..12]`. Applies to requests filed from now on; a pending request
   keeps the deadline it stored. **Events:** `CancelDelaySet`.
 
-### 5.20 `annotate_payment(draw_index: u16, entry_count: u16, receipt_hash: [u8; 32])`
+### 5.20 `annotate_payment(draw_index: u16, entry_count: u32, receipt_hash: [u8; 32])`
 
 The repair path of the payment entries: a `repay` carries the payer's receipt hash, which a third
 party may leave zero or wrong; the holder or the attestor attaches the real receipt afterwards.
@@ -1066,7 +1066,11 @@ party may leave zero or wrong; the holder or the attestor attaches the real rece
   pagare.entry_count` (`EntryNotFound`): the referenced entry exists. The chain keeps no kinds of
   past entries, so that it is a payment entry is the engine's to check. Any title status,
   burnt included: the sidecar persists and a receipt may arrive late.
-- **Writes:** the `Recibo` entry (from the annotator, to the pool, over `receipt_hash`).
+- **Writes:** the `Recibo` entry (from the annotator, to the pool, over `receipt_hash`). When the
+  holder signs and the title is `PAGARE_PAID_PENDING_CANCEL`, also `pagare.receipt_hash`: the
+  payer's hash on the PAGADO mark is provisional until then (a stranger's covering payment can put
+  any hash there; re-audit N-04). After the burn the field is frozen with the receipt the
+  cancellation rested on, and the attestor's annotation never touches it.
 - **Events:** `PagareEntry`, then `PagareReceiptAnnotated` (`draw_index`, `entry_count` of the
   Recibo, `payment_entry_count` referenced, `receipt_hash`).
 

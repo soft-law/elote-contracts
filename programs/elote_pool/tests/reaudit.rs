@@ -107,3 +107,52 @@ fn n03_the_attestor_and_the_admin_cannot_be_procurador() {
     }
     assert_eq!(env.pagare(&k, line_id, 0).entry_count, 1, "nothing was appended");
 }
+
+/// N-04: the payer's `receipt_hash` on the PAGADO mark is provisional. The holder's annotation
+/// replaces it while the burn is still owed; the attestor's only appends; after the burn the
+/// field is frozen with the receipt the cancellation rested on.
+#[test]
+fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
+    use elote_pool::state::{PAGARE_PAID, PAGARE_PAID_PENDING_CANCEL};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = env.open_line_with(&k, &borrower, &p, None).0;
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let admin = env.admin.insecure_clone();
+    let attestor = env.attestor.insecure_clone();
+    let a = admin.pubkey();
+
+    // A stranger's payment covers pagaré 0 with a hash of its own.
+    let stranger = env.funded(1);
+    let amount = env.line(&k, line_id).interest_due + UNIT;
+    env.mint_to(&k.asset_mint, &admin, &stranger.pubkey(), amount);
+    let sidecars = env.payment_sidecars(&k, line_id, amount);
+    let ix = env.repay_ix_full(&k, line_id, &stranger.pubkey(), amount, [0x66; 32], &sidecars);
+    env.send(ix, &stranger, &[]);
+    let p0 = env.pagare(&k, line_id, 0);
+    assert_eq!((p0.status, p0.receipt_hash), (PAGARE_PAID_PENDING_CANCEL, [0x66; 32]));
+    let payment_entry = p0.entry_count;
+
+    // The attestor's annotation appends only.
+    let ix = env.annotate_payment_ix(&k, line_id, 0, &attestor.pubkey(), payment_entry, [0x77; 32]);
+    env.send(ix, &admin, &[&attestor]);
+    let p0 = env.pagare(&k, line_id, 0);
+    assert_eq!((p0.receipt_hash, p0.entry_count), ([0x66; 32], payment_entry + 1));
+
+    // The holder's replaces the provisional hash.
+    let ix = env.annotate_payment_ix(&k, line_id, 0, &a, payment_entry, RECEIPT_HASH);
+    env.send(ix, &admin, &[]);
+    let p0 = env.pagare(&k, line_id, 0);
+    assert_eq!((p0.receipt_hash, p0.entry_count), (RECEIPT_HASH, payment_entry + 2));
+
+    // After the burn the field is frozen; the annotation still appends.
+    env.cancel_pagare(&k, line_id, 0);
+    let ix = env.annotate_payment_ix(&k, line_id, 0, &a, payment_entry, [0x88; 32]);
+    env.send(ix, &admin, &[]);
+    let p0 = env.pagare(&k, line_id, 0);
+    assert_eq!(p0.status, PAGARE_PAID);
+    assert_eq!(p0.receipt_hash, RECEIPT_HASH);
+    assert_eq!(p0.last_kind, elote_pool::state::KIND_RECIBO);
+}
