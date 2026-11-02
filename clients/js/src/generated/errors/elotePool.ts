@@ -105,10 +105,8 @@ export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x179a; // 6042
 export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x179b; // 6043
 /** CancelDelayTooShort: The cancel delay is below the seven-day floor */
 export const ELOTE_POOL_ERROR__CANCEL_DELAY_TOO_SHORT = 0x179c; // 6044
-/** CancellationPending: A cancellation request is already pending on this pagaré */
-export const ELOTE_POOL_ERROR__CANCELLATION_PENDING = 0x179d; // 6045
 /** EntryNotFound: The referenced registry entry does not exist */
-export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x179e; // 6046
+export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x179d; // 6045
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED
@@ -120,7 +118,6 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_ADMIN
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR
   | typeof ELOTE_POOL_ERROR__CANCEL_DELAY_TOO_SHORT
-  | typeof ELOTE_POOL_ERROR__CANCELLATION_PENDING
   | typeof ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT
   | typeof ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED
@@ -171,7 +168,6 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__BORROWER_IS_ADMIN]: `The pool admin cannot be the borrower`,
     [ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR]: `The borrower cannot be the attestor`,
     [ELOTE_POOL_ERROR__CANCEL_DELAY_TOO_SHORT]: `The cancel delay is below the seven-day floor`,
-    [ELOTE_POOL_ERROR__CANCELLATION_PENDING]: `A cancellation request is already pending on this pagaré`,
     [ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED]: `The collection is not a Metaplex Core collection whose update authority is the pool`,
     [ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT]: `The collection period is shorter than the minimum`,
     [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed pagaré's hash is required`,

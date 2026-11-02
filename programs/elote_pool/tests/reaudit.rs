@@ -156,3 +156,63 @@ fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
     assert_eq!(p0.receipt_hash, RECEIPT_HASH);
     assert_eq!(p0.last_kind, elote_pool::state::KIND_RECIBO);
 }
+
+/// N-06: the holder replaces a pending cancellation request (a wrong receipt no longer blocks the
+/// backstop). The replacement takes the new receipt and restarts the wait from now, but never
+/// brings the deadline earlier than the one it replaces, even after the delay was shortened.
+#[test]
+fn n06_the_holder_replaces_a_pending_request_without_shortening_it() {
+    use elote_pool::events::CancellationRequested;
+    use elote_pool::state::{KIND_SOLICITUD_CANCELACION, PAGARE_PAID};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = env.open_line_with(&k, &borrower, &p, None).0;
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let admin = env.admin.insecure_clone();
+    let interest = env.line(&k, line_id).interest_due;
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.repay(&k, line_id, &borrower, interest + UNIT);
+    let a = admin.pubkey();
+    let short = i64::from(CANCEL_DELAY);
+    let long = 3 * short;
+
+    // A request with the wrong receipt, under a long delay.
+    let ix = env.set_cancel_delay_ix(&k, &a, 3 * CANCEL_DELAY);
+    env.send(ix, &admin, &[]);
+    let ix = env.request_cancellation_ix(&k, line_id, 0, &a, [0x66; 32]);
+    env.send(ix, &admin, &[]);
+    let t1 = env.now();
+    assert_eq!(env.pagare(&k, line_id, 0).cancel_after, t1 + long);
+
+    // Replaced later with the right receipt: the wait restarts from now.
+    env.warp(t1 + 100);
+    let entries = env.pagare(&k, line_id, 0).entry_count;
+    let ix = env.request_cancellation_ix(&k, line_id, 0, &a, RECEIPT_HASH);
+    let meta = env.send(ix, &admin, &[]);
+    let t2 = env.now();
+    let p0 = env.pagare(&k, line_id, 0);
+    assert_eq!((p0.cancel_after, p0.requested_receipt_hash), (t2 + long, RECEIPT_HASH));
+    assert_eq!((p0.entry_count, p0.last_kind), (entries + 1, KIND_SOLICITUD_CANCELACION));
+    let ev: CancellationRequested = find_event(&meta).expect("CancellationRequested");
+    assert_eq!((ev.receipt_hash, ev.cancel_after), (RECEIPT_HASH, t2 + long));
+
+    // The delay is shortened; a replacement keeps the later deadline it replaces.
+    let ix = env.set_cancel_delay_ix(&k, &a, CANCEL_DELAY);
+    env.send(ix, &admin, &[]);
+    env.warp(t2 + 100);
+    let ix = env.request_cancellation_ix(&k, line_id, 0, &a, RECEIPT_HASH);
+    env.send(ix, &admin, &[]);
+    let t3 = env.now();
+    assert!(t3 + short < t2 + long);
+    assert_eq!(env.pagare(&k, line_id, 0).cancel_after, t2 + long, "never shortened");
+
+    // The old receipt no longer cancels; the new one does, after the deadline.
+    env.warp(t2 + long + 1);
+    let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &a, &a, [0x66; 32]);
+    env.expect_err(ix, &admin, &[], E_ATTESTOR_REQUIRED);
+    let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &a, &a, RECEIPT_HASH);
+    env.send(ix, &admin, &[]);
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
+}

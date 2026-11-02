@@ -542,10 +542,11 @@ pub struct RequestCancellation<'info> {
 
 /// The backstop's request (LGTOC 17, 129): the holder records, over the receipt's hash, that the
 /// title is to be cancelled, under the same checks as the cancellation itself (the PAGADO mark a
-/// repayment wrote), so no request precedes the payment; one at a time (`CancellationPending`). Appends the
-/// `SolicitudCancelacion` entry and fixes the deadline, `cancel_after = now +
-/// pool.cancel_delay_seconds`, which a later change of the delay never moves. Any cancellation
-/// clears the request.
+/// repayment wrote), so no request precedes the payment. Appends the `SolicitudCancelacion` entry
+/// and fixes the deadline, `cancel_after = now + pool.cancel_delay_seconds`, which a later change
+/// of the delay never moves. A new request replaces a pending one (its receipt, a fresh wait) but
+/// never brings the deadline earlier than the one it replaces. Any cancellation clears the
+/// request.
 pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
@@ -553,9 +554,11 @@ pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, 
     require!(pagare.status != PAGARE_PAID, PoolError::PagareAlreadyPaid);
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     require!(pagare.status == PAGARE_PAID_PENDING_CANCEL, PoolError::PagareNotCovered);
-    require!(pagare.cancel_after == 0, PoolError::CancellationPending);
     let now = Clock::get()?.unix_timestamp;
-    let deadline = now.checked_add(i64::from(pool.cancel_delay_seconds())).ok_or(PoolError::Overflow)?;
+    let deadline = now
+        .checked_add(i64::from(pool.cancel_delay_seconds()))
+        .ok_or(PoolError::Overflow)?
+        .max(pagare.cancel_after);
     let pool_key = pool.key();
     let pagare = &mut ctx.accounts.pagare;
     let hash = registry::append(pagare, KIND_SOLICITUD_CANCELACION, &pool_key, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;

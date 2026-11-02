@@ -3119,11 +3119,6 @@
     },
     {
       "code": 6045,
-      "name": "CancellationPending",
-      "msg": "A cancellation request is already pending on this pagaré"
-    },
-    {
-      "code": 6046,
       "name": "EntryNotFound",
       "msg": "The referenced registry entry does not exist"
     }

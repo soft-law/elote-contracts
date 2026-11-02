@@ -299,3 +299,58 @@ fn limit_draw_accepts_a_valid_non_canonical_pagare_bump() {
     assert_eq!(env.asset_state(&odd).base.owner, k.pool);
     assert!(env.svm.get_account(&canonical).is_none(), "nothing at the canonical address");
 }
+
+/// Nothing in the program bounds how many pagaré records one `repay` touches (up to `MAX_DRAWS`),
+/// and each costs compute: a payment that marks eight of them paid runs over the project's
+/// 100 000 CU ceiling. The client splits such a payment (the amount is free); two payments of
+/// four records each stay under it. The client rule is at most six records per `repay`
+/// (`tests/compute.rs` pins six under the ceiling).
+#[test]
+fn limit_a_repay_touching_more_than_six_pagare_records_must_be_split() {
+    const CEILING: u64 = 100_000;
+    fn eight_draws(env: &mut Env) -> (PoolKeys, solana_keypair::Keypair, u64) {
+        let (k, _) = env.setup_pool_with_grace(0);
+        let investor = env.investor(&k, 200 * UNIT);
+        env.deposit(&k, &investor, 200 * UNIT);
+        let borrower = env.borrower(&k);
+        let p = env.scheduled_params(80 * UNIT, 1_200, 120, 5_000);
+        let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+        for _ in 0..8 {
+            env.draw_amount(&k, line_id, &borrower, 10 * UNIT);
+        }
+        let t0 = env.line(&k, line_id).drawn_at;
+        env.warp(t0 + 120 * p.interval() + 1);
+        let line = env.line(&k, line_id);
+        let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
+        let admin = env.admin.insecure_clone();
+        env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), owed);
+        (k, borrower, line_id)
+    }
+
+    // One payment for everything: eight records, over the ceiling.
+    let mut env = Env::new();
+    let (k, borrower, line_id) = eight_draws(&mut env);
+    let line = env.line(&k, line_id);
+    let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
+    assert_eq!(env.payment_sidecars(&k, line_id, owed).len(), 8);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), owed);
+    let cu = env.send(ix, &borrower, &[]).compute_units_consumed;
+    assert!(cu > CEILING, "eight records used {cu} CU");
+
+    // Split in two: records 0..=3 (and 4 untouched by principal), then 4..=7.
+    let mut env = Env::new();
+    let (k, borrower, line_id) = eight_draws(&mut env);
+    let line = env.line(&k, line_id);
+    let first = env.arrears(&k, line_id).late_due + line.interest_due - line.interest_repaid + 40 * UNIT;
+    assert_eq!(env.payment_sidecars(&k, line_id, first).len(), 5);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), first);
+    let cu1 = env.send(ix, &borrower, &[]).compute_units_consumed;
+    let line = env.line(&k, line_id);
+    let rest = line.drawn - line.principal_repaid + line.interest_due - line.interest_repaid + env.arrears(&k, line_id).late_due;
+    assert_eq!(env.payment_sidecars(&k, line_id, rest).len(), 4);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), rest);
+    let cu2 = env.send(ix, &borrower, &[]).compute_units_consumed;
+    assert!(cu1 < CEILING && cu2 < CEILING, "split: {cu1} and {cu2} CU");
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.pagares_paid()), (LineStatus::Repaid, 8));
+}

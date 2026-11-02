@@ -94,8 +94,6 @@ pub enum PoolError {
     AnnotationKindInvalid,
     #[msg("The cancel delay is below the seven-day floor")]
     CancelDelayTooShort,
-    #[msg("A cancellation request is already pending on this pagaré")]
-    CancellationPending,
     #[msg("The referenced registry entry does not exist")]
     EntryNotFound,
 }

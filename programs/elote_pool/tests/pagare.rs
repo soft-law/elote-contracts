@@ -1033,9 +1033,6 @@ fn the_backstop_lets_the_holder_cancel_alone_after_the_delay() {
         (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.receipt_hash, ev.cancel_after),
         (k.pool, line_id, 0, after.asset, RECEIPT_HASH, t + delay)
     );
-    // One request at a time.
-    let ix = env.request_cancellation_ix(&k, line_id, 0, &a, [0x77; 32]);
-    env.expect_err(ix, &admin, &[], E_CANCELLATION_PENDING);
     // Too early; at the deadline; after it with another receipt: refused.
     let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &a, &a, RECEIPT_HASH);
     env.expect_err(ix, &admin, &[], E_ATTESTOR_REQUIRED);

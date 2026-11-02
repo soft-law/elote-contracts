@@ -95,8 +95,7 @@ pub const E_ENDORSEE_INVALID: u32 = ERR_BASE + 41; // PoolError::EndorseeInvalid
 pub const E_PROCURACION_STATE: u32 = ERR_BASE + 42; // PoolError::ProcuracionState
 pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + 43; // PoolError::AnnotationKindInvalid
 pub const E_CANCEL_DELAY_TOO_SHORT: u32 = ERR_BASE + 44; // PoolError::CancelDelayTooShort
-pub const E_CANCELLATION_PENDING: u32 = ERR_BASE + 45; // PoolError::CancellationPending
-pub const E_ENTRY_NOT_FOUND: u32 = ERR_BASE + 46; // PoolError::EntryNotFound
+pub const E_ENTRY_NOT_FOUND: u32 = ERR_BASE + 45; // PoolError::EntryNotFound
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 

@@ -412,7 +412,7 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
   129; research prefers it to rotation, which is slow; rotation under C14 stays the primary
   recovery): `request_cancellation(draw_index, receipt_hash)` by the holder appends a
   `SolicitudCancelacion` entry (under the same checks as the cancellation, so no request precedes
-  the payment; one at a time, `CancellationPending`) and fixes the deadline, `cancel_after = now
+  the payment; a new one replaces a pending one and never brings its deadline earlier) and fixes the deadline, `cancel_after = now
   + pool.cancel_delay_seconds` (a pool parameter in `Pool.reserved` bytes 8..12, set by
   `init_pool` with a floor of seven days and changed only by the admin with `set_cancel_delay`,
   with an event; the request stores its deadline, so a change never moves one pending), with
@@ -1037,8 +1037,9 @@ title if the attestor fails.
   `has_one = line`); no asset or Core account.
 - **Checks:** the same as `cancel_pagare` (not burnt, `receipt_hash != 0`, the PAGADO mark
   `PAGARE_PAID_PENDING_CANCEL` whatever the line's status), so a request cannot be filed before
-  the title is paid; no request pending
-  (`cancel_after == 0`, else `CancellationPending`: a second request overwrites nothing).
+  the title is paid. A request may replace a pending one (a wrong receipt must not block the
+  backstop, re-audit N-06): it takes the new receipt and restarts the wait, but never brings the
+  deadline earlier than the one it replaces, `cancel_after = max(now + delay, cancel_after)`.
 - **Writes:** the `SolicitudCancelacion` entry (from = to = the pool, over `receipt_hash`);
   `cancel_after = now + pool.cancel_delay_seconds` (the delay in force at the request: a later
   `set_cancel_delay` never moves a pending deadline, the cheaper of the two ways to guarantee
