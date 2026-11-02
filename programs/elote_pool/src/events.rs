@@ -181,6 +181,20 @@ pub struct PagareCancelled {
     pub asset: Pubkey,
     pub receipt_hash: [u8; 32],
     pub holder: Pubkey,
+    /// The holder cancelled alone after a request's deadline, without the attestor.
+    pub backstop: bool,
+}
+
+/// Emitted by `request_cancellation`, after its `PagareEntry`: the holder may cancel alone with
+/// `receipt_hash` once `cancel_after` has passed.
+#[event]
+pub struct CancellationRequested {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub draw_index: u16,
+    pub asset: Pubkey,
+    pub receipt_hash: [u8; 32],
+    pub cancel_after: i64,
 }
 
 /// Emitted by `suspend_draws`; `available_forfeited` is the undrawn remainder.

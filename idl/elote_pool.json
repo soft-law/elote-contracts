@@ -2527,6 +2527,19 @@
       ]
     },
     {
+      "name": "CancellationRequested",
+      "discriminator": [
+        119,
+        135,
+        194,
+        94,
+        98,
+        201,
+        113,
+        253
+      ]
+    },
+    {
       "name": "CollectionPeriodSet",
       "discriminator": [
         132,
@@ -3151,6 +3164,47 @@
           {
             "name": "cancel_delay_seconds",
             "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CancellationRequested",
+      "docs": [
+        "Emitted by `request_cancellation`, after its `PagareEntry`: the holder may cancel alone with",
+        "`receipt_hash` once `cancel_after` has passed."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "draw_index",
+            "type": "u16"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "receipt_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "cancel_after",
+            "type": "i64"
           }
         ]
       }
@@ -4069,6 +4123,13 @@
           {
             "name": "holder",
             "type": "pubkey"
+          },
+          {
+            "name": "backstop",
+            "docs": [
+              "The holder cancelled alone after a request's deadline, without the attestor."
+            ],
+            "type": "bool"
           }
         ]
       }

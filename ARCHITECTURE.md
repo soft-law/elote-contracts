@@ -941,7 +941,8 @@ the payment must outlive the título.
   a cost of every draw).
 - **Events:** `PagareEntry` with the `Terminacion` entry, then `PagareCancelled` (`pool`,
   `line_id`, `draw_index`, `asset`, `receipt_hash`, `holder`: the key that extinguished it, the
-  admin or the procurador, as `PagareIssued` names the first holder). It
+  admin or the procurador, as `PagareIssued` names the first holder; `backstop`: true when the
+  holder cancelled alone after a request's deadline, without the attestor). It
   carries no AppData length: reading it would mean decoding the asset's external adapter header on
   chain (the rule at the top of §5), and the engine reads and archives the log off chain before the
   burn.
@@ -1034,15 +1035,17 @@ title if the attestor fails.
 - **Signers:** `holder` (`pool.admin` while the asset is in the pool, `NotHolder`), alone.
 - **Constraints:** as `court_annotation`: `pool`, `line` (`has_one = pool`), `pagare` (seeds,
   `has_one = line`); no asset or Core account.
-- **Checks:** the same as `cancel_pagare` (not burnt, `receipt_hash != 0`, line `Active` or
-  `Repaid`, the PAGADO mark `PAGARE_PAID_PENDING_CANCEL`), so a request cannot be filed before
+- **Checks:** the same as `cancel_pagare` (not burnt, `receipt_hash != 0`, the PAGADO mark
+  `PAGARE_PAID_PENDING_CANCEL` whatever the line's status), so a request cannot be filed before
   the title is paid; no request pending
   (`cancel_after == 0`, else `CancellationPending`: a second request overwrites nothing).
 - **Writes:** the `SolicitudCancelacion` entry (from = to = the pool, over `receipt_hash`);
   `cancel_after = now + pool.cancel_delay_seconds` (the delay in force at the request: a later
   `set_cancel_delay` never moves a pending deadline, the cheaper of the two ways to guarantee
   it, no extra field); `requested_receipt_hash = receipt_hash`. Any cancellation clears both.
-- **Events:** `PagareEntry`.
+- **Events:** `PagareEntry`, then `CancellationRequested` (`pool`, `line_id`, `draw_index`,
+  `asset`, `receipt_hash`, `cancel_after`), so an indexer reads the deadline instead of
+  reconstructing it from the delay's history.
 - **Compute:** 14 142 CU at 120 installments (`tests/compute.rs`); the holder's cancellation
   alone 48 285 CU.
 

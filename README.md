@@ -185,7 +185,8 @@ change fields; new information comes as new events.
 | `LineDrawState` | `draw`, after `LineDrawn` | pool, line_id, amount, drawn, available, interest_due, availability_end, document_hash (the signed pagaré's) |
 | `PagareIssued` | `draw`, after `LineDrawState` | pool, line_id, draw_index, asset (the Core asset), pagare_hash, amount, due_at, holder (the pool PDA) |
 | `PagareEntry` | `draw` (the issuance entry) and every instruction that appends to a pagaré's registry | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
-| `PagareCancelled` | `cancel_pagare`, before the burn | pool, line_id, draw_index, asset, receipt_hash, holder (the key that extinguished it; no AppData length: the engine archives the log off chain before the burn) |
+| `PagareCancelled` | `cancel_pagare`, before the burn | pool, line_id, draw_index, asset, receipt_hash, holder (the key that extinguished it), backstop (true when the holder cancelled alone after a request's deadline) |
+| `CancellationRequested` | `request_cancellation`, after its `PagareEntry` | pool, line_id, draw_index, asset, receipt_hash, cancel_after (the deadline after which the holder may cancel alone with that receipt) |
 | `LineDrawsSuspended` | `suspend_draws` | pool, line_id, available_forfeited |
 | `LineCancelled` | `cancel_line` | pool, line_id |
 | `LateInterestCollected` | `repay` with late interest, before `LineRepaid` | pool, line_id, amount |

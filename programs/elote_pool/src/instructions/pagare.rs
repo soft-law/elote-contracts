@@ -5,7 +5,7 @@
 use anchor_lang::prelude::*;
 
 use crate::errors::PoolError;
-use crate::events::PagareCancelled;
+use crate::events::{CancellationRequested, PagareCancelled};
 use crate::pool_signer;
 use crate::registry;
 use crate::state::{
@@ -171,6 +171,7 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
         asset: asset_key,
         receipt_hash,
         holder: signer,
+        backstop: ctx.accounts.attestor.is_none(),
     });
 
     // Last, so a Core refusal leaves nothing half done: the pool PDA thaws the asset as the
@@ -572,6 +573,14 @@ pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, 
         entry_count: pagare.entry_count,
         recorded_at: now,
         stated_at: now,
+    });
+    emit_cpi!(CancellationRequested {
+        pool: pool_key,
+        line_id: line.line_id,
+        draw_index,
+        asset: pagare.asset,
+        receipt_hash,
+        cancel_after: deadline,
     });
     Ok(())
 }

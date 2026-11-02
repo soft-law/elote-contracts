@@ -191,6 +191,7 @@ export function identifyElotePoolAccount(
 export enum ElotePoolEvent {
   AttestorSet,
   CancelDelaySet,
+  CancellationRequested,
   CollectionPeriodSet,
   Deposited,
   LateInterestCollected,
@@ -245,6 +246,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.CancelDelaySet;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([119, 135, 194, 94, 98, 201, 113, 253]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.CancellationRequested;
   }
   if (
     containsBytes(

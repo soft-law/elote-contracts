@@ -328,8 +328,8 @@ fn cancel_pagare_marks_the_sidecar_paid_and_burns_the_asset() {
     let now = env.now();
     let ev: PagareCancelled = find_event(&meta).expect("PagareCancelled");
     assert_eq!(
-        (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.receipt_hash, ev.holder),
-        (k.pool, line_id, 0, asset0, RECEIPT_HASH, admin.pubkey())
+        (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.receipt_hash, ev.holder, ev.backstop),
+        (k.pool, line_id, 0, asset0, RECEIPT_HASH, admin.pubkey(), false)
     );
 
     // The sidecar: the mark written, everything else as issued, the account kept with its rent.
@@ -902,7 +902,7 @@ fn the_procurador_extinguishes_the_title_through_the_program_address() {
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
     assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count), (KIND_TERMINACION, pr, k.pool, expected, 4));
     let ev: PagareCancelled = find_event(&meta).expect("PagareCancelled");
-    assert_eq!((ev.holder, ev.receipt_hash, ev.asset), (pr, RECEIPT_HASH, after.asset));
+    assert_eq!((ev.holder, ev.receipt_hash, ev.asset, ev.backstop), (pr, RECEIPT_HASH, after.asset, false));
     let tomb = env.account(&after.asset);
     assert_eq!((tomb.data.len(), tomb.owner), (1, MPL_CORE_ID), "burnt through the program address");
     assert!(env.account(&r).lamports > relayer_before, "the rent goes to the payer");
@@ -1028,6 +1028,11 @@ fn the_backstop_lets_the_holder_cancel_alone_after_the_delay() {
     assert_eq!(after.log_root, chain(&before.log_root, &expected));
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
     assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count), (KIND_SOLICITUD_CANCELACION, k.pool, k.pool, expected, 3));
+    let ev: elote_pool::events::CancellationRequested = find_event(&meta).expect("CancellationRequested");
+    assert_eq!(
+        (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.receipt_hash, ev.cancel_after),
+        (k.pool, line_id, 0, after.asset, RECEIPT_HASH, t + delay)
+    );
     // One request at a time.
     let ix = env.request_cancellation_ix(&k, line_id, 0, &a, [0x77; 32]);
     env.expect_err(ix, &admin, &[], E_CANCELLATION_PENDING);
@@ -1055,7 +1060,7 @@ fn the_backstop_lets_the_holder_cancel_alone_after_the_delay() {
     );
     assert_eq!((after.cancel_after, after.requested_receipt_hash), (0, [0; 32]), "the request is cleared");
     let ev: PagareCancelled = find_event(&meta).expect("PagareCancelled");
-    assert_eq!((ev.holder, ev.receipt_hash), (a, RECEIPT_HASH));
+    assert_eq!((ev.holder, ev.receipt_hash, ev.backstop), (a, RECEIPT_HASH, true));
     assert_eq!(env.account(&after.asset).data.len(), 1, "burnt");
 
     // With the attestor the ordinary path runs, request or not, and clears a pending one; the
