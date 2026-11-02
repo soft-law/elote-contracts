@@ -1,6 +1,6 @@
-//! The pagaré after its issuance (issuance is `draw`, in `lines.rs`). Extinction is an act of the
-//! holder against a receipt (C22; LGTOC 17, 129): the holder and the attestor sign, the sidecar
-//! becomes the lasting PAGADO mark, and the asset is thawed and burnt last.
+//! The pagaré after its issuance (`draw`, in `lines.rs`): cancellation, endorsement in
+//! procuración and its revocation, court annotations, the cancellation request and receipt
+//! annotations. Each appends an entry to the pagaré record's chain; the record is never closed.
 
 use anchor_lang::prelude::*;
 
@@ -15,22 +15,17 @@ use crate::state::{
 };
 use crate::events::{PagareEntry, PagareReceiptAnnotated};
 
-// -----------------------------------------------------------------------------------------------
-// cancel_pagare
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct CancelPagare<'info> {
-    /// Who extinguishes the title: the holder (the admin while the asset is in the pool) or the
-    /// procurador of record (`Pagare::procurador`, with a procuración in force); checked in the
-    /// handler (`NotHolder`).
+    /// The owner (the admin while the asset is in the pool) or the procurador of record with a
+    /// procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
     pub holder: Signer<'info>,
 
-    /// Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional
-    /// for the backstop: left out, the holder cancels alone only after a recorded request's
-    /// deadline, with the requested receipt (`AttestorRequired` otherwise).
+    /// Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner
+    /// cancels alone only after a request's `cancel_after`, with the requested receipt
+    /// (`AttestorRequired` otherwise).
     pub attestor: Option<Signer<'info>>,
 
     /// Receives the asset's rent from the Core program. Any signer.
@@ -50,7 +45,7 @@ pub struct CancelPagare<'info> {
     )]
     pub line: Account<'info, CreditLine>,
 
-    /// The sidecar of pagaré `draw_index` of the line; it is written, never closed.
+    /// The record of pagaré `draw_index` of the line; written, never closed.
     #[account(
         mut,
         seeds = [seeds::PAGARE, line.key().as_ref(), &draw_index.to_le_bytes()],
@@ -59,7 +54,7 @@ pub struct CancelPagare<'info> {
     )]
     pub pagare: Account<'info, Pagare>,
 
-    /// The Core asset the sidecar names; burnt by the Core program.
+    /// The Core asset the record names; burnt by the Core program.
     /// CHECK: must be `pagare.asset`; the Core program checks the rest.
     #[account(mut, address = pagare.asset @ PoolError::WrongAccount)]
     pub asset: UncheckedAccount<'info>,
@@ -69,9 +64,8 @@ pub struct CancelPagare<'info> {
     #[account(mut, address = pool.collection @ PoolError::WrongAccount)]
     pub collection: UncheckedAccount<'info>,
 
-    /// The program address the burn delegate was approved to, `["procurador", pagare, holder]`:
-    /// required on the procurador's branch, where the program signs for it; left out on the
-    /// owner's.
+    /// The burn delegate's authority, `["procurador", pagare, holder]`: required on the
+    /// procurador's branch, where the program signs for it; left out on the owner's.
     /// CHECK: derived and compared in the handler (`WrongAccount`).
     pub procurador_authority: Option<UncheckedAccount<'info>>,
 
@@ -82,22 +76,16 @@ pub struct CancelPagare<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Two branches by the signer: the owner (the admin while the asset is in the pool) or the
-/// procurador of record (`Pagare::procurador` with the procuración in force, else `NotHolder`;
-/// on that branch `procurador_authority` must be the program address the delegate was approved
-/// to, `WrongAccount`). The attestor co-signs or, on the owner's branch alone, a recorded
-/// request's deadline has passed and `receipt_hash` is the requested one (the backstop on the
-/// attestor, LGTOC 17 and 129; `AttestorRequired` otherwise). Checks, all before any write: the
-/// pagaré is outstanding (`PagareAlreadyPaid`); `receipt_hash` is not zero
-/// (`DocumentHashRequired`); the title carries the PAGADO mark a repayment wrote,
-/// `PAGARE_PAID_PENDING_CANCEL`, whatever the line's status
-/// (`PagareNotCovered` while outstanding: `repay` marks the pagarés oldest first as its principal
-/// reaches each `drawn_through`, interest covering nothing by itself). Writes the `Terminacion`
-/// entry (from the signer's role, to the pool), `status = PAGARE_PAID`, `cancel_receipt_hash`
-/// (the payment's `paid_at` and `receipt_hash` stay), and ends any procuración in force with the
-/// title; then thaws and burns, as the owner or through the procurador's program address. Receipt
-/// uniqueness is the engine's and the attestor's, not checked here. Never paused: it records a
-/// payment and moves no funds.
+/// Extinguishes a paid pagaré. The signer is the owner (the admin while the asset is in the pool)
+/// or the procurador of record (`NotHolder`, `ProcuracionState`), who also passes
+/// `procurador_authority` (`WrongAccount`). The attestor co-signs, or the backstop applies: the
+/// owner alone, after the request's `cancel_after`, with the requested receipt (`AttestorRequired`).
+/// Requires the PAGADO mark a repayment wrote, `PAGARE_PAID_PENDING_CANCEL`, whatever the line's
+/// status (`PagareAlreadyPaid`, `PagareNotCovered`), and a non-zero `receipt_hash`
+/// (`DocumentHashRequired`). Writes a `Terminacion` entry, `status = PAGARE_PAID` and
+/// `cancel_receipt_hash` (`paid_at` and `receipt_hash` stay), clears the request and any
+/// procuración, then thaws and burns the asset. Receipt uniqueness is not checked here. Never
+/// paused: it moves no funds.
 pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
@@ -113,8 +101,6 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     require!(pagare.status == PAGARE_PAID_PENDING_CANCEL, PoolError::PagareNotCovered);
     let now = Clock::get()?.unix_timestamp;
-    // The attestor, or the backstop: the holder alone, once a recorded request's deadline has
-    // passed, with the requested receipt.
     match ctx.accounts.attestor.as_ref() {
         Some(attestor) => {
             require_keys_eq!(attestor.key(), pool.attestor, PoolError::AttestorRequired);
@@ -126,7 +112,7 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
             );
         }
     }
-    // The procurador's program address, derived and compared before any write.
+    // Derived and compared before any write.
     let authority_bump = if by_procurador {
         let (pda, bump) = Pubkey::find_program_address(&[seeds::PROCURADOR, pagare_key.as_ref(), signer.as_ref()], ctx.program_id);
         let given = ctx.accounts.procurador_authority.as_ref().ok_or(PoolError::WrongAccount)?;
@@ -194,7 +180,6 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
     let mut burn = mpl_core::instructions::BurnV1CpiBuilder::new(&core);
     burn.asset(&asset_info).collection(Some(&collection_info)).payer(&payer_info).system_program(Some(&system_info));
     match authority_bump {
-        // The owner burns.
         None => burn.authority(Some(&pool_info)).invoke_signed(pool_signer!(pool))?,
         // The program signs for the procurador's address, which holds the burn delegate.
         Some(bump) => {
@@ -205,10 +190,6 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// endorse_pagare
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
@@ -217,7 +198,7 @@ pub struct EndorsePagare<'info> {
     #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
     pub holder: Signer<'info>,
 
-    /// Attests the signed endoso behind `endoso_hash` and the endorsee's verification (v1 gate).
+    /// Attests the signed endoso behind `endoso_hash` and the endorsee's verification.
     #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
     pub attestor: Signer<'info>,
 
@@ -261,16 +242,15 @@ pub struct EndorsePagare<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Endoso en procuración (LGTOC 35), the only kind the pool makes in this version: the pool stays
-/// the owner; the entry goes into the registry; the power to extinguish the pagaré is lent through
-/// an owner-managed `BurnDelegate` whose authority is the program PDA `["procurador", pagare, to]`,
-/// which nobody holds a key for, so the burn can only happen inside `cancel_pagare` with the
-/// receipt and the PAGADO mark. Checks, before any write: `kind == KIND_PROCURACION`
-/// (`EndosoKindInvalid`); `to` is not the zero key, the pool, the attestor or the admin (`EndorseeInvalid`);
-/// `endoso_hash != 0` (`DocumentHashRequired`); the line is not `WrittenOff` (`LineStatus`); the
-/// pagaré is outstanding (`PagareAlreadyPaid`); no procuración is in force (`ProcuracionState`).
-/// The plugin is added the first time and its authority approved afterwards (Core refuses a second
-/// `AddPluginV1`), which the sidecar's flag records.
+/// Endoso en procuración, the only kind the pool makes: the pool stays the owner and lends the
+/// power to extinguish the pagaré through an owner-managed `BurnDelegate` whose authority is the
+/// program address `["procurador", pagare, to]`. Nobody holds its key, so the burn can only happen
+/// inside `cancel_pagare`. Refused: `kind != KIND_PROCURACION` (`EndosoKindInvalid`); `to` the zero
+/// key, the pool, the admin or the attestor (`EndorseeInvalid`); a zero `endoso_hash`
+/// (`DocumentHashRequired`); a `WrittenOff` line (`LineStatus`); a pagaré not outstanding
+/// (`PagareAlreadyPaid`); a procuración in force (`ProcuracionState`). The plugin is added at the
+/// first procuración and approved afterwards (Core refuses a second `AddPluginV1`); a flag
+/// records it.
 pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32]) -> Result<()> {
     use mpl_core::instructions::{AddPluginV1CpiBuilder, ApprovePluginAuthorityV1CpiBuilder};
     use mpl_core::types::{BurnDelegate, Plugin, PluginAuthority, PluginType};
@@ -342,10 +322,6 @@ pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// revoke_procuracion
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
@@ -393,11 +369,10 @@ pub struct RevokeProcuracion<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// The revocation of the procuración in force (LGTOC 41): the owner alone, over the signed
-/// revocation's hash (`DocumentHashRequired`); refused when none is in force (`ProcuracionState`).
-/// Appends the `Revocacion` entry (from the pool, to the recorded procurador), clears the flag and
-/// the procurador, and `RevokePluginAuthorityV1` puts the `BurnDelegate` back to `Owner`; the
-/// plugin stays, so the next procuración approves it.
+/// Revokes the procuración in force: the owner alone, over the signed revocation's hash
+/// (`DocumentHashRequired`); refused when none is in force (`ProcuracionState`). Appends a
+/// `Revocacion` entry (from the pool to the procurador) and returns the `BurnDelegate` authority
+/// to the owner; the plugin stays, so the next procuración approves it.
 pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entry_hash: [u8; 32]) -> Result<()> {
     use mpl_core::instructions::RevokePluginAuthorityV1CpiBuilder;
     use mpl_core::types::PluginType;
@@ -439,10 +414,6 @@ pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entr
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// court_annotation
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
@@ -477,11 +448,10 @@ pub struct CourtAnnotation<'info> {
     pub pagare: Account<'info, Pagare>,
 }
 
-/// A court's act on the title: `AnotacionJudicial` (embargo, suspension, cancellation) or
-/// `ConstanciaJudicial` (LGTOC 28), over the court document's hash, attested by the attestor.
-/// Appends the entry (from and to the pool: there is no counterparty) and emits it; nothing else
-/// moves. Allowed on any line status and beside a procuración; refused only on a burnt title,
-/// which the sidecar records as `PAGARE_PAID` (the burn happens only inside `cancel_pagare`).
+/// A court's act on the title, `AnotacionJudicial` or `ConstanciaJudicial` (`AnnotationKindInvalid`),
+/// over the court document's hash; the holder signs and the attestor co-signs. Appends the entry
+/// (from and to the pool: there is no counterparty); nothing else moves. Allowed on any line
+/// status and beside a procuración; refused only on a burnt title (`PAGARE_PAID`).
 pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> Result<()> {
     require!(kind == KIND_ANOTACION_JUDICIAL || kind == KIND_CONSTANCIA_JUDICIAL, PoolError::AnnotationKindInvalid);
     require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
@@ -505,10 +475,6 @@ pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8
     });
     Ok(())
 }
-
-// -----------------------------------------------------------------------------------------------
-// request_cancellation
-// -----------------------------------------------------------------------------------------------
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -540,13 +506,11 @@ pub struct RequestCancellation<'info> {
     pub pagare: Account<'info, Pagare>,
 }
 
-/// The backstop's request (LGTOC 17, 129): the holder records, over the receipt's hash, that the
-/// title is to be cancelled, under the same checks as the cancellation itself (the PAGADO mark a
-/// repayment wrote), so no request precedes the payment. Appends the `SolicitudCancelacion` entry
-/// and fixes the deadline, `cancel_after = now + pool.cancel_delay_seconds`, which a later change
-/// of the delay never moves. A new request replaces a pending one (its receipt, a fresh wait) but
-/// never brings the deadline earlier than the one it replaces. Any cancellation clears the
-/// request.
+/// Starts the backstop: the holder records the receipt's hash for a cancellation without the
+/// attestor. Same checks as `cancel_pagare` (`PagareAlreadyPaid`, `DocumentHashRequired`,
+/// `PagareNotCovered`), so no request precedes the payment. A new request replaces a pending one
+/// and never brings its deadline earlier: `cancel_after = max(now + cancel_delay_seconds, pending)`,
+/// fixed here, so a later change of the delay does not move it. Any cancellation clears it.
 pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
@@ -588,10 +552,6 @@ pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, 
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// annotate_payment
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
@@ -622,15 +582,13 @@ pub struct AnnotatePayment<'info> {
     pub pagare: Account<'info, Pagare>,
 }
 
-/// The repair path of the payment entries: the holder or the attestor attaches the real receipt
-/// to the payment entry `entry_count` of the pagaré's chain (one that exists: `EntryNotFound`),
-/// as a `Recibo` entry over `receipt_hash` (`DocumentHashRequired`), from the annotator to the
-/// pool. The chain does not keep the kinds of past entries, so the reference is not checked to be
-/// a payment entry beyond existing; the engine checks it. Allowed whatever the title's status, a
-/// burnt one included: the sidecar persists and a receipt may arrive late. The payer's
-/// `receipt_hash` on the PAGADO mark is provisional: the holder's annotation replaces it while the
-/// burn is still owed (`PAGARE_PAID_PENDING_CANCEL`); after the burn it stays the receipt the
-/// cancellation rested on, and the attestor's annotation never touches it.
+/// The admin (holder) or the attestor attaches the real receipt to payment entry `entry_count` of
+/// the pagaré's chain (`EntryNotFound` if absent) by appending a `Recibo` entry over `receipt_hash`
+/// (`DocumentHashRequired`), from the annotator to the pool. The chain keeps no entry kinds, so the
+/// reference is not checked to be a payment entry; the engine checks it. Allowed on any status, a
+/// burnt title included: a receipt may arrive late. The holder's annotation also replaces the
+/// payer's provisional `Pagare.receipt_hash` while the status is `PAGARE_PAID_PENDING_CANCEL`;
+/// the attestor's never does.
 pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32]) -> Result<()> {
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     let pagare = &mut ctx.accounts.pagare;

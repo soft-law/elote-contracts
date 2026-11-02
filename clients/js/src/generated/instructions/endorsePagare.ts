@@ -196,7 +196,7 @@ export type EndorsePagareAsyncInput<
 > = {
   /** The pagaré's holder: the admin while the asset is in the pool. */
   holder: TAccountHolder;
-  /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification (v1 gate). */
+  /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification. */
   attestor: TAccountAttestor;
   /** Pays the rent the Core plugin may need. Any signer. */
   payer: TAccountPayer;
@@ -484,7 +484,7 @@ export type EndorsePagareInput<
 > = {
   /** The pagaré's holder: the admin while the asset is in the pool. */
   holder: TAccountHolder;
-  /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification (v1 gate). */
+  /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification. */
   attestor: TAccountAttestor;
   /** Pays the rent the Core plugin may need. Any signer. */
   payer: TAccountPayer;
@@ -738,7 +738,7 @@ export type ParsedEndorsePagareInstruction<
   accounts: {
     /** The pagaré's holder: the admin while the asset is in the pool. */
     holder: TAccountMetas[0];
-    /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification (v1 gate). */
+    /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification. */
     attestor: TAccountMetas[1];
     /** Pays the rent the Core plugin may need. Any signer. */
     payer: TAccountMetas[2];

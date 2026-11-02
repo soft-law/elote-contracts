@@ -1,8 +1,8 @@
 //! Credit lines approved from the pool: open, draw, repay, collection and write off.
 //!
-//! A line moves `Approved -> Active -> Repaid | WrittenOff`; a scheduled line can also move
-//! `Active -> InCollection -> Repaid | WrittenOff`. The pause blocks openings and draws; `repay`,
-//! `mark_in_collection` and `write_off` always run. Repayments go to late interest, then interest,
+//! A line moves `Approved -> Active -> Repaid | WrittenOff`, or `Approved -> Cancelled` if nothing
+//! was drawn; a scheduled line can also move `Active -> InCollection -> Repaid | WrittenOff`. The
+//! pause blocks only openings and draws. Repayments go to late interest, then interest,
 //! then principal. Collected interest raises the NAV; a written-off principal lowers it once.
 
 use anchor_lang::prelude::*;
@@ -22,10 +22,6 @@ use crate::state::{
     MAX_DRAWS, MAX_INSTALLMENTS, MIN_MAX_MISSED, PAGARE_OUTSTANDING, PAGARE_PAID_PENDING_CANCEL,
     SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
 };
-
-// -----------------------------------------------------------------------------------------------
-// open_line
-// -----------------------------------------------------------------------------------------------
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -67,6 +63,9 @@ pub struct OpenLine<'info> {
     pub system_program: Program<'info, System>,
 }
 
+/// Opens an `Approved` line, signed by the admin, the borrower, the attestor and the named sponsor
+/// if any; the borrower may be neither the admin nor the attestor. `line_id` must be the pool's next
+/// id, and `principal` at most `max_line_bps` of the NAV (`LineTooLarge`). Refused while paused.
 #[allow(clippy::too_many_arguments)]
 pub fn open_line(
     ctx: Context<OpenLine>,
@@ -199,10 +198,6 @@ fn last_due_of(s: &ScheduleParams) -> Result<i64> {
     Ok(s.first_due_at.checked_add(span).ok_or(PoolError::Overflow)?)
 }
 
-// -----------------------------------------------------------------------------------------------
-// draw
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 #[instruction(amount: u64, document_hash: [u8; 32], asset_bump: u8, pagare_bump: u8)]
@@ -245,15 +240,13 @@ pub struct Draw<'info> {
 
     pub token_program: Interface<'info, TokenInterface>,
 
-    // -- the pagaré --
 
     /// Pays the rent of the pagaré asset and its sidecar. Any signer.
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// The Core asset that is the pagaré, created by the Core program here. The client passes
-    /// the bump, so the constraint runs one `create_program_address` and the compute of a draw
-    /// does not depend on the line's key.
+    /// The pagaré's Core asset, created here by the Core program. The client passes the bump so the
+    /// constraint does not search for it.
     /// CHECK: the seeds; the Core program initialises it.
     #[account(
         mut,
@@ -295,7 +288,7 @@ fn hex(bytes: &[u8]) -> String {
     String::from_utf8(s).unwrap_or_default()
 }
 
-/// Decimal text of `n` without the formatting machinery, which costs a few hundred CU per call.
+/// Decimal text of `n` without the formatting machinery, which is costly on chain.
 fn dec(n: i64) -> String {
     let mut s = dec_u(n.unsigned_abs());
     if n < 0 {
@@ -320,14 +313,19 @@ fn dec_u(mut m: u64) -> String {
     String::from_utf8(digits[i..].to_vec()).unwrap_or_default()
 }
 
-/// Mints the pagaré: one Core asset in the pool's collection, owned by the pool PDA and frozen
-/// from creation by a `PermanentFreezeDelegate` whose authority is `UpdateAuthority` (the
-/// collection, so the pool PDA; a later version relinquishes it with one approve). No transfer or
-/// burn delegate: the pool is the owner while the asset is in the pool and only the program signs
-/// for it; `init_pool` admits only a bare collection, so no collection plugin reaches the asset.
-/// `ImmutableMetadata`; `Attributes` nobody can change (the nine facts, 32-byte values as hex);
-/// `AddBlocker`, so nothing is added later. No adapter: the registry is the sidecar's. The name is
-/// `PAGARE <line>-<index>` (C29), the URI empty, nothing personal.
+/// Mints the pagaré: a Core asset in the pool's collection, owned by the pool PDA, named
+/// `PAGARE <line_id>-<draw_index>`, with an empty URI and nothing personal. Plugins at creation:
+/// - `PermanentFreezeDelegate`, frozen, authority `UpdateAuthority` (the collection's, the pool
+///   PDA): the asset cannot move, and only the program can thaw it, which `cancel_pagare` does
+///   right before the burn.
+/// - `ImmutableMetadata` and `Attributes` (the nine facts, 32-byte values as hex), authority
+///   `None`: name, URI and facts never change.
+/// - `AddBlocker`, authority `None`: no authority-managed plugin can be added later.
+///
+/// No transfer or burn delegate: the pool owns the asset and only the program signs for it. The
+/// only plugin added later is the owner-managed `BurnDelegate` of a procuración (`endorse_pagare`).
+/// `init_pool` admits only a bare collection, so no collection plugin reaches the asset. No AppData:
+/// the registry lives in the `Pagare` record.
 #[allow(clippy::too_many_arguments)]
 fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) -> Result<()> {
     let (draw_index, amount, document_hash, issued_at, due_at) =
@@ -338,7 +336,7 @@ fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) 
     };
     let pool = &accounts.pool;
     let line = &accounts.line;
-    // Hex, not base58: a base58 encoding of a 32-byte key costs tens of thousands of CU on chain.
+    // Hex, not base58: base58 of a 32-byte key is too costly on chain.
     let attributes = vec![
         Attribute { key: "pagare_hash".into(), value: hex(&document_hash) },
         Attribute { key: "amount".into(), value: dec_u(amount) },
@@ -375,7 +373,7 @@ fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) 
         .payer(&accounts.payer.to_account_info())
         .owner(Some(&accounts.pool.to_account_info()))
         .system_program(&accounts.system_program.to_account_info())
-        // No series label and no offering vocabulary (C29).
+        // No series label and no offering vocabulary.
         .name(["PAGARE ", &dec_u(line.line_id), "-", &dec_u(draw_index.into())].concat())
         .uri(String::new())
         .plugins(plugins)
@@ -427,13 +425,14 @@ fn create_sidecar<'info>(accounts: &Draw<'info>, pagare_bump: u8, record: &Pagar
     Ok(())
 }
 
-/// One tranche. Every check runs before anything is written, in this order: not paused;
+/// One tranche, signed by the borrower and the attestor, with its pagaré asset and record. Every
+/// check runs before anything is written, in this order: not paused;
 /// `Approved` or `Active`; `0 < amount <= principal - drawn`; `now < availability_end`, strictly
 /// (an installment counts as due at the second it falls due); on a scheduled line
 /// `drawn + interest_due >= installments` after the tranche, so every installment keeps at least
 /// one unit; fewer than `MAX_DRAWS` tranches; the vault has the liquidity; a non-zero
 /// `document_hash`; a valid signature method. The tranche's interest, at the annual rate from now
-/// to the last due date, is added to `interest_due` and never changes again.
+/// to the last due date, is fixed here and added to `interest_due`.
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ctx: Context<Draw>,
@@ -464,7 +463,7 @@ pub fn draw(
     require!(line.draws < MAX_DRAWS, PoolError::TooManyDraws);
     require!(amount <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
     require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
-    // C6a: the certificate fingerprint may be zero only for a wallet-only signature.
+    // The certificate fingerprint may be zero only for a wallet-only signature.
     require!(
         signature_method <= SIGNATURE_EFIRMA_WALLET && (signature_method == SIGNATURE_WALLET || cert_fingerprint != [0u8; 32]),
         PoolError::SignatureMethodInvalid
@@ -485,7 +484,6 @@ pub fn draw(
         ctx.accounts.asset_mint.decimals,
     )?;
 
-    // The pagaré asset and its sidecar, indexed by this draw.
     let draw_index = ctx.accounts.line.draws;
     let record = Pagare {
         line: ctx.accounts.line.key(),
@@ -572,10 +570,6 @@ pub fn draw(
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// repay
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 pub struct Repay<'info> {
@@ -618,27 +612,24 @@ pub struct Repay<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-/// `amount` must cover the late interest due (zero on a bullet line); the repayment settles the
-/// late interest, then interest, then principal, and takes at most what is due: the payer's
-/// account is debited only that, never `amount` when it is larger. Accepted in `Active` and
-/// `InCollection`. What is owed is what was drawn plus the interest fixed at each draw. The line
-/// closes (`Repaid`) when nothing is due and nothing can be drawn: the window has closed, the
-/// commitment is fully drawn, or the line is in collection. While it can still draw, a payment
-/// that clears the debt leaves it `Active`, and a payment on a zero debt is refused
-/// (`WrongAmount`); once the window has closed, a payment on a zero debt closes the line and
-/// moves nothing (audit F-01).
+/// Pays an `Active` or `InCollection` line. Anyone may pay, and the pause never blocks it. `amount`
+/// must cover the late interest due (`LateInterestUnpaid`; zero on a bullet line); the payment
+/// settles late interest, then interest, then principal, and debits the payer only what is due.
+/// What is owed is what was drawn plus the interest fixed at each draw.
 ///
-/// Never blocked by the pause: a borrower can always pay.
-/// The payment entries (art. 130, step 6d): the remaining accounts are the sidecars
-/// `[pagares_paid ..= last_touched]`, oldest first, each a program-owned `Pagare` naming this line
-/// and its index (what only `draw` writes, at the seeds address), where `last_touched` is the first
-/// pagaré whose `drawn_through` the payment leaves above `principal_repaid`, or the last draw;
-/// anything else is `PagareAccountsMismatch`, and a line
-/// whose cursor has passed its last draw (or never drew) passes none. Each covered pagaré gets a
-/// `Pagado` entry, `PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash` (the PAGADO mark at
-/// the moment of payment; only the burn waits) and the cursor moves past it; the uncovered one
-/// gets an `Abono`. `receipt_hash` is the payer's, unverified and provisional until the holder annotates it; zero means "receipt to follow"
-/// (`annotate_payment` attaches it later).
+/// The line becomes `Repaid` only when nothing is due and nothing can be drawn (window closed,
+/// fully drawn, or in collection). While it can draw, clearing the debt leaves it `Active` and a
+/// payment on a zero debt is refused (`WrongAmount`); otherwise a payment on a zero debt closes
+/// the line and moves nothing.
+///
+/// Remaining accounts: exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first,
+/// where `last_touched` is the first one this payment leaves partly unpaid, or the last draw; none
+/// once the cursor has passed the last draw (`PagareAccountsMismatch` otherwise). A covered pagaré
+/// gets a `Pagado` entry, status `PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash` (only
+/// the burn waits), and the cursor `pagares_paid` moves past it. The uncovered one gets an `Abono`
+/// entry only if the payment applied principal to it. `receipt_hash` is the payer's, unverified and
+/// provisional until the holder annotates the real one (`annotate_payment`); zero means "receipt to
+/// follow".
 pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash: [u8; 32]) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
@@ -656,8 +647,8 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
         None => 0,
     };
     require!(amount >= late_part, PoolError::LateInterestUnpaid);
-    // Audit F-01: while the line can still draw, a zero debt is nothing to pay, and a payment that
-    // clears the debt does not close the line; otherwise a third party could pay one unit and
+    // While the line can still draw, a zero debt is nothing to pay, and a payment that clears the
+    // debt does not close the line; otherwise a third party could pay one unit and
     // forfeit the borrower's commitment.
     let can_draw = line.status == LineStatus::Active
         && now < line.availability_end
@@ -673,7 +664,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
     let principal_before = line.principal_repaid;
     let principal_after = principal_before.checked_add(principal_part).ok_or(PoolError::Overflow)?;
 
-    // The sidecars, exactly `[pagares_paid ..= last_touched]`, loaded and verified before any write.
+    // The records, exactly `[pagares_paid ..= last_touched]`, are verified before any write.
     let line_key = line.key();
     let cursor = line.pagares_paid;
     let draws = line.draws;
@@ -689,7 +680,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
         require!(idx < draws, PoolError::PagareAccountsMismatch);
         // Owned by the program with the `Pagare` discriminator (`try_from`), naming this line and
         // this index: only `draw` writes such an account, at `["pagare", line, index]`, so these
-        // three facts identify the sidecar without recomputing its address (1 500 CU a piece).
+        // three facts identify the record without recomputing its address.
         let sidecar = Account::<Pagare>::try_from(info).map_err(|_| PoolError::PagareAccountsMismatch)?;
         require!(
             sidecar.line == line_key && sidecar.draw_index == idx && sidecar.status == PAGARE_OUTSTANDING,
@@ -826,10 +817,6 @@ fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
     Ok(math::arrears(&terms, paid, now).ok_or(PoolError::Overflow)?)
 }
 
-// -----------------------------------------------------------------------------------------------
-// mark_in_collection
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 pub struct MarkInCollection<'info> {
@@ -875,9 +862,9 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
         .ok_or(PoolError::Overflow)?;
     require!(now > grace_end, PoolError::NotEnoughMissed);
 
-    // The ordinary interest of the installments not yet due is forgiven (decision 28, Q14): the
-    // line keeps the share of the installments due at the mark, at least the ones that put it in
-    // collection, and never less than what was already repaid.
+    // The ordinary interest of the installments not yet due is forgiven: the line keeps the share
+    // of the installments due at the mark, at least the ones that put it in collection, and never
+    // less than what was already repaid.
     let due_count = a.due.max(k);
     let (kept, _) = math::accelerated_interest(line.interest_due, due_count, s.installments).ok_or(PoolError::Overflow)?;
     let kept = kept.max(line.interest_repaid);
@@ -894,10 +881,6 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     emit_cpi!(LineInCollection { pool: pool.key(), line_id: line.line_id, missed: a.missed, remaining, interest_forgiven });
     Ok(())
 }
-
-// -----------------------------------------------------------------------------------------------
-// write_off
-// -----------------------------------------------------------------------------------------------
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -952,7 +935,6 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
                 None => false, // nothing is missed
             };
             require!(after_missed || after_term, PoolError::WriteOffTooEarly);
-            // Audit F-03: the collection period runs from the mark.
             let period_end = line
                 .accelerated_at
                 .checked_add(i64::from(pool.collection_period_seconds))
@@ -984,10 +966,6 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// suspend_draws
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 pub struct SuspendDraws<'info> {
@@ -1009,8 +987,9 @@ pub struct SuspendDraws<'info> {
     pub line: Account<'info, CreditLine>,
 }
 
-/// Closes the draw window of an `Approved` or `Active` line now. The undrawn remainder is
-/// forfeited; repayment, collection and write-off are untouched; the pool is not paused.
+/// Admin only: closes the draw window of an `Approved` or `Active` line now. The undrawn
+/// remainder is forfeited; repayment, collection and write-off are untouched; the pool is not
+/// paused.
 pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let line = &mut ctx.accounts.line;
@@ -1020,10 +999,6 @@ pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
     emit_cpi!(LineDrawsSuspended { pool: ctx.accounts.pool.key(), line_id: line.line_id, available_forfeited });
     Ok(())
 }
-
-// -----------------------------------------------------------------------------------------------
-// cancel_line
-// -----------------------------------------------------------------------------------------------
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -1046,9 +1021,9 @@ pub struct CancelLine<'info> {
     pub line: Account<'info, CreditLine>,
 }
 
-/// Clears an approved commitment nobody drew (`Approved`, `drawn == 0`); once a tranche exists the
-/// line follows repayment, collection or write-off instead. `Cancelled` is terminal; the line id
-/// stays taken.
+/// Admin only: clears an approved commitment nobody drew (`Approved`, `drawn == 0`); once a
+/// tranche exists the line follows repayment, collection or write-off instead. `Cancelled` is
+/// terminal; the line id stays taken.
 pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let line = &mut ctx.accounts.line;

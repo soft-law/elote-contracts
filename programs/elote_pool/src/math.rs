@@ -1,5 +1,6 @@
-//! Share accounting and installment arithmetic. Products go through `u128`; every division
-//! rounds down, which favours the pool on both deposit and redemption.
+//! Share accounting and installment arithmetic. Products go through `u128`. Share conversions
+//! round down, in the pool's favour on both deposit and redemption; interest rounds down, in the
+//! borrower's favour.
 
 use crate::state::{BPS, SECONDS_PER_YEAR};
 
@@ -163,9 +164,9 @@ pub struct ScheduleTerms {
     pub accelerated_at: i64,
 }
 
-/// The ordinary interest kept and forgiven at the acceleration (decision 28, Q14): the line owes
-/// the interest of the installments due at the mark, `interest_due * due_count / installments`
-/// rounded down, and the rest is forgiven. `(kept, forgiven)`; `None` on overflow or when
+/// The ordinary interest kept and forgiven at the acceleration: the line owes the interest of the
+/// installments due at the mark, `interest_due * due_count / installments` rounded down, and the
+/// rest (with the rounding remainder) is forgiven. `(kept, forgiven)`; `None` on overflow or when
 /// `due_count > installments`.
 pub fn accelerated_interest(interest_due: u64, due_count: u16, installments: u16) -> Option<(u64, u64)> {
     if due_count > installments || installments == 0 {
@@ -278,7 +279,7 @@ mod tests {
         assert_eq!(nav(u64::MAX, 1), None);
     }
 
-    // -- installments: ported from the old `missed_payments` cases ------------------------------
+    // -- installments ----------------------------------------------------------------------------
 
     #[test]
     fn none_due_before_the_first_interval() {
@@ -287,7 +288,7 @@ mod tests {
         assert_eq!(installments_due(-5, 0, 1_000, 6), 0);
     }
 
-    // No "-1": at exactly one interval after the draw the first installment is due.
+    // At its due date to the second, the first installment already counts as due.
     #[test]
     fn one_due_at_the_first_due_date() {
         assert_eq!(installments_due(1_000, 0, 1_000, 6), 1);
@@ -332,7 +333,7 @@ mod tests {
         assert_eq!(installments_covered(1_000_003, 1_000_003, 6), Some(6));
     }
 
-    // -- late interest: ported from the old late-payment cases, annualized ---------------------
+    // -- late interest ---------------------------------------------------------------------------
 
     const YEAR: u64 = SECONDS_PER_YEAR;
 
@@ -471,7 +472,7 @@ mod tests {
         assert_eq!(a.overdue_principal, 140, "principal == total here, so every part is principal");
     }
 
-    /// Decision 11: late interest accrues on the principal share of each overdue part, never on
+    /// Late interest accrues on the principal share of each overdue part, never on
     /// the interest share. With 500 of principal in a total of 600, an overdue installment of 100
     /// carries 83 of principal (rounded down), and the late interest and the per-settlement cap
     /// both follow that figure.
@@ -509,7 +510,7 @@ mod tests {
         assert_eq!(accelerated_interest(100, 0, 0), None);
     }
 
-    /// Vencimiento anticipado: once accelerated, every installment is due, the whole balance is
+    /// Once accelerated, every installment is due, the whole balance is
     /// overdue, and an installment not yet due accrues from the acceleration (no further grace)
     /// while one already overdue keeps its own start.
     #[test]

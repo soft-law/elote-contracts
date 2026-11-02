@@ -29,10 +29,6 @@ macro_rules! pool_signer {
     };
 }
 
-// -----------------------------------------------------------------------------------------------
-// init_pool
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 pub struct InitPool<'info> {
@@ -94,14 +90,20 @@ pub struct InitPool<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// The asset-mint policy. Refused, because they take or hide value or would freeze the vault at
-/// creation: `TransferFeeConfig`, `PermanentDelegate`, `TransferHook`, `NonTransferable`, the
-/// confidential extensions (a mint that can hold confidential balances makes `vault.amount`
-/// unreliable as the NAV's first term), `MintCloseAuthority`, and `DefaultAccountState` unless the
-/// state is `Initialized`. Accepted and recorded as `asset_controls` bits: a freeze authority and
-/// `Pausable`, the issuer controls that can stop the vault without touching the program.
-/// Everything else is accepted and not recorded. A classic mint has no extensions and may have a
-/// freeze authority.
+/// The asset-mint policy. Refused (`AssetMintNotAllowed`):
+/// - `TransferFeeConfig`: the vault would receive less than the depositor sends.
+/// - `PermanentDelegate`: a third party could move the vault's tokens.
+/// - `TransferHook`: foreign code would run on every transfer into and out of the vault.
+/// - `NonTransferable`: no deposit could reach the vault.
+/// - the confidential extensions: hidden balances make `vault.amount` unreliable as the NAV's
+///   first term.
+/// - `MintCloseAuthority`: the mint could be closed and re-created at its address with other
+///   extensions.
+/// - `DefaultAccountState` other than `Initialized`: the vault would be born frozen.
+///
+/// Accepted and recorded as `asset_controls` bits, the issuer controls that can stop the vault
+/// without touching the program: a freeze authority and `Pausable`. Everything else is accepted
+/// and not recorded. A classic mint has no extensions and may have a freeze authority.
 fn asset_controls(asset_mint: &AccountInfo) -> Result<u8> {
     let data = asset_mint.data.borrow();
     let state = StateWithExtensions::<MintState>::unpack(&data)?;
@@ -133,15 +135,21 @@ fn asset_controls(asset_mint: &AccountInfo) -> Result<u8> {
     Ok(controls)
 }
 
-/// The share-mint policy: the pool must be able to own and price the mint. Owned by
-/// `share_token_program`, mint authority = the pool PDA, supply 0, the asset's decimals. Refused
-/// extensions: `TransferFeeConfig`, `TransferHook`, `MintCloseAuthority`, `PermanentDelegate`,
-/// `InterestBearingConfig` and `ScaledUiAmount` (a display rate or multiplier on a NAV-priced
-/// share misleads wallets), `Pausable` (a pause of every deposit and redemption outside
-/// `set_paused` and its event), the confidential ones (a hidden supply breaks the price per share). `DefaultAccountState = Frozen`
-/// makes the shares permissioned and then requires a freeze authority, or nothing could ever be
-/// thawed. `NonTransferable` is allowed: deposit mints and redeem burns. Who the freeze authority
-/// is stays the admin's choice and is not recorded. Returns `permissioned`.
+/// The share-mint policy, so the pool can own and price the mint: owned by `share_token_program`,
+/// mint authority = the pool PDA, supply 0, the asset's decimals. Refused (`ShareMintNotAllowed`):
+/// - `TransferFeeConfig`: a transfer would take a cut of the holder's shares.
+/// - `TransferHook`: foreign code would run on every share transfer.
+/// - `MintCloseAuthority`: the mint could be closed and re-created at its address with other
+///   extensions.
+/// - `PermanentDelegate`: a third party could move or burn holders' shares.
+/// - `InterestBearingConfig`, `ScaledUiAmount`: a display rate or multiplier on a NAV-priced share
+///   misleads wallets.
+/// - `Pausable`: a pause of every deposit and redemption outside `set_paused` and its event.
+/// - the confidential extensions: a hidden supply breaks the price per share.
+///
+/// `DefaultAccountState = Frozen` makes the shares permissioned and then requires a freeze
+/// authority, or nothing could ever be thawed; who holds it is the admin's choice and is not
+/// recorded. `NonTransferable` is allowed: deposit mints and redeem burns. Returns `permissioned`.
 fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
     let share_mint = &ctx.accounts.share_mint;
     require!(
@@ -185,12 +193,12 @@ fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
 }
 
 /// The series' collection: a bare Metaplex Core `CollectionV1` whose update authority is this
-/// pool's PDA, so only the program can add assets to it. Bare (audit F-02): Core applies a
-/// collection's permanent plugins to every asset in it, so the account must be exactly the base
-/// record (key, update authority, name, URI, `num_minted`, `current_size`) with no plugin header
-/// after it, and nothing minted yet. Every read is at a fixed offset or bounded by a length read
-/// before it; a full decoder would allocate the name and URI from a length prefix that, on a
-/// foreign account, can be anything.
+/// pool's PDA, so only the program can add assets to it (`CollectionNotAllowed` otherwise). Any
+/// plugin is refused, because Core applies a collection's permanent plugins to every asset in it,
+/// so the account must be exactly the base record (key, update authority, name, URI,
+/// `num_minted`, `current_size`) with no plugin header after it, and nothing minted yet. Every
+/// read is at a fixed offset or bounded by a length read before it; a full decoder would allocate
+/// the name and URI from a length prefix that, on a foreign account, can be anything.
 fn validate_collection(collection: &AccountInfo, pool: &Pubkey) -> Result<()> {
     require!(*collection.owner == mpl_core::ID, PoolError::CollectionNotAllowed);
     let data = collection.data.borrow();
@@ -214,10 +222,10 @@ fn validate_collection(collection: &AccountInfo, pool: &Pubkey) -> Result<()> {
     Ok(())
 }
 
-/// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the life of
-/// the pool; `collection_period_seconds` (at least `MIN_COLLECTION_PERIOD_SECONDS`) and
-/// `cancel_delay_seconds` (at least `MIN_CANCEL_DELAY_SECONDS`, the backstop's wait) can be
-/// changed by the admin.
+/// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the pool's life.
+/// The attestor is rotated with `set_attestor`. `collection_period_seconds` (at least
+/// `MIN_COLLECTION_PERIOD_SECONDS`) and `cancel_delay_seconds` (at least `MIN_CANCEL_DELAY_SECONDS`,
+/// the backstop's wait) are changed by the admin with `set_collection_period` and `set_cancel_delay`.
 pub fn init_pool(
     ctx: Context<InitPool>,
     grace_period_seconds: u32,
@@ -230,7 +238,7 @@ pub fn init_pool(
     require!(collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
     require!(cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS, PoolError::CancelDelayTooShort);
     // The zero key could never co-sign: a pool with it would open no line. The admin as attestor
-    // would collapse the two-signature model into one key (audit F-05).
+    // would collapse the two-signature model into one key.
     require!(attestor != Pubkey::default(), PoolError::WrongAccount);
     require!(attestor != ctx.accounts.admin.key(), PoolError::AttestorIsAdmin);
     // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
@@ -277,10 +285,6 @@ pub fn init_pool(
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// set_collection_period
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 pub struct SetCollectionPeriod<'info> {
@@ -304,10 +308,6 @@ pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_perio
     emit_cpi!(CollectionPeriodSet { pool: pool.key(), collection_period_seconds });
     Ok(())
 }
-
-// -----------------------------------------------------------------------------------------------
-// deposit
-// -----------------------------------------------------------------------------------------------
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -436,10 +436,6 @@ pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Resul
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// redeem
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 pub struct Redeem<'info> {
@@ -541,10 +537,6 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// set_paused
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 pub struct SetPaused<'info> {
@@ -559,6 +551,8 @@ pub struct SetPaused<'info> {
     pub pool: Account<'info, Pool>,
 }
 
+/// Admin only. A paused pool refuses deposits, redemptions, openings and draws; repayments,
+/// cancellations and write-offs go on.
 pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     pool.paused = paused;
@@ -566,16 +560,12 @@ pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
     Ok(())
 }
 
-// -----------------------------------------------------------------------------------------------
-// set_attestor
-// -----------------------------------------------------------------------------------------------
-
 #[event_cpi]
 #[derive(Accounts)]
 pub struct SetAttestor<'info> {
     pub admin: Signer<'info>,
 
-    /// The key that becomes the attestor; it signs, proving control of the key (C14).
+    /// The key that becomes the attestor; it signs, proving control of the key.
     pub new_attestor: Signer<'info>,
 
     #[account(
@@ -587,8 +577,9 @@ pub struct SetAttestor<'info> {
     pub pool: Account<'info, Pool>,
 }
 
-/// The admin and the new attestor sign. The attestor can block every opening, draw and
-/// cancellation by withholding its signature and can move nothing.
+/// The admin and the new attestor sign; the admin cannot be the attestor (`AttestorIsAdmin`). The
+/// attestor moves nothing; withholding its signature blocks openings, draws, endorsements and court
+/// annotations, and delays a cancellation until the backstop applies.
 pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
     let attestor = ctx.accounts.new_attestor.key();
     require!(attestor != ctx.accounts.admin.key(), PoolError::AttestorIsAdmin);
@@ -597,10 +588,6 @@ pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
     emit_cpi!(AttestorSet { pool: pool.key(), attestor });
     Ok(())
 }
-
-// -----------------------------------------------------------------------------------------------
-// set_cancel_delay
-// -----------------------------------------------------------------------------------------------
 
 #[event_cpi]
 #[derive(Accounts)]

@@ -96,7 +96,7 @@ pub struct LineOpened {
 }
 
 /// Emitted by `draw` after `LineDrawn`: the pagaré issued as the Metaplex Core asset `asset`,
-/// held frozen by `holder` (the pool PDA). `due_at` is the line's last due date at issuance.
+/// owned by `holder` (the pool PDA) and frozen. `due_at` is the line's last due date at issuance.
 #[event]
 pub struct PagareIssued {
     pub pool: Pubkey,
@@ -109,9 +109,9 @@ pub struct PagareIssued {
     pub holder: Pubkey,
 }
 
-/// One entry of a pagaré's registry (LGTOC 8 fr. VI, 13, 130): the full content the sidecar's
-/// hash chain commits to. `stated_at` is the date the entry states (the signed message's date for
-/// a late entry), `recorded_at` the slot's time.
+/// One entry of a pagaré's registry: the full content the sidecar's hash chain commits to.
+/// `stated_at` is the date the entry states and `recorded_at` the slot's time; every instruction
+/// writes both as the slot's time.
 #[event]
 pub struct PagareEntry {
     pub pool: Pubkey,
@@ -127,9 +127,8 @@ pub struct PagareEntry {
     pub stated_at: i64,
 }
 
-/// Emitted by `cancel_pagare` (C22, LGTOC 129), before the burn. `holder` is the key that
-/// extinguished the pagaré; the sidecar stays as the PAGADO mark. No AppData length: the engine
-/// archives the log off chain before the burn.
+/// Emitted by `cancel_pagare`, before the burn. `holder` is the key that extinguished the pagaré
+/// (the admin or the procurador); the sidecar stays as the PAGADO mark.
 #[event]
 pub struct PagareCancelled {
     pub pool: Pubkey,
@@ -154,7 +153,7 @@ pub struct CancellationRequested {
     pub cancel_after: i64,
 }
 
-/// Emitted by `suspend_draws`; `available_forfeited` is the undrawn remainder.
+/// `available_forfeited` is the undrawn remainder.
 #[event]
 pub struct LineDrawsSuspended {
     pub pool: Pubkey,
@@ -162,7 +161,6 @@ pub struct LineDrawsSuspended {
     pub available_forfeited: u64,
 }
 
-/// Emitted by `cancel_line`.
 #[event]
 pub struct LineCancelled {
     pub pool: Pubkey,
@@ -206,7 +204,7 @@ pub struct LateInterestCollected {
 /// A scheduled line moved to collection and its balance accelerated. `remaining` is the principal
 /// and interest still due after the acceleration, without late interest; `interest_forgiven` is
 /// the ordinary interest of the installments not yet due at the mark, which the line no longer
-/// owes (appended, events are append-only).
+/// owes.
 #[event]
 pub struct LineInCollection {
     pub pool: Pubkey,
@@ -240,7 +238,7 @@ pub struct PaymentEntry {
     pub principal_applied: u64,
 }
 
-/// The payment entries of one `repay` (art. 130): the payer's receipt hash (zero means "receipt
+/// The payment entries of one `repay`: the payer's receipt hash (zero means "receipt
 /// to follow"), the payment's split and one `PaymentEntry` per sidecar touched, oldest first.
 /// Emitted after the `PagareEntry` of each entry.
 #[event]

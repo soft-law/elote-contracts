@@ -302,10 +302,8 @@ fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
     assert_eq!(line.late_collected, late);
 }
 
-/// One repayment order for every line since line v3: late interest, then interest, then
-/// principal, and never more than is due. The version-1 "principal first, reject overpayment"
-/// branch is gone (a zero-loss write-off can no longer forfeit
-/// the interest, since a line with principal left always has interest left too).
+/// One repayment order for every line: late interest, then interest, then principal, and never
+/// more than is due.
 #[test]
 fn repayment_order_is_interest_first_and_clamps_overpayment_on_every_line() {
     let mut env = Env::new();

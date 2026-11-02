@@ -157,8 +157,8 @@ fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
     assert_eq!(p0.last_kind, elote_pool::state::KIND_RECIBO);
 }
 
-/// N-06: the holder replaces a pending cancellation request (a wrong receipt no longer blocks the
-/// backstop). The replacement takes the new receipt and restarts the wait from now, but never
+/// N-06: the holder replaces a pending cancellation request, so a wrong receipt does not block
+/// the backstop. The replacement takes the new receipt and restarts the wait from now, but never
 /// brings the deadline earlier than the one it replaces, even after the delay was shortened.
 #[test]
 fn n06_the_holder_replaces_a_pending_request_without_shortening_it() {

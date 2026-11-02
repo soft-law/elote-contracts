@@ -1,4 +1,4 @@
-//! Credit lines approved from the pool (line v3): opening with the attestor and an optional
+//! Credit lines approved from the pool: opening with the attestor and an optional
 //! sponsor, draws in tranches, one repayment order, write-off on what was drawn.
 
 mod common;

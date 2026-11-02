@@ -25,11 +25,10 @@ import {
 export type ScheduleParams = {
   /** The first due date (unix seconds), from the signed contract; must be after the opening. */
   firstDueAt: bigint;
-  /** Seconds between due dates. */
   intervalSeconds: bigint;
   /** `drawn + interest_due` is paid in this many installments. */
   installments: number;
-  /** Annual late interest rate on overdue amounts, in basis points. */
+  /** Annual late interest rate on the overdue principal, in basis points. */
   lateBps: number;
   /** Missed installments after which anyone may move the line to collection. */
   maxMissed: number;
@@ -38,11 +37,10 @@ export type ScheduleParams = {
 export type ScheduleParamsArgs = {
   /** The first due date (unix seconds), from the signed contract; must be after the opening. */
   firstDueAt: number | bigint;
-  /** Seconds between due dates. */
   intervalSeconds: number | bigint;
   /** `drawn + interest_due` is paid in this many installments. */
   installments: number;
-  /** Annual late interest rate on overdue amounts, in basis points. */
+  /** Annual late interest rate on the overdue principal, in basis points. */
   lateBps: number;
   /** Missed installments after which anyone may move the line to collection. */
   maxMissed: number;

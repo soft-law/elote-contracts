@@ -188,31 +188,29 @@ export type CancelPagareAsyncInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   /**
-   * Who extinguishes the title: the holder (the admin while the asset is in the pool) or the
-   * procurador of record (`Pagare::procurador`, with a procuración in force); checked in the
-   * handler (`NotHolder`).
+   * The owner (the admin while the asset is in the pool) or the procurador of record with a
+   * procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
    */
   holder: TAccountHolder;
   /**
-   * Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional
-   * for the backstop: left out, the holder cancels alone only after a recorded request's
-   * deadline, with the requested receipt (`AttestorRequired` otherwise).
+   * Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner
+   * cancels alone only after a request's `cancel_after`, with the requested receipt
+   * (`AttestorRequired` otherwise).
    */
   attestor?: TAccountAttestor;
   /** Receives the asset's rent from the Core program. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
   line: TAccountLine;
-  /** The sidecar of pagaré `draw_index` of the line; it is written, never closed. */
+  /** The record of pagaré `draw_index` of the line; written, never closed. */
   pagare?: TAccountPagare;
-  /** The Core asset the sidecar names; burnt by the Core program. */
+  /** The Core asset the record names; burnt by the Core program. */
   asset: TAccountAsset;
   /** The series' collection the asset belongs to. */
   collection: TAccountCollection;
   /**
-   * The program address the burn delegate was approved to, `["procurador", pagare, holder]`:
-   * required on the procurador's branch, where the program signs for it; left out on the
-   * owner's.
+   * The burn delegate's authority, `["procurador", pagare, holder]`: required on the
+   * procurador's branch, where the program signs for it; left out on the owner's.
    */
   procuradorAuthority?: TAccountProcuradorAuthority;
   mplCoreProgram?: TAccountMplCoreProgram;
@@ -509,31 +507,29 @@ export type CancelPagareInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   /**
-   * Who extinguishes the title: the holder (the admin while the asset is in the pool) or the
-   * procurador of record (`Pagare::procurador`, with a procuración in force); checked in the
-   * handler (`NotHolder`).
+   * The owner (the admin while the asset is in the pool) or the procurador of record with a
+   * procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
    */
   holder: TAccountHolder;
   /**
-   * Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional
-   * for the backstop: left out, the holder cancels alone only after a recorded request's
-   * deadline, with the requested receipt (`AttestorRequired` otherwise).
+   * Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner
+   * cancels alone only after a request's `cancel_after`, with the requested receipt
+   * (`AttestorRequired` otherwise).
    */
   attestor?: TAccountAttestor;
   /** Receives the asset's rent from the Core program. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
   line: TAccountLine;
-  /** The sidecar of pagaré `draw_index` of the line; it is written, never closed. */
+  /** The record of pagaré `draw_index` of the line; written, never closed. */
   pagare: TAccountPagare;
-  /** The Core asset the sidecar names; burnt by the Core program. */
+  /** The Core asset the record names; burnt by the Core program. */
   asset: TAccountAsset;
   /** The series' collection the asset belongs to. */
   collection: TAccountCollection;
   /**
-   * The program address the burn delegate was approved to, `["procurador", pagare, holder]`:
-   * required on the procurador's branch, where the program signs for it; left out on the
-   * owner's.
+   * The burn delegate's authority, `["procurador", pagare, holder]`: required on the
+   * procurador's branch, where the program signs for it; left out on the owner's.
    */
   procuradorAuthority?: TAccountProcuradorAuthority;
   mplCoreProgram?: TAccountMplCoreProgram;
@@ -794,31 +790,29 @@ export type ParsedCancelPagareInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     /**
-     * Who extinguishes the title: the holder (the admin while the asset is in the pool) or the
-     * procurador of record (`Pagare::procurador`, with a procuración in force); checked in the
-     * handler (`NotHolder`).
+     * The owner (the admin while the asset is in the pool) or the procurador of record with a
+     * procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
      */
     holder: TAccountMetas[0];
     /**
-     * Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional
-     * for the backstop: left out, the holder cancels alone only after a recorded request's
-     * deadline, with the requested receipt (`AttestorRequired` otherwise).
+     * Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner
+     * cancels alone only after a request's `cancel_after`, with the requested receipt
+     * (`AttestorRequired` otherwise).
      */
     attestor?: TAccountMetas[1] | undefined;
     /** Receives the asset's rent from the Core program. Any signer. */
     payer: TAccountMetas[2];
     pool: TAccountMetas[3];
     line: TAccountMetas[4];
-    /** The sidecar of pagaré `draw_index` of the line; it is written, never closed. */
+    /** The record of pagaré `draw_index` of the line; written, never closed. */
     pagare: TAccountMetas[5];
-    /** The Core asset the sidecar names; burnt by the Core program. */
+    /** The Core asset the record names; burnt by the Core program. */
     asset: TAccountMetas[6];
     /** The series' collection the asset belongs to. */
     collection: TAccountMetas[7];
     /**
-     * The program address the burn delegate was approved to, `["procurador", pagare, holder]`:
-     * required on the procurador's branch, where the program signs for it; left out on the
-     * owner's.
+     * The burn delegate's authority, `["procurador", pagare, holder]`: required on the
+     * procurador's branch, where the program signs for it; left out on the owner's.
      */
     procuradorAuthority?: TAccountMetas[8] | undefined;
     mplCoreProgram: TAccountMetas[9];

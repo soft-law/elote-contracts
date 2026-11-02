@@ -92,8 +92,8 @@ export type Pagare = {
   /** The receipt hash `cancel_pagare` was given; zero until the burn. */
   cancelReceiptHash: ReadonlyUint8Array;
   /**
-   * The deadline of a pending cancellation request, after which the holder may cancel alone;
-   * zero when none.
+   * Deadline of the pending cancellation request, after which the owner may cancel without the
+   * attestor; zero when none.
    */
   cancelAfter: bigint;
   /** The receipt hash of that request. */
@@ -153,8 +153,8 @@ export type PagareArgs = {
   /** The receipt hash `cancel_pagare` was given; zero until the burn. */
   cancelReceiptHash: ReadonlyUint8Array;
   /**
-   * The deadline of a pending cancellation request, after which the holder may cancel alone;
-   * zero when none.
+   * Deadline of the pending cancellation request, after which the owner may cancel without the
+   * attestor; zero when none.
    */
   cancelAfter: number | bigint;
   /** The receipt hash of that request. */

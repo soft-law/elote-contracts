@@ -9,9 +9,9 @@
     {
       "name": "annotate_payment",
       "docs": [
-        "Attaches a receipt to a payment entry of pagaré `draw_index`: appends a Recibo entry over",
-        "`receipt_hash`, referencing entry `entry_count` of the pagaré's chain. The holder or the",
-        "attestor signs; the repair path when a payer's hash was zero or wrong."
+        "The admin (the holder) or the attestor attaches a receipt to payment entry `entry_count` of",
+        "pagaré `draw_index`, as a `Recibo` entry over `receipt_hash`. The holder's annotation also",
+        "replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`)."
       ],
       "discriminator": [
         142,
@@ -145,7 +145,7 @@
     {
       "name": "cancel_line",
       "docs": [
-        "Clears an approved commitment nobody drew. Admin only; refused once anything was drawn."
+        "Cancels an `Approved` line nobody drew. Admin only; refused once anything was drawn."
       ],
       "discriminator": [
         190,
@@ -232,10 +232,11 @@
     {
       "name": "cancel_pagare",
       "docs": [
-        "Marks pagaré `draw_index` paid against the receipt `receipt_hash`, writes the Terminacion",
-        "entry and burns its asset; the record is kept. The holder (the admin while the asset is in",
-        "the pool) or the procurador of record signs, with the attestor; refused until the line's",
-        "principal repaid covers the pagaré, and in collection or after a write-off. Never paused."
+        "Extinguishes pagaré `draw_index` once a repayment has marked it paid",
+        "(`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry,",
+        "then thaws and burns the asset; the record stays. The owner (the admin) or the procurador of",
+        "record signs, with the attestor; without the attestor, only the owner after a request's",
+        "`cancel_after`, with the requested receipt. Never paused."
       ],
       "discriminator": [
         90,
@@ -251,18 +252,17 @@
         {
           "name": "holder",
           "docs": [
-            "Who extinguishes the title: the holder (the admin while the asset is in the pool) or the",
-            "procurador of record (`Pagare::procurador`, with a procuración in force); checked in the",
-            "handler (`NotHolder`)."
+            "The owner (the admin while the asset is in the pool) or the procurador of record with a",
+            "procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`)."
           ],
           "signer": true
         },
         {
           "name": "attestor",
           "docs": [
-            "Attests the receipt behind `receipt_hash` and that the asset's log was archived. Optional",
-            "for the backstop: left out, the holder cancels alone only after a recorded request's",
-            "deadline, with the requested receipt (`AttestorRequired` otherwise)."
+            "Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner",
+            "cancels alone only after a request's `cancel_after`, with the requested receipt",
+            "(`AttestorRequired` otherwise)."
           ],
           "signer": true,
           "optional": true
@@ -335,7 +335,7 @@
         {
           "name": "pagare",
           "docs": [
-            "The sidecar of pagaré `draw_index` of the line; it is written, never closed."
+            "The record of pagaré `draw_index` of the line; written, never closed."
           ],
           "writable": true,
           "pda": {
@@ -365,7 +365,7 @@
         {
           "name": "asset",
           "docs": [
-            "The Core asset the sidecar names; burnt by the Core program."
+            "The Core asset the record names; burnt by the Core program."
           ],
           "writable": true
         },
@@ -379,9 +379,8 @@
         {
           "name": "procurador_authority",
           "docs": [
-            "The program address the burn delegate was approved to, `[\"procurador\", pagare, holder]`:",
-            "required on the procurador's branch, where the program signs for it; left out on the",
-            "owner's."
+            "The burn delegate's authority, `[\"procurador\", pagare, holder]`: required on the",
+            "procurador's branch, where the program signs for it; left out on the owner's."
           ],
           "optional": true
         },
@@ -419,9 +418,9 @@
     {
       "name": "court_annotation",
       "docs": [
-        "Records a court's act on pagaré `draw_index`: `kind` is AnotacionJudicial (6: embargo,",
-        "suspension, cancellation) or ConstanciaJudicial (7, LGTOC 28), over the court document's",
-        "hash. The holder and the attestor sign; nothing moves."
+        "Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,",
+        "suspension, cancellation) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. The",
+        "holder (the admin) and the attestor sign; refused on a cancelled pagaré; moves nothing."
       ],
       "discriminator": [
         218,
@@ -562,8 +561,8 @@
     {
       "name": "deposit",
       "docs": [
-        "Deposits `assets` for shares at the current NAV, at least `min_shares_out`; the first",
-        "deposit locks `DEAD_SHARES`. Refused while paused."
+        "The depositor pays `assets` for shares at the current NAV, at least `min_shares_out`; the",
+        "first deposit must meet the minimum and locks `DEAD_SHARES`. Refused while paused."
       ],
       "discriminator": [
         242,
@@ -665,9 +664,10 @@
     {
       "name": "draw",
       "docs": [
-        "Draws a tranche of `amount` to the borrower against the signed pagaré `document_hash` and",
-        "mints the pagaré asset with its record. The borrower, the attestor and the rent payer",
-        "sign; refused while paused, once the draw window has closed, or above what is available."
+        "Pays a tranche of `amount` to the borrower against the signed pagaré `document_hash` and",
+        "mints the pagaré as a frozen Core asset owned by the pool, with its `Pagare` record. The",
+        "borrower, the attestor and the rent payer sign; refused while paused, once the draw window",
+        "has closed, or above what the line or the vault has."
       ],
       "discriminator": [
         61,
@@ -778,9 +778,8 @@
         {
           "name": "asset",
           "docs": [
-            "The Core asset that is the pagaré, created by the Core program here. The client passes",
-            "the bump, so the constraint runs one `create_program_address` and the compute of a draw",
-            "does not depend on the line's key."
+            "The pagaré's Core asset, created here by the Core program. The client passes the bump so the",
+            "constraint does not search for it."
           ],
           "writable": true,
           "pda": {
@@ -907,9 +906,11 @@
     {
       "name": "endorse_pagare",
       "docs": [
-        "Endorses pagaré `draw_index` en procuración to `to` (LGTOC 35): appends the entry and lends",
-        "the power to extinguish it to a program-signed delegate. The admin (the pool is the owner)",
-        "and the attestor sign; in this version `kind` must be `KIND_PROCURACION`."
+        "Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets",
+        "the program address `[\"procurador\", pagare, to]` burn the asset through an owner-managed",
+        "`BurnDelegate`. The admin (the holder) and the attestor sign; `kind` must be",
+        "`KIND_PROCURACION`; refused with `to` the zero key, the pool, the admin or the attestor, or",
+        "a procuración in force."
       ],
       "discriminator": [
         108,
@@ -932,7 +933,7 @@
         {
           "name": "attestor",
           "docs": [
-            "Attests the signed endoso behind `endoso_hash` and the endorsee's verification (v1 gate)."
+            "Attests the signed endoso behind `endoso_hash` and the endorsee's verification."
           ],
           "signer": true
         },
@@ -1078,10 +1079,10 @@
     {
       "name": "init_pool",
       "docs": [
-        "Creates the pool, its vault and its dead-shares account around `asset_mint` and the",
-        "admin's share mint; fixes the grace period, the line cap (`1..=10_000` bps of the NAV)",
-        "and the attestor for the life of the pool, and the collection period (at least 30 days).",
-        "The admin signs; refused with the admin as attestor."
+        "Creates the pool, its vault and its dead-shares account around `asset_mint`, the admin's",
+        "share mint and the series collection. The admin signs. Fixes the grace period and the line",
+        "cap (`1..=10_000` bps of the NAV) for the pool's life; sets the attestor (not the admin),",
+        "the collection period (at least 30 days) and the cancel delay (at least seven days)."
       ],
       "discriminator": [
         116,
@@ -1245,8 +1246,9 @@
     {
       "name": "mark_in_collection",
       "docs": [
-        "Moves a scheduled line to collection once `max_missed` installments are missed and the",
-        "grace period of the last of them has run. Anyone may call it, also while paused."
+        "Moves a scheduled line to collection once `max_missed` installments are missed and the grace",
+        "period of the last of them has run, accelerating the balance. Anyone may call it, also while",
+        "paused."
       ],
       "discriminator": [
         188,
@@ -1328,8 +1330,8 @@
       "docs": [
         "Approves line `line_id` (the next): a commitment of `principal` at an annual `rate_bps`,",
         "repaid at `term_end` or on the `schedule`'s calendar. The admin, the borrower, the attestor",
-        "and the named sponsor sign; refused while paused, with the admin as borrower, or above the",
-        "line cap. Moves no money."
+        "and the sponsor if named sign; refused while paused, with the admin or the attestor as",
+        "borrower, or above the line cap. Moves no money."
       ],
       "discriminator": [
         99,
@@ -1498,8 +1500,8 @@
     {
       "name": "redeem",
       "docs": [
-        "Burns `shares` for assets at the current NAV, at least `min_assets_out`, up to the vault's",
-        "liquidity. Refused while paused."
+        "The holder burns `shares` for assets at the current NAV, at least `min_assets_out`, up to",
+        "the vault's balance. Refused while paused."
       ],
       "discriminator": [
         184,
@@ -1597,9 +1599,12 @@
     {
       "name": "repay",
       "docs": [
-        "Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then",
-        "interest, then principal, and never more than is due. Anyone may pay. A full repayment",
-        "closes the line and forfeits the undrawn remainder."
+        "Anyone pays up to `amount` on an `Active` or `InCollection` line: late interest (which",
+        "`amount` must cover), then interest, then principal, never more than is due. The remaining",
+        "accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first;",
+        "each one covered is marked paid with the payer's provisional `receipt_hash`. The line",
+        "becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a",
+        "payment on a zero debt is refused. Never paused."
       ],
       "discriminator": [
         234,
@@ -1724,10 +1729,10 @@
     {
       "name": "request_cancellation",
       "docs": [
-        "Records the holder's request to cancel pagaré `draw_index` against the receipt",
-        "`receipt_hash`, the backstop on the attestor: the same checks as the cancellation itself,",
-        "one request at a time; after the pool's cancel delay the holder may cancel alone with the",
-        "same receipt."
+        "The holder (the admin) requests the cancellation of pagaré `draw_index`, marked paid by a",
+        "repayment, against `receipt_hash`; after `cancel_after = max(now + cancel delay, pending",
+        "deadline)` it may cancel without the attestor with that receipt. A new request replaces a",
+        "pending one."
       ],
       "discriminator": [
         143,
@@ -1857,8 +1862,9 @@
     {
       "name": "revoke_procuracion",
       "docs": [
-        "Revokes the procuración in force on pagaré `draw_index` (LGTOC 41): appends the revocation",
-        "entry over the signed revocation's hash and takes the delegate back. The holder alone signs."
+        "Revokes the procuración in force on pagaré `draw_index`: appends the revocation entry over",
+        "the signed revocation's hash and returns the burn delegate to the owner. The holder (the",
+        "admin) signs."
       ],
       "discriminator": [
         139,
@@ -2009,7 +2015,8 @@
     {
       "name": "set_attestor",
       "docs": [
-        "Replaces the pool's attestor. The admin and the new attestor sign."
+        "Replaces the pool's attestor. The admin and the new attestor sign; refused with the admin as",
+        "attestor."
       ],
       "discriminator": [
         95,
@@ -2032,7 +2039,7 @@
         {
           "name": "new_attestor",
           "docs": [
-            "The key that becomes the attestor; it signs, proving control of the key (C14)."
+            "The key that becomes the attestor; it signs, proving control of the key."
           ],
           "signer": true
         },
@@ -2075,9 +2082,9 @@
     {
       "name": "set_cancel_delay",
       "docs": [
-        "Sets the backstop's wait, in seconds, from a cancellation request before the holder may",
-        "cancel a pagaré without the attestor; never below seven days. Admin only. A request fixes",
-        "its own deadline, so a change never moves one pending."
+        "Sets the wait, in seconds, from a cancellation request before the holder may cancel a pagaré",
+        "without the attestor; never below seven days. Admin only. A pending request keeps its",
+        "deadline."
       ],
       "discriminator": [
         53,
@@ -2206,8 +2213,8 @@
     {
       "name": "set_paused",
       "docs": [
-        "Pauses or resumes deposits, redemptions, openings and draws. Repayments, collection and",
-        "write-offs are never paused."
+        "Pauses or resumes deposits, redemptions, openings and draws. Admin only. Nothing else is",
+        "ever paused: repayments, pagaré instructions, collection and write-offs."
       ],
       "discriminator": [
         91,
@@ -2271,8 +2278,8 @@
     {
       "name": "suspend_draws",
       "docs": [
-        "Closes a line's draw window now. Admin only; refused unless the line is approved or",
-        "active. Repayment is untouched."
+        "Closes the draw window of an `Approved` or `Active` line now, forfeiting the undrawn",
+        "remainder. Admin only. Repayment is untouched."
       ],
       "discriminator": [
         126,
@@ -2359,8 +2366,9 @@
     {
       "name": "write_off",
       "docs": [
-        "Books the unpaid principal of a line as a loss. Admin only; refused before",
-        "`term_end + grace`, or on a line in collection before its oldest missed due date plus grace."
+        "Books a line's unpaid principal as a loss. Admin only; an `Active` line after `term_end +",
+        "grace`, an `InCollection` line after its collection period from the mark and after its",
+        "oldest missed due date or its term, plus grace. Never paused."
       ],
       "discriminator": [
         42,
@@ -3140,7 +3148,7 @@
           {
             "name": "sponsor",
             "docs": [
-              "A public program that co-signed the opening; `None` for a commercial line."
+              "Co-signed `open_line`; `None` when the line has no sponsor."
             ],
             "type": {
               "option": "pubkey"
@@ -3233,8 +3241,8 @@
           {
             "name": "interest_due",
             "docs": [
-              "Ordinary interest charged so far: the sum over tranches of",
-              "`amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its draw."
+              "Ordinary interest owed: each draw adds `amount * rate_bps * (last_due - now) / (BPS *",
+              "SECONDS_PER_YEAR)`; `mark_in_collection` cuts it to the share of the installments then due."
             ],
             "type": "u64"
           },
@@ -3276,7 +3284,7 @@
           {
             "name": "late_bps",
             "docs": [
-              "Annual late interest rate on overdue principal, in basis points."
+              "Annual late interest rate on the overdue principal, in basis points."
             ],
             "type": "u16"
           },
@@ -3289,9 +3297,6 @@
           },
           {
             "name": "late_collected",
-            "docs": [
-              "Late interest collected so far."
-            ],
             "type": "u64"
           },
           {
@@ -3401,9 +3406,6 @@
     },
     {
       "name": "LineCancelled",
-      "docs": [
-        "Emitted by `cancel_line`."
-      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -3468,7 +3470,7 @@
     {
       "name": "LineDrawsSuspended",
       "docs": [
-        "Emitted by `suspend_draws`; `available_forfeited` is the undrawn remainder."
+        "`available_forfeited` is the undrawn remainder."
       ],
       "type": {
         "kind": "struct",
@@ -3494,7 +3496,7 @@
         "A scheduled line moved to collection and its balance accelerated. `remaining` is the principal",
         "and interest still due after the acceleration, without late interest; `interest_forgiven` is",
         "the ordinary interest of the installments not yet due at the mark, which the line no longer",
-        "owes (appended, events are append-only)."
+        "owes."
       ],
       "type": {
         "kind": "struct",
@@ -3848,8 +3850,8 @@
           {
             "name": "cancel_after",
             "docs": [
-              "The deadline of a pending cancellation request, after which the holder may cancel alone;",
-              "zero when none."
+              "Deadline of the pending cancellation request, after which the owner may cancel without the",
+              "attestor; zero when none."
             ],
             "type": "i64"
           },
@@ -3928,9 +3930,8 @@
     {
       "name": "PagareCancelled",
       "docs": [
-        "Emitted by `cancel_pagare` (C22, LGTOC 129), before the burn. `holder` is the key that",
-        "extinguished the pagaré; the sidecar stays as the PAGADO mark. No AppData length: the engine",
-        "archives the log off chain before the burn."
+        "Emitted by `cancel_pagare`, before the burn. `holder` is the key that extinguished the pagaré",
+        "(the admin or the procurador); the sidecar stays as the PAGADO mark."
       ],
       "type": {
         "kind": "struct",
@@ -3977,9 +3978,9 @@
     {
       "name": "PagareEntry",
       "docs": [
-        "One entry of a pagaré's registry (LGTOC 8 fr. VI, 13, 130): the full content the sidecar's",
-        "hash chain commits to. `stated_at` is the date the entry states (the signed message's date for",
-        "a late entry), `recorded_at` the slot's time."
+        "One entry of a pagaré's registry: the full content the sidecar's hash chain commits to.",
+        "`stated_at` is the date the entry states and `recorded_at` the slot's time; every instruction",
+        "writes both as the slot's time."
       ],
       "type": {
         "kind": "struct",
@@ -4040,7 +4041,7 @@
       "name": "PagareIssued",
       "docs": [
         "Emitted by `draw` after `LineDrawn`: the pagaré issued as the Metaplex Core asset `asset`,",
-        "held frozen by `holder` (the pool PDA). `due_at` is the line's last due date at issuance."
+        "owned by `holder` (the pool PDA) and frozen. `due_at` is the line's last due date at issuance."
       ],
       "type": {
         "kind": "struct",
@@ -4088,7 +4089,7 @@
     {
       "name": "PagarePayment",
       "docs": [
-        "The payment entries of one `repay` (art. 130): the payer's receipt hash (zero means \"receipt",
+        "The payment entries of one `repay`: the payer's receipt hash (zero means \"receipt",
         "to follow\"), the payment's split and one `PaymentEntry` per sidecar touched, oldest first.",
         "Emitted after the `PagareEntry` of each entry."
       ],
@@ -4223,7 +4224,8 @@
             "name": "attestor",
             "docs": [
               "The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and",
-              "`court_annotation`, and `cancel_pagare` unless the backstop applies. Never the admin."
+              "`court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign",
+              "`annotate_payment` alone. Never the admin; rotated with `set_attestor`."
             ],
             "type": "pubkey"
           },
@@ -4269,14 +4271,14 @@
           {
             "name": "interest_collected",
             "docs": [
-              "Informative running total."
+              "Ordinary interest repaid on every line; informative."
             ],
             "type": "u64"
           },
           {
             "name": "written_off",
             "docs": [
-              "Informative running total."
+              "Principal written off on every line; informative."
             ],
             "type": "u64"
           },
@@ -4287,8 +4289,8 @@
           {
             "name": "grace_period_seconds",
             "docs": [
-              "Seconds after a due date (or the term) before late interest accrues and a write-off is",
-              "allowed; zero means none. Fixed at `init_pool`."
+              "Seconds after a due date (or the term) before late interest accrues and collection or a",
+              "write-off is allowed; zero means none. Fixed at `init_pool`."
             ],
             "type": "u32"
           },
@@ -4296,15 +4298,16 @@
             "name": "collection_period_seconds",
             "docs": [
               "Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be",
-              "written off; at least `MIN_COLLECTION_PERIOD_SECONDS`."
+              "written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`."
             ],
             "type": "u32"
           },
           {
             "name": "cancel_delay_seconds",
             "docs": [
-              "Seconds from a cancellation request before the holder may cancel alone; at least",
-              "`MIN_CANCEL_DELAY_SECONDS`. A request stores its own deadline, so a change never moves one."
+              "Seconds from a cancellation request before the owner may cancel without the attestor; at",
+              "least `MIN_CANCEL_DELAY_SECONDS`. Set with `set_cancel_delay`; a request stores its own",
+              "deadline, so a change never moves one."
             ],
             "type": "u32"
           },
@@ -4327,8 +4330,8 @@
           {
             "name": "permissioned",
             "docs": [
-              "The share mint is `DefaultAccountState = Frozen`: holders need a thaw (Token ACL) before",
-              "they can receive or burn shares. Recorded at `init_pool`."
+              "The share mint is `DefaultAccountState = Frozen`: a holder's account must be thawed by the",
+              "mint's freeze authority before it can receive or burn shares. Recorded at `init_pool`."
             ],
             "type": "bool"
           },
@@ -4480,9 +4483,6 @@
           },
           {
             "name": "interval_seconds",
-            "docs": [
-              "Seconds between due dates."
-            ],
             "type": "i64"
           },
           {
@@ -4495,7 +4495,7 @@
           {
             "name": "late_bps",
             "docs": [
-              "Annual late interest rate on overdue amounts, in basis points."
+              "Annual late interest rate on the overdue principal, in basis points."
             ],
             "type": "u16"
           },

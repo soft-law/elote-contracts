@@ -230,9 +230,8 @@ export type DrawAsyncInput<
   /** Pays the rent of the pagaré asset and its sidecar. Any signer. */
   payer: TAccountPayer;
   /**
-   * The Core asset that is the pagaré, created by the Core program here. The client passes
-   * the bump, so the constraint runs one `create_program_address` and the compute of a draw
-   * does not depend on the line's key.
+   * The pagaré's Core asset, created here by the Core program. The client passes the bump so the
+   * constraint does not search for it.
    */
   asset: TAccountAsset;
   /** The pagaré's record, created by the handler (Anchor's `init` would search for the bump). */
@@ -590,9 +589,8 @@ export type DrawInput<
   /** Pays the rent of the pagaré asset and its sidecar. Any signer. */
   payer: TAccountPayer;
   /**
-   * The Core asset that is the pagaré, created by the Core program here. The client passes
-   * the bump, so the constraint runs one `create_program_address` and the compute of a draw
-   * does not depend on the line's key.
+   * The pagaré's Core asset, created here by the Core program. The client passes the bump so the
+   * constraint does not search for it.
    */
   asset: TAccountAsset;
   /** The pagaré's record, created by the handler (Anchor's `init` would search for the bump). */
@@ -925,9 +923,8 @@ export type ParsedDrawInstruction<
     /** Pays the rent of the pagaré asset and its sidecar. Any signer. */
     payer: TAccountMetas[8];
     /**
-     * The Core asset that is the pagaré, created by the Core program here. The client passes
-     * the bump, so the constraint runs one `create_program_address` and the compute of a draw
-     * does not depend on the line's key.
+     * The pagaré's Core asset, created here by the Core program. The client passes the bump so the
+     * constraint does not search for it.
      */
     asset: TAccountMetas[9];
     /** The pagaré's record, created by the handler (Anchor's `init` would search for the bump). */

@@ -38,10 +38,10 @@ security_txt! {
 pub mod elote_pool {
     use super::*;
 
-    /// Creates the pool, its vault and its dead-shares account around `asset_mint` and the
-    /// admin's share mint; fixes the grace period, the line cap (`1..=10_000` bps of the NAV)
-    /// and the attestor for the life of the pool, and the collection period (at least 30 days).
-    /// The admin signs; refused with the admin as attestor.
+    /// Creates the pool, its vault and its dead-shares account around `asset_mint`, the admin's
+    /// share mint and the series collection. The admin signs. Fixes the grace period and the line
+    /// cap (`1..=10_000` bps of the NAV) for the pool's life; sets the attestor (not the admin),
+    /// the collection period (at least 30 days) and the cancel delay (at least seven days).
     pub fn init_pool(
         ctx: Context<InitPool>,
         grace_period_seconds: u32,
@@ -59,45 +59,46 @@ pub mod elote_pool {
         instructions::pool::set_collection_period(ctx, collection_period_seconds)
     }
 
-    /// Sets the backstop's wait, in seconds, from a cancellation request before the holder may
-    /// cancel a pagaré without the attestor; never below seven days. Admin only. A request fixes
-    /// its own deadline, so a change never moves one pending.
+    /// Sets the wait, in seconds, from a cancellation request before the holder may cancel a pagaré
+    /// without the attestor; never below seven days. Admin only. A pending request keeps its
+    /// deadline.
     pub fn set_cancel_delay(ctx: Context<SetCancelDelay>, cancel_delay_seconds: u32) -> Result<()> {
         instructions::pool::set_cancel_delay(ctx, cancel_delay_seconds)
     }
 
-    /// Replaces the pool's attestor. The admin and the new attestor sign.
+    /// Replaces the pool's attestor. The admin and the new attestor sign; refused with the admin as
+    /// attestor.
     pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
         instructions::pool::set_attestor(ctx)
     }
 
-    /// Closes a line's draw window now. Admin only; refused unless the line is approved or
-    /// active. Repayment is untouched.
+    /// Closes the draw window of an `Approved` or `Active` line now, forfeiting the undrawn
+    /// remainder. Admin only. Repayment is untouched.
     pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
         instructions::lines::suspend_draws(ctx)
     }
 
-    /// Clears an approved commitment nobody drew. Admin only; refused once anything was drawn.
+    /// Cancels an `Approved` line nobody drew. Admin only; refused once anything was drawn.
     pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {
         instructions::lines::cancel_line(ctx)
     }
 
-    /// Deposits `assets` for shares at the current NAV, at least `min_shares_out`; the first
-    /// deposit locks `DEAD_SHARES`. Refused while paused.
+    /// The depositor pays `assets` for shares at the current NAV, at least `min_shares_out`; the
+    /// first deposit must meet the minimum and locks `DEAD_SHARES`. Refused while paused.
     pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Result<()> {
         instructions::pool::deposit(ctx, assets, min_shares_out)
     }
 
-    /// Burns `shares` for assets at the current NAV, at least `min_assets_out`, up to the vault's
-    /// liquidity. Refused while paused.
+    /// The holder burns `shares` for assets at the current NAV, at least `min_assets_out`, up to
+    /// the vault's balance. Refused while paused.
     pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<()> {
         instructions::pool::redeem(ctx, shares, min_assets_out)
     }
 
     /// Approves line `line_id` (the next): a commitment of `principal` at an annual `rate_bps`,
     /// repaid at `term_end` or on the `schedule`'s calendar. The admin, the borrower, the attestor
-    /// and the named sponsor sign; refused while paused, with the admin as borrower, or above the
-    /// line cap. Moves no money.
+    /// and the sponsor if named sign; refused while paused, with the admin or the attestor as
+    /// borrower, or above the line cap. Moves no money.
     #[allow(clippy::too_many_arguments)]
     pub fn open_line(
         ctx: Context<OpenLine>,
@@ -125,9 +126,10 @@ pub mod elote_pool {
         )
     }
 
-    /// Draws a tranche of `amount` to the borrower against the signed pagaré `document_hash` and
-    /// mints the pagaré asset with its record. The borrower, the attestor and the rent payer
-    /// sign; refused while paused, once the draw window has closed, or above what is available.
+    /// Pays a tranche of `amount` to the borrower against the signed pagaré `document_hash` and
+    /// mints the pagaré as a frozen Core asset owned by the pool, with its `Pagare` record. The
+    /// borrower, the attestor and the rent payer sign; refused while paused, once the draw window
+    /// has closed, or above what the line or the vault has.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         ctx: Context<Draw>,
@@ -141,70 +143,79 @@ pub mod elote_pool {
         instructions::lines::draw(ctx, amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
-    /// Marks pagaré `draw_index` paid against the receipt `receipt_hash`, writes the Terminacion
-    /// entry and burns its asset; the record is kept. The holder (the admin while the asset is in
-    /// the pool) or the procurador of record signs, with the attestor; refused until the line's
-    /// principal repaid covers the pagaré, and in collection or after a write-off. Never paused.
+    /// Extinguishes pagaré `draw_index` once a repayment has marked it paid
+    /// (`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry,
+    /// then thaws and burns the asset; the record stays. The owner (the admin) or the procurador of
+    /// record signs, with the attestor; without the attestor, only the owner after a request's
+    /// `cancel_after`, with the requested receipt. Never paused.
     pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::cancel_pagare(ctx, draw_index, receipt_hash)
     }
 
-    /// Endorses pagaré `draw_index` en procuración to `to` (LGTOC 35): appends the entry and lends
-    /// the power to extinguish it to a program-signed delegate. The admin (the pool is the owner)
-    /// and the attestor sign; in this version `kind` must be `KIND_PROCURACION`.
+    /// Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets
+    /// the program address `["procurador", pagare, to]` burn the asset through an owner-managed
+    /// `BurnDelegate`. The admin (the holder) and the attestor sign; `kind` must be
+    /// `KIND_PROCURACION`; refused with `to` the zero key, the pool, the admin or the attestor, or
+    /// a procuración in force.
     pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::endorse_pagare(ctx, draw_index, kind, to, endoso_hash)
     }
 
-    /// Revokes the procuración in force on pagaré `draw_index` (LGTOC 41): appends the revocation
-    /// entry over the signed revocation's hash and takes the delegate back. The holder alone signs.
+    /// Revokes the procuración in force on pagaré `draw_index`: appends the revocation entry over
+    /// the signed revocation's hash and returns the burn delegate to the owner. The holder (the
+    /// admin) signs.
     pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entry_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::revoke_procuracion(ctx, draw_index, entry_hash)
     }
 
-    /// Records a court's act on pagaré `draw_index`: `kind` is AnotacionJudicial (6: embargo,
-    /// suspension, cancellation) or ConstanciaJudicial (7, LGTOC 28), over the court document's
-    /// hash. The holder and the attestor sign; nothing moves.
+    /// Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,
+    /// suspension, cancellation) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. The
+    /// holder (the admin) and the attestor sign; refused on a cancelled pagaré; moves nothing.
     pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::court_annotation(ctx, draw_index, kind, document_hash)
     }
 
-    /// Records the holder's request to cancel pagaré `draw_index` against the receipt
-    /// `receipt_hash`, the backstop on the attestor: the same checks as the cancellation itself,
-    /// one request at a time; after the pool's cancel delay the holder may cancel alone with the
-    /// same receipt.
+    /// The holder (the admin) requests the cancellation of pagaré `draw_index`, marked paid by a
+    /// repayment, against `receipt_hash`; after `cancel_after = max(now + cancel delay, pending
+    /// deadline)` it may cancel without the attestor with that receipt. A new request replaces a
+    /// pending one.
     pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::request_cancellation(ctx, draw_index, receipt_hash)
     }
 
-    /// Repays up to `amount` of a drawn line: late interest (which `amount` must cover), then
-    /// interest, then principal, and never more than is due. Anyone may pay. A full repayment
-    /// closes the line and forfeits the undrawn remainder.
+    /// Anyone pays up to `amount` on an `Active` or `InCollection` line: late interest (which
+    /// `amount` must cover), then interest, then principal, never more than is due. The remaining
+    /// accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first;
+    /// each one covered is marked paid with the payer's provisional `receipt_hash`. The line
+    /// becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a
+    /// payment on a zero debt is refused. Never paused.
     pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::lines::repay(ctx, amount, receipt_hash)
     }
 
-    /// Attaches a receipt to a payment entry of pagaré `draw_index`: appends a Recibo entry over
-    /// `receipt_hash`, referencing entry `entry_count` of the pagaré's chain. The holder or the
-    /// attestor signs; the repair path when a payer's hash was zero or wrong.
+    /// The admin (the holder) or the attestor attaches a receipt to payment entry `entry_count` of
+    /// pagaré `draw_index`, as a `Recibo` entry over `receipt_hash`. The holder's annotation also
+    /// replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`).
     pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::annotate_payment(ctx, draw_index, entry_count, receipt_hash)
     }
 
-    /// Moves a scheduled line to collection once `max_missed` installments are missed and the
-    /// grace period of the last of them has run. Anyone may call it, also while paused.
+    /// Moves a scheduled line to collection once `max_missed` installments are missed and the grace
+    /// period of the last of them has run, accelerating the balance. Anyone may call it, also while
+    /// paused.
     pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
         instructions::lines::mark_in_collection(ctx)
     }
 
-    /// Books the unpaid principal of a line as a loss. Admin only; refused before
-    /// `term_end + grace`, or on a line in collection before its oldest missed due date plus grace.
+    /// Books a line's unpaid principal as a loss. Admin only; an `Active` line after `term_end +
+    /// grace`, an `InCollection` line after its collection period from the mark and after its
+    /// oldest missed due date or its term, plus grace. Never paused.
     pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
         instructions::lines::write_off(ctx)
     }
 
-    /// Pauses or resumes deposits, redemptions, openings and draws. Repayments, collection and
-    /// write-offs are never paused.
+    /// Pauses or resumes deposits, redemptions, openings and draws. Admin only. Nothing else is
+    /// ever paused: repayments, pagaré instructions, collection and write-offs.
     pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
         instructions::pool::set_paused(ctx, paused)
     }

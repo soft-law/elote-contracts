@@ -1,7 +1,7 @@
 //! The pagaré's registry: an append-only hash chain in the sidecar. Each entry's content goes in
 //! the `PagareEntry` event; the sidecar keeps `log_root = sha256(log_root || entry_hash)`, the
 //! count and the last kind, so anyone can replay the events and check the chain, and nobody can
-//! rewrite or remove an entry (LGTOC 8 fr. VI, 13).
+//! rewrite or remove an entry.
 
 use anchor_lang::prelude::Pubkey;
 use solana_sha256_hasher::hashv;

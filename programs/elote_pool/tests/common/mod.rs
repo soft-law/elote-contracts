@@ -162,7 +162,7 @@ pub struct PoolKeys {
     pub dead_shares: Pubkey,
     pub asset_program: Pubkey,
     pub share_program: Pubkey,
-    /// The series' Metaplex Core collection the pool records (pool v2): a real collection whose
+    /// The series' Metaplex Core collection the pool records: a real collection whose
     /// update authority is the pool PDA when built by `pool_keys_for`, a placeholder from `new`.
     pub collection: Pubkey,
 }

@@ -249,10 +249,10 @@ console.log(`  tMXN (devnet test token, no value) address ${assetMint.address}`)
 
 const [pool] = await findPoolPda({ admin: admin.address, assetMint: assetMint.address });
 
-// The share mint is supplied by the admin (pool v2): created here with the pool PDA as mint
-// authority and the asset's decimals. The demo uses a classic SPL mint, which the program
-// accepts; a production series uses a Token-2022 mint frozen by default under Token ACL, so
-// that PoolFlags.permissioned is true (the switch is PR 3's).
+// The share mint is supplied by the admin: created here with the pool PDA as mint authority and
+// the asset's decimals. The demo uses a classic SPL mint, which the program accepts; a production
+// series uses a Token-2022 mint frozen by default under Token ACL, so that `Pool.permissioned` is
+// true.
 const shareMintSigner = await generateKeyPairSigner();
 await send("create the share token", admin, [
   getCreateAccountInstruction({
@@ -265,8 +265,9 @@ await send("create the share token", admin, [
   getInitializeMint2Instruction({ mint: shareMintSigner.address, decimals: DECIMALS, mintAuthority: pool }),
 ]);
 const shareMint = shareMintSigner.address;
-// Pool v2 records the attestor (the agreements engine's key; a throwaway key stands in for it in
-// the demo, since the admin may not be the attestor) and the series' Metaplex Core collection (a placeholder address until PR 3 creates one).
+// The pool records the attestor (the agreements engine's key; a throwaway key stands in for it in
+// the demo, since the admin may not be the attestor) and the series' Metaplex Core collection (a
+// placeholder address in the demo).
 const attestorSigner = await generateKeyPairSigner();
 const attestor = attestorSigner.address;
 const collection = (await generateKeyPairSigner()).address;
@@ -372,14 +373,14 @@ await send("open_line", admin, [
     sponsorArg: withSponsor ? sponsor.address : null,
     sponsorRole: 0,
     schedule: null,
-    expedienteRoot: hash, // a placeholder commitment; PR 3 wires the real salted root
+    expedienteRoot: hash, // a placeholder for the salted root of the credit file
   }),
 ]);
 const borrowerAsset = await ataOf(borrower.address, assetMint.address);
 // The draw mints the pagaré: a Core asset and a sidecar at addresses seeded by the line and the
 // draw index (`CreditLine.draws` before the draw); the admin stands in for the app's relayer as
 // the rent payer.
-// The pagaré records a repayment must pass (step 6d): the line's cursor through the first pagaré
+// The pagaré records a repayment must pass: the line's cursor through the first pagaré
 // the payment's principal leaves uncovered. The program applies late interest, then interest, then
 // principal, never more than is due; `late` is the client's quote of the late interest.
 async function repayRemaining(lineAddress: Address, amount: bigint, late: bigint): Promise<Address[]> {

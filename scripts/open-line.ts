@@ -136,7 +136,7 @@ if ((installments === undefined) !== (intervalDays === undefined)) {
 if (installments === undefined && (arg("late-rate-bps") !== undefined || arg("max-missed") !== undefined)) {
   fail("--late-rate-bps and --max-missed apply to a scheduled line only (add --installments and --interval-days)");
 }
-// Line v3: the calendar comes from the signed contract (decision 25). This script stands in for
+// The calendar comes from the signed contract. This script stands in for
 // the agreements engine and puts the first due date one interval from now; a real opening passes
 // the contract's date.
 const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
@@ -277,9 +277,9 @@ async function main() {
     fail(`the principal (${fmt(principal)}) exceeds this pool's largest line: ${maxBps} bps of the NAV, ${fmt(cap)} right now`);
   }
 
-  // Line v3 (decisions 12, 15, 16): the attestor co-signs (the admin stands in for the agreements
-  // engine here), the sponsor's role is recorded, and the expediente root is a salted commitment
-  // to the credit file (the agreement hash stands in for it; PR 3 wires the real one).
+  // The attestor co-signs (the admin stands in for the agreements engine here), the sponsor's role
+  // is recorded, and the expediente root is a salted commitment to the credit file (the agreement
+  // hash stands in for it).
   const instruction = await getOpenLineInstructionAsync({
     admin,
     borrower,

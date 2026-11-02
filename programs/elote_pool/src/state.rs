@@ -37,21 +37,19 @@ pub fn min_first_deposit(decimals: u8) -> Option<u64> {
 pub const BPS: u64 = 10_000;
 /// Upper bound on the tranches of one line.
 pub const MAX_DRAWS: u16 = 64;
-/// `CreditLine::sponsor_role`: a public sponsor that refers, trains and shares data, with no
-/// payment obligation.
+/// `CreditLine::sponsor_role`: a sponsor that refers, trains and shares data, with no payment
+/// obligation.
 pub const SPONSOR_PROMOTER: u8 = 0;
-/// `CreditLine::sponsor_role`: a private sponsor (or development banking through a SOFOM) with
-/// full liability. The program enforces nothing on it; it is the on-chain record of the promise.
+/// `CreditLine::sponsor_role`: a sponsor that takes full liability. Recorded only; the program
+/// enforces nothing on it.
 pub const SPONSOR_GUARANTOR: u8 = 1;
 /// Upper bound on the installments of one line, so the arrears computation is bounded.
 pub const MAX_INSTALLMENTS: u16 = 120;
 /// The fewest missed installments a schedule may set before collection.
 pub const MIN_MAX_MISSED: u8 = 3;
-/// The shortest collection period a pool may set: 30 days from the mark before a line in
-/// collection can be written off.
+/// The shortest collection period a pool may set: 30 days.
 pub const MIN_COLLECTION_PERIOD_SECONDS: u32 = 30 * 86_400;
-/// The shortest wait a pool may set between a cancellation request and the holder's cancellation
-/// alone: seven days.
+/// The shortest cancellation delay a pool may set: seven days.
 pub const MIN_CANCEL_DELAY_SECONDS: u32 = 7 * 86_400;
 /// The year that annualizes `late_bps`: 365 days.
 pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
@@ -65,7 +63,8 @@ pub const ASSET_CONTROL_PAUSABLE: u8 = 1 << 1;
 pub struct Pool {
     pub admin: Pubkey,
     /// The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
-    /// `court_annotation`, and `cancel_pagare` unless the backstop applies. Never the admin.
+    /// `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
+    /// `annotate_payment` alone. Never the admin; rotated with `set_attestor`.
     pub attestor: Pubkey,
     pub asset_mint: Pubkey,
     /// The share token mint; its mint authority is the pool PDA.
@@ -78,19 +77,20 @@ pub struct Pool {
     pub collection: Pubkey,
     /// Principal drawn and neither repaid nor written off.
     pub outstanding_principal: u64,
-    /// Informative running total.
+    /// Ordinary interest repaid on every line; informative.
     pub interest_collected: u64,
-    /// Informative running total.
+    /// Principal written off on every line; informative.
     pub written_off: u64,
     pub line_count: u64,
-    /// Seconds after a due date (or the term) before late interest accrues and a write-off is
-    /// allowed; zero means none. Fixed at `init_pool`.
+    /// Seconds after a due date (or the term) before late interest accrues and collection or a
+    /// write-off is allowed; zero means none. Fixed at `init_pool`.
     pub grace_period_seconds: u32,
     /// Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
-    /// written off; at least `MIN_COLLECTION_PERIOD_SECONDS`.
+    /// written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
     pub collection_period_seconds: u32,
-    /// Seconds from a cancellation request before the holder may cancel alone; at least
-    /// `MIN_CANCEL_DELAY_SECONDS`. A request stores its own deadline, so a change never moves one.
+    /// Seconds from a cancellation request before the owner may cancel without the attestor; at
+    /// least `MIN_CANCEL_DELAY_SECONDS`. Set with `set_cancel_delay`; a request stores its own
+    /// deadline, so a change never moves one.
     pub cancel_delay_seconds: u32,
     /// The largest line `open_line` accepts, as a share of the NAV at the opening, in basis points
     /// (`1..=BPS`). Fixed at `init_pool`.
@@ -98,8 +98,8 @@ pub struct Pool {
     /// `ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without
     /// the program. Recorded at `init_pool`, never refused.
     pub asset_controls: u8,
-    /// The share mint is `DefaultAccountState = Frozen`: holders need a thaw (Token ACL) before
-    /// they can receive or burn shares. Recorded at `init_pool`.
+    /// The share mint is `DefaultAccountState = Frozen`: a holder's account must be thawed by the
+    /// mint's freeze authority before it can receive or burn shares. Recorded at `init_pool`.
     pub permissioned: bool,
     pub paused: bool,
     pub bump: u8,
@@ -126,12 +126,9 @@ impl Pool {
             .and_then(|v| u64::try_from(v).ok())
     }
 
-    /// The invariants every money instruction re-checks before it returns, on balances
-    /// reloaded after the CPIs: `vault + outstanding_principal` fits a `u64` (the NAV exists),
-    /// and, where the share mint is an account of the instruction, its supply is zero (nothing
-    /// deposited yet) or at least `DEAD_SHARES` (the dead account is never burned). A failure
-    /// means state the program considers impossible; the transaction is refused. Returns the
-    /// NAV, so the caller reports the figure it checked.
+    /// Invariants every money instruction re-checks on balances reloaded after its CPIs: the NAV
+    /// fits a `u64`, and a given share supply is zero or at least `DEAD_SHARES` (the dead shares
+    /// never move). `InvariantBroken` otherwise. Returns the NAV it checked.
     pub fn check(&self, vault_amount: u64, share_supply: Option<u64>) -> Result<u64> {
         let nav = vault_amount
             .checked_add(self.outstanding_principal)
@@ -164,7 +161,7 @@ pub struct CreditLine {
     pub pool: Pubkey,
     pub line_id: u64,
     pub borrower: Pubkey,
-    /// A public program that co-signed the opening; `None` for a commercial line.
+    /// Co-signed `open_line`; `None` when the line has no sponsor.
     pub sponsor: Option<Pubkey>,
     /// `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named.
     pub sponsor_role: u8,
@@ -188,8 +185,8 @@ pub struct CreditLine {
     pub drawn: u64,
     /// Tranches drawn; at most `MAX_DRAWS`.
     pub draws: u16,
-    /// Ordinary interest charged so far: the sum over tranches of
-    /// `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its draw.
+    /// Ordinary interest owed: each draw adds `amount * rate_bps * (last_due - now) / (BPS *
+    /// SECONDS_PER_YEAR)`; `mark_in_collection` cuts it to the share of the installments then due.
     pub interest_due: u64,
     pub principal_repaid: u64,
     pub interest_repaid: u64,
@@ -202,11 +199,10 @@ pub struct CreditLine {
     pub interval_seconds: i64,
     /// Installments of the schedule, `1..=MAX_INSTALLMENTS`; zero on a bullet line.
     pub installments: u16,
-    /// Annual late interest rate on overdue principal, in basis points.
+    /// Annual late interest rate on the overdue principal, in basis points.
     pub late_bps: u16,
     /// Missed installments that allow `mark_in_collection`.
     pub max_missed: u8,
-    /// Late interest collected so far.
     pub late_collected: u64,
     /// Late interest is settled up to this instant; zero until a repayment collects some.
     pub late_paid_until: i64,
@@ -234,11 +230,11 @@ pub const PAGARE_OUTSTANDING: u8 = 0;
 /// `Pagare::status`: paid and extinguished by `cancel_pagare`; the asset is burnt and the record
 /// stays as the PAGADO mark.
 pub const PAGARE_PAID: u8 = 1;
-/// `Pagare::status`: a repayment reached its `drawn_through`; the burn is still owed.
+/// `Pagare::status`: a repayment covered it (the PAGADO mark); `cancel_pagare` must still burn it.
 pub const PAGARE_PAID_PENDING_CANCEL: u8 = 2;
 
-/// `Pagare::flags` bit: the asset carries an owner-managed `BurnDelegate` plugin, so a later
-/// procuración approves its authority instead of adding the plugin again.
+/// `Pagare::flags` bit: the asset carries the owner-managed `BurnDelegate` plugin `endorse_pagare`
+/// adds at the first procuración, so a later one approves its authority instead of adding it again.
 pub const PAGARE_FLAG_BURN_DELEGATE: u8 = 1 << 0;
 /// `Pagare::flags` bit: an endoso en procuración is in force.
 pub const PAGARE_FLAG_PROCURACION: u8 = 1 << 1;
@@ -291,8 +287,8 @@ pub struct Pagare {
     pub receipt_hash: [u8; 32],
     /// The receipt hash `cancel_pagare` was given; zero until the burn.
     pub cancel_receipt_hash: [u8; 32],
-    /// The deadline of a pending cancellation request, after which the holder may cancel alone;
-    /// zero when none.
+    /// Deadline of the pending cancellation request, after which the owner may cancel without the
+    /// attestor; zero when none.
     pub cancel_after: i64,
     /// The receipt hash of that request.
     pub requested_receipt_hash: [u8; 32],
@@ -317,11 +313,10 @@ pub struct Pagare {
 pub struct ScheduleParams {
     /// The first due date (unix seconds), from the signed contract; must be after the opening.
     pub first_due_at: i64,
-    /// Seconds between due dates.
     pub interval_seconds: i64,
     /// `drawn + interest_due` is paid in this many installments.
     pub installments: u16,
-    /// Annual late interest rate on overdue amounts, in basis points.
+    /// Annual late interest rate on the overdue principal, in basis points.
     pub late_bps: u16,
     /// Missed installments after which anyone may move the line to collection.
     pub max_missed: u8,

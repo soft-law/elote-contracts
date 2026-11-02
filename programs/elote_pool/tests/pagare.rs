@@ -116,7 +116,7 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     assert_eq!(env.collection_state(&k.collection).update_authority, k.pool);
 
     // Permanent freeze delegate: frozen, authority = UpdateAuthority (the collection, so the pool
-    // PDA), which a later version relinquishes with one approve.
+    // PDA).
     let freeze = asset.plugin_list.permanent_freeze_delegate.as_ref().expect("PermanentFreezeDelegate");
     assert!(freeze.permanent_freeze_delegate.frozen);
     assert_eq!(freeze.base.authority.authority_type, AuthorityType::UpdateAuthority);
@@ -302,10 +302,10 @@ fn drawn_and_repaid(env: &mut Env, k: &PoolKeys, principal: u64, rate_bps: u16, 
     (borrower, line_id)
 }
 
-/// Extinction is an act of the holder with a receipt (C22): the sidecar becomes the lasting
-/// "PAGADO" mark (status, `paid_at`, the receipt's hash; nothing else changes and it is not
-/// closed), the event names the asset and the receipt, and the asset is burnt last through the
-/// permanent burn delegate, its rent going back to the payer. A second cancellation is refused.
+/// Extinction is an act of the holder with a receipt: the record stays as the PAGADO mark (status,
+/// the cancellation's receipt; it is not closed), the event names the asset and the receipt, and
+/// the asset is thawed and burnt last by its owner, its rent going back to the payer. A second
+/// cancellation is refused.
 #[test]
 fn cancel_pagare_marks_the_sidecar_paid_and_burns_the_asset() {
     let mut env = Env::new();
@@ -541,7 +541,7 @@ fn cancel_pagare_requires_the_holder_the_attestor_the_receipt_and_the_right_acco
 }
 
 // -----------------------------------------------------------------------------------------------
-// the registry (6d part 1)
+// the registry
 // -----------------------------------------------------------------------------------------------
 
 /// The registry's hash: `sha256(asset || kind || from || to || hash || stated_at LE || entry_count LE)`.
@@ -600,7 +600,7 @@ fn a_draw_writes_the_issuance_entry_of_the_registry() {
     assert_ne!(second.log_root, sidecar.log_root);
 }
 
-/// Endoso en procuración (LGTOC 35; decision 29: the only endoso the vehicle makes in v1): the pool
+/// Endoso en procuración (the only endoso the program records): the pool
 /// stays the owner, the entry goes into the registry, and the power to extinguish the pagaré is lent
 /// through an owner-managed `BurnDelegate` whose authority is a program PDA nobody holds a key for,
 /// so the burn can only happen inside `cancel_pagare`. A second procuración after a revocation
@@ -646,7 +646,7 @@ fn an_endoso_en_procuracion_appends_the_entry_and_lends_the_burn_to_a_program_ad
     env.expect_err(ix, &admin, &[&attestor], E_PROCURACION_STATE);
 }
 
-/// The refusals of `endorse_pagare` in v1: only a procuración by the pool, with the attestor; the
+/// The refusals of `endorse_pagare`: only a procuración by the pool, with the attestor; the
 /// endorsee named and not the pool; a hash; a line not written off; a pagaré outstanding.
 #[test]
 fn endorse_pagare_refuses_other_kinds_bad_endorsees_and_the_wrong_signers() {

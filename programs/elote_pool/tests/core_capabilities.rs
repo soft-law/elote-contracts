@@ -1,4 +1,4 @@
-//! Step 6d prework: what Metaplex Core (the pinned `release/core@0.15.3` binary, through the
+//! What Metaplex Core (the pinned `release/core@0.15.3` binary, through the
 //! `mpl-core` 0.12.1 crate) lets the parties do with a pagaré asset after its creation. Condition
 //! C9 of the legal brief: after an endoso en propiedad the pool, the admin and the attestor must
 //! hold no power to move, freeze or burn the asset. These tests pin, as Core behaves today, whether
@@ -313,8 +313,7 @@ fn an_assets_update_authority_cannot_leave_its_collection_and_add_blocker_closes
 
 /// The price of an `AddBlocker` in the creation set, measured on the pagaré shape with a direct
 /// `CreateV2` (the Core CPI inside `draw` costs the same work): about 4 200 CU, which would take
-/// `draw` at 120 installments from about 89 900 to about 94 100 CU, inside the 100 000 ceiling but
-/// nearly half of the room left. An option for the 6d design, not a change to `draw`.
+/// `draw` close to the 100 000 CU ceiling. Pinned so a Core release that changes it shows up.
 #[test]
 fn add_blocker_costs_about_four_thousand_cu_at_creation() {
     let mut env = Env::new();
@@ -325,7 +324,7 @@ fn add_blocker_costs_about_four_thousand_cu_at_creation() {
     assert!((3_000..6_000).contains(&delta), "AddBlocker delta {delta} CU left the pinned band");
 }
 
-/// AppData, where 6d would log the endosos: its data authority is fixed at creation (Core's
+/// AppData: its data authority is fixed at creation (Core's
 /// `AppDataUpdateInfo` carries only the schema), and only that authority writes the data or changes
 /// the schema; the collection's authority, the owner and strangers get `InvalidAuthority`. Adding
 /// another adapter or removing an existing one is the collection's authority alone (`NoApprovals`
@@ -411,8 +410,7 @@ fn app_data_is_written_only_by_its_fixed_data_authority_and_removed_only_by_the_
     }
 }
 
-/// Question for design A (C9: the history travels with the pagaré):
-/// can an AppData adapter be created with data authority `Owner`, and does that authority follow
+/// Can an AppData adapter be created with data authority `Owner`, and does that authority follow
 /// the asset through `TransferV1`, so that each holder writes its own entry and the pool has no
 /// write power once the asset has left it?
 #[test]

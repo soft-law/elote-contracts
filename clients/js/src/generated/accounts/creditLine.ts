@@ -67,7 +67,7 @@ export type CreditLine = {
   pool: Address;
   lineId: bigint;
   borrower: Address;
-  /** A public program that co-signed the opening; `None` for a commercial line. */
+  /** Co-signed `open_line`; `None` when the line has no sponsor. */
   sponsor: Option<Address>;
   /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
   sponsorRole: number;
@@ -98,8 +98,8 @@ export type CreditLine = {
   /** Tranches drawn; at most `MAX_DRAWS`. */
   draws: number;
   /**
-   * Ordinary interest charged so far: the sum over tranches of
-   * `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its draw.
+   * Ordinary interest owed: each draw adds `amount * rate_bps * (last_due - now) / (BPS *
+   * SECONDS_PER_YEAR)`; `mark_in_collection` cuts it to the share of the installments then due.
    */
   interestDue: bigint;
   principalRepaid: bigint;
@@ -117,11 +117,10 @@ export type CreditLine = {
   intervalSeconds: bigint;
   /** Installments of the schedule, `1..=MAX_INSTALLMENTS`; zero on a bullet line. */
   installments: number;
-  /** Annual late interest rate on overdue principal, in basis points. */
+  /** Annual late interest rate on the overdue principal, in basis points. */
   lateBps: number;
   /** Missed installments that allow `mark_in_collection`. */
   maxMissed: number;
-  /** Late interest collected so far. */
   lateCollected: bigint;
   /** Late interest is settled up to this instant; zero until a repayment collects some. */
   latePaidUntil: bigint;
@@ -143,7 +142,7 @@ export type CreditLineArgs = {
   pool: Address | HasAddress;
   lineId: number | bigint;
   borrower: Address | HasAddress;
-  /** A public program that co-signed the opening; `None` for a commercial line. */
+  /** Co-signed `open_line`; `None` when the line has no sponsor. */
   sponsor: OptionOrNullable<Address | HasAddress>;
   /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
   sponsorRole: number;
@@ -174,8 +173,8 @@ export type CreditLineArgs = {
   /** Tranches drawn; at most `MAX_DRAWS`. */
   draws: number;
   /**
-   * Ordinary interest charged so far: the sum over tranches of
-   * `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its draw.
+   * Ordinary interest owed: each draw adds `amount * rate_bps * (last_due - now) / (BPS *
+   * SECONDS_PER_YEAR)`; `mark_in_collection` cuts it to the share of the installments then due.
    */
   interestDue: number | bigint;
   principalRepaid: number | bigint;
@@ -193,11 +192,10 @@ export type CreditLineArgs = {
   intervalSeconds: number | bigint;
   /** Installments of the schedule, `1..=MAX_INSTALLMENTS`; zero on a bullet line. */
   installments: number;
-  /** Annual late interest rate on overdue principal, in basis points. */
+  /** Annual late interest rate on the overdue principal, in basis points. */
   lateBps: number;
   /** Missed installments that allow `mark_in_collection`. */
   maxMissed: number;
-  /** Late interest collected so far. */
   lateCollected: number | bigint;
   /** Late interest is settled up to this instant; zero until a repayment collects some. */
   latePaidUntil: number | bigint;

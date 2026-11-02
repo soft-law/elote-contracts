@@ -59,7 +59,8 @@ export type Pool = {
   admin: Address;
   /**
    * The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
-   * `court_annotation`, and `cancel_pagare` unless the backstop applies. Never the admin.
+   * `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
+   * `annotate_payment` alone. Never the admin; rotated with `set_attestor`.
    */
   attestor: Address;
   assetMint: Address;
@@ -73,24 +74,25 @@ export type Pool = {
   collection: Address;
   /** Principal drawn and neither repaid nor written off. */
   outstandingPrincipal: bigint;
-  /** Informative running total. */
+  /** Ordinary interest repaid on every line; informative. */
   interestCollected: bigint;
-  /** Informative running total. */
+  /** Principal written off on every line; informative. */
   writtenOff: bigint;
   lineCount: bigint;
   /**
-   * Seconds after a due date (or the term) before late interest accrues and a write-off is
-   * allowed; zero means none. Fixed at `init_pool`.
+   * Seconds after a due date (or the term) before late interest accrues and collection or a
+   * write-off is allowed; zero means none. Fixed at `init_pool`.
    */
   gracePeriodSeconds: number;
   /**
    * Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
-   * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`.
+   * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
    */
   collectionPeriodSeconds: number;
   /**
-   * Seconds from a cancellation request before the holder may cancel alone; at least
-   * `MIN_CANCEL_DELAY_SECONDS`. A request stores its own deadline, so a change never moves one.
+   * Seconds from a cancellation request before the owner may cancel without the attestor; at
+   * least `MIN_CANCEL_DELAY_SECONDS`. Set with `set_cancel_delay`; a request stores its own
+   * deadline, so a change never moves one.
    */
   cancelDelaySeconds: number;
   /**
@@ -104,8 +106,8 @@ export type Pool = {
    */
   assetControls: number;
   /**
-   * The share mint is `DefaultAccountState = Frozen`: holders need a thaw (Token ACL) before
-   * they can receive or burn shares. Recorded at `init_pool`.
+   * The share mint is `DefaultAccountState = Frozen`: a holder's account must be thawed by the
+   * mint's freeze authority before it can receive or burn shares. Recorded at `init_pool`.
    */
   permissioned: boolean;
   paused: boolean;
@@ -118,7 +120,8 @@ export type PoolArgs = {
   admin: Address | HasAddress;
   /**
    * The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
-   * `court_annotation`, and `cancel_pagare` unless the backstop applies. Never the admin.
+   * `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
+   * `annotate_payment` alone. Never the admin; rotated with `set_attestor`.
    */
   attestor: Address | HasAddress;
   assetMint: Address | HasAddress;
@@ -132,24 +135,25 @@ export type PoolArgs = {
   collection: Address | HasAddress;
   /** Principal drawn and neither repaid nor written off. */
   outstandingPrincipal: number | bigint;
-  /** Informative running total. */
+  /** Ordinary interest repaid on every line; informative. */
   interestCollected: number | bigint;
-  /** Informative running total. */
+  /** Principal written off on every line; informative. */
   writtenOff: number | bigint;
   lineCount: number | bigint;
   /**
-   * Seconds after a due date (or the term) before late interest accrues and a write-off is
-   * allowed; zero means none. Fixed at `init_pool`.
+   * Seconds after a due date (or the term) before late interest accrues and collection or a
+   * write-off is allowed; zero means none. Fixed at `init_pool`.
    */
   gracePeriodSeconds: number;
   /**
    * Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
-   * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`.
+   * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
    */
   collectionPeriodSeconds: number;
   /**
-   * Seconds from a cancellation request before the holder may cancel alone; at least
-   * `MIN_CANCEL_DELAY_SECONDS`. A request stores its own deadline, so a change never moves one.
+   * Seconds from a cancellation request before the owner may cancel without the attestor; at
+   * least `MIN_CANCEL_DELAY_SECONDS`. Set with `set_cancel_delay`; a request stores its own
+   * deadline, so a change never moves one.
    */
   cancelDelaySeconds: number;
   /**
@@ -163,8 +167,8 @@ export type PoolArgs = {
    */
   assetControls: number;
   /**
-   * The share mint is `DefaultAccountState = Frozen`: holders need a thaw (Token ACL) before
-   * they can receive or burn shares. Recorded at `init_pool`.
+   * The share mint is `DefaultAccountState = Frozen`: a holder's account must be thawed by the
+   * mint's freeze authority before it can receive or burn shares. Recorded at `init_pool`.
    */
   permissioned: boolean;
   paused: boolean;
