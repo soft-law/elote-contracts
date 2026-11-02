@@ -46,7 +46,7 @@
     "@solana/kit": "^8.3.0"
   },
   "dependencies": {
-    "@solana/program-client-core": "^8.3.0"
+    "@solana/program-client-core": "^8.6.0"
   },
   "devDependencies": {
     "tsup": "^9"
