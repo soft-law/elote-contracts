@@ -15,96 +15,96 @@ import {
 } from "@solana/kit";
 import { ELOTE_POOL_PROGRAM_ADDRESS } from "../programs";
 
-/** Paused: The pool is paused */
-export const ELOTE_POOL_ERROR__PAUSED = 0x1770; // 6000
-/** Unauthorized: Only the pool admin may do this */
-export const ELOTE_POOL_ERROR__UNAUTHORIZED = 0x1771; // 6001
-/** WrongAmount: Amount is zero or exceeds what is due */
-export const ELOTE_POOL_ERROR__WRONG_AMOUNT = 0x1772; // 6002
-/** InsufficientLiquidity: Not enough liquidity in the vault */
-export const ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY = 0x1773; // 6003
-/** LineStatus: The line is not in the required status */
-export const ELOTE_POOL_ERROR__LINE_STATUS = 0x1774; // 6004
-/** TermNotEnded: The term has not ended */
-export const ELOTE_POOL_ERROR__TERM_NOT_ENDED = 0x1775; // 6005
-/** Overflow: Arithmetic overflow */
-export const ELOTE_POOL_ERROR__OVERFLOW = 0x1776; // 6006
-/** SponsorRequired: The sponsor named on this line must sign */
-export const ELOTE_POOL_ERROR__SPONSOR_REQUIRED = 0x1777; // 6007
-/** ZeroShares: The deposit would mint zero shares */
-export const ELOTE_POOL_ERROR__ZERO_SHARES = 0x1778; // 6008
-/** FirstDepositTooSmall: First deposit below the minimum */
-export const ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL = 0x1779; // 6009
-/** WrongAccount: Wrong mint or token account */
-export const ELOTE_POOL_ERROR__WRONG_ACCOUNT = 0x177a; // 6010
-/** SlippageExceeded: The result is below the minimum the caller accepts */
-export const ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED = 0x177b; // 6011
-/** TermEnded: The term has ended, or would end before the opening */
-export const ELOTE_POOL_ERROR__TERM_ENDED = 0x177c; // 6012
-/** InvalidSchedule: The installment schedule is not valid */
-export const ELOTE_POOL_ERROR__INVALID_SCHEDULE = 0x177d; // 6013
-/** ScheduleEndsAfterTerm: The last installment would fall due after the term */
-export const ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM = 0x177e; // 6014
-/** NotScheduled: The line has no installment schedule */
-export const ELOTE_POOL_ERROR__NOT_SCHEDULED = 0x177f; // 6015
-/** NotEnoughMissed: Fewer installments missed than the line allows before collection */
-export const ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED = 0x1780; // 6016
-/** LateInterestUnpaid: The repayment must cover the late interest due */
-export const ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID = 0x1781; // 6017
-/** WriteOffTooEarly: A line in collection is written off only after its oldest missed due date plus grace, or after the term plus grace */
-export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x1782; // 6018
-/** BorrowerIsAdmin: The pool admin cannot be the borrower */
-export const ELOTE_POOL_ERROR__BORROWER_IS_ADMIN = 0x1783; // 6019
-/** LineTooLarge: The principal exceeds the pool's maximum line, max_line_bps of the NAV */
-export const ELOTE_POOL_ERROR__LINE_TOO_LARGE = 0x1784; // 6020
-/** InvariantBroken: A pool invariant does not hold after this instruction; the transaction is refused */
-export const ELOTE_POOL_ERROR__INVARIANT_BROKEN = 0x1785; // 6021
-/** AssetMintNotAllowed: The asset mint carries a Token-2022 extension the pool does not accept */
-export const ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED = 0x1786; // 6022
-/** ShareMintNotAllowed: The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions */
-export const ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED = 0x1787; // 6023
+/** Unauthorized: This signer may not do this */
+export const ELOTE_POOL_ERROR__UNAUTHORIZED = 0x1770; // 6000
 /** AttestorRequired: The pool's attestor must sign */
-export const ELOTE_POOL_ERROR__ATTESTOR_REQUIRED = 0x1788; // 6024
-/** AvailabilityEnded: The draw window of this line has closed */
-export const ELOTE_POOL_ERROR__AVAILABILITY_ENDED = 0x1789; // 6025
-/** TooManyDraws: The line has reached its maximum number of draws */
-export const ELOTE_POOL_ERROR__TOO_MANY_DRAWS = 0x178a; // 6026
-/** CollectionNotAllowed: The collection is not a Metaplex Core collection whose update authority is the pool */
-export const ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED = 0x178b; // 6027
-/** DocumentHashRequired: The signed pagaré's hash is required */
-export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x178c; // 6028
-/** SignatureMethodInvalid: signature_method is unknown, or lacks its certificate fingerprint */
-export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x178d; // 6029
-/** PagareNotCovered: The line has not repaid enough to cover this pagaré */
-export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x178e; // 6030
-/** PagareAlreadyPaid: This pagaré is already marked paid */
-export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x178f; // 6031
+export const ELOTE_POOL_ERROR__ATTESTOR_REQUIRED = 0x1771; // 6001
+/** SponsorRequired: The sponsor named on this line must sign */
+export const ELOTE_POOL_ERROR__SPONSOR_REQUIRED = 0x1772; // 6002
 /** NotHolder: The pagaré's holder must sign */
-export const ELOTE_POOL_ERROR__NOT_HOLDER = 0x1790; // 6032
+export const ELOTE_POOL_ERROR__NOT_HOLDER = 0x1773; // 6003
+/** Paused: The pool is paused */
+export const ELOTE_POOL_ERROR__PAUSED = 0x1774; // 6004
+/** WrongAccount: Wrong mint or token account */
+export const ELOTE_POOL_ERROR__WRONG_ACCOUNT = 0x1775; // 6005
+/** AssetMintNotAllowed: The asset mint carries a Token-2022 extension the pool does not accept */
+export const ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED = 0x1776; // 6006
+/** ShareMintNotAllowed: The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions */
+export const ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED = 0x1777; // 6007
+/** CollectionNotAllowed: The collection is not a bare Metaplex Core collection whose update authority is the pool */
+export const ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED = 0x1778; // 6008
+/** PagareAccountsMismatch: The pagaré records passed are not the ones this payment touches, oldest first */
+export const ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH = 0x1779; // 6009
 /** AttestorIsAdmin: The attestor cannot be the admin */
-export const ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN = 0x1791; // 6033
+export const ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN = 0x177a; // 6010
+/** BorrowerIsAdmin: The pool admin cannot be the borrower */
+export const ELOTE_POOL_ERROR__BORROWER_IS_ADMIN = 0x177b; // 6011
 /** BorrowerIsAttestor: The borrower cannot be the attestor */
-export const ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR = 0x1792; // 6034
-/** AgreementHashRequired: The signed agreement's hash is required */
-export const ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED = 0x1793; // 6035
-/** ExpedienteRootRequired: The expediente root is required */
-export const ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED = 0x1794; // 6036
-/** SponsorRoleInvalid: sponsor_role is unknown */
-export const ELOTE_POOL_ERROR__SPONSOR_ROLE_INVALID = 0x1795; // 6037
+export const ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR = 0x177c; // 6012
+/** EndorseeInvalid: The endorsee is missing, or is the pool, the admin or the attestor */
+export const ELOTE_POOL_ERROR__ENDORSEE_INVALID = 0x177d; // 6013
+/** WrongAmount: Amount is zero or exceeds what is due */
+export const ELOTE_POOL_ERROR__WRONG_AMOUNT = 0x177e; // 6014
+/** Overflow: Arithmetic overflow */
+export const ELOTE_POOL_ERROR__OVERFLOW = 0x177f; // 6015
+/** InvariantBroken: A pool invariant does not hold after this instruction; the transaction is refused */
+export const ELOTE_POOL_ERROR__INVARIANT_BROKEN = 0x1780; // 6016
+/** InsufficientLiquidity: Not enough liquidity in the vault */
+export const ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY = 0x1781; // 6017
+/** ZeroShares: The deposit would mint zero shares */
+export const ELOTE_POOL_ERROR__ZERO_SHARES = 0x1782; // 6018
+/** FirstDepositTooSmall: First deposit below the minimum */
+export const ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL = 0x1783; // 6019
+/** SlippageExceeded: The result is below the minimum the caller accepts */
+export const ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED = 0x1784; // 6020
+/** LineTooLarge: The principal exceeds the pool's maximum line, max_line_bps of the NAV */
+export const ELOTE_POOL_ERROR__LINE_TOO_LARGE = 0x1785; // 6021
 /** CollectionPeriodTooShort: The collection period is shorter than the minimum */
-export const ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT = 0x1796; // 6038
-/** PagareAccountsMismatch: The sidecars passed are not the ones this payment touches, oldest first */
-export const ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH = 0x1797; // 6039
-/** EndosoKindInvalid: This kind of endoso is not one the program records, or not in this version */
-export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x1798; // 6040
-/** EndorseeInvalid: The endorsee is missing or is the pool itself */
-export const ELOTE_POOL_ERROR__ENDORSEE_INVALID = 0x1799; // 6041
-/** ProcuracionState: The pagaré has no procuración in force, or already has one */
-export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x179a; // 6042
-/** AnnotationKindInvalid: This kind is not a court annotation */
-export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x179b; // 6043
+export const ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT = 0x1786; // 6022
 /** CancelDelayTooShort: The cancel delay is below the seven-day floor */
-export const ELOTE_POOL_ERROR__CANCEL_DELAY_TOO_SHORT = 0x179c; // 6044
+export const ELOTE_POOL_ERROR__CANCEL_DELAY_TOO_SHORT = 0x1787; // 6023
+/** LineStatus: The line is not in the required status */
+export const ELOTE_POOL_ERROR__LINE_STATUS = 0x1788; // 6024
+/** AgreementHashRequired: The signed agreement's hash is required */
+export const ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED = 0x1789; // 6025
+/** ExpedienteRootRequired: The expediente root is required */
+export const ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED = 0x178a; // 6026
+/** SponsorRoleInvalid: sponsor_role is unknown */
+export const ELOTE_POOL_ERROR__SPONSOR_ROLE_INVALID = 0x178b; // 6027
+/** TermEnded: The term has ended, or would end before the opening */
+export const ELOTE_POOL_ERROR__TERM_ENDED = 0x178c; // 6028
+/** InvalidSchedule: The installment schedule is not valid */
+export const ELOTE_POOL_ERROR__INVALID_SCHEDULE = 0x178d; // 6029
+/** ScheduleEndsAfterTerm: The last installment would fall due after the term */
+export const ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM = 0x178e; // 6030
+/** NotScheduled: The line has no installment schedule */
+export const ELOTE_POOL_ERROR__NOT_SCHEDULED = 0x178f; // 6031
+/** AvailabilityEnded: The draw window of this line has closed */
+export const ELOTE_POOL_ERROR__AVAILABILITY_ENDED = 0x1790; // 6032
+/** TooManyDraws: The line has reached its maximum number of draws */
+export const ELOTE_POOL_ERROR__TOO_MANY_DRAWS = 0x1791; // 6033
+/** LateInterestUnpaid: The repayment must cover the late interest due */
+export const ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID = 0x1792; // 6034
+/** NotEnoughMissed: Fewer installments missed than the line allows before collection */
+export const ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED = 0x1793; // 6035
+/** TermNotEnded: The term has not ended */
+export const ELOTE_POOL_ERROR__TERM_NOT_ENDED = 0x1794; // 6036
+/** WriteOffTooEarly: A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace */
+export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x1795; // 6037
+/** DocumentHashRequired: The signed document's hash is required */
+export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x1796; // 6038
+/** SignatureMethodInvalid: signature_method is unknown, or lacks its certificate fingerprint */
+export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x1797; // 6039
+/** PagareNotCovered: No repayment has marked this pagaré paid */
+export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x1798; // 6040
+/** PagareAlreadyPaid: This pagaré is already extinguished */
+export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x1799; // 6041
+/** EndosoKindInvalid: This kind of endoso is not one the program records */
+export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x179a; // 6042
+/** ProcuracionState: The pagaré has no procuración in force, or already has one */
+export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x179b; // 6043
+/** AnnotationKindInvalid: This kind is not a court annotation */
+export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x179c; // 6044
 /** EntryNotFound: The referenced registry entry does not exist */
 export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x179d; // 6045
 
@@ -168,11 +168,11 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__BORROWER_IS_ADMIN]: `The pool admin cannot be the borrower`,
     [ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR]: `The borrower cannot be the attestor`,
     [ELOTE_POOL_ERROR__CANCEL_DELAY_TOO_SHORT]: `The cancel delay is below the seven-day floor`,
-    [ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED]: `The collection is not a Metaplex Core collection whose update authority is the pool`,
+    [ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED]: `The collection is not a bare Metaplex Core collection whose update authority is the pool`,
     [ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT]: `The collection period is shorter than the minimum`,
-    [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed pagaré's hash is required`,
-    [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing or is the pool itself`,
-    [ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID]: `This kind of endoso is not one the program records, or not in this version`,
+    [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed document's hash is required`,
+    [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing, or is the pool, the admin or the attestor`,
+    [ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID]: `This kind of endoso is not one the program records`,
     [ELOTE_POOL_ERROR__ENTRY_NOT_FOUND]: `The referenced registry entry does not exist`,
     [ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED]: `The expediente root is required`,
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
@@ -186,9 +186,9 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__NOT_HOLDER]: `The pagaré's holder must sign`,
     [ELOTE_POOL_ERROR__NOT_SCHEDULED]: `The line has no installment schedule`,
     [ELOTE_POOL_ERROR__OVERFLOW]: `Arithmetic overflow`,
-    [ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH]: `The sidecars passed are not the ones this payment touches, oldest first`,
-    [ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID]: `This pagaré is already marked paid`,
-    [ELOTE_POOL_ERROR__PAGARE_NOT_COVERED]: `The line has not repaid enough to cover this pagaré`,
+    [ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH]: `The pagaré records passed are not the ones this payment touches, oldest first`,
+    [ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID]: `This pagaré is already extinguished`,
+    [ELOTE_POOL_ERROR__PAGARE_NOT_COVERED]: `No repayment has marked this pagaré paid`,
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,
     [ELOTE_POOL_ERROR__PROCURACION_STATE]: `The pagaré has no procuración in force, or already has one`,
     [ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM]: `The last installment would fall due after the term`,
@@ -200,8 +200,8 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__TERM_ENDED]: `The term has ended, or would end before the opening`,
     [ELOTE_POOL_ERROR__TERM_NOT_ENDED]: `The term has not ended`,
     [ELOTE_POOL_ERROR__TOO_MANY_DRAWS]: `The line has reached its maximum number of draws`,
-    [ELOTE_POOL_ERROR__UNAUTHORIZED]: `Only the pool admin may do this`,
-    [ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY]: `A line in collection is written off only after its oldest missed due date plus grace, or after the term plus grace`,
+    [ELOTE_POOL_ERROR__UNAUTHORIZED]: `This signer may not do this`,
+    [ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY]: `A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace`,
     [ELOTE_POOL_ERROR__WRONG_ACCOUNT]: `Wrong mint or token account`,
     [ELOTE_POOL_ERROR__WRONG_AMOUNT]: `Amount is zero or exceeds what is due`,
     [ELOTE_POOL_ERROR__ZERO_SHARES]: `The deposit would mint zero shares`,

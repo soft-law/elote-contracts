@@ -10,8 +10,8 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 
 use crate::errors::PoolError;
 use crate::events::{
-    LateInterestCollected, LineCancelled, LineDrawState, LineDrawn, LineDrawsSuspended, LineInCollection, LineOpened,
-    LineRepaid, LineScheduled, LineSponsorRole, LineTermsSet, LineWrittenOff, NavUpdated, PagareEntry, PagareIssued,
+    LateInterestCollected, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection, LineOpened,
+    LineRepaid, LineWrittenOff, NavUpdated, PagareEntry, PagareIssued,
     PagarePayment, PaymentEntry,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
@@ -153,24 +153,19 @@ pub fn open_line(
         line_id,
         borrower: line.borrower,
         sponsor,
+        sponsor_role,
         agreement_hash,
+        expediente_root,
         principal,
         rate_bps,
-        interest_due: 0,
         term_end,
+        availability_end,
+        first_due_at,
+        interval_seconds,
+        installments,
+        late_bps,
+        max_missed,
     });
-    if let Some(s) = schedule {
-        emit_cpi!(LineScheduled {
-            pool: pool.key(),
-            line_id,
-            interval_seconds: s.interval_seconds,
-            installments: s.installments,
-            late_bps: s.late_bps,
-            max_missed: s.max_missed,
-        });
-    }
-    emit_cpi!(LineTermsSet { pool: pool.key(), line_id, first_due_at, availability_end, expediente_root });
-    emit_cpi!(LineSponsorRole { pool: pool.key(), line_id, sponsor, role: sponsor_role });
     Ok(())
 }
 
@@ -543,18 +538,13 @@ pub fn draw(
     emit_cpi!(LineDrawn {
         pool: pool.key(),
         line_id: line.line_id,
-        amount,
-        outstanding_after: pool.outstanding_principal,
-    });
-    emit_cpi!(LineDrawState {
-        pool: pool.key(),
-        line_id: line.line_id,
+        draw_index,
         amount,
         drawn: line.drawn,
         available: line.available().ok_or(PoolError::Overflow)?,
         interest_due: line.interest_due,
         availability_end: line.availability_end,
-        document_hash,
+        outstanding_after: pool.outstanding_principal,
     });
     emit_cpi!(PagareIssued {
         pool: pool.key(),

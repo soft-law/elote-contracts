@@ -2,66 +2,45 @@
 
 use anchor_lang::prelude::*;
 
+/// Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits;
+/// `permissioned`: the share mint is frozen by default.
 #[event]
 pub struct PoolInitialized {
     pub pool: Pubkey,
+    pub admin: Pubkey,
+    pub attestor: Pubkey,
     pub asset_mint: Pubkey,
     pub share_mint: Pubkey,
-    pub admin: Pubkey,
-}
-
-/// Emitted by `init_pool` after `PoolInitialized`: the pool parameters fixed at launch.
-#[event]
-pub struct PoolConfigured {
-    pub pool: Pubkey,
+    pub collection: Pubkey,
     pub grace_period_seconds: u32,
-}
-
-/// Emitted by `init_pool` after `PoolConfigured`: the largest line as a share of the NAV, in bps.
-#[event]
-pub struct PoolLineCapSet {
-    pub pool: Pubkey,
+    pub collection_period_seconds: u32,
+    pub cancel_delay_seconds: u32,
     pub max_line_bps: u16,
-}
-
-/// Emitted by `init_pool` after `PoolLineCapSet`. `asset_controls` are the `Pool::asset_controls`
-/// bits (bit 0 freeze authority, bit 1 Pausable); `permissioned`: the share mint is frozen by
-/// default.
-#[event]
-pub struct PoolFlags {
-    pub pool: Pubkey,
     pub asset_controls: u8,
     pub permissioned: bool,
 }
 
-/// The pool's collection period, at `init_pool` and after every `set_collection_period`: seconds
-/// from the mark before a line in collection can be written off.
+/// The pool's collection period after `set_collection_period`: seconds from the mark before a
+/// line in collection can be written off.
 #[event]
 pub struct CollectionPeriodSet {
     pub pool: Pubkey,
     pub collection_period_seconds: u32,
 }
 
-/// The pool's cancel delay, at `init_pool` and after every `set_cancel_delay`: the backstop's wait
-/// from a cancellation request before the holder may cancel alone.
+/// The pool's cancel delay after `set_cancel_delay`: the wait from a cancellation request before
+/// the holder may cancel alone.
 #[event]
 pub struct CancelDelaySet {
     pub pool: Pubkey,
     pub cancel_delay_seconds: u32,
 }
 
-/// The pool's attestor, at `init_pool` and after every `set_attestor`.
+/// The pool's attestor after `set_attestor`.
 #[event]
 pub struct AttestorSet {
     pub pool: Pubkey,
     pub attestor: Pubkey,
-}
-
-/// The series' Metaplex Core collection the pool records, at `init_pool`.
-#[event]
-pub struct PoolCollectionSet {
-    pub pool: Pubkey,
-    pub collection: Pubkey,
 }
 
 /// The NAV and the share supply after every instruction that moves either (`deposit`, `redeem`,
@@ -93,52 +72,30 @@ pub struct Redeemed {
     pub supply_after: u64,
 }
 
+/// Every term `open_line` recorded. On a bullet line `installments`, `interval_seconds`,
+/// `late_bps`, `max_missed` and `first_due_at` are zero; `sponsor_role` is meaningful only when
+/// `sponsor` is named.
 #[event]
 pub struct LineOpened {
     pub pool: Pubkey,
     pub line_id: u64,
     pub borrower: Pubkey,
     pub sponsor: Option<Pubkey>,
+    pub sponsor_role: u8,
     pub agreement_hash: [u8; 32],
+    pub expediente_root: [u8; 32],
     pub principal: u64,
     pub rate_bps: u16,
-    pub interest_due: u64,
     pub term_end: i64,
-}
-
-/// Emitted by `open_line` after `LineOpened` when the line has an installment schedule.
-#[event]
-pub struct LineScheduled {
-    pub pool: Pubkey,
-    pub line_id: u64,
+    pub availability_end: i64,
+    pub first_due_at: i64,
     pub interval_seconds: i64,
     pub installments: u16,
     pub late_bps: u16,
     pub max_missed: u8,
 }
 
-/// Emitted by `open_line` after `LineOpened` (and `LineScheduled`). `first_due_at` is zero on a
-/// bullet line.
-#[event]
-pub struct LineTermsSet {
-    pub pool: Pubkey,
-    pub line_id: u64,
-    pub first_due_at: i64,
-    pub availability_end: i64,
-    pub expediente_root: [u8; 32],
-}
-
-/// Emitted by `open_line` after `LineTermsSet`. `role` is `SPONSOR_PROMOTER` or
-/// `SPONSOR_GUARANTOR`; `sponsor == None` and role 0 when no sponsor is named.
-#[event]
-pub struct LineSponsorRole {
-    pub pool: Pubkey,
-    pub line_id: u64,
-    pub sponsor: Option<Pubkey>,
-    pub role: u8,
-}
-
-/// Emitted by `draw` after `LineDrawState`: the pagaré issued as the Metaplex Core asset `asset`,
+/// Emitted by `draw` after `LineDrawn`: the pagaré issued as the Metaplex Core asset `asset`,
 /// held frozen by `holder` (the pool PDA). `due_at` is the line's last due date at issuance.
 #[event]
 pub struct PagareIssued {
@@ -212,27 +169,18 @@ pub struct LineCancelled {
     pub line_id: u64,
 }
 
-/// One tranche; `amount` is the tranche, emitted once per draw.
+/// One tranche, `amount`, and the line after it; `outstanding_after` is the pool's.
 #[event]
 pub struct LineDrawn {
     pub pool: Pubkey,
     pub line_id: u64,
-    pub amount: u64,
-    pub outstanding_after: u64,
-}
-
-/// Emitted by `draw` after `LineDrawn`: the line after the tranche and the signed pagaré's hash,
-/// which is not stored on the line.
-#[event]
-pub struct LineDrawState {
-    pub pool: Pubkey,
-    pub line_id: u64,
+    pub draw_index: u16,
     pub amount: u64,
     pub drawn: u64,
     pub available: u64,
     pub interest_due: u64,
     pub availability_end: i64,
-    pub document_hash: [u8; 32],
+    pub outstanding_after: u64,
 }
 
 #[event]

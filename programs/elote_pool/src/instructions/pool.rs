@@ -8,8 +8,7 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    AttestorSet, CancelDelaySet, CollectionPeriodSet, Deposited, NavUpdated, PoolCollectionSet, PoolConfigured, PoolFlags, PoolInitialized,
-    PoolLineCapSet, PoolPaused, Redeemed,
+    AttestorSet, CancelDelaySet, CollectionPeriodSet, Deposited, NavUpdated, PoolInitialized, PoolPaused, Redeemed,
 };
 use crate::math;
 use crate::state::{
@@ -263,17 +262,18 @@ pub fn init_pool(
 
     emit_cpi!(PoolInitialized {
         pool: pool.key(),
+        admin: pool.admin,
+        attestor,
         asset_mint: pool.asset_mint,
         share_mint: pool.share_mint,
-        admin: pool.admin,
+        collection: pool.collection,
+        grace_period_seconds,
+        collection_period_seconds,
+        cancel_delay_seconds,
+        max_line_bps,
+        asset_controls: controls,
+        permissioned,
     });
-    emit_cpi!(PoolConfigured { pool: pool.key(), grace_period_seconds });
-    emit_cpi!(PoolLineCapSet { pool: pool.key(), max_line_bps });
-    emit_cpi!(PoolFlags { pool: pool.key(), asset_controls: controls, permissioned });
-    emit_cpi!(AttestorSet { pool: pool.key(), attestor });
-    emit_cpi!(PoolCollectionSet { pool: pool.key(), collection: pool.collection });
-    emit_cpi!(CollectionPeriodSet { pool: pool.key(), collection_period_seconds });
-    emit_cpi!(CancelDelaySet { pool: pool.key(), cancel_delay_seconds });
     Ok(())
 }
 

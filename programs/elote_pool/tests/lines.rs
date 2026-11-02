@@ -4,7 +4,7 @@
 mod common;
 
 use common::*;
-use elote_pool::events::{LineDrawState, LineOpened, LineSponsorRole, LineTermsSet, LineWrittenOff};
+use elote_pool::events::{LineDrawn, LineOpened, LineWrittenOff};
 use elote_pool::state::{LineStatus, SPONSOR_GUARANTOR, SPONSOR_PROMOTER};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
@@ -35,10 +35,9 @@ fn open_draw_repay_full_cycle_raises_share_value() {
     assert_eq!(ev.agreement_hash, AGREEMENT_HASH);
     assert_eq!(ev.principal, 4 * UNIT);
     assert_eq!(ev.rate_bps, 1_000);
-    assert_eq!(ev.interest_due, 0, "interest is fixed per tranche, at the draw");
     assert_eq!(ev.term_end, p.term_end);
-    let ev: LineTermsSet = find_event(&meta).expect("LineTermsSet");
     assert_eq!((ev.first_due_at, ev.availability_end, ev.expediente_root), (0, p.term_end, EXPEDIENTE_ROOT));
+    assert_eq!((ev.installments, ev.interval_seconds, ev.late_bps, ev.max_missed), (0, 0, 0, 0), "a bullet line");
 
     let line = env.line(&k, 0);
     assert_eq!(line.pool, k.pool);
@@ -177,8 +176,7 @@ fn sponsor_must_cosign_when_named_and_its_role_is_recorded() {
     let (line_id, meta) = env.open_line_with(&k, &borrower, &p, Some(&sponsor));
     let ev: LineOpened = find_event(&meta).expect("LineOpened");
     assert_eq!(ev.sponsor, Some(sponsor.pubkey()));
-    let ev: LineSponsorRole = find_event(&meta).expect("LineSponsorRole");
-    assert_eq!((ev.pool, ev.line_id, ev.sponsor, ev.role), (k.pool, line_id, Some(sponsor.pubkey()), SPONSOR_GUARANTOR));
+    assert_eq!((ev.pool, ev.line_id, ev.sponsor_role), (k.pool, line_id, SPONSOR_GUARANTOR));
     let line = env.line(&k, line_id);
     assert_eq!((line.sponsor, line.sponsor_role), (Some(sponsor.pubkey()), SPONSOR_GUARANTOR));
 
@@ -186,8 +184,8 @@ fn sponsor_must_cosign_when_named_and_its_role_is_recorded() {
     let mut p = env.line_params(UNIT, 1_000);
     p.sponsor = Some(sponsor.pubkey());
     let (line_id, meta) = env.open_line_with(&k, &borrower, &p, Some(&sponsor));
-    let ev: LineSponsorRole = find_event(&meta).expect("LineSponsorRole");
-    assert_eq!(ev.role, SPONSOR_PROMOTER);
+    let ev: LineOpened = find_event(&meta).expect("LineOpened");
+    assert_eq!(ev.sponsor_role, SPONSOR_PROMOTER);
     assert_eq!(env.line(&k, line_id).sponsor_role, SPONSOR_PROMOTER);
 }
 
@@ -490,13 +488,13 @@ fn draw_state_follows_the_tranches() {
 
     let ev = env.draw_amount(&k, line_id, &borrower, UNIT);
     assert_eq!((ev.amount, ev.drawn, ev.available, ev.interest_due), (UNIT, UNIT, 3 * UNIT, 100_000));
-    assert_eq!((ev.availability_end, ev.document_hash), (p.term_end, DOCUMENT_HASH));
+    assert_eq!((ev.availability_end, ev.draw_index), (p.term_end, 0));
     let t_first = env.now();
     let line = env.line(&k, line_id);
     assert_eq!((line.status, line.drawn_at, line.draws), (LineStatus::Active, t_first, 1));
 
     env.warp(t_first + 1_000);
-    let ev: LineDrawState = env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
+    let ev: LineDrawn = env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
     assert_eq!((ev.drawn, ev.available), (4 * UNIT, 0));
     let line = env.line(&k, line_id);
     assert_eq!((line.status, line.drawn_at, line.draws), (LineStatus::Active, t_first, 2));

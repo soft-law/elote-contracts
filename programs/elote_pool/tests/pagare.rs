@@ -959,7 +959,7 @@ fn the_cancel_delay_is_a_pool_parameter_with_a_seven_day_floor() {
     let ix = env.init_pool_ix_full(&k, 0, BPS, env.attestor.pubkey(), COLLECTION_PERIOD, CANCEL_DELAY - 1);
     env.expect_err(ix, &admin, &[], E_CANCEL_DELAY_TOO_SHORT);
     let (k, meta) = env.setup_pool();
-    let ev: CancelDelaySet = find_event(&meta).expect("CancelDelaySet");
+    let ev: elote_pool::events::PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((ev.pool, ev.cancel_delay_seconds), (k.pool, CANCEL_DELAY));
     let pool = env.pool(&k);
     assert_eq!(pool.cancel_delay_seconds, CANCEL_DELAY);

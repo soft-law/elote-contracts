@@ -6,7 +6,7 @@ use anchor_lang::InstructionData;
 use anchor_spl::token_2022::spl_token_2022;
 use common::*;
 use elote_pool::events::{
-    AttestorSet, NavUpdated, PoolCollectionSet, PoolConfigured, PoolFlags, PoolInitialized, PoolLineCapSet, PoolPaused,
+    AttestorSet, NavUpdated, PoolInitialized, PoolPaused,
 };
 use elote_pool::state::{ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE};
 use solana_instruction::Instruction;
@@ -319,19 +319,18 @@ fn init_pool_records_the_grace_period() {
     assert_eq!((pool.cancel_delay_seconds, pool.collection_period_seconds), (CANCEL_DELAY, COLLECTION_PERIOD));
 
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
-    assert_eq!(ev.pool, k.pool);
-    let ev: PoolConfigured = find_event(&meta).expect("PoolConfigured");
     assert_eq!((ev.pool, ev.grace_period_seconds), (k.pool, grace));
+    assert_eq!((ev.collection_period_seconds, ev.cancel_delay_seconds), (COLLECTION_PERIOD, CANCEL_DELAY));
 
     // The default pool of the other tests has no grace.
     let (k0, meta0) = env.setup_pool();
     assert_eq!(env.pool(&k0).grace_period_seconds, 0);
-    let ev: PoolConfigured = find_event(&meta0).expect("PoolConfigured");
+    let ev: PoolInitialized = find_event(&meta0).expect("PoolInitialized");
     assert_eq!(ev.grace_period_seconds, 0);
 }
 
 /// `max_line_bps` is fixed at `init_pool` and is
-/// announced by `PoolLineCapSet`. Zero and anything above 10,000 bps are refused.
+/// announced in `PoolInitialized`. Zero and anything above 10,000 bps are refused.
 #[test]
 fn init_pool_records_the_line_cap_and_bounds_it() {
     let mut env = Env::new();
@@ -343,7 +342,7 @@ fn init_pool_records_the_line_cap_and_bounds_it() {
     let pool = env.pool(&k);
     assert_eq!(pool.max_line_bps, 1_000);
     assert_eq!(pool.max_line_principal(10 * UNIT), Some(UNIT));
-    let ev: PoolLineCapSet = find_event(&meta).expect("PoolLineCapSet");
+    let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((ev.pool, ev.max_line_bps), (k.pool, 1_000));
 
     for bad in [0u16, BPS + 1, u16::MAX] {
@@ -394,11 +393,11 @@ fn expect_asset_rejected(env: &mut Env, mint: &Pubkey) {
     env.expect_err(ix, &admin, &[], E_ASSET_MINT_NOT_ALLOWED);
 }
 
-fn init_accepting(env: &mut Env, mint: &Pubkey) -> (PoolKeys, PoolFlags) {
+fn init_accepting(env: &mut Env, mint: &Pubkey) -> (PoolKeys, PoolInitialized) {
     let admin = env.admin.insecure_clone();
     let (k, ix) = env.init_pool_plain(mint);
     let meta = env.send(ix, &admin, &[]);
-    (k, find_event(&meta).expect("PoolFlags"))
+    (k, find_event(&meta).expect("PoolInitialized"))
 }
 
 /// The asset mint may not carry an extension that takes or hides
@@ -524,11 +523,11 @@ fn init_pool_records_the_asset_issuer_controls_it_accepts() {
 
     // The plain mints of the other tests carry nothing.
     let (k, meta) = env.setup_pool();
-    let flags: PoolFlags = find_event(&meta).expect("PoolFlags");
+    let flags: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((flags.asset_controls, flags.permissioned, env.pool(&k).asset_controls), (0, false, 0));
 }
 
-/// `init_pool` records the attestor and the collection, each announced by its event.
+/// `init_pool` records the attestor and the collection, announced in `PoolInitialized`.
 #[test]
 fn init_pool_records_the_attestor_and_the_collection() {
     let mut env = Env::new();
@@ -536,10 +535,10 @@ fn init_pool_records_the_attestor_and_the_collection() {
     let pool = env.pool(&k);
     assert_eq!(pool.attestor, env.attestor.pubkey());
     assert_eq!(pool.collection, k.collection);
-    let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
-    assert_eq!((ev.pool, ev.attestor), (k.pool, env.attestor.pubkey()));
-    let ev: PoolCollectionSet = find_event(&meta).expect("PoolCollectionSet");
-    assert_eq!((ev.pool, ev.collection), (k.pool, k.collection));
+    let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
+    assert_eq!((ev.pool, ev.attestor, ev.collection), (k.pool, env.attestor.pubkey(), k.collection));
+    assert_eq!((ev.admin, ev.asset_mint, ev.share_mint), (env.admin.pubkey(), k.asset_mint, k.share_mint));
+    assert!(find_event::<AttestorSet>(&meta).is_none(), "the setters' events are for changes");
     // The collection is a real Metaplex Core collection the pool controls, read back through the
     // crate's decoder against the pinned program binary.
     let c = env.collection_state(&k.collection);
@@ -795,7 +794,7 @@ fn permissioned_shares_need_a_thaw_before_the_first_deposit() {
     let mut env = Env::new();
     let gate = env.funded(1);
     let (k, meta) = env.setup_permissioned_pool(&gate.pubkey());
-    let flags: PoolFlags = find_event(&meta).expect("PoolFlags");
+    let flags: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert!(flags.permissioned && env.pool(&k).permissioned);
     assert!(env.pool(&k).permissioned);
     assert_eq!(env.token_account(&k.dead_shares).state, AccountState::Frozen);
@@ -854,4 +853,42 @@ fn init_pool_rejects_a_mint_whose_decimals_make_the_first_deposit_impossible() {
     let mint = env.create_mint(&admin.pubkey(), 19);
     let (_, ix) = env.init_pool_plain(&mint);
     env.send(ix, &admin, &[]);
+}
+
+/// No change of the pool's state goes unannounced: each setter emits its own event carrying the
+/// new value, which the account then holds. `init_pool` announces the first values in
+/// `PoolInitialized` alone.
+#[test]
+fn every_pool_setter_announces_the_new_value() {
+    use elote_pool::events::{CancelDelaySet, CollectionPeriodSet};
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let admin = env.admin.insecure_clone();
+    let a = admin.pubkey();
+
+    let new_attestor = env.funded(1);
+    let ix = env.set_attestor_ix(&k, &a, &new_attestor.pubkey());
+    let meta = env.send(ix, &admin, &[&new_attestor]);
+    let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
+    assert_eq!((ev.pool, ev.attestor), (k.pool, new_attestor.pubkey()));
+    assert_eq!(env.pool(&k).attestor, new_attestor.pubkey());
+
+    let ix = env.set_collection_period_ix(&k, &a, 2 * COLLECTION_PERIOD);
+    let meta = env.send(ix, &admin, &[]);
+    let ev: CollectionPeriodSet = find_event(&meta).expect("CollectionPeriodSet");
+    assert_eq!((ev.pool, ev.collection_period_seconds), (k.pool, 2 * COLLECTION_PERIOD));
+    assert_eq!(env.pool(&k).collection_period_seconds, 2 * COLLECTION_PERIOD);
+
+    let ix = env.set_cancel_delay_ix(&k, &a, 2 * CANCEL_DELAY);
+    let meta = env.send(ix, &admin, &[]);
+    let ev: CancelDelaySet = find_event(&meta).expect("CancelDelaySet");
+    assert_eq!((ev.pool, ev.cancel_delay_seconds), (k.pool, 2 * CANCEL_DELAY));
+    assert_eq!(env.pool(&k).cancel_delay_seconds, 2 * CANCEL_DELAY);
+
+    for paused in [true, false] {
+        let meta = env.set_paused(&k, paused);
+        let ev: PoolPaused = find_event(&meta).expect("PoolPaused");
+        assert_eq!((ev.pool, ev.paused), (k.pool, paused));
+        assert_eq!(env.pool(&k).paused, paused);
+    }
 }

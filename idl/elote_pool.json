@@ -2592,19 +2592,6 @@
       ]
     },
     {
-      "name": "LineDrawState",
-      "discriminator": [
-        81,
-        134,
-        178,
-        53,
-        221,
-        181,
-        252,
-        207
-      ]
-    },
-    {
       "name": "LineDrawn",
       "discriminator": [
         100,
@@ -2667,45 +2654,6 @@
         66,
         127,
         175
-      ]
-    },
-    {
-      "name": "LineScheduled",
-      "discriminator": [
-        235,
-        180,
-        143,
-        112,
-        60,
-        193,
-        27,
-        134
-      ]
-    },
-    {
-      "name": "LineSponsorRole",
-      "discriminator": [
-        201,
-        233,
-        0,
-        139,
-        122,
-        200,
-        182,
-        151
-      ]
-    },
-    {
-      "name": "LineTermsSet",
-      "discriminator": [
-        200,
-        26,
-        190,
-        102,
-        134,
-        52,
-        122,
-        240
       ]
     },
     {
@@ -2800,45 +2748,6 @@
       ]
     },
     {
-      "name": "PoolCollectionSet",
-      "discriminator": [
-        230,
-        60,
-        239,
-        27,
-        171,
-        112,
-        123,
-        10
-      ]
-    },
-    {
-      "name": "PoolConfigured",
-      "discriminator": [
-        110,
-        51,
-        15,
-        167,
-        103,
-        41,
-        48,
-        66
-      ]
-    },
-    {
-      "name": "PoolFlags",
-      "discriminator": [
-        120,
-        29,
-        59,
-        248,
-        206,
-        33,
-        76,
-        230
-      ]
-    },
-    {
       "name": "PoolInitialized",
       "discriminator": [
         100,
@@ -2849,19 +2758,6 @@
         198,
         254,
         229
-      ]
-    },
-    {
-      "name": "PoolLineCapSet",
-      "discriminator": [
-        70,
-        51,
-        131,
-        236,
-        247,
-        164,
-        210,
-        213
       ]
     },
     {
@@ -2894,228 +2790,228 @@
   "errors": [
     {
       "code": 6000,
-      "name": "Paused",
-      "msg": "The pool is paused"
+      "name": "Unauthorized",
+      "msg": "This signer may not do this"
     },
     {
       "code": 6001,
-      "name": "Unauthorized",
-      "msg": "Only the pool admin may do this"
-    },
-    {
-      "code": 6002,
-      "name": "WrongAmount",
-      "msg": "Amount is zero or exceeds what is due"
-    },
-    {
-      "code": 6003,
-      "name": "InsufficientLiquidity",
-      "msg": "Not enough liquidity in the vault"
-    },
-    {
-      "code": 6004,
-      "name": "LineStatus",
-      "msg": "The line is not in the required status"
-    },
-    {
-      "code": 6005,
-      "name": "TermNotEnded",
-      "msg": "The term has not ended"
-    },
-    {
-      "code": 6006,
-      "name": "Overflow",
-      "msg": "Arithmetic overflow"
-    },
-    {
-      "code": 6007,
-      "name": "SponsorRequired",
-      "msg": "The sponsor named on this line must sign"
-    },
-    {
-      "code": 6008,
-      "name": "ZeroShares",
-      "msg": "The deposit would mint zero shares"
-    },
-    {
-      "code": 6009,
-      "name": "FirstDepositTooSmall",
-      "msg": "First deposit below the minimum"
-    },
-    {
-      "code": 6010,
-      "name": "WrongAccount",
-      "msg": "Wrong mint or token account"
-    },
-    {
-      "code": 6011,
-      "name": "SlippageExceeded",
-      "msg": "The result is below the minimum the caller accepts"
-    },
-    {
-      "code": 6012,
-      "name": "TermEnded",
-      "msg": "The term has ended, or would end before the opening"
-    },
-    {
-      "code": 6013,
-      "name": "InvalidSchedule",
-      "msg": "The installment schedule is not valid"
-    },
-    {
-      "code": 6014,
-      "name": "ScheduleEndsAfterTerm",
-      "msg": "The last installment would fall due after the term"
-    },
-    {
-      "code": 6015,
-      "name": "NotScheduled",
-      "msg": "The line has no installment schedule"
-    },
-    {
-      "code": 6016,
-      "name": "NotEnoughMissed",
-      "msg": "Fewer installments missed than the line allows before collection"
-    },
-    {
-      "code": 6017,
-      "name": "LateInterestUnpaid",
-      "msg": "The repayment must cover the late interest due"
-    },
-    {
-      "code": 6018,
-      "name": "WriteOffTooEarly",
-      "msg": "A line in collection is written off only after its oldest missed due date plus grace, or after the term plus grace"
-    },
-    {
-      "code": 6019,
-      "name": "BorrowerIsAdmin",
-      "msg": "The pool admin cannot be the borrower"
-    },
-    {
-      "code": 6020,
-      "name": "LineTooLarge",
-      "msg": "The principal exceeds the pool's maximum line, max_line_bps of the NAV"
-    },
-    {
-      "code": 6021,
-      "name": "InvariantBroken",
-      "msg": "A pool invariant does not hold after this instruction; the transaction is refused"
-    },
-    {
-      "code": 6022,
-      "name": "AssetMintNotAllowed",
-      "msg": "The asset mint carries a Token-2022 extension the pool does not accept"
-    },
-    {
-      "code": 6023,
-      "name": "ShareMintNotAllowed",
-      "msg": "The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions"
-    },
-    {
-      "code": 6024,
       "name": "AttestorRequired",
       "msg": "The pool's attestor must sign"
     },
     {
-      "code": 6025,
-      "name": "AvailabilityEnded",
-      "msg": "The draw window of this line has closed"
+      "code": 6002,
+      "name": "SponsorRequired",
+      "msg": "The sponsor named on this line must sign"
     },
     {
-      "code": 6026,
-      "name": "TooManyDraws",
-      "msg": "The line has reached its maximum number of draws"
-    },
-    {
-      "code": 6027,
-      "name": "CollectionNotAllowed",
-      "msg": "The collection is not a Metaplex Core collection whose update authority is the pool"
-    },
-    {
-      "code": 6028,
-      "name": "DocumentHashRequired",
-      "msg": "The signed pagaré's hash is required"
-    },
-    {
-      "code": 6029,
-      "name": "SignatureMethodInvalid",
-      "msg": "signature_method is unknown, or lacks its certificate fingerprint"
-    },
-    {
-      "code": 6030,
-      "name": "PagareNotCovered",
-      "msg": "The line has not repaid enough to cover this pagaré"
-    },
-    {
-      "code": 6031,
-      "name": "PagareAlreadyPaid",
-      "msg": "This pagaré is already marked paid"
-    },
-    {
-      "code": 6032,
+      "code": 6003,
       "name": "NotHolder",
       "msg": "The pagaré's holder must sign"
     },
     {
-      "code": 6033,
+      "code": 6004,
+      "name": "Paused",
+      "msg": "The pool is paused"
+    },
+    {
+      "code": 6005,
+      "name": "WrongAccount",
+      "msg": "Wrong mint or token account"
+    },
+    {
+      "code": 6006,
+      "name": "AssetMintNotAllowed",
+      "msg": "The asset mint carries a Token-2022 extension the pool does not accept"
+    },
+    {
+      "code": 6007,
+      "name": "ShareMintNotAllowed",
+      "msg": "The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions"
+    },
+    {
+      "code": 6008,
+      "name": "CollectionNotAllowed",
+      "msg": "The collection is not a bare Metaplex Core collection whose update authority is the pool"
+    },
+    {
+      "code": 6009,
+      "name": "PagareAccountsMismatch",
+      "msg": "The pagaré records passed are not the ones this payment touches, oldest first"
+    },
+    {
+      "code": 6010,
       "name": "AttestorIsAdmin",
       "msg": "The attestor cannot be the admin"
     },
     {
-      "code": 6034,
+      "code": 6011,
+      "name": "BorrowerIsAdmin",
+      "msg": "The pool admin cannot be the borrower"
+    },
+    {
+      "code": 6012,
       "name": "BorrowerIsAttestor",
       "msg": "The borrower cannot be the attestor"
     },
     {
-      "code": 6035,
-      "name": "AgreementHashRequired",
-      "msg": "The signed agreement's hash is required"
+      "code": 6013,
+      "name": "EndorseeInvalid",
+      "msg": "The endorsee is missing, or is the pool, the admin or the attestor"
     },
     {
-      "code": 6036,
-      "name": "ExpedienteRootRequired",
-      "msg": "The expediente root is required"
+      "code": 6014,
+      "name": "WrongAmount",
+      "msg": "Amount is zero or exceeds what is due"
     },
     {
-      "code": 6037,
-      "name": "SponsorRoleInvalid",
-      "msg": "sponsor_role is unknown"
+      "code": 6015,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
     },
     {
-      "code": 6038,
+      "code": 6016,
+      "name": "InvariantBroken",
+      "msg": "A pool invariant does not hold after this instruction; the transaction is refused"
+    },
+    {
+      "code": 6017,
+      "name": "InsufficientLiquidity",
+      "msg": "Not enough liquidity in the vault"
+    },
+    {
+      "code": 6018,
+      "name": "ZeroShares",
+      "msg": "The deposit would mint zero shares"
+    },
+    {
+      "code": 6019,
+      "name": "FirstDepositTooSmall",
+      "msg": "First deposit below the minimum"
+    },
+    {
+      "code": 6020,
+      "name": "SlippageExceeded",
+      "msg": "The result is below the minimum the caller accepts"
+    },
+    {
+      "code": 6021,
+      "name": "LineTooLarge",
+      "msg": "The principal exceeds the pool's maximum line, max_line_bps of the NAV"
+    },
+    {
+      "code": 6022,
       "name": "CollectionPeriodTooShort",
       "msg": "The collection period is shorter than the minimum"
     },
     {
+      "code": 6023,
+      "name": "CancelDelayTooShort",
+      "msg": "The cancel delay is below the seven-day floor"
+    },
+    {
+      "code": 6024,
+      "name": "LineStatus",
+      "msg": "The line is not in the required status"
+    },
+    {
+      "code": 6025,
+      "name": "AgreementHashRequired",
+      "msg": "The signed agreement's hash is required"
+    },
+    {
+      "code": 6026,
+      "name": "ExpedienteRootRequired",
+      "msg": "The expediente root is required"
+    },
+    {
+      "code": 6027,
+      "name": "SponsorRoleInvalid",
+      "msg": "sponsor_role is unknown"
+    },
+    {
+      "code": 6028,
+      "name": "TermEnded",
+      "msg": "The term has ended, or would end before the opening"
+    },
+    {
+      "code": 6029,
+      "name": "InvalidSchedule",
+      "msg": "The installment schedule is not valid"
+    },
+    {
+      "code": 6030,
+      "name": "ScheduleEndsAfterTerm",
+      "msg": "The last installment would fall due after the term"
+    },
+    {
+      "code": 6031,
+      "name": "NotScheduled",
+      "msg": "The line has no installment schedule"
+    },
+    {
+      "code": 6032,
+      "name": "AvailabilityEnded",
+      "msg": "The draw window of this line has closed"
+    },
+    {
+      "code": 6033,
+      "name": "TooManyDraws",
+      "msg": "The line has reached its maximum number of draws"
+    },
+    {
+      "code": 6034,
+      "name": "LateInterestUnpaid",
+      "msg": "The repayment must cover the late interest due"
+    },
+    {
+      "code": 6035,
+      "name": "NotEnoughMissed",
+      "msg": "Fewer installments missed than the line allows before collection"
+    },
+    {
+      "code": 6036,
+      "name": "TermNotEnded",
+      "msg": "The term has not ended"
+    },
+    {
+      "code": 6037,
+      "name": "WriteOffTooEarly",
+      "msg": "A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace"
+    },
+    {
+      "code": 6038,
+      "name": "DocumentHashRequired",
+      "msg": "The signed document's hash is required"
+    },
+    {
       "code": 6039,
-      "name": "PagareAccountsMismatch",
-      "msg": "The sidecars passed are not the ones this payment touches, oldest first"
+      "name": "SignatureMethodInvalid",
+      "msg": "signature_method is unknown, or lacks its certificate fingerprint"
     },
     {
       "code": 6040,
-      "name": "EndosoKindInvalid",
-      "msg": "This kind of endoso is not one the program records, or not in this version"
+      "name": "PagareNotCovered",
+      "msg": "No repayment has marked this pagaré paid"
     },
     {
       "code": 6041,
-      "name": "EndorseeInvalid",
-      "msg": "The endorsee is missing or is the pool itself"
+      "name": "PagareAlreadyPaid",
+      "msg": "This pagaré is already extinguished"
     },
     {
       "code": 6042,
+      "name": "EndosoKindInvalid",
+      "msg": "This kind of endoso is not one the program records"
+    },
+    {
+      "code": 6043,
       "name": "ProcuracionState",
       "msg": "The pagaré has no procuración in force, or already has one"
     },
     {
-      "code": 6043,
+      "code": 6044,
       "name": "AnnotationKindInvalid",
       "msg": "This kind is not a court annotation"
-    },
-    {
-      "code": 6044,
-      "name": "CancelDelayTooShort",
-      "msg": "The cancel delay is below the seven-day floor"
     },
     {
       "code": 6045,
@@ -3127,7 +3023,7 @@
     {
       "name": "AttestorSet",
       "docs": [
-        "The pool's attestor, at `init_pool` and after every `set_attestor`."
+        "The pool's attestor after `set_attestor`."
       ],
       "type": {
         "kind": "struct",
@@ -3146,8 +3042,8 @@
     {
       "name": "CancelDelaySet",
       "docs": [
-        "The pool's cancel delay, at `init_pool` and after every `set_cancel_delay`: the backstop's wait",
-        "from a cancellation request before the holder may cancel alone."
+        "The pool's cancel delay after `set_cancel_delay`: the wait from a cancellation request before",
+        "the holder may cancel alone."
       ],
       "type": {
         "kind": "struct",
@@ -3207,8 +3103,8 @@
     {
       "name": "CollectionPeriodSet",
       "docs": [
-        "The pool's collection period, at `init_pool` and after every `set_collection_period`: seconds",
-        "from the mark before a line in collection can be written off."
+        "The pool's collection period after `set_collection_period`: seconds from the mark before a",
+        "line in collection can be written off."
       ],
       "type": {
         "kind": "struct",
@@ -3523,10 +3419,9 @@
       }
     },
     {
-      "name": "LineDrawState",
+      "name": "LineDrawn",
       "docs": [
-        "Emitted by `draw` after `LineDrawn`: the line after the tranche and the signed pagaré's hash,",
-        "which is not stored on the line."
+        "One tranche, `amount`, and the line after it; `outstanding_after` is the pool's."
       ],
       "type": {
         "kind": "struct",
@@ -3538,6 +3433,10 @@
           {
             "name": "line_id",
             "type": "u64"
+          },
+          {
+            "name": "draw_index",
+            "type": "u16"
           },
           {
             "name": "amount",
@@ -3558,38 +3457,6 @@
           {
             "name": "availability_end",
             "type": "i64"
-          },
-          {
-            "name": "document_hash",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "LineDrawn",
-      "docs": [
-        "One tranche; `amount` is the tranche, emitted once per draw."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "line_id",
-            "type": "u64"
-          },
-          {
-            "name": "amount",
-            "type": "u64"
           },
           {
             "name": "outstanding_after",
@@ -3657,6 +3524,11 @@
     },
     {
       "name": "LineOpened",
+      "docs": [
+        "Every term `open_line` recorded. On a bullet line `installments`, `interval_seconds`,",
+        "`late_bps`, `max_missed` and `first_due_at` are zero; `sponsor_role` is meaningful only when",
+        "`sponsor` is named."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -3679,7 +3551,20 @@
             }
           },
           {
+            "name": "sponsor_role",
+            "type": "u8"
+          },
+          {
             "name": "agreement_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "expediente_root",
             "type": {
               "array": [
                 "u8",
@@ -3696,12 +3581,32 @@
             "type": "u16"
           },
           {
-            "name": "interest_due",
-            "type": "u64"
-          },
-          {
             "name": "term_end",
             "type": "i64"
+          },
+          {
+            "name": "availability_end",
+            "type": "i64"
+          },
+          {
+            "name": "first_due_at",
+            "type": "i64"
+          },
+          {
+            "name": "interval_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "installments",
+            "type": "u16"
+          },
+          {
+            "name": "late_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_missed",
+            "type": "u8"
           }
         ]
       }
@@ -3743,71 +3648,6 @@
       }
     },
     {
-      "name": "LineScheduled",
-      "docs": [
-        "Emitted by `open_line` after `LineOpened` when the line has an installment schedule."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "line_id",
-            "type": "u64"
-          },
-          {
-            "name": "interval_seconds",
-            "type": "i64"
-          },
-          {
-            "name": "installments",
-            "type": "u16"
-          },
-          {
-            "name": "late_bps",
-            "type": "u16"
-          },
-          {
-            "name": "max_missed",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "LineSponsorRole",
-      "docs": [
-        "Emitted by `open_line` after `LineTermsSet`. `role` is `SPONSOR_PROMOTER` or",
-        "`SPONSOR_GUARANTOR`; `sponsor == None` and role 0 when no sponsor is named."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "line_id",
-            "type": "u64"
-          },
-          {
-            "name": "sponsor",
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "role",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "LineStatus",
       "type": {
         "kind": "enum",
@@ -3829,43 +3669,6 @@
           },
           {
             "name": "Cancelled"
-          }
-        ]
-      }
-    },
-    {
-      "name": "LineTermsSet",
-      "docs": [
-        "Emitted by `open_line` after `LineOpened` (and `LineScheduled`). `first_due_at` is zero on a",
-        "bullet line."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "line_id",
-            "type": "u64"
-          },
-          {
-            "name": "first_due_at",
-            "type": "i64"
-          },
-          {
-            "name": "availability_end",
-            "type": "i64"
-          },
-          {
-            "name": "expediente_root",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
           }
         ]
       }
@@ -4236,7 +4039,7 @@
     {
       "name": "PagareIssued",
       "docs": [
-        "Emitted by `draw` after `LineDrawState`: the pagaré issued as the Metaplex Core asset `asset`,",
+        "Emitted by `draw` after `LineDrawn`: the pagaré issued as the Metaplex Core asset `asset`,",
         "held frozen by `holder` (the pool PDA). `due_at` is the line's last due date at issuance."
       ],
       "type": {
@@ -4553,75 +4356,24 @@
       }
     },
     {
-      "name": "PoolCollectionSet",
-      "docs": [
-        "The series' Metaplex Core collection the pool records, at `init_pool`."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "collection",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "PoolConfigured",
-      "docs": [
-        "Emitted by `init_pool` after `PoolInitialized`: the pool parameters fixed at launch."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "grace_period_seconds",
-            "type": "u32"
-          }
-        ]
-      }
-    },
-    {
-      "name": "PoolFlags",
-      "docs": [
-        "Emitted by `init_pool` after `PoolLineCapSet`. `asset_controls` are the `Pool::asset_controls`",
-        "bits (bit 0 freeze authority, bit 1 Pausable); `permissioned`: the share mint is frozen by",
-        "default."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "asset_controls",
-            "type": "u8"
-          },
-          {
-            "name": "permissioned",
-            "type": "bool"
-          }
-        ]
-      }
-    },
-    {
       "name": "PoolInitialized",
+      "docs": [
+        "Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits;",
+        "`permissioned`: the share mint is frozen by default."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
           {
             "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "attestor",
             "type": "pubkey"
           },
           {
@@ -4633,27 +4385,32 @@
             "type": "pubkey"
           },
           {
-            "name": "admin",
+            "name": "collection",
             "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "PoolLineCapSet",
-      "docs": [
-        "Emitted by `init_pool` after `PoolConfigured`: the largest line as a share of the NAV, in bps."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
+          },
           {
-            "name": "pool",
-            "type": "pubkey"
+            "name": "grace_period_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "collection_period_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "cancel_delay_seconds",
+            "type": "u32"
           },
           {
             "name": "max_line_bps",
             "type": "u16"
+          },
+          {
+            "name": "asset_controls",
+            "type": "u8"
+          },
+          {
+            "name": "permissioned",
+            "type": "bool"
           }
         ]
       }

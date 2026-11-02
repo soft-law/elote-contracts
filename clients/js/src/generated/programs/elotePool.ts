@@ -196,15 +196,11 @@ export enum ElotePoolEvent {
   Deposited,
   LateInterestCollected,
   LineCancelled,
-  LineDrawState,
   LineDrawn,
   LineDrawsSuspended,
   LineInCollection,
   LineOpened,
   LineRepaid,
-  LineScheduled,
-  LineSponsorRole,
-  LineTermsSet,
   LineWrittenOff,
   NavUpdated,
   PagareCancelled,
@@ -212,11 +208,7 @@ export enum ElotePoolEvent {
   PagareIssued,
   PagarePayment,
   PagareReceiptAnnotated,
-  PoolCollectionSet,
-  PoolConfigured,
-  PoolFlags,
   PoolInitialized,
-  PoolLineCapSet,
   PoolPaused,
   Redeemed,
 }
@@ -306,17 +298,6 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([81, 134, 178, 53, 221, 181, 252, 207]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.LineDrawState;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([100, 242, 180, 4, 119, 91, 185, 148]),
       ),
       0,
@@ -367,39 +348,6 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.LineRepaid;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([235, 180, 143, 112, 60, 193, 27, 134]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.LineScheduled;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([201, 233, 0, 139, 122, 200, 182, 151]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.LineSponsorRole;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([200, 26, 190, 102, 134, 52, 122, 240]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.LineTermsSet;
   }
   if (
     containsBytes(
@@ -482,56 +430,12 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([230, 60, 239, 27, 171, 112, 123, 10]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.PoolCollectionSet;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([110, 51, 15, 167, 103, 41, 48, 66]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.PoolConfigured;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([120, 29, 59, 248, 206, 33, 76, 230]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.PoolFlags;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([100, 118, 173, 87, 12, 198, 254, 229]),
       ),
       0,
     )
   ) {
     return ElotePoolEvent.PoolInitialized;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([70, 51, 131, 236, 247, 164, 210, 213]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.PoolLineCapSet;
   }
   if (
     containsBytes(

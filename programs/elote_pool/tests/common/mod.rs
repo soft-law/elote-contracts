@@ -48,53 +48,53 @@ pub const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 /// Anchor's `#[error_code]` numbering: the first variant of the program's error enum is 6000.
 pub const ERR_BASE: u32 = 6000;
 
-pub const E_PAUSED: u32 = ERR_BASE; // PoolError::Paused
-pub const E_UNAUTHORIZED: u32 = ERR_BASE + 1; // PoolError::Unauthorized
+pub const E_PAUSED: u32 = ERR_BASE + 4; // PoolError::Paused
+pub const E_UNAUTHORIZED: u32 = ERR_BASE; // PoolError::Unauthorized
 /// Anchor's own `ConstraintSeeds`: an account is not at the address its seeds (and the given bump) derive.
 pub const E_CONSTRAINT_SEEDS: u32 = 2006;
-pub const E_WRONG_AMOUNT: u32 = ERR_BASE + 2; // PoolError::WrongAmount
-pub const E_INSUFFICIENT_LIQUIDITY: u32 = ERR_BASE + 3; // PoolError::InsufficientLiquidity
-pub const E_LINE_STATUS: u32 = ERR_BASE + 4; // PoolError::LineStatus
-pub const E_TERM_NOT_ENDED: u32 = ERR_BASE + 5; // PoolError::TermNotEnded
-pub const E_OVERFLOW: u32 = ERR_BASE + 6; // PoolError::Overflow
-pub const E_SPONSOR_REQUIRED: u32 = ERR_BASE + 7; // PoolError::SponsorRequired
-pub const E_ZERO_SHARES: u32 = ERR_BASE + 8; // PoolError::ZeroShares
-pub const E_FIRST_DEPOSIT_TOO_SMALL: u32 = ERR_BASE + 9; // PoolError::FirstDepositTooSmall
-pub const E_WRONG_ACCOUNT: u32 = ERR_BASE + 10; // PoolError::WrongAccount
-pub const E_SLIPPAGE_EXCEEDED: u32 = ERR_BASE + 11; // PoolError::SlippageExceeded
-pub const E_TERM_ENDED: u32 = ERR_BASE + 12; // PoolError::TermEnded
-pub const E_INVALID_SCHEDULE: u32 = ERR_BASE + 13; // PoolError::InvalidSchedule
-pub const E_SCHEDULE_ENDS_AFTER_TERM: u32 = ERR_BASE + 14; // PoolError::ScheduleEndsAfterTerm
-pub const E_NOT_SCHEDULED: u32 = ERR_BASE + 15; // PoolError::NotScheduled
-pub const E_NOT_ENOUGH_MISSED: u32 = ERR_BASE + 16; // PoolError::NotEnoughMissed
-pub const E_LATE_INTEREST_UNPAID: u32 = ERR_BASE + 17; // PoolError::LateInterestUnpaid
-pub const E_WRITE_OFF_TOO_EARLY: u32 = ERR_BASE + 18; // PoolError::WriteOffTooEarly
-pub const E_BORROWER_IS_ADMIN: u32 = ERR_BASE + 19; // PoolError::BorrowerIsAdmin
-pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + 20; // PoolError::LineTooLarge
-pub const E_INVARIANT_BROKEN: u32 = ERR_BASE + 21; // PoolError::InvariantBroken
-pub const E_ASSET_MINT_NOT_ALLOWED: u32 = ERR_BASE + 22; // PoolError::AssetMintNotAllowed
-pub const E_SHARE_MINT_NOT_ALLOWED: u32 = ERR_BASE + 23; // PoolError::ShareMintNotAllowed
-pub const E_ATTESTOR_REQUIRED: u32 = ERR_BASE + 24; // PoolError::AttestorRequired
-pub const E_AVAILABILITY_ENDED: u32 = ERR_BASE + 25; // PoolError::AvailabilityEnded
-pub const E_TOO_MANY_DRAWS: u32 = ERR_BASE + 26; // PoolError::TooManyDraws
-pub const E_COLLECTION_NOT_ALLOWED: u32 = ERR_BASE + 27; // PoolError::CollectionNotAllowed
-pub const E_DOCUMENT_HASH_REQUIRED: u32 = ERR_BASE + 28; // PoolError::DocumentHashRequired
-pub const E_SIGNATURE_METHOD_INVALID: u32 = ERR_BASE + 29; // PoolError::SignatureMethodInvalid
-pub const E_PAGARE_NOT_COVERED: u32 = ERR_BASE + 30; // PoolError::PagareNotCovered
-pub const E_PAGARE_ALREADY_PAID: u32 = ERR_BASE + 31; // PoolError::PagareAlreadyPaid
-pub const E_NOT_HOLDER: u32 = ERR_BASE + 32; // PoolError::NotHolder
-pub const E_ATTESTOR_IS_ADMIN: u32 = ERR_BASE + 33; // PoolError::AttestorIsAdmin
-pub const E_BORROWER_IS_ATTESTOR: u32 = ERR_BASE + 34; // PoolError::BorrowerIsAttestor
-pub const E_AGREEMENT_HASH_REQUIRED: u32 = ERR_BASE + 35; // PoolError::AgreementHashRequired
-pub const E_EXPEDIENTE_ROOT_REQUIRED: u32 = ERR_BASE + 36; // PoolError::ExpedienteRootRequired
-pub const E_SPONSOR_ROLE_INVALID: u32 = ERR_BASE + 37; // PoolError::SponsorRoleInvalid
-pub const E_COLLECTION_PERIOD_TOO_SHORT: u32 = ERR_BASE + 38; // PoolError::CollectionPeriodTooShort
-pub const E_PAGARE_ACCOUNTS_MISMATCH: u32 = ERR_BASE + 39; // PoolError::PagareAccountsMismatch
-pub const E_ENDOSO_KIND_INVALID: u32 = ERR_BASE + 40; // PoolError::EndosoKindInvalid
-pub const E_ENDORSEE_INVALID: u32 = ERR_BASE + 41; // PoolError::EndorseeInvalid
-pub const E_PROCURACION_STATE: u32 = ERR_BASE + 42; // PoolError::ProcuracionState
-pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + 43; // PoolError::AnnotationKindInvalid
-pub const E_CANCEL_DELAY_TOO_SHORT: u32 = ERR_BASE + 44; // PoolError::CancelDelayTooShort
+pub const E_WRONG_AMOUNT: u32 = ERR_BASE + 14; // PoolError::WrongAmount
+pub const E_INSUFFICIENT_LIQUIDITY: u32 = ERR_BASE + 17; // PoolError::InsufficientLiquidity
+pub const E_LINE_STATUS: u32 = ERR_BASE + 24; // PoolError::LineStatus
+pub const E_TERM_NOT_ENDED: u32 = ERR_BASE + 36; // PoolError::TermNotEnded
+pub const E_OVERFLOW: u32 = ERR_BASE + 15; // PoolError::Overflow
+pub const E_SPONSOR_REQUIRED: u32 = ERR_BASE + 2; // PoolError::SponsorRequired
+pub const E_ZERO_SHARES: u32 = ERR_BASE + 18; // PoolError::ZeroShares
+pub const E_FIRST_DEPOSIT_TOO_SMALL: u32 = ERR_BASE + 19; // PoolError::FirstDepositTooSmall
+pub const E_WRONG_ACCOUNT: u32 = ERR_BASE + 5; // PoolError::WrongAccount
+pub const E_SLIPPAGE_EXCEEDED: u32 = ERR_BASE + 20; // PoolError::SlippageExceeded
+pub const E_TERM_ENDED: u32 = ERR_BASE + 28; // PoolError::TermEnded
+pub const E_INVALID_SCHEDULE: u32 = ERR_BASE + 29; // PoolError::InvalidSchedule
+pub const E_SCHEDULE_ENDS_AFTER_TERM: u32 = ERR_BASE + 30; // PoolError::ScheduleEndsAfterTerm
+pub const E_NOT_SCHEDULED: u32 = ERR_BASE + 31; // PoolError::NotScheduled
+pub const E_NOT_ENOUGH_MISSED: u32 = ERR_BASE + 35; // PoolError::NotEnoughMissed
+pub const E_LATE_INTEREST_UNPAID: u32 = ERR_BASE + 34; // PoolError::LateInterestUnpaid
+pub const E_WRITE_OFF_TOO_EARLY: u32 = ERR_BASE + 37; // PoolError::WriteOffTooEarly
+pub const E_BORROWER_IS_ADMIN: u32 = ERR_BASE + 11; // PoolError::BorrowerIsAdmin
+pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + 21; // PoolError::LineTooLarge
+pub const E_INVARIANT_BROKEN: u32 = ERR_BASE + 16; // PoolError::InvariantBroken
+pub const E_ASSET_MINT_NOT_ALLOWED: u32 = ERR_BASE + 6; // PoolError::AssetMintNotAllowed
+pub const E_SHARE_MINT_NOT_ALLOWED: u32 = ERR_BASE + 7; // PoolError::ShareMintNotAllowed
+pub const E_ATTESTOR_REQUIRED: u32 = ERR_BASE + 1; // PoolError::AttestorRequired
+pub const E_AVAILABILITY_ENDED: u32 = ERR_BASE + 32; // PoolError::AvailabilityEnded
+pub const E_TOO_MANY_DRAWS: u32 = ERR_BASE + 33; // PoolError::TooManyDraws
+pub const E_COLLECTION_NOT_ALLOWED: u32 = ERR_BASE + 8; // PoolError::CollectionNotAllowed
+pub const E_DOCUMENT_HASH_REQUIRED: u32 = ERR_BASE + 38; // PoolError::DocumentHashRequired
+pub const E_SIGNATURE_METHOD_INVALID: u32 = ERR_BASE + 39; // PoolError::SignatureMethodInvalid
+pub const E_PAGARE_NOT_COVERED: u32 = ERR_BASE + 40; // PoolError::PagareNotCovered
+pub const E_PAGARE_ALREADY_PAID: u32 = ERR_BASE + 41; // PoolError::PagareAlreadyPaid
+pub const E_NOT_HOLDER: u32 = ERR_BASE + 3; // PoolError::NotHolder
+pub const E_ATTESTOR_IS_ADMIN: u32 = ERR_BASE + 10; // PoolError::AttestorIsAdmin
+pub const E_BORROWER_IS_ATTESTOR: u32 = ERR_BASE + 12; // PoolError::BorrowerIsAttestor
+pub const E_AGREEMENT_HASH_REQUIRED: u32 = ERR_BASE + 25; // PoolError::AgreementHashRequired
+pub const E_EXPEDIENTE_ROOT_REQUIRED: u32 = ERR_BASE + 26; // PoolError::ExpedienteRootRequired
+pub const E_SPONSOR_ROLE_INVALID: u32 = ERR_BASE + 27; // PoolError::SponsorRoleInvalid
+pub const E_COLLECTION_PERIOD_TOO_SHORT: u32 = ERR_BASE + 22; // PoolError::CollectionPeriodTooShort
+pub const E_PAGARE_ACCOUNTS_MISMATCH: u32 = ERR_BASE + 9; // PoolError::PagareAccountsMismatch
+pub const E_ENDOSO_KIND_INVALID: u32 = ERR_BASE + 42; // PoolError::EndosoKindInvalid
+pub const E_ENDORSEE_INVALID: u32 = ERR_BASE + 13; // PoolError::EndorseeInvalid
+pub const E_PROCURACION_STATE: u32 = ERR_BASE + 43; // PoolError::ProcuracionState
+pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + 44; // PoolError::AnnotationKindInvalid
+pub const E_CANCEL_DELAY_TOO_SHORT: u32 = ERR_BASE + 23; // PoolError::CancelDelayTooShort
 pub const E_ENTRY_NOT_FOUND: u32 = ERR_BASE + 45; // PoolError::EntryNotFound
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
@@ -1284,11 +1284,11 @@ impl Env {
     }
 
     /// Draws one tranche of `amount`; signed by the borrower and the attestor.
-    pub fn draw_amount(&mut self, k: &PoolKeys, line_id: u64, borrower: &Keypair, amount: u64) -> elote_pool::events::LineDrawState {
+    pub fn draw_amount(&mut self, k: &PoolKeys, line_id: u64, borrower: &Keypair, amount: u64) -> elote_pool::events::LineDrawn {
         let ix = self.draw_ix_amount(k, line_id, &borrower.pubkey(), amount, DOCUMENT_HASH);
         let attestor = self.attestor.insecure_clone();
         let meta = self.send(ix, borrower, &[&attestor]);
-        find_event(&meta).expect("LineDrawState event")
+        find_event(&meta).expect("LineDrawn event")
     }
 
     /// Sends `ix` signed by `payer` and the attestor; for the draw instructions built by hand.

@@ -4,7 +4,7 @@ mod common;
 
 use common::*;
 use elote_pool::events::{
-    LateInterestCollected, LineInCollection, LineOpened, LineRepaid, LineScheduled, LineSponsorRole, LineTermsSet,
+    LateInterestCollected, LineInCollection, LineOpened, LineRepaid,
     LineWrittenOff,
 };
 use elote_pool::state::{LineStatus, Schedule, ScheduleParams};
@@ -34,15 +34,12 @@ fn open_scheduled_line_records_the_schedule() {
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let (line_id, meta) = env.open_line_with(&k, &borrower, &p, None);
     let ev: LineOpened = find_event(&meta).expect("LineOpened");
-    assert_eq!((ev.line_id, ev.principal, ev.interest_due), (line_id, 6 * UNIT, 0));
-    let ev: LineTermsSet = find_event(&meta).expect("LineTermsSet");
+    assert_eq!((ev.line_id, ev.principal), (line_id, 6 * UNIT));
     assert_eq!(
         (ev.line_id, ev.first_due_at, ev.availability_end, ev.expediente_root),
         (line_id, p.first_due_at(), p.first_due_at(), EXPEDIENTE_ROOT)
     );
-    let ev: LineSponsorRole = find_event(&meta).expect("LineSponsorRole");
-    assert_eq!((ev.line_id, ev.sponsor, ev.role), (line_id, None, 0));
-    let ev: LineScheduled = find_event(&meta).expect("LineScheduled");
+    assert_eq!((ev.sponsor, ev.sponsor_role), (None, 0));
     assert_eq!(
         (ev.pool, ev.line_id, ev.interval_seconds, ev.installments, ev.late_bps, ev.max_missed),
         (k.pool, line_id, p.interval(), 6, 5_000, 3)
@@ -65,11 +62,12 @@ fn open_scheduled_line_records_the_schedule() {
     );
     assert_eq!((line.late_collected, line.late_paid_until, line.pagares_paid), (0, 0, 0));
 
-    // A bullet line: no installments, no schedule, no LineScheduled event, its draw window open
+    // A bullet line: no installments, no schedule, its draw window open
     // until the term.
     let p1 = env.line_params(UNIT, 1_000);
     let (v1, meta) = env.open_line_with(&k, &borrower, &p1, None);
-    assert!(find_event::<LineScheduled>(&meta).is_none());
+    let ev: LineOpened = find_event(&meta).expect("LineOpened");
+    assert_eq!((ev.installments, ev.interval_seconds), (0, 0));
     let line = env.line(&k, v1);
     assert_eq!((line.installments, line.interval_seconds, line.late_bps, line.max_missed), (0, 0, 0, 0));
     assert_eq!(line.schedule(), None);

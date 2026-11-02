@@ -29,6 +29,8 @@ import {
   getU16Encoder,
   getU64Decoder,
   getU64Encoder,
+  getU8Decoder,
+  getU8Encoder,
   type Address,
   type Codec,
   type Decoder,
@@ -53,11 +55,18 @@ export type LineOpenedEvent = {
   lineId: bigint;
   borrower: Address;
   sponsor: Option<Address>;
+  sponsorRole: number;
   agreementHash: ReadonlyUint8Array;
+  expedienteRoot: ReadonlyUint8Array;
   principal: bigint;
   rateBps: number;
-  interestDue: bigint;
   termEnd: bigint;
+  availabilityEnd: bigint;
+  firstDueAt: bigint;
+  intervalSeconds: bigint;
+  installments: number;
+  lateBps: number;
+  maxMissed: number;
 };
 
 export type LineOpenedEventArgs = {
@@ -65,11 +74,18 @@ export type LineOpenedEventArgs = {
   lineId: number | bigint;
   borrower: Address | HasAddress;
   sponsor: OptionOrNullable<Address | HasAddress>;
+  sponsorRole: number;
   agreementHash: ReadonlyUint8Array;
+  expedienteRoot: ReadonlyUint8Array;
   principal: number | bigint;
   rateBps: number;
-  interestDue: number | bigint;
   termEnd: number | bigint;
+  availabilityEnd: number | bigint;
+  firstDueAt: number | bigint;
+  intervalSeconds: number | bigint;
+  installments: number;
+  lateBps: number;
+  maxMissed: number;
 };
 
 /** Gets the encoder for {@link LineOpenedEventArgs} event data. */
@@ -80,11 +96,18 @@ export function getLineOpenedEventEncoder(): Encoder<LineOpenedEventArgs> {
       ["lineId", getU64Encoder()],
       ["borrower", getAddressEncoder()],
       ["sponsor", getOptionEncoder(getAddressEncoder())],
+      ["sponsorRole", getU8Encoder()],
       ["agreementHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
       ["principal", getU64Encoder()],
       ["rateBps", getU16Encoder()],
-      ["interestDue", getU64Encoder()],
       ["termEnd", getI64Encoder()],
+      ["availabilityEnd", getI64Encoder()],
+      ["firstDueAt", getI64Encoder()],
+      ["intervalSeconds", getI64Encoder()],
+      ["installments", getU16Encoder()],
+      ["lateBps", getU16Encoder()],
+      ["maxMissed", getU8Encoder()],
     ]),
     [getConstantEncoder(LINE_OPENED_EVENT_DISCRIMINATOR)],
   );
@@ -98,11 +121,18 @@ export function getLineOpenedEventDecoder(): Decoder<LineOpenedEvent> {
       ["lineId", getU64Decoder()],
       ["borrower", getAddressDecoder()],
       ["sponsor", getOptionDecoder(getAddressDecoder())],
+      ["sponsorRole", getU8Decoder()],
       ["agreementHash", fixDecoderSize(getBytesDecoder(), 32)],
+      ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
       ["principal", getU64Decoder()],
       ["rateBps", getU16Decoder()],
-      ["interestDue", getU64Decoder()],
       ["termEnd", getI64Decoder()],
+      ["availabilityEnd", getI64Decoder()],
+      ["firstDueAt", getI64Decoder()],
+      ["intervalSeconds", getI64Decoder()],
+      ["installments", getU16Decoder()],
+      ["lateBps", getU16Decoder()],
+      ["maxMissed", getU8Decoder()],
     ]),
     [getConstantDecoder(LINE_OPENED_EVENT_DISCRIMINATOR)],
   );
