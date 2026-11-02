@@ -7,15 +7,33 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AccountRole, address } from "@solana/kit";
 import {
+  MAX_SIDECARS_PER_REPAY,
   MPL_CORE_PROGRAM_ADDRESS,
   drawPagareAccounts,
   findPagareAssetPda,
+  findProcuradorAuthorityPda,
+  repayPrincipalCap,
   repaySidecars,
   withRemainingAccounts,
 } from "../src/pagare";
 import { findPagarePda } from "../src/generated";
 
 const line = address("11111111111111111111111111111112");
+
+test("findProcuradorAuthorityPda derives [procurador, pagare, procurador], as the Solana CLI does", async () => {
+  const procurador = address("11111111111111111111111111111113");
+  assert.equal((await findProcuradorAuthorityPda({ pagare: line, procurador }))[0], "6wdMPzs1ZM9LzU4QHYjBTDYqQhcaGP7kcWJrhrpyspKU");
+});
+
+test("repayPrincipalCap keeps a repay within maxRecords pagaré records", () => {
+  const drawnThrough = [100n, 200n, 300n, 400n, 500n, 600n, 700n];
+  // From cursor 0 with five records: pagarés 0..=3 covered, 4 the uncovered last record.
+  assert.equal(repayPrincipalCap({ pagaresPaid: 0, drawnThrough, principalRepaid: 0n, maxRecords: 5 }), 400n);
+  assert.equal(repayPrincipalCap({ pagaresPaid: 2, drawnThrough, principalRepaid: 250n, maxRecords: 5 }), 350n);
+  // Fewer pagarés left than the limit: the cap is all that is left.
+  assert.equal(repayPrincipalCap({ pagaresPaid: 4, drawnThrough, principalRepaid: 400n, maxRecords: 5 }), 300n);
+  assert.equal(MAX_SIDECARS_PER_REPAY, 5);
+});
 
 test("findPagarePda derives the sidecar address of a draw", async () => {
   assert.equal((await findPagarePda({ line, drawIndex: 0 }))[0], "5ckRzBZo2pcuZuHzfwLNBdiYWwJbU3GM8J78eYGo9n5H");
