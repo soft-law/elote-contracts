@@ -19,7 +19,7 @@ three high-strength points, and with **"yes, with conditions"** for a reconfigur
 | H3a: paper pagaré in custody, the asset as its registry | Robust fallback; the token loses legal function. | Contingency for collection; the program needs nothing extra. |
 | H3b: electronic pagaré with a PSC signature | Equivalent to H2 with C6a. | Same as H2. |
 
-Owner-delegate decision, pending Mario's word: **adopt H2 as the posture** ("the electronic
+Decision, adopted by Mario on 2026-11-02 with the grading "indeterminado, con ruta definida": **adopt H2 as the posture** ("the electronic
 pagaré is the signed data message issued through our sistema de información; the asset is its
 único registro de emisión, tenencia y circulación"), keep H3a as the collection fallback, and keep
 the H1 question for counsel (Q2 below). The identity page, the counsel brief and the design doc
