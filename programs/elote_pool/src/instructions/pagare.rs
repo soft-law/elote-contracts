@@ -615,7 +615,7 @@ pub struct AnnotatePayment<'info> {
 /// pool. The chain does not keep the kinds of past entries, so the reference is not checked to be
 /// a payment entry beyond existing; the engine checks it. Allowed whatever the title's status, a
 /// burnt one included: the sidecar persists and a receipt may arrive late.
-pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u16, receipt_hash: [u8; 32]) -> Result<()> {
+pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32]) -> Result<()> {
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     let pagare = &mut ctx.accounts.pagare;
     require!(entry_count >= 1 && entry_count <= pagare.entry_count, PoolError::EntryNotFound);

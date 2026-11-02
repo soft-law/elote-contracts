@@ -17,6 +17,8 @@ import {
   getStructEncoder,
   getU16Decoder,
   getU16Encoder,
+  getU32Decoder,
+  getU32Encoder,
   getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
@@ -112,7 +114,7 @@ export function getAnnotatePaymentInstructionDataEncoder(): FixedSizeEncoder<Ann
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["drawIndex", getU16Encoder()],
-      ["entryCount", getU16Encoder()],
+      ["entryCount", getU32Encoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: ANNOTATE_PAYMENT_DISCRIMINATOR }),
@@ -123,7 +125,7 @@ export function getAnnotatePaymentInstructionDataDecoder(): FixedSizeDecoder<Ann
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["drawIndex", getU16Decoder()],
-    ["entryCount", getU16Decoder()],
+    ["entryCount", getU32Decoder()],
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }

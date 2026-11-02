@@ -376,7 +376,7 @@ pub struct Pagare {
     /// The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first.
     pub log_root: [u8; 32],
     /// Entries in the chain; the issuance entry is 1.
-    pub entry_count: u16,
+    pub entry_count: u32,
     /// `KIND_*` of the last entry.
     pub last_kind: u8,
     /// `PAGARE_FLAG_*` bits.

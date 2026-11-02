@@ -1354,7 +1354,7 @@ impl Env {
         Instruction { program_id: PROGRAM_ID, accounts, data: elote_pool::instruction::Repay { amount, receipt_hash }.data() }
     }
     /// `annotate_payment(draw_index, entry_count, receipt_hash)` by `annotator`.
-    pub fn annotate_payment_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, annotator: &Pubkey, entry_count: u16, receipt_hash: [u8; 32]) -> Instruction {
+    pub fn annotate_payment_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, annotator: &Pubkey, entry_count: u32, receipt_hash: [u8; 32]) -> Instruction {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
         Instruction {

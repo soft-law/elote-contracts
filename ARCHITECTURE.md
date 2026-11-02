@@ -205,7 +205,7 @@ two kinds apart. `CreditLine::anchor()` (`first_due_at - interval`) is the singl
 calendar is anchored, and `last_due()` (the last due date, or `term_end` on a bullet line) is the
 instant every tranche's interest runs to.
 
-### 2.3 `Pagare` (353 bytes; 245 before step 6d) and the pagaré asset
+### 2.3 `Pagare` (355 bytes) and the pagaré asset
 
 The sidecar `draw` writes next to each Core asset (decision 24). Per the legal brief of
 2026-11-01 the signed data message is the pagaré; the asset is its registration and circulation
@@ -233,12 +233,12 @@ rent is a cost of every draw.
 | 212 | 1 | `bump` | |
 | 213 | 32 | `procurador` | the procurador of the procuración in force (`flags` bit 1); the zero key when none. Set by `endorse_pagare`, cleared by `revoke_procuracion` (the former reserved bytes) |
 | 245 | 32 | `log_root` | the registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first (`registry.rs`) |
-| 277 | 2 | `entry_count` | entries in the chain; 1 after the draw |
-| 279 | 1 | `last_kind` | `KIND_*` of the last entry |
-| 280 | 1 | `flags` | bit 0: the asset carries an owner-managed `BurnDelegate` (a later procuración approves instead of adds); bit 1: an endoso en procuración is in force |
-| 281 | 32 | `cancel_receipt_hash` | the final receipt `cancel_pagare` was given; zero until the burn |
-| 313 | 8 | `cancel_after` | the backstop's deadline: the request time plus the pool's cancel delay at the request; zero when no request is pending (any cancellation clears it) |
-| 321 | 32 | `requested_receipt_hash` | the receipt hash of that request |
+| 277 | 4 | `entry_count` | entries in the chain (u32); 1 after the draw. A payment writes an entry only on a pagaré it applies principal to, so interest-only payments cannot grow the chain (re-audit N-01) |
+| 281 | 1 | `last_kind` | `KIND_*` of the last entry |
+| 282 | 1 | `flags` | bit 0: the asset carries an owner-managed `BurnDelegate` (a later procuración approves instead of adds); bit 1: an endoso en procuración is in force |
+| 283 | 32 | `cancel_receipt_hash` | the final receipt `cancel_pagare` was given; zero until the burn |
+| 315 | 8 | `cancel_after` | the backstop's deadline: the request time plus the pool's cancel delay at the request; zero when no request is pending (any cancellation clears it) |
+| 323 | 32 | `requested_receipt_hash` | the receipt hash of that request |
 
 The Core asset is created in the same instruction with: owner = pool PDA (the vehicle's custody);
 update authority = the series' collection, whose own update authority is the pool PDA (Core
@@ -307,7 +307,7 @@ legal property (rewriting or removing entries alters the title, arts. 8 fr. VI a
 adapter under `Owner` authority fails both, as the pinned facts show: every write needs the
 holder's signature and a write replaces the whole data. So the registry is program-owned, in the
 sidecar (a PDA of this program): `log_root: [u8; 32]`, with `log_root' = sha256(log_root ||
-entry_hash)` and the issuance entry as genesis, written by `draw`; `entry_count: u16`;
+entry_hash)` and the issuance entry as genesis, written by `draw`; `entry_count: u32`;
 `last_kind: u8`; `flags: u8` (bit 0: the asset carries a `BurnDelegate` plugin, so a later
 procuración approves instead of adds; Core refuses a second `AddPluginV1` with
 `PluginAlreadyExists`, found in the measurement). `entry_hash = sha256(asset || kind || from || to
@@ -323,9 +323,9 @@ never rewritten or removed. A Core transfer made outside the program is visible 
 and is shown by the verifier as "transferencia sin asiento", never described in the title text as
 "not an endoso" (art. 25 risk; template side); the class of the last entry is shown.
 
-**Sidecar layout at 6d.** To today's 245 bytes: `log_root` 32, `entry_count` 2, `last_kind` 1,
-`flags` 1, `cancel_receipt_hash` 32, `cancel_after` 8, `requested_receipt_hash` 32: 353 bytes,
-the 32 reserved bytes kept (321 without them). `status` gains a value: 0 `PAGARE_OUTSTANDING`,
+**Sidecar layout at 6d.** To today's 245 bytes: `log_root` 32, `entry_count` 4, `last_kind` 1,
+`flags` 1, `cancel_receipt_hash` 32, `cancel_after` 8, `requested_receipt_hash` 32: 355 bytes,
+the 32 reserved bytes kept (323 without them). `status` gains a value: 0 `PAGARE_OUTSTANDING`,
 1 `PAGARE_PAID` (burnt), 2 `PAGARE_PAID_PENDING_CANCEL` (paid, the burn still owed). The layout
 table above is updated in the 6d commit; only `draw` creates sidecars and no mainnet pool exists.
 
@@ -370,7 +370,7 @@ table above is updated in the 6d commit; only `draw` creates sidecars and no mai
   `drawn_through` exceeds `principal_repaid` after the payment, or the last draw when none does;
   anything else is refused (`PagareAccountsMismatch`). Every pagaré up to `last_touched` whose
   `drawn_through` the payment reaches gets a `Pagado` entry and `PAGARE_PAID_PENDING_CANCEL`, and
-  the cursor advances past it; the one not yet covered gets an `Abono` entry. A payment on a line
+  the cursor advances past it; the one not yet covered gets an `Abono` entry if the payment applies principal to it, and no entry otherwise (an interest-only payment is recorded in `PagarePayment` alone, so nobody can grow a chain one unit at a time; re-audit N-01). A payment on a line
   with no draws, or whose cursor has passed the last draw (only interest left), passes no sidecar.
   So a covered pagaré can never be left without its mark, and `cancel_pagare` can always find
   `PAGARE_PAID_PENDING_CANCEL` on it. Receipt: `receipt_hash` on a permissionless `repay` is
@@ -465,7 +465,7 @@ the SAS read not yet, about 1 000 to 2 000 CU).** Final creation set with the si
 78 919 / 79 094; procuración 32 739 (add) ; revocation 36 637; court annotation 14 109; payment
 entry shape (ii) 14 093; `repay` with shape (i) 22 539 plain, 27 531 with one sidecar, 32 497 with
 two, early in the schedule; cancel in the pool 44 127; cancel by the procurador 48 346; sidecar
-280 bytes in the prototype (353 with the fields above). Earlier rows, kept for the record: today's
+280 bytes in the prototype (355 with the fields above). Earlier rows, kept for the record: today's
 creation set put the first endoso en propiedad at 190 536 CU (three revoke-and-approve pairs at
 about 43 000 each); the freeze delegate held by the pool's address with `AddBlocker` and an
 Owner-held AppData at 100 627; the freeze delegate held as `UpdateAuthority` at 79 333 for the

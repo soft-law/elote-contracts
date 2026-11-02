@@ -10,7 +10,7 @@ use crate::state::Pagare;
 
 /// `sha256(asset || kind || from || to || hash || stated_at LE || entry_count LE)`: the asset first,
 /// so two pagarés with the same facts never share a chain.
-pub fn entry_hash(asset: &Pubkey, kind: u8, from: &Pubkey, to: &Pubkey, hash: &[u8; 32], stated_at: i64, entry_count: u16) -> [u8; 32] {
+pub fn entry_hash(asset: &Pubkey, kind: u8, from: &Pubkey, to: &Pubkey, hash: &[u8; 32], stated_at: i64, entry_count: u32) -> [u8; 32] {
     hashv(&[asset.as_ref(), &[kind], from.as_ref(), to.as_ref(), hash, &stated_at.to_le_bytes(), &entry_count.to_le_bytes()]).to_bytes()
 }
 

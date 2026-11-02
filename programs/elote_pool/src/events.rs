@@ -165,7 +165,7 @@ pub struct PagareEntry {
     pub from: Pubkey,
     pub to: Pubkey,
     pub entry_hash: [u8; 32],
-    pub entry_count: u16,
+    pub entry_count: u32,
     pub recorded_at: i64,
     pub stated_at: i64,
 }
@@ -274,7 +274,7 @@ pub struct PoolPaused {
 pub struct PaymentEntry {
     pub draw_index: u16,
     pub kind: u8,
-    pub entry_count: u16,
+    pub entry_count: u32,
     pub principal_applied: u64,
 }
 
@@ -300,7 +300,7 @@ pub struct PagareReceiptAnnotated {
     pub pool: Pubkey,
     pub line_id: u64,
     pub draw_index: u16,
-    pub entry_count: u16,
-    pub payment_entry_count: u16,
+    pub entry_count: u32,
+    pub payment_entry_count: u32,
     pub receipt_hash: [u8; 32],
 }

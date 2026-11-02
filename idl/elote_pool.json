@@ -129,7 +129,7 @@
         },
         {
           "name": "entry_count",
-          "type": "u16"
+          "type": "u32"
         },
         {
           "name": "receipt_hash",
@@ -3981,7 +3981,7 @@
             "docs": [
               "Entries in the chain; the issuance entry is 1."
             ],
-            "type": "u16"
+            "type": "u32"
           },
           {
             "name": "last_kind",
@@ -4122,7 +4122,7 @@
           },
           {
             "name": "entry_count",
-            "type": "u16"
+            "type": "u32"
           },
           {
             "name": "recorded_at",
@@ -4263,11 +4263,11 @@
           },
           {
             "name": "entry_count",
-            "type": "u16"
+            "type": "u32"
           },
           {
             "name": "payment_entry_count",
-            "type": "u16"
+            "type": "u32"
           },
           {
             "name": "receipt_hash",
@@ -4300,7 +4300,7 @@
           },
           {
             "name": "entry_count",
-            "type": "u16"
+            "type": "u32"
           },
           {
             "name": "principal_applied",

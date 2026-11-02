@@ -25,6 +25,8 @@ import {
   getStructEncoder,
   getU16Decoder,
   getU16Encoder,
+  getU32Decoder,
+  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
   getU8Decoder,
@@ -188,7 +190,7 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["bump", getU8Encoder()],
       ["procurador", getAddressEncoder()],
       ["logRoot", fixEncoderSize(getBytesEncoder(), 32)],
-      ["entryCount", getU16Encoder()],
+      ["entryCount", getU32Encoder()],
       ["lastKind", getU8Encoder()],
       ["flags", getU8Encoder()],
       ["cancelReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
@@ -219,7 +221,7 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["bump", getU8Decoder()],
     ["procurador", getAddressDecoder()],
     ["logRoot", fixDecoderSize(getBytesDecoder(), 32)],
-    ["entryCount", getU16Decoder()],
+    ["entryCount", getU32Decoder()],
     ["lastKind", getU8Decoder()],
     ["flags", getU8Decoder()],
     ["cancelReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
@@ -295,5 +297,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 353;
+  return 355;
 }

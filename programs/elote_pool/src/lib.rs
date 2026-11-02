@@ -187,7 +187,7 @@ pub mod elote_pool {
     /// Attaches a receipt to a payment entry of pagaré `draw_index`: appends a Recibo entry over
     /// `receipt_hash`, referencing entry `entry_count` of the pagaré's chain. The holder or the
     /// attestor signs; the repair path when a payer's hash was zero or wrong.
-    pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u16, receipt_hash: [u8; 32]) -> Result<()> {
+    pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::annotate_payment(ctx, draw_index, entry_count, receipt_hash)
     }
 

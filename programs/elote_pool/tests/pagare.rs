@@ -536,7 +536,7 @@ fn cancel_pagare_requires_the_holder_the_attestor_the_receipt_and_the_right_acco
 // -----------------------------------------------------------------------------------------------
 
 /// The registry's hash: `sha256(asset || kind || from || to || hash || stated_at LE || entry_count LE)`.
-fn entry_hash(asset: &solana_pubkey::Pubkey, kind: u8, from: &solana_pubkey::Pubkey, to: &solana_pubkey::Pubkey, hash: &[u8; 32], stated_at: i64, count: u16) -> [u8; 32] {
+fn entry_hash(asset: &solana_pubkey::Pubkey, kind: u8, from: &solana_pubkey::Pubkey, to: &solana_pubkey::Pubkey, hash: &[u8; 32], stated_at: i64, count: u32) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(asset.as_ref());
@@ -569,7 +569,7 @@ fn a_draw_writes_the_issuance_entry_of_the_registry() {
     let borrower = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
-    assert_eq!(8 + Pagare::INIT_SPACE, 353, "245 before the registry");
+    assert_eq!(8 + Pagare::INIT_SPACE, 355);
 
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
     let meta = env.send_with_attestor(ix, &borrower);
@@ -1105,22 +1105,17 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     assert!(interest > 1);
     env.mint_to(&k.asset_mint, &admin, &b, interest);
 
-    // An interest-only payment: one Abono on the cursor's pagaré, nothing marked.
+    // An interest-only payment: recorded in `PagarePayment`, no entry on any pagaré, nothing marked.
     let half = interest / 2;
     let before = env.pagare(&k, line_id, 0);
     let ix = env.repay_ix_full(&k, line_id, &b, half, [0; 32], &env.payment_sidecars(&k, line_id, half));
     let meta = env.send(ix, &borrower, &[]);
-    let now = env.now();
     let p0 = env.pagare(&k, line_id, 0);
-    let expected = entry_hash(&p0.asset, KIND_ABONO, &b, &k.pool, &[0; 32], now, 2);
-    assert_eq!((p0.entry_count, p0.last_kind, p0.status), (2, KIND_ABONO, PAGARE_OUTSTANDING));
-    assert_eq!(p0.log_root, chain(&before.log_root, &expected), "a zero receipt hash is allowed: receipt to follow");
-    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
-    assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.draw_index), (KIND_ABONO, b, k.pool, expected, 0));
+    assert_eq!((p0.entry_count, p0.log_root, p0.status), (1, before.log_root, PAGARE_OUTSTANDING));
+    assert!(find_event::<PagareEntry>(&meta).is_none());
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
     assert_eq!((ev.payer, ev.receipt_hash, ev.late_part, ev.interest_part, ev.principal_part), (b, [0; 32], 0, half, 0));
-    let e: Vec<_> = ev.entries.iter().map(|e| (e.draw_index, e.kind, e.entry_count, e.principal_applied)).collect();
-    assert_eq!(e, vec![(0, KIND_ABONO, 2, 0)]);
+    assert!(ev.entries.is_empty());
     assert_eq!((env.pagare(&k, line_id, 1).entry_count, env.line(&k, line_id).pagares_paid()), (1, 0));
 
     // The rest of the interest and one and a half pagarés of principal: 0 is paid, 1 gets an
@@ -1134,7 +1129,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     let p1 = env.pagare(&k, line_id, 1);
     assert_eq!(
         (p0.status, p0.paid_at, p0.receipt_hash, p0.last_kind, p0.entry_count),
-        (PAGARE_PAID_PENDING_CANCEL, now, RECEIPT_HASH, KIND_PAGADO, 3),
+        (PAGARE_PAID_PENDING_CANCEL, now, RECEIPT_HASH, KIND_PAGADO, 2),
         "the PAGADO mark at the moment of payment"
     );
     assert_eq!((p1.status, p1.last_kind, p1.entry_count), (PAGARE_OUTSTANDING, KIND_ABONO, 2));
@@ -1144,7 +1139,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
     assert_eq!((ev.interest_part, ev.principal_part, ev.receipt_hash), (interest - half, UNIT + UNIT / 2, RECEIPT_HASH));
     let e: Vec<_> = ev.entries.iter().map(|e| (e.draw_index, e.kind, e.entry_count, e.principal_applied)).collect();
-    assert_eq!(e, vec![(0, KIND_PAGADO, 3, UNIT), (1, KIND_ABONO, 2, UNIT / 2)]);
+    assert_eq!(e, vec![(0, KIND_PAGADO, 2, UNIT), (1, KIND_ABONO, 2, UNIT / 2)]);
 
     // The rest: 1 and 2 are paid, the cursor passes the last draw and the line closes.
     env.repay(&k, line_id, &borrower, UNIT / 2 + 2 * UNIT);
@@ -1268,10 +1263,10 @@ fn annotate_payment_attaches_the_receipt_to_a_payment_entry() {
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
-    let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    let amount = env.line(&k, line_id).interest_due + 1;
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), amount);
     // A payment with no receipt hash: the Abono says "receipt to follow".
-    let ix = env.repay_ix_full(&k, line_id, &borrower.pubkey(), interest, [0; 32], &env.payment_sidecars(&k, line_id, interest));
+    let ix = env.repay_ix_full(&k, line_id, &borrower.pubkey(), amount, [0; 32], &env.payment_sidecars(&k, line_id, amount));
     env.send(ix, &borrower, &[]);
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!((p0.last_kind, p0.entry_count), (KIND_ABONO, 2));
@@ -1281,7 +1276,7 @@ fn annotate_payment_attaches_the_receipt_to_a_payment_entry() {
     env.expect_err(ix, &stranger, &[], E_UNAUTHORIZED);
     let ix = env.annotate_payment_ix(&k, line_id, 0, &attestor.pubkey(), 2, [0; 32]);
     env.expect_err(ix, &admin, &[&attestor], E_DOCUMENT_HASH_REQUIRED);
-    for reference in [0u16, 3] {
+    for reference in [0u32, 3] {
         let ix = env.annotate_payment_ix(&k, line_id, 0, &attestor.pubkey(), reference, RECEIPT_HASH);
         env.expect_err(ix, &admin, &[&attestor], E_ENTRY_NOT_FOUND);
     }

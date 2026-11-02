@@ -771,6 +771,10 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
         let ceiling = sidecar.drawn_through.min(principal_after);
         let principal_applied = ceiling.saturating_sub(floor);
         floor = floor.max(ceiling);
+        // No entry without principal: otherwise anyone could grow the chain one unit at a time.
+        if principal_applied == 0 {
+            continue;
+        }
         let hash = registry::append(sidecar, kind, &payer_key, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
         if covered {
             sidecar.status = PAGARE_PAID_PENDING_CANCEL;
@@ -794,7 +798,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
         entries.push(PaymentEntry { draw_index: sidecar.draw_index, kind, entry_count: sidecar.entry_count, principal_applied });
         sidecar.exit(ctx.program_id)?;
     }
-    if !entries.is_empty() {
+    if !touched.is_empty() {
         emit_cpi!(PagarePayment { pool: pool_key, line_id, payer: payer_key, receipt_hash, late_part, interest_part, principal_part, entries });
     }
 

@@ -12,6 +12,8 @@ import {
   getStructEncoder,
   getU16Decoder,
   getU16Encoder,
+  getU32Decoder,
+  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
   getU8Decoder,
@@ -43,7 +45,7 @@ export function getPaymentEntryEncoder(): FixedSizeEncoder<PaymentEntryArgs> {
   return getStructEncoder([
     ["drawIndex", getU16Encoder()],
     ["kind", getU8Encoder()],
-    ["entryCount", getU16Encoder()],
+    ["entryCount", getU32Encoder()],
     ["principalApplied", getU64Encoder()],
   ]);
 }
@@ -52,7 +54,7 @@ export function getPaymentEntryDecoder(): FixedSizeDecoder<PaymentEntry> {
   return getStructDecoder([
     ["drawIndex", getU16Decoder()],
     ["kind", getU8Decoder()],
-    ["entryCount", getU16Decoder()],
+    ["entryCount", getU32Decoder()],
     ["principalApplied", getU64Decoder()],
   ]);
 }
