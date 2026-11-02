@@ -2,7 +2,7 @@
 
 mod common;
 
-use anchor_lang::{InstructionData, Space};
+use anchor_lang::InstructionData;
 use anchor_spl::token_2022::spl_token_2022;
 use common::*;
 use elote_pool::events::{
@@ -26,7 +26,6 @@ fn init_pool_creates_share_mint_and_vault() {
     let (k, meta) = env.setup_pool();
 
     let pool = env.pool(&k);
-    assert_eq!(pool.version, 2, "pool v2");
     assert_eq!(pool.admin, env.admin.pubkey());
     assert_eq!(pool.asset_mint, k.asset_mint);
     assert_eq!(pool.vault, k.vault);
@@ -47,7 +46,7 @@ fn init_pool_creates_share_mint_and_vault() {
     assert_eq!(Option::<solana_pubkey::Pubkey>::from(share_mint.mint_authority), Some(k.pool));
     assert_eq!(Option::<solana_pubkey::Pubkey>::from(share_mint.freeze_authority), None);
     assert!(extensions.is_empty());
-    assert!(!pool.permissioned(), "no DefaultAccountState: holders need no thaw");
+    assert!(!pool.permissioned, "no DefaultAccountState: holders need no thaw");
 
     let vault = env.token_account(&k.vault);
     assert_eq!(vault.mint, k.asset_mint);
@@ -314,14 +313,10 @@ fn init_pool_records_the_grace_period() {
     let (k, meta) = env.setup_pool_with_grace(grace);
 
     let pool = env.pool(&k);
-    assert_eq!(pool.version, 2);
-    assert_eq!(pool.grace_period_seconds(), grace);
-    assert_eq!(&pool.reserved[0..4], &grace.to_le_bytes(), "bytes 0..4 of reserved, little endian");
-    assert_eq!(&pool.reserved[4..6], &BPS.to_le_bytes(), "bytes 4..6: the harness default cap of 10,000 bps");
-    assert_eq!(&pool.reserved[6..8], &[0u8; 2], "flags are zero");
-    assert_eq!(&pool.reserved[8..12], &CANCEL_DELAY.to_le_bytes(), "bytes 8..12: the cancel delay of the backstop");
-    assert_eq!(&pool.reserved[12..16], &COLLECTION_PERIOD.to_le_bytes(), "bytes 12..16: the collection period");
-    assert_eq!(&pool.reserved[16..], &[0u8; 16], "the rest of reserved stays zero");
+    assert_eq!(pool.grace_period_seconds, grace);
+    assert_eq!(u64::from(pool.max_line_bps), u64::from(BPS), "the harness default cap of 10,000 bps");
+    assert_eq!((pool.asset_controls, pool.permissioned), (0, false));
+    assert_eq!((pool.cancel_delay_seconds, pool.collection_period_seconds), (CANCEL_DELAY, COLLECTION_PERIOD));
 
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!(ev.pool, k.pool);
@@ -330,13 +325,12 @@ fn init_pool_records_the_grace_period() {
 
     // The default pool of the other tests has no grace.
     let (k0, meta0) = env.setup_pool();
-    assert_eq!(env.pool(&k0).grace_period_seconds(), 0);
-    assert_eq!(&env.pool(&k0).reserved[0..4], &[0u8; 4]);
+    assert_eq!(env.pool(&k0).grace_period_seconds, 0);
     let ev: PoolConfigured = find_event(&meta0).expect("PoolConfigured");
     assert_eq!(ev.grace_period_seconds, 0);
 }
 
-/// `max_line_bps` is fixed at `init_pool`, lives in `reserved[4..6]` and is
+/// `max_line_bps` is fixed at `init_pool` and is
 /// announced by `PoolLineCapSet`. Zero and anything above 10,000 bps are refused.
 #[test]
 fn init_pool_records_the_line_cap_and_bounds_it() {
@@ -347,8 +341,7 @@ fn init_pool_records_the_line_cap_and_bounds_it() {
     let meta = env.send(ix, &admin, &[]);
 
     let pool = env.pool(&k);
-    assert_eq!(pool.max_line_bps(), 1_000);
-    assert_eq!(&pool.reserved[4..6], &1_000u16.to_le_bytes(), "bytes 4..6 of reserved, little endian");
+    assert_eq!(pool.max_line_bps, 1_000);
     assert_eq!(pool.max_line_principal(10 * UNIT), Some(UNIT));
     let ev: PoolLineCapSet = find_event(&meta).expect("PoolLineCapSet");
     assert_eq!((ev.pool, ev.max_line_bps), (k.pool, 1_000));
@@ -504,7 +497,7 @@ fn init_pool_records_the_asset_issuer_controls_it_accepts() {
     assert_eq!((flags.pool, flags.asset_controls, flags.permissioned), (k.pool, ASSET_CONTROL_FREEZE, false));
     let pool = env.pool(&k);
     assert!(pool.asset_freezable() && !pool.asset_pausable());
-    assert_eq!(pool.reserved[7], ASSET_CONTROL_FREEZE, "byte 7 of reserved");
+    assert_eq!(pool.asset_controls, ASSET_CONTROL_FREEZE);
 
     // A pausable Token-2022 mint without a freeze authority.
     let m = mint_2022_with(&mut env, &[ExtensionType::Pausable], |mint| {
@@ -532,25 +525,17 @@ fn init_pool_records_the_asset_issuer_controls_it_accepts() {
     // The plain mints of the other tests carry nothing.
     let (k, meta) = env.setup_pool();
     let flags: PoolFlags = find_event(&meta).expect("PoolFlags");
-    assert_eq!((flags.asset_controls, flags.permissioned, env.pool(&k).asset_controls()), (0, false, 0));
+    assert_eq!((flags.asset_controls, flags.permissioned, env.pool(&k).asset_controls), (0, false, 0));
 }
 
-/// `attestor` and `collection` are appended after `bump`
-/// so every earlier offset holds, the account grows by exactly 64 bytes and `version` is 2.
+/// `init_pool` records the attestor and the collection, each announced by its event.
 #[test]
-fn init_pool_records_the_attestor_and_the_collection_as_version_2() {
+fn init_pool_records_the_attestor_and_the_collection() {
     let mut env = Env::new();
     let (k, meta) = env.setup_pool();
     let pool = env.pool(&k);
-    assert_eq!(pool.version, 2);
     assert_eq!(pool.attestor, env.attestor.pubkey());
     assert_eq!(pool.collection, k.collection);
-    assert_eq!(elote_pool::state::Pool::INIT_SPACE, 227 + 64, "64 bytes more than the v1 layout");
-    assert_eq!(env.account(&k.pool).data.len(), 8 + 227 + 64);
-    // The two keys sit after `bump` at offsets 235 and 267 (discriminator included).
-    let data = env.account(&k.pool).data;
-    assert_eq!(&data[235..267], env.attestor.pubkey().as_ref());
-    assert_eq!(&data[267..299], k.collection.as_ref());
     let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
     assert_eq!((ev.pool, ev.attestor), (k.pool, env.attestor.pubkey()));
     let ev: PoolCollectionSet = find_event(&meta).expect("PoolCollectionSet");
@@ -811,8 +796,8 @@ fn permissioned_shares_need_a_thaw_before_the_first_deposit() {
     let gate = env.funded(1);
     let (k, meta) = env.setup_permissioned_pool(&gate.pubkey());
     let flags: PoolFlags = find_event(&meta).expect("PoolFlags");
-    assert!(flags.permissioned && env.pool(&k).permissioned());
-    assert_eq!(env.pool(&k).reserved[6], 1, "byte 6 of reserved");
+    assert!(flags.permissioned && env.pool(&k).permissioned);
+    assert!(env.pool(&k).permissioned);
     assert_eq!(env.token_account(&k.dead_shares).state, AccountState::Frozen);
 
     // Nothing thawed: the mint into the depositor's frozen account fails inside Token-2022.

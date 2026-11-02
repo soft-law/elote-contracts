@@ -18,8 +18,8 @@ use crate::math::{self, Arrears, ScheduleTerms};
 use crate::pool_signer;
 use crate::registry;
 use crate::state::{
-    seeds, CreditLine, LineStatus, Pagare, Pool, Schedule, ScheduleParams, BPS, KIND_ABONO, KIND_EMISION, KIND_PAGADO,
-    LINE_VERSION, MAX_DRAWS, MAX_INSTALLMENTS, MIN_MAX_MISSED, PAGARE_OUTSTANDING, PAGARE_PAID_PENDING_CANCEL,
+    seeds, CreditLine, LineStatus, Pagare, Pool, ScheduleParams, BPS, KIND_ABONO, KIND_EMISION, KIND_PAGADO,
+    MAX_DRAWS, MAX_INSTALLMENTS, MIN_MAX_MISSED, PAGARE_OUTSTANDING, PAGARE_PAID_PENDING_CANCEL,
     SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
 };
 
@@ -112,7 +112,6 @@ pub fn open_line(
     };
 
     let line = &mut ctx.accounts.line;
-    line.version = LINE_VERSION;
     line.pool = pool.key();
     line.line_id = line_id;
     line.borrower = ctx.accounts.borrower.key();
@@ -128,19 +127,17 @@ pub fn open_line(
     line.opened_at = now;
     line.drawn_at = 0;
     line.closed_at = 0;
-    line.reserved = [0; 32];
-    if let Some(s) = schedule {
-        line.set_schedule(&Schedule {
-            interval_seconds: s.interval_seconds,
-            installments: s.installments,
-            late_bps: s.late_bps,
-            max_missed: s.max_missed,
-            flags: 0,
-            late_collected: 0,
-            late_paid_until: 0,
-        });
-    }
+    let (interval_seconds, installments, late_bps, max_missed) =
+        schedule.map_or((0, 0, 0, 0), |s| (s.interval_seconds, s.installments, s.late_bps, s.max_missed));
+    line.interval_seconds = interval_seconds;
+    line.installments = installments;
+    line.late_bps = late_bps;
+    line.max_missed = max_missed;
+    line.late_collected = 0;
+    line.late_paid_until = 0;
+    line.pagares_paid = 0;
     line.bump = ctx.bumps.line;
+    line.reserved = [0; 64];
     line.drawn = 0;
     line.draws = 0;
     line.availability_end = availability_end;
@@ -509,15 +506,16 @@ pub fn draw(
         status: PAGARE_OUTSTANDING,
         paid_at: 0,
         receipt_hash: [0; 32],
-        bump: pagare_bump,
-        procurador: Pubkey::default(),
-        log_root: [0; 32],
-        entry_count: 0,
-        last_kind: 0,
-        flags: 0,
         cancel_receipt_hash: [0; 32],
         cancel_after: 0,
         requested_receipt_hash: [0; 32],
+        procurador: Pubkey::default(),
+        flags: 0,
+        log_root: [0; 32],
+        entry_count: 0,
+        last_kind: 0,
+        bump: pagare_bump,
+        reserved: [0; 32],
     };
     // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.
     let mut record = record;
@@ -687,7 +685,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
 
     // The sidecars, exactly `[pagares_paid ..= last_touched]`, loaded and verified before any write.
     let line_key = line.key();
-    let cursor = line.pagares_paid();
+    let cursor = line.pagares_paid;
     let draws = line.draws;
     let sidecars = ctx.remaining_accounts;
     if cursor >= draws {
@@ -740,15 +738,11 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
     let line = &mut ctx.accounts.line;
     line.principal_repaid = line.principal_repaid.checked_add(principal_part).ok_or(PoolError::Overflow)?;
     line.interest_repaid = line.interest_repaid.checked_add(interest_part).ok_or(PoolError::Overflow)?;
-    if let Some(mut s) = schedule {
-        // The late interest accrued until now is settled, and the watermark moves, only when
-        // something was actually collected. When the accrual rounds down to zero the watermark
-        // stays, so the sub-unit accrual keeps running instead of being erased by every payment.
-        if late_part > 0 {
-            s.late_collected = s.late_collected.checked_add(late_part).ok_or(PoolError::Overflow)?;
-            s.late_paid_until = now;
-            line.set_schedule(&s);
-        }
+    // The watermark moves only when something was collected: an accrual that rounds down to zero
+    // keeps running instead of being erased by every payment.
+    if late_part > 0 {
+        line.late_collected = line.late_collected.checked_add(late_part).ok_or(PoolError::Overflow)?;
+        line.late_paid_until = now;
     }
     let remaining_after = remaining
         .checked_sub(interest_part)
@@ -780,7 +774,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
             sidecar.status = PAGARE_PAID_PENDING_CANCEL;
             sidecar.paid_at = now;
             sidecar.receipt_hash = receipt_hash;
-            line.set_pagares_paid(sidecar.draw_index.checked_add(1).ok_or(PoolError::Overflow)?);
+            line.pagares_paid = sidecar.draw_index.checked_add(1).ok_or(PoolError::Overflow)?;
         }
         emit_cpi!(PagareEntry {
             pool: pool_key,
@@ -832,10 +826,10 @@ fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
         interval: s.interval_seconds,
         installments: s.installments,
         late_bps: s.late_bps,
-        grace: pool.grace_period_seconds(),
-        late_paid_until: s.late_paid_until,
+        grace: pool.grace_period_seconds,
+        late_paid_until: line.late_paid_until,
         principal: line.drawn,
-        late_collected: s.late_collected,
+        late_collected: line.late_collected,
         accelerated_at: line.accelerated_at,
     };
     let paid = line.principal_repaid.checked_add(line.interest_repaid).ok_or(PoolError::Overflow)?;
@@ -887,7 +881,7 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
         .interval_seconds
         .checked_mul(i64::from(k))
         .and_then(|span| anchor.checked_add(span))
-        .and_then(|due| due.checked_add(i64::from(pool.grace_period_seconds())))
+        .and_then(|due| due.checked_add(i64::from(pool.grace_period_seconds)))
         .ok_or(PoolError::Overflow)?;
     require!(now > grace_end, PoolError::NotEnoughMissed);
 
@@ -958,7 +952,7 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
-    let grace = i64::from(pool.grace_period_seconds());
+    let grace = i64::from(pool.grace_period_seconds);
     let after_term = now > line.term_end.checked_add(grace).ok_or(PoolError::Overflow)?;
     match line.status {
         LineStatus::Active => require!(after_term, PoolError::TermNotEnded),
@@ -971,7 +965,7 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
             // Audit F-03: the collection period runs from the mark.
             let period_end = line
                 .accelerated_at
-                .checked_add(i64::from(pool.collection_period_seconds()))
+                .checked_add(i64::from(pool.collection_period_seconds))
                 .ok_or(PoolError::Overflow)?;
             require!(now > period_end, PoolError::WriteOffTooEarly);
         }

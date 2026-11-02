@@ -57,7 +57,7 @@ export function getPagareDiscriminatorBytes(): ReadonlyUint8Array {
 export type Pagare = {
   discriminator: ReadonlyUint8Array;
   line: Address;
-  /** Which disposición of the line, 0-based: the `draws` count at the time of the draw. */
+  /** Which tranche of the line, 0-based. */
   drawIndex: number;
   /** The Core asset at `[PAGARE_ASSET, line, draw_index]`. */
   asset: Address;
@@ -66,55 +66,59 @@ export type Pagare = {
   /** The tranche this pagaré documents. */
   amount: bigint;
   issuedAt: bigint;
-  /** The line's last due date at issuance: when the last payment is owed. */
+  /** The line's last due date at issuance. */
   dueAt: bigint;
   /**
-   * The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.
-   * The coverage rule reads it instead of summing earlier sidecars (pagarés are covered oldest
-   * first): pagaré k is paid once the line's `principal_repaid` reaches `drawn_through`.
+   * The line's `drawn` after this tranche. Pagarés are covered oldest first, so pagaré k is
+   * paid once the line's `principal_repaid` reaches it.
    */
   drawnThrough: bigint;
   /**
-   * Hash of the PSC certificate that signed the pagaré text (C6a); zero only when
+   * Hash of the PSC certificate that signed the pagaré text; zero only when
    * `signature_method` is `SIGNATURE_WALLET`.
    */
   certFingerprint: ReadonlyUint8Array;
-  /** `SIGNATURE_WALLET`, `SIGNATURE_PSC_WALLET` or `SIGNATURE_EFIRMA_WALLET`. */
+  /** `SIGNATURE_*`. */
   signatureMethod: number;
-  /** `PAGARE_OUTSTANDING` or `PAGARE_PAID`. */
+  /** `PAGARE_OUTSTANDING`, `PAGARE_PAID_PENDING_CANCEL` or `PAGARE_PAID`; never reverts. */
   status: number;
-  /** When `cancel_pagare` marked it paid; zero while outstanding. */
+  /** When the repayment that covered it landed; zero while outstanding. */
   paidAt: bigint;
   /**
-   * Hash of the receipt the payment entry that marked it paid carried (LGTOC 129); zero while
-   * outstanding.
+   * The receipt hash of that repayment: the payer's, until the holder annotates the real one
+   * (`annotate_payment`, before the burn).
    */
   receiptHash: ReadonlyUint8Array;
-  bump: number;
+  /** The receipt hash `cancel_pagare` was given; zero until the burn. */
+  cancelReceiptHash: ReadonlyUint8Array;
   /**
-   * The procurador of the endoso en procuración in force (`flags` bit 1); the zero key when
-   * there is none. Set by `endorse_pagare`, cleared by `revoke_procuracion`.
+   * The deadline of a pending cancellation request, after which the holder may cancel alone;
+   * zero when none.
+   */
+  cancelAfter: bigint;
+  /** The receipt hash of that request. */
+  requestedReceiptHash: ReadonlyUint8Array;
+  /**
+   * The procurador of the endoso en procuración in force; the zero key when none. Cleared by
+   * `revoke_procuracion` and by the extinction.
    */
   procurador: Address;
+  /** `PAGARE_FLAG_*` bits. */
+  flags: number;
   /** The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first. */
   logRoot: ReadonlyUint8Array;
   /** Entries in the chain; the issuance entry is 1. */
   entryCount: number;
   /** `KIND_*` of the last entry. */
   lastKind: number;
-  /** `PAGARE_FLAG_*` bits. */
-  flags: number;
-  /** Hash of the final receipt `cancel_pagare` was given; zero until the burn. */
-  cancelReceiptHash: ReadonlyUint8Array;
-  /** When the holder requested a cancellation without the attestor (the backstop); zero otherwise. */
-  cancelAfter: bigint;
-  /** The receipt hash of that request. */
-  requestedReceiptHash: ReadonlyUint8Array;
+  bump: number;
+  /** Zero; for fields added after mainnet. */
+  reserved: ReadonlyUint8Array;
 };
 
 export type PagareArgs = {
   line: Address | HasAddress;
-  /** Which disposición of the line, 0-based: the `draws` count at the time of the draw. */
+  /** Which tranche of the line, 0-based. */
   drawIndex: number;
   /** The Core asset at `[PAGARE_ASSET, line, draw_index]`. */
   asset: Address | HasAddress;
@@ -123,50 +127,54 @@ export type PagareArgs = {
   /** The tranche this pagaré documents. */
   amount: number | bigint;
   issuedAt: number | bigint;
-  /** The line's last due date at issuance: when the last payment is owed. */
+  /** The line's last due date at issuance. */
   dueAt: number | bigint;
   /**
-   * The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.
-   * The coverage rule reads it instead of summing earlier sidecars (pagarés are covered oldest
-   * first): pagaré k is paid once the line's `principal_repaid` reaches `drawn_through`.
+   * The line's `drawn` after this tranche. Pagarés are covered oldest first, so pagaré k is
+   * paid once the line's `principal_repaid` reaches it.
    */
   drawnThrough: number | bigint;
   /**
-   * Hash of the PSC certificate that signed the pagaré text (C6a); zero only when
+   * Hash of the PSC certificate that signed the pagaré text; zero only when
    * `signature_method` is `SIGNATURE_WALLET`.
    */
   certFingerprint: ReadonlyUint8Array;
-  /** `SIGNATURE_WALLET`, `SIGNATURE_PSC_WALLET` or `SIGNATURE_EFIRMA_WALLET`. */
+  /** `SIGNATURE_*`. */
   signatureMethod: number;
-  /** `PAGARE_OUTSTANDING` or `PAGARE_PAID`. */
+  /** `PAGARE_OUTSTANDING`, `PAGARE_PAID_PENDING_CANCEL` or `PAGARE_PAID`; never reverts. */
   status: number;
-  /** When `cancel_pagare` marked it paid; zero while outstanding. */
+  /** When the repayment that covered it landed; zero while outstanding. */
   paidAt: number | bigint;
   /**
-   * Hash of the receipt the payment entry that marked it paid carried (LGTOC 129); zero while
-   * outstanding.
+   * The receipt hash of that repayment: the payer's, until the holder annotates the real one
+   * (`annotate_payment`, before the burn).
    */
   receiptHash: ReadonlyUint8Array;
-  bump: number;
+  /** The receipt hash `cancel_pagare` was given; zero until the burn. */
+  cancelReceiptHash: ReadonlyUint8Array;
   /**
-   * The procurador of the endoso en procuración in force (`flags` bit 1); the zero key when
-   * there is none. Set by `endorse_pagare`, cleared by `revoke_procuracion`.
+   * The deadline of a pending cancellation request, after which the holder may cancel alone;
+   * zero when none.
+   */
+  cancelAfter: number | bigint;
+  /** The receipt hash of that request. */
+  requestedReceiptHash: ReadonlyUint8Array;
+  /**
+   * The procurador of the endoso en procuración in force; the zero key when none. Cleared by
+   * `revoke_procuracion` and by the extinction.
    */
   procurador: Address | HasAddress;
+  /** `PAGARE_FLAG_*` bits. */
+  flags: number;
   /** The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first. */
   logRoot: ReadonlyUint8Array;
   /** Entries in the chain; the issuance entry is 1. */
   entryCount: number;
   /** `KIND_*` of the last entry. */
   lastKind: number;
-  /** `PAGARE_FLAG_*` bits. */
-  flags: number;
-  /** Hash of the final receipt `cancel_pagare` was given; zero until the burn. */
-  cancelReceiptHash: ReadonlyUint8Array;
-  /** When the holder requested a cancellation without the attestor (the backstop); zero otherwise. */
-  cancelAfter: number | bigint;
-  /** The receipt hash of that request. */
-  requestedReceiptHash: ReadonlyUint8Array;
+  bump: number;
+  /** Zero; for fields added after mainnet. */
+  reserved: ReadonlyUint8Array;
 };
 
 /** Gets the encoder for {@link PagareArgs} account data. */
@@ -187,15 +195,16 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["status", getU8Encoder()],
       ["paidAt", getI64Encoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["bump", getU8Encoder()],
-      ["procurador", getAddressEncoder()],
-      ["logRoot", fixEncoderSize(getBytesEncoder(), 32)],
-      ["entryCount", getU32Encoder()],
-      ["lastKind", getU8Encoder()],
-      ["flags", getU8Encoder()],
       ["cancelReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["cancelAfter", getI64Encoder()],
       ["requestedReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["procurador", getAddressEncoder()],
+      ["flags", getU8Encoder()],
+      ["logRoot", fixEncoderSize(getBytesEncoder(), 32)],
+      ["entryCount", getU32Encoder()],
+      ["lastKind", getU8Encoder()],
+      ["bump", getU8Encoder()],
+      ["reserved", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
   );
@@ -218,15 +227,16 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["status", getU8Decoder()],
     ["paidAt", getI64Decoder()],
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["bump", getU8Decoder()],
-    ["procurador", getAddressDecoder()],
-    ["logRoot", fixDecoderSize(getBytesDecoder(), 32)],
-    ["entryCount", getU32Decoder()],
-    ["lastKind", getU8Decoder()],
-    ["flags", getU8Decoder()],
     ["cancelReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["cancelAfter", getI64Decoder()],
     ["requestedReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["procurador", getAddressDecoder()],
+    ["flags", getU8Decoder()],
+    ["logRoot", fixDecoderSize(getBytesDecoder(), 32)],
+    ["entryCount", getU32Decoder()],
+    ["lastKind", getU8Decoder()],
+    ["bump", getU8Decoder()],
+    ["reserved", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
 
@@ -297,5 +307,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 355;
+  return 387;
 }

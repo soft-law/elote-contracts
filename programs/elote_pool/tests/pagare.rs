@@ -572,13 +572,12 @@ fn chain(root: &[u8; 32], entry: &[u8; 32]) -> [u8; 32] {
 #[test]
 fn a_draw_writes_the_issuance_entry_of_the_registry() {
     use elote_pool::events::PagareEntry;
-    use elote_pool::state::{Pagare, KIND_EMISION};
+    use elote_pool::state::KIND_EMISION;
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
-    assert_eq!(8 + Pagare::INIT_SPACE, 355);
 
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
     let meta = env.send_with_attestor(ix, &borrower);
@@ -949,7 +948,7 @@ fn the_procurador_extinguishes_the_title_through_the_program_address() {
 }
 
 /// The backstop's parameter: `cancel_delay_seconds` is set at `init_pool` with a seven-day floor,
-/// read back from `Pool.reserved[8..12]`, and changed only by the admin, with an event.
+/// read back from `Pool.cancel_delay_seconds`, and changed only by the admin, with an event.
 #[test]
 fn the_cancel_delay_is_a_pool_parameter_with_a_seven_day_floor() {
     use elote_pool::events::CancelDelaySet;
@@ -963,8 +962,7 @@ fn the_cancel_delay_is_a_pool_parameter_with_a_seven_day_floor() {
     let ev: CancelDelaySet = find_event(&meta).expect("CancelDelaySet");
     assert_eq!((ev.pool, ev.cancel_delay_seconds), (k.pool, CANCEL_DELAY));
     let pool = env.pool(&k);
-    assert_eq!(pool.cancel_delay_seconds(), CANCEL_DELAY);
-    assert_eq!(&pool.reserved[8..12], &CANCEL_DELAY.to_le_bytes(), "bytes 8..12 of the reserved map");
+    assert_eq!(pool.cancel_delay_seconds, CANCEL_DELAY);
     let ix = env.set_cancel_delay_ix(&k, &admin.pubkey(), CANCEL_DELAY - 1);
     env.expect_err(ix, &admin, &[], E_CANCEL_DELAY_TOO_SHORT);
     let stranger = env.funded(1);
@@ -974,7 +972,7 @@ fn the_cancel_delay_is_a_pool_parameter_with_a_seven_day_floor() {
     let meta = env.send(ix, &admin, &[]);
     let ev: CancelDelaySet = find_event(&meta).expect("CancelDelaySet");
     assert_eq!((ev.pool, ev.cancel_delay_seconds), (k.pool, 2 * CANCEL_DELAY));
-    assert_eq!(env.pool(&k).cancel_delay_seconds(), 2 * CANCEL_DELAY);
+    assert_eq!(env.pool(&k).cancel_delay_seconds, 2 * CANCEL_DELAY);
 }
 
 /// The backstop on the attestor (LGTOC 17, 129): the holder records a cancellation request with
@@ -1111,7 +1109,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
     let line = env.line(&k, line_id);
-    assert_eq!((line.draws, line.pagares_paid()), (3, 0));
+    assert_eq!((line.draws, line.pagares_paid), (3, 0));
     let interest = line.interest_due;
     assert!(interest > 1);
     env.mint_to(&k.asset_mint, &admin, &b, interest);
@@ -1127,7 +1125,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
     assert_eq!((ev.payer, ev.receipt_hash, ev.late_part, ev.interest_part, ev.principal_part), (b, [0; 32], 0, half, 0));
     assert!(ev.entries.is_empty());
-    assert_eq!((env.pagare(&k, line_id, 1).entry_count, env.line(&k, line_id).pagares_paid()), (1, 0));
+    assert_eq!((env.pagare(&k, line_id, 1).entry_count, env.line(&k, line_id).pagares_paid), (1, 0));
 
     // The rest of the interest and one and a half pagarés of principal: 0 is paid, 1 gets an
     // Abono, 2 is untouched, the cursor moves past 0.
@@ -1146,7 +1144,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     assert_eq!((p1.status, p1.last_kind, p1.entry_count), (PAGARE_OUTSTANDING, KIND_ABONO, 2));
     assert_eq!(p1.log_root, chain(&before1.log_root, &entry_hash(&p1.asset, KIND_ABONO, &b, &k.pool, &RECEIPT_HASH, now, 2)));
     assert_eq!(env.pagare(&k, line_id, 2).entry_count, 1, "untouched");
-    assert_eq!(env.line(&k, line_id).pagares_paid(), 1);
+    assert_eq!(env.line(&k, line_id).pagares_paid, 1);
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
     assert_eq!((ev.interest_part, ev.principal_part, ev.receipt_hash), (interest - half, UNIT + UNIT / 2, RECEIPT_HASH));
     let e: Vec<_> = ev.entries.iter().map(|e| (e.draw_index, e.kind, e.entry_count, e.principal_applied)).collect();
@@ -1155,7 +1153,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     // The rest: 1 and 2 are paid, the cursor passes the last draw and the line closes.
     env.repay(&k, line_id, &borrower, UNIT / 2 + 2 * UNIT);
     let line = env.line(&k, line_id);
-    assert_eq!((line.pagares_paid(), line.status), (3, LineStatus::Repaid));
+    assert_eq!((line.pagares_paid, line.status), (3, LineStatus::Repaid));
     let (p1, p2) = (env.pagare(&k, line_id, 1), env.pagare(&k, line_id, 2));
     assert_eq!((p1.status, p1.last_kind, p1.entry_count), (PAGARE_PAID_PENDING_CANCEL, KIND_PAGADO, 3));
     assert_eq!((p2.status, p2.last_kind, p2.entry_count, p2.paid_at), (PAGARE_PAID_PENDING_CANCEL, KIND_PAGADO, 2, env.now()));
@@ -1200,14 +1198,14 @@ fn repay_requires_exactly_the_sidecars_the_payment_touches() {
     }
     assert_eq!(env.payment_sidecars(&k, line_id, UNIT + 1), vec![s[0], s[1]]);
     env.repay(&k, line_id, &borrower, UNIT + 1);
-    assert_eq!(env.line(&k, line_id).pagares_paid(), 1);
+    assert_eq!(env.line(&k, line_id).pagares_paid, 1);
     // From the cursor: 1 and 2; 0 is behind it.
     for wrong in [vec![s[0], s[1], s[2]], vec![s[1]], vec![s[2]]] {
         let ix = env.repay_ix_full(&k, line_id, &b, 2 * UNIT - 1, RECEIPT_HASH, &wrong);
         env.expect_err(ix, &borrower, &[], E_PAGARE_ACCOUNTS_MISMATCH);
     }
     env.repay(&k, line_id, &borrower, 2 * UNIT - 1);
-    assert_eq!((env.line(&k, line_id).pagares_paid(), env.line(&k, line_id).status), (3, LineStatus::Repaid));
+    assert_eq!((env.line(&k, line_id).pagares_paid, env.line(&k, line_id).status), (3, LineStatus::Repaid));
 
     // A line that never drew is not repayable at all (it is not Active): the line check comes
     // first, and the harness computes no sidecar for it. The empty set is otherwise required only

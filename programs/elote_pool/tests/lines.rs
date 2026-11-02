@@ -41,7 +41,6 @@ fn open_draw_repay_full_cycle_raises_share_value() {
     assert_eq!((ev.first_due_at, ev.availability_end, ev.expediente_root), (0, p.term_end, EXPEDIENTE_ROOT));
 
     let line = env.line(&k, 0);
-    assert_eq!(line.version, 3);
     assert_eq!(line.pool, k.pool);
     assert_eq!(line.borrower, borrower.pubkey());
     assert_eq!(line.status, LineStatus::Approved);
@@ -507,8 +506,3 @@ fn draw_state_follows_the_tranches() {
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT);
 }
 
-#[test]
-fn credit_line_layout_is_313_bytes() {
-    use anchor_lang::Space;
-    assert_eq!(8 + elote_pool::state::CreditLine::INIT_SPACE, 313, "305 before accelerated_at");
-}

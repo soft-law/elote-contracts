@@ -23,6 +23,10 @@ import {
   getBytesEncoder,
   getStructDecoder,
   getStructEncoder,
+  getU16Decoder,
+  getU16Encoder,
+  getU32Decoder,
+  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
   getU8Decoder,
@@ -52,15 +56,21 @@ export function getPoolDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type Pool = {
   discriminator: ReadonlyUint8Array;
-  version: number;
   admin: Address;
+  /**
+   * The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
+   * `court_annotation`, and `cancel_pagare` unless the backstop applies. Never the admin.
+   */
+  attestor: Address;
   assetMint: Address;
-  /** PDA token account `[VAULT, pool]` for `asset_mint`, owned by the pool PDA. */
-  vault: Address;
   /** The share token mint; its mint authority is the pool PDA. */
   shareMint: Address;
+  /** PDA token account `[VAULT, pool]` for `asset_mint`, owned by the pool PDA. */
+  vault: Address;
   /** PDA share token account `[DEAD, pool]`, owned by the pool PDA; never burned. */
   deadShares: Address;
+  /** The series' Metaplex Core collection `draw` mints the pagaré assets into. */
+  collection: Address;
   /** Principal drawn and neither repaid nor written off. */
   outstandingPrincipal: bigint;
   /** Informative running total. */
@@ -68,48 +78,58 @@ export type Pool = {
   /** Informative running total. */
   writtenOff: bigint;
   lineCount: bigint;
+  /**
+   * Seconds after a due date (or the term) before late interest accrues and a write-off is
+   * allowed; zero means none. Fixed at `init_pool`.
+   */
+  gracePeriodSeconds: number;
+  /**
+   * Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
+   * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`.
+   */
+  collectionPeriodSeconds: number;
+  /**
+   * Seconds from a cancellation request before the holder may cancel alone; at least
+   * `MIN_CANCEL_DELAY_SECONDS`. A request stores its own deadline, so a change never moves one.
+   */
+  cancelDelaySeconds: number;
+  /**
+   * The largest line `open_line` accepts, as a share of the NAV at the opening, in basis points
+   * (`1..=BPS`). Fixed at `init_pool`.
+   */
+  maxLineBps: number;
+  /**
+   * `ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without
+   * the program. Recorded at `init_pool`, never refused.
+   */
+  assetControls: number;
+  /**
+   * The share mint is `DefaultAccountState = Frozen`: holders need a thaw (Token ACL) before
+   * they can receive or burn shares. Recorded at `init_pool`.
+   */
+  permissioned: boolean;
   paused: boolean;
-  /**
-   * Pool parameters packed into spare bytes, so the account layout does not change:
-   *
-   * | bytes   | field                  | type     | meaning                                   |
-   * |---------|------------------------|----------|-------------------------------------------|
-   * | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
-   * | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
-   * | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
-   * | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
-   * | 8..12   | `cancel_delay_seconds` | u32 LE   | the backstop's wait from a cancellation request |
-   * | 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |
-   * | 16..32  | unused                 | zero     |                                           |
-   *
-   * Read and written only through the accessors below (`grace_period_seconds`,
-   * `max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds`,
-   * `cancel_delay_seconds` and their setters).
-   */
-  reserved: ReadonlyUint8Array;
   bump: number;
-  /**
-   * The agreements engine's key; co-signs `open_line`, `draw` and `cancel_pagare`, attesting
-   * the signed document behind the hash. Rotated with `set_attestor`; never the zero key.
-   */
-  attestor: Address;
-  /**
-   * The series' Metaplex Core collection `draw` mints the pagaré assets into; validated at
-   * `init_pool`.
-   */
-  collection: Address;
+  /** Zero; for fields added after mainnet. */
+  reserved: ReadonlyUint8Array;
 };
 
 export type PoolArgs = {
-  version: number;
   admin: Address | HasAddress;
+  /**
+   * The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
+   * `court_annotation`, and `cancel_pagare` unless the backstop applies. Never the admin.
+   */
+  attestor: Address | HasAddress;
   assetMint: Address | HasAddress;
-  /** PDA token account `[VAULT, pool]` for `asset_mint`, owned by the pool PDA. */
-  vault: Address | HasAddress;
   /** The share token mint; its mint authority is the pool PDA. */
   shareMint: Address | HasAddress;
+  /** PDA token account `[VAULT, pool]` for `asset_mint`, owned by the pool PDA. */
+  vault: Address | HasAddress;
   /** PDA share token account `[DEAD, pool]`, owned by the pool PDA; never burned. */
   deadShares: Address | HasAddress;
+  /** The series' Metaplex Core collection `draw` mints the pagaré assets into. */
+  collection: Address | HasAddress;
   /** Principal drawn and neither repaid nor written off. */
   outstandingPrincipal: number | bigint;
   /** Informative running total. */
@@ -117,36 +137,40 @@ export type PoolArgs = {
   /** Informative running total. */
   writtenOff: number | bigint;
   lineCount: number | bigint;
+  /**
+   * Seconds after a due date (or the term) before late interest accrues and a write-off is
+   * allowed; zero means none. Fixed at `init_pool`.
+   */
+  gracePeriodSeconds: number;
+  /**
+   * Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
+   * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`.
+   */
+  collectionPeriodSeconds: number;
+  /**
+   * Seconds from a cancellation request before the holder may cancel alone; at least
+   * `MIN_CANCEL_DELAY_SECONDS`. A request stores its own deadline, so a change never moves one.
+   */
+  cancelDelaySeconds: number;
+  /**
+   * The largest line `open_line` accepts, as a share of the NAV at the opening, in basis points
+   * (`1..=BPS`). Fixed at `init_pool`.
+   */
+  maxLineBps: number;
+  /**
+   * `ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without
+   * the program. Recorded at `init_pool`, never refused.
+   */
+  assetControls: number;
+  /**
+   * The share mint is `DefaultAccountState = Frozen`: holders need a thaw (Token ACL) before
+   * they can receive or burn shares. Recorded at `init_pool`.
+   */
+  permissioned: boolean;
   paused: boolean;
-  /**
-   * Pool parameters packed into spare bytes, so the account layout does not change:
-   *
-   * | bytes   | field                  | type     | meaning                                   |
-   * |---------|------------------------|----------|-------------------------------------------|
-   * | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
-   * | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
-   * | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
-   * | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
-   * | 8..12   | `cancel_delay_seconds` | u32 LE   | the backstop's wait from a cancellation request |
-   * | 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |
-   * | 16..32  | unused                 | zero     |                                           |
-   *
-   * Read and written only through the accessors below (`grace_period_seconds`,
-   * `max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds`,
-   * `cancel_delay_seconds` and their setters).
-   */
-  reserved: ReadonlyUint8Array;
   bump: number;
-  /**
-   * The agreements engine's key; co-signs `open_line`, `draw` and `cancel_pagare`, attesting
-   * the signed document behind the hash. Rotated with `set_attestor`; never the zero key.
-   */
-  attestor: Address | HasAddress;
-  /**
-   * The series' Metaplex Core collection `draw` mints the pagaré assets into; validated at
-   * `init_pool`.
-   */
-  collection: Address | HasAddress;
+  /** Zero; for fields added after mainnet. */
+  reserved: ReadonlyUint8Array;
 };
 
 /** Gets the encoder for {@link PoolArgs} account data. */
@@ -154,21 +178,26 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["version", getU8Encoder()],
       ["admin", getAddressEncoder()],
+      ["attestor", getAddressEncoder()],
       ["assetMint", getAddressEncoder()],
-      ["vault", getAddressEncoder()],
       ["shareMint", getAddressEncoder()],
+      ["vault", getAddressEncoder()],
       ["deadShares", getAddressEncoder()],
+      ["collection", getAddressEncoder()],
       ["outstandingPrincipal", getU64Encoder()],
       ["interestCollected", getU64Encoder()],
       ["writtenOff", getU64Encoder()],
       ["lineCount", getU64Encoder()],
+      ["gracePeriodSeconds", getU32Encoder()],
+      ["collectionPeriodSeconds", getU32Encoder()],
+      ["cancelDelaySeconds", getU32Encoder()],
+      ["maxLineBps", getU16Encoder()],
+      ["assetControls", getU8Encoder()],
+      ["permissioned", getBooleanEncoder()],
       ["paused", getBooleanEncoder()],
-      ["reserved", fixEncoderSize(getBytesEncoder(), 32)],
       ["bump", getU8Encoder()],
-      ["attestor", getAddressEncoder()],
-      ["collection", getAddressEncoder()],
+      ["reserved", fixEncoderSize(getBytesEncoder(), 64)],
     ]),
     (value) => ({ ...value, discriminator: POOL_DISCRIMINATOR }),
   );
@@ -178,21 +207,26 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
 export function getPoolDecoder(): FixedSizeDecoder<Pool> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["version", getU8Decoder()],
     ["admin", getAddressDecoder()],
+    ["attestor", getAddressDecoder()],
     ["assetMint", getAddressDecoder()],
-    ["vault", getAddressDecoder()],
     ["shareMint", getAddressDecoder()],
+    ["vault", getAddressDecoder()],
     ["deadShares", getAddressDecoder()],
+    ["collection", getAddressDecoder()],
     ["outstandingPrincipal", getU64Decoder()],
     ["interestCollected", getU64Decoder()],
     ["writtenOff", getU64Decoder()],
     ["lineCount", getU64Decoder()],
+    ["gracePeriodSeconds", getU32Decoder()],
+    ["collectionPeriodSeconds", getU32Decoder()],
+    ["cancelDelaySeconds", getU32Decoder()],
+    ["maxLineBps", getU16Decoder()],
+    ["assetControls", getU8Decoder()],
+    ["permissioned", getBooleanDecoder()],
     ["paused", getBooleanDecoder()],
-    ["reserved", fixDecoderSize(getBytesDecoder(), 32)],
     ["bump", getU8Decoder()],
-    ["attestor", getAddressDecoder()],
-    ["collection", getAddressDecoder()],
+    ["reserved", fixDecoderSize(getBytesDecoder(), 64)],
   ]);
 }
 
@@ -263,5 +297,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 299;
+  return 346;
 }

@@ -10,7 +10,6 @@ import {
   MPL_CORE_PROGRAM_ADDRESS,
   drawPagareAccounts,
   findPagareAssetPda,
-  pagaresPaidOf,
   repaySidecars,
   withRemainingAccounts,
 } from "../src/pagare";
@@ -44,14 +43,6 @@ test("drawPagareAccounts assembles the draw's pagaré accounts and bumps for the
 
 test("the Metaplex Core program address is the one the program pins", () => {
   assert.equal(MPL_CORE_PROGRAM_ADDRESS, "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
-});
-
-test("pagaresPaidOf reads the payment cursor from bytes 30..32 of the line's reserved bytes", () => {
-  const reserved = new Uint8Array(32);
-  assert.equal(pagaresPaidOf(reserved), 0);
-  reserved[30] = 0x34;
-  reserved[31] = 0x12;
-  assert.equal(pagaresPaidOf(reserved), 0x1234);
 });
 
 test("repaySidecars selects the records from the cursor through the first pagaré left uncovered", async () => {

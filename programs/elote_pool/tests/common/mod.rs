@@ -1309,7 +1309,7 @@ impl Env {
     /// last draw or the line never drew.
     pub fn payment_sidecars(&self, k: &PoolKeys, line_id: u64, amount: u64) -> Vec<Pubkey> {
         let line = self.line(k, line_id);
-        let cursor = line.pagares_paid();
+        let cursor = line.pagares_paid;
         if cursor >= line.draws {
             return vec![];
         }
@@ -1452,10 +1452,10 @@ impl Env {
             interval: s.interval_seconds,
             installments: s.installments,
             late_bps: s.late_bps,
-            grace: self.pool(k).grace_period_seconds(),
-            late_paid_until: s.late_paid_until,
+            grace: self.pool(k).grace_period_seconds,
+            late_paid_until: line.late_paid_until,
             principal: line.drawn,
-            late_collected: s.late_collected,
+            late_collected: line.late_collected,
             accelerated_at: line.accelerated_at,
         };
         elote_pool::math::arrears(&terms, line.principal_repaid + line.interest_repaid, self.now()).expect("arrears")

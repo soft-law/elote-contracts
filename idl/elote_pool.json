@@ -3230,10 +3230,6 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "version",
-            "type": "u8"
-          },
-          {
             "name": "pool",
             "type": "pubkey"
           },
@@ -3255,6 +3251,13 @@
             }
           },
           {
+            "name": "sponsor_role",
+            "docs": [
+              "`SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named."
+            ],
+            "type": "u8"
+          },
+          {
             "name": "agreement_hash",
             "docs": [
               "Hash of the signed credit agreement."
@@ -3264,6 +3267,27 @@
                 "u8",
                 32
               ]
+            }
+          },
+          {
+            "name": "expediente_root",
+            "docs": [
+              "Salted merkle root of the credit file in the agreements engine. A commitment: no document,",
+              "name or folio is derivable from it."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "LineStatus"
+              }
             }
           },
           {
@@ -3282,17 +3306,41 @@
             "type": "u16"
           },
           {
-            "name": "interest_due",
+            "name": "term_end",
             "docs": [
-              "Ordinary interest charged so far: the sum over tranches of",
-              "`amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its",
-              "draw. Zero at opening; it changes only at a draw."
+              "The maturity of a bullet line."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "availability_end",
+            "docs": [
+              "Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,",
+              "`term_end` on a bullet line; `suspend_draws` brings it to now."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "drawn",
+            "docs": [
+              "Principal transferred to the borrower so far; `drawn <= principal`, never decreases."
             ],
             "type": "u64"
           },
           {
-            "name": "term_end",
-            "type": "i64"
+            "name": "draws",
+            "docs": [
+              "Tranches drawn; at most `MAX_DRAWS`."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "interest_due",
+            "docs": [
+              "Ordinary interest charged so far: the sum over tranches of",
+              "`amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its draw."
+            ],
+            "type": "u64"
           },
           {
             "name": "principal_repaid",
@@ -3303,12 +3351,59 @@
             "type": "u64"
           },
           {
-            "name": "status",
-            "type": {
-              "defined": {
-                "name": "LineStatus"
-              }
-            }
+            "name": "pagares_paid",
+            "docs": [
+              "The index of the oldest pagaré no repayment has marked paid. `repay` requires the records",
+              "`[pagares_paid ..= last_touched]` and moves it."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "first_due_at",
+            "docs": [
+              "The first due date; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`.",
+              "Zero on a bullet line."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "interval_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "installments",
+            "docs": [
+              "Installments of the schedule, `1..=MAX_INSTALLMENTS`; zero on a bullet line."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "late_bps",
+            "docs": [
+              "Annual late interest rate on overdue principal, in basis points."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "max_missed",
+            "docs": [
+              "Missed installments that allow `mark_in_collection`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "late_collected",
+            "docs": [
+              "Late interest collected so far."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "late_paid_until",
+            "docs": [
+              "Late interest is settled up to this instant; zero until a repayment collects some."
+            ],
+            "type": "i64"
           },
           {
             "name": "opened_at",
@@ -3326,92 +3421,28 @@
             "type": "i64"
           },
           {
-            "name": "reserved",
+            "name": "accelerated_at",
             "docs": [
-              "Zero on a bullet line (single maturity). On a scheduled line, the installment schedule,",
-              "read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:",
-              "",
-              "| bytes  | field              | type    | meaning                                         |",
-              "|--------|--------------------|---------|-------------------------------------------------|",
-              "| 0..8   | `interval_seconds` | i64 LE  | seconds between due dates                       |",
-              "| 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |",
-              "| 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |",
-              "| 12     | `max_missed`       | u8      | missed installments that allow collection       |",
-              "| 13     | `flags`            | u8      | reserved, zero                                  |",
-              "| 14..22 | `late_collected`   | u64 LE  | late interest collected so far                  |",
-              "| 22..30 | `late_paid_until`  | i64 LE  | late interest is settled up to this time        |",
-              "| 30..32 | unused             | zero    |                                                 |"
+              "When `mark_in_collection` accelerated the balance; zero before. From then on every",
+              "installment is due, and `write_off` waits `Pool::collection_period_seconds` from it."
             ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
+            "type": "i64"
           },
           {
             "name": "bump",
             "type": "u8"
           },
           {
-            "name": "drawn",
+            "name": "reserved",
             "docs": [
-              "Principal transferred to the borrower so far; `drawn <= principal`, never decreases."
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "draws",
-            "docs": [
-              "Number of tranches drawn; at most `MAX_DRAWS`."
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "availability_end",
-            "docs": [
-              "Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,",
-              "`term_end` on a bullet line, fixed at opening; `suspend_draws` brings it to now."
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "first_due_at",
-            "docs": [
-              "The first due date, from the signed contract; installment `k` is due at",
-              "`first_due_at + (k - 1) * interval`. Zero on a bullet line."
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "sponsor_role",
-            "docs": [
-              "`SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named."
-            ],
-            "type": "u8"
-          },
-          {
-            "name": "expediente_root",
-            "docs": [
-              "Salted merkle root of the credit file in the agreements engine. A commitment: no document,",
-              "name or folio is derivable from it."
+              "Zero; for fields added after mainnet."
             ],
             "type": {
               "array": [
                 "u8",
-                32
+                64
               ]
             }
-          },
-          {
-            "name": "accelerated_at",
-            "docs": [
-              "When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.",
-              "From then on every installment is due and late interest runs on all remaining principal.",
-              "Also the start of the collection period: `write_off` waits",
-              "`Pool::collection_period_seconds` from it."
-            ],
-            "type": "i64"
           }
         ]
       }
@@ -3890,9 +3921,8 @@
     {
       "name": "Pagare",
       "docs": [
-        "The program's record of one pagaré, the sidecar of the Core asset `draw` mints (C22). It holds",
-        "no folio and nothing personal, and is never closed: after `cancel_pagare` it stays as the",
-        "PAGADO mark."
+        "The program's record of one pagaré, beside the Core asset `draw` mints. It holds no folio and",
+        "nothing personal, and is never closed: after `cancel_pagare` it stays as the PAGADO mark."
       ],
       "type": {
         "kind": "struct",
@@ -3904,7 +3934,7 @@
           {
             "name": "draw_index",
             "docs": [
-              "Which disposición of the line, 0-based: the `draws` count at the time of the draw."
+              "Which tranche of the line, 0-based."
             ],
             "type": "u16"
           },
@@ -3941,23 +3971,22 @@
           {
             "name": "due_at",
             "docs": [
-              "The line's last due date at issuance: when the last payment is owed."
+              "The line's last due date at issuance."
             ],
             "type": "i64"
           },
           {
             "name": "drawn_through",
             "docs": [
-              "The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.",
-              "The coverage rule reads it instead of summing earlier sidecars (pagarés are covered oldest",
-              "first): pagaré k is paid once the line's `principal_repaid` reaches `drawn_through`."
+              "The line's `drawn` after this tranche. Pagarés are covered oldest first, so pagaré k is",
+              "paid once the line's `principal_repaid` reaches it."
             ],
             "type": "u64"
           },
           {
             "name": "cert_fingerprint",
             "docs": [
-              "Hash of the PSC certificate that signed the pagaré text (C6a); zero only when",
+              "Hash of the PSC certificate that signed the pagaré text; zero only when",
               "`signature_method` is `SIGNATURE_WALLET`."
             ],
             "type": {
@@ -3970,29 +3999,29 @@
           {
             "name": "signature_method",
             "docs": [
-              "`SIGNATURE_WALLET`, `SIGNATURE_PSC_WALLET` or `SIGNATURE_EFIRMA_WALLET`."
+              "`SIGNATURE_*`."
             ],
             "type": "u8"
           },
           {
             "name": "status",
             "docs": [
-              "`PAGARE_OUTSTANDING` or `PAGARE_PAID`."
+              "`PAGARE_OUTSTANDING`, `PAGARE_PAID_PENDING_CANCEL` or `PAGARE_PAID`; never reverts."
             ],
             "type": "u8"
           },
           {
             "name": "paid_at",
             "docs": [
-              "When `cancel_pagare` marked it paid; zero while outstanding."
+              "When the repayment that covered it landed; zero while outstanding."
             ],
             "type": "i64"
           },
           {
             "name": "receipt_hash",
             "docs": [
-              "Hash of the receipt the payment entry that marked it paid carried (LGTOC 129); zero while",
-              "outstanding."
+              "The receipt hash of that repayment: the payer's, until the holder annotates the real one",
+              "(`annotate_payment`, before the burn)."
             ],
             "type": {
               "array": [
@@ -4002,16 +4031,51 @@
             }
           },
           {
-            "name": "bump",
-            "type": "u8"
+            "name": "cancel_receipt_hash",
+            "docs": [
+              "The receipt hash `cancel_pagare` was given; zero until the burn."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "cancel_after",
+            "docs": [
+              "The deadline of a pending cancellation request, after which the holder may cancel alone;",
+              "zero when none."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "requested_receipt_hash",
+            "docs": [
+              "The receipt hash of that request."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "procurador",
             "docs": [
-              "The procurador of the endoso en procuración in force (`flags` bit 1); the zero key when",
-              "there is none. Set by `endorse_pagare`, cleared by `revoke_procuracion`."
+              "The procurador of the endoso en procuración in force; the zero key when none. Cleared by",
+              "`revoke_procuracion` and by the extinction."
             ],
             "type": "pubkey"
+          },
+          {
+            "name": "flags",
+            "docs": [
+              "`PAGARE_FLAG_*` bits."
+            ],
+            "type": "u8"
           },
           {
             "name": "log_root",
@@ -4040,35 +4104,13 @@
             "type": "u8"
           },
           {
-            "name": "flags",
-            "docs": [
-              "`PAGARE_FLAG_*` bits."
-            ],
+            "name": "bump",
             "type": "u8"
           },
           {
-            "name": "cancel_receipt_hash",
+            "name": "reserved",
             "docs": [
-              "Hash of the final receipt `cancel_pagare` was given; zero until the burn."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "cancel_after",
-            "docs": [
-              "When the holder requested a cancellation without the attestor (the backstop); zero otherwise."
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "requested_receipt_hash",
-            "docs": [
-              "The receipt hash of that request."
+              "Zero; for fields added after mainnet."
             ],
             "type": {
               "array": [
@@ -4371,22 +4413,19 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "version",
-            "type": "u8"
-          },
-          {
             "name": "admin",
             "type": "pubkey"
           },
           {
-            "name": "asset_mint",
+            "name": "attestor",
+            "docs": [
+              "The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and",
+              "`court_annotation`, and `cancel_pagare` unless the backstop applies. Never the admin."
+            ],
             "type": "pubkey"
           },
           {
-            "name": "vault",
-            "docs": [
-              "PDA token account `[VAULT, pool]` for `asset_mint`, owned by the pool PDA."
-            ],
+            "name": "asset_mint",
             "type": "pubkey"
           },
           {
@@ -4397,9 +4436,23 @@
             "type": "pubkey"
           },
           {
+            "name": "vault",
+            "docs": [
+              "PDA token account `[VAULT, pool]` for `asset_mint`, owned by the pool PDA."
+            ],
+            "type": "pubkey"
+          },
+          {
             "name": "dead_shares",
             "docs": [
               "PDA share token account `[DEAD, pool]`, owned by the pool PDA; never burned."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "collection",
+            "docs": [
+              "The series' Metaplex Core collection `draw` mints the pagaré assets into."
             ],
             "type": "pubkey"
           },
@@ -4429,54 +4482,72 @@
             "type": "u64"
           },
           {
-            "name": "paused",
+            "name": "grace_period_seconds",
+            "docs": [
+              "Seconds after a due date (or the term) before late interest accrues and a write-off is",
+              "allowed; zero means none. Fixed at `init_pool`."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "collection_period_seconds",
+            "docs": [
+              "Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be",
+              "written off; at least `MIN_COLLECTION_PERIOD_SECONDS`."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "cancel_delay_seconds",
+            "docs": [
+              "Seconds from a cancellation request before the holder may cancel alone; at least",
+              "`MIN_CANCEL_DELAY_SECONDS`. A request stores its own deadline, so a change never moves one."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "max_line_bps",
+            "docs": [
+              "The largest line `open_line` accepts, as a share of the NAV at the opening, in basis points",
+              "(`1..=BPS`). Fixed at `init_pool`."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "asset_controls",
+            "docs": [
+              "`ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without",
+              "the program. Recorded at `init_pool`, never refused."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "permissioned",
+            "docs": [
+              "The share mint is `DefaultAccountState = Frozen`: holders need a thaw (Token ACL) before",
+              "they can receive or burn shares. Recorded at `init_pool`."
+            ],
             "type": "bool"
           },
           {
-            "name": "reserved",
-            "docs": [
-              "Pool parameters packed into spare bytes, so the account layout does not change:",
-              "",
-              "| bytes   | field                  | type     | meaning                                   |",
-              "|---------|------------------------|----------|-------------------------------------------|",
-              "| 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |",
-              "| 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |",
-              "| 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |",
-              "| 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |",
-              "| 8..12   | `cancel_delay_seconds` | u32 LE   | the backstop's wait from a cancellation request |",
-              "| 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |",
-              "| 16..32  | unused                 | zero     |                                           |",
-              "",
-              "Read and written only through the accessors below (`grace_period_seconds`,",
-              "`max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds`,",
-              "`cancel_delay_seconds` and their setters)."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
+            "name": "paused",
+            "type": "bool"
           },
           {
             "name": "bump",
             "type": "u8"
           },
           {
-            "name": "attestor",
+            "name": "reserved",
             "docs": [
-              "The agreements engine's key; co-signs `open_line`, `draw` and `cancel_pagare`, attesting",
-              "the signed document behind the hash. Rotated with `set_attestor`; never the zero key."
+              "Zero; for fields added after mainnet."
             ],
-            "type": "pubkey"
-          },
-          {
-            "name": "collection",
-            "docs": [
-              "The series' Metaplex Core collection `draw` mints the pagaré assets into; validated at",
-              "`init_pool`."
-            ],
-            "type": "pubkey"
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
           }
         ]
       }
@@ -4653,7 +4724,7 @@
           {
             "name": "interval_seconds",
             "docs": [
-              "Seconds between due dates; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`."
+              "Seconds between due dates."
             ],
             "type": "i64"
           },

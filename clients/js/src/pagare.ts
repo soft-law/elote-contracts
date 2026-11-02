@@ -64,14 +64,6 @@ export async function drawPagareAccounts(
 }
 
 /**
- * The payment cursor of a line (step 6d), `CreditLine.pagares_paid`: bytes 30..32 of `reserved`,
- * little endian; the index of the oldest pagaré not yet marked paid by a repayment.
- */
-export function pagaresPaidOf(reserved: ReadonlyUint8Array | Uint8Array | readonly number[]): number {
-  return reserved[30] | (reserved[31] << 8);
-}
-
-/**
  * The pagaré records a `repay` must pass as remaining accounts, `[pagaresPaid ..= lastTouched]`,
  * oldest first: from the line's cursor through the first pagaré whose `drawnThrough` exceeds the
  * line's `principalRepaid` after the payment, or the last draw when none does; none once the

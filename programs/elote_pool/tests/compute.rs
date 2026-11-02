@@ -234,6 +234,6 @@ fn a_payment_covering_six_sidecars_stays_under_the_ceiling() {
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), owed);
     let cu = env.send(ix, &borrower, &[]).compute_units_consumed;
     println!("repay covering six sidecars at 120 installments, all missed: {cu} CU");
-    assert_eq!(env.line(&k, line_id).pagares_paid(), 6);
+    assert_eq!(env.line(&k, line_id).pagares_paid, 6);
     assert!(cu < CEILING, "the six-sidecar repay used {cu} CU, ceiling {CEILING}");
 }

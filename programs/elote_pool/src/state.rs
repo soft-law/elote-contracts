@@ -35,10 +35,6 @@ pub fn min_first_deposit(decimals: u8) -> Option<u64> {
     Some(one_unit.max(MIN_FIRST_DEPOSIT_DEAD_RATIO.checked_mul(DEAD_SHARES)?))
 }
 pub const BPS: u64 = 10_000;
-/// Layout version of `Pool`; earlier versions do not deserialize under this layout.
-pub const POOL_VERSION: u8 = 2;
-/// Layout version of `CreditLine`; earlier versions do not deserialize under this layout.
-pub const LINE_VERSION: u8 = 3;
 /// Upper bound on the tranches of one line.
 pub const MAX_DRAWS: u16 = 64;
 /// `CreditLine::sponsor_role`: a public sponsor that refers, trains and shares data, with no
@@ -51,9 +47,12 @@ pub const SPONSOR_GUARANTOR: u8 = 1;
 pub const MAX_INSTALLMENTS: u16 = 120;
 /// The fewest missed installments a schedule may set before collection.
 pub const MIN_MAX_MISSED: u8 = 3;
-/// The shortest collection period a pool may set (audit F-03): 30 days from the mark before a
-/// line in collection can be written off.
+/// The shortest collection period a pool may set: 30 days from the mark before a line in
+/// collection can be written off.
 pub const MIN_COLLECTION_PERIOD_SECONDS: u32 = 30 * 86_400;
+/// The shortest wait a pool may set between a cancellation request and the holder's cancellation
+/// alone: seven days.
+pub const MIN_CANCEL_DELAY_SECONDS: u32 = 7 * 86_400;
 /// The year that annualizes `late_bps`: 365 days.
 pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
 /// `Pool::asset_controls` bit: the asset mint has a freeze authority.
@@ -64,15 +63,19 @@ pub const ASSET_CONTROL_PAUSABLE: u8 = 1 << 1;
 #[account]
 #[derive(InitSpace)]
 pub struct Pool {
-    pub version: u8,
     pub admin: Pubkey,
+    /// The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
+    /// `court_annotation`, and `cancel_pagare` unless the backstop applies. Never the admin.
+    pub attestor: Pubkey,
     pub asset_mint: Pubkey,
-    /// PDA token account `[VAULT, pool]` for `asset_mint`, owned by the pool PDA.
-    pub vault: Pubkey,
     /// The share token mint; its mint authority is the pool PDA.
     pub share_mint: Pubkey,
+    /// PDA token account `[VAULT, pool]` for `asset_mint`, owned by the pool PDA.
+    pub vault: Pubkey,
     /// PDA share token account `[DEAD, pool]`, owned by the pool PDA; never burned.
     pub dead_shares: Pubkey,
+    /// The series' Metaplex Core collection `draw` mints the pagaré assets into.
+    pub collection: Pubkey,
     /// Principal drawn and neither repaid nor written off.
     pub outstanding_principal: u64,
     /// Informative running total.
@@ -80,90 +83,45 @@ pub struct Pool {
     /// Informative running total.
     pub written_off: u64,
     pub line_count: u64,
+    /// Seconds after a due date (or the term) before late interest accrues and a write-off is
+    /// allowed; zero means none. Fixed at `init_pool`.
+    pub grace_period_seconds: u32,
+    /// Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
+    /// written off; at least `MIN_COLLECTION_PERIOD_SECONDS`.
+    pub collection_period_seconds: u32,
+    /// Seconds from a cancellation request before the holder may cancel alone; at least
+    /// `MIN_CANCEL_DELAY_SECONDS`. A request stores its own deadline, so a change never moves one.
+    pub cancel_delay_seconds: u32,
+    /// The largest line `open_line` accepts, as a share of the NAV at the opening, in basis points
+    /// (`1..=BPS`). Fixed at `init_pool`.
+    pub max_line_bps: u16,
+    /// `ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without
+    /// the program. Recorded at `init_pool`, never refused.
+    pub asset_controls: u8,
+    /// The share mint is `DefaultAccountState = Frozen`: holders need a thaw (Token ACL) before
+    /// they can receive or burn shares. Recorded at `init_pool`.
+    pub permissioned: bool,
     pub paused: bool,
-    /// Pool parameters packed into spare bytes, so the account layout does not change:
-    ///
-    /// | bytes   | field                  | type     | meaning                                   |
-    /// |---------|------------------------|----------|-------------------------------------------|
-    /// | 0..4    | `grace_period_seconds` | u32 LE   | grace after a due date; zero means none   |
-    /// | 4..6    | `max_line_bps`         | u16 LE   | largest line as a share of the NAV, in bps |
-    /// | 6       | `permissioned`         | u8 flag  | 1: shares are frozen by default (Token ACL) |
-    /// | 7       | `asset_controls`       | u8 bits  | bit 0: asset freeze authority; bit 1: Pausable |
-    /// | 8..12   | `cancel_delay_seconds` | u32 LE   | the backstop's wait from a cancellation request |
-    /// | 12..16  | `collection_period_seconds` | u32 LE | seconds from the mark before a write-off |
-    /// | 16..32  | unused                 | zero     |                                           |
-    ///
-    /// Read and written only through the accessors below (`grace_period_seconds`,
-    /// `max_line_bps`, `permissioned`, `asset_controls`, `collection_period_seconds`,
-    /// `cancel_delay_seconds` and their setters).
-    pub reserved: [u8; 32],
     pub bump: u8,
-    // Appended after `bump`, so the earlier offsets hold.
-    /// The agreements engine's key; co-signs `open_line`, `draw` and `cancel_pagare`, attesting
-    /// the signed document behind the hash. Rotated with `set_attestor`; never the zero key.
-    pub attestor: Pubkey,
-    /// The series' Metaplex Core collection `draw` mints the pagaré assets into; validated at
-    /// `init_pool`.
-    pub collection: Pubkey,
+    /// Zero; for fields added after mainnet.
+    pub reserved: [u8; 64],
 }
 
 impl Pool {
-    /// Seconds after a due date (or after the term) before late interest accrues and before a
-    /// write-off is allowed. Fixed at `init_pool`.
-    pub fn grace_period_seconds(&self) -> u32 {
-        let mut b = [0u8; 4];
-        b.copy_from_slice(&self.reserved[0..4]);
-        u32::from_le_bytes(b)
-    }
-
-    /// The largest principal `open_line` accepts, as a share of the NAV at the opening, in basis
-    /// points (`1..=BPS`). Fixed at `init_pool`; the cap binds the commitment, not a tranche.
-    pub fn max_line_bps(&self) -> u16 {
-        let mut b = [0u8; 2];
-        b.copy_from_slice(&self.reserved[4..6]);
-        u16::from_le_bytes(b)
-    }
-
-    pub fn set_max_line_bps(&mut self, bps: u16) {
-        self.reserved[4..6].copy_from_slice(&bps.to_le_bytes());
-    }
-
-    /// Shares are permissioned: the share mint has `DefaultAccountState = Frozen`, so a holder's
-    /// account must be thawed by the mint's freeze authority (Token ACL) before it can receive
-    /// or burn shares. Read-only fact recorded at `init_pool`.
-    pub fn permissioned(&self) -> bool {
-        self.reserved[6] == 1
-    }
-
-    pub fn set_permissioned(&mut self, v: bool) {
-        self.reserved[6] = u8::from(v);
-    }
-
-    /// The issuer controls the asset mint carries that can stop the vault without touching the
-    /// program, as bits: bit 0, a freeze authority; bit 1, the Token-2022 `Pausable` extension.
-    /// Accepted and recorded at `init_pool`, never rejected.
-    pub fn asset_controls(&self) -> u8 {
-        self.reserved[7]
-    }
-
-    pub fn set_asset_controls(&mut self, bits: u8) {
-        self.reserved[7] = bits;
-    }
-
     /// Bit 0 of `asset_controls`: the asset's issuer can freeze the vault.
     pub fn asset_freezable(&self) -> bool {
-        self.asset_controls() & ASSET_CONTROL_FREEZE != 0
+        self.asset_controls & ASSET_CONTROL_FREEZE != 0
     }
 
     /// Bit 1 of `asset_controls`: the asset's issuer can pause every transfer of the mint.
     pub fn asset_pausable(&self) -> bool {
-        self.asset_controls() & ASSET_CONTROL_PAUSABLE != 0
+        self.asset_controls & ASSET_CONTROL_PAUSABLE != 0
     }
 
     /// `nav * max_line_bps / BPS`, rounded down: the largest line the pool opens at this NAV.
     pub fn max_line_principal(&self, nav: u64) -> Option<u64> {
         (nav as u128)
-            .checked_mul(self.max_line_bps() as u128)?
+            .checked_mul(self.max_line_bps as u128)?
             .checked_div(BPS as u128)
             .and_then(|v| u64::try_from(v).ok())
     }
@@ -182,34 +140,6 @@ impl Pool {
             require!(supply == 0 || supply >= DEAD_SHARES, crate::errors::PoolError::InvariantBroken);
         }
         Ok(nav)
-    }
-
-    pub fn set_grace_period_seconds(&mut self, seconds: u32) {
-        self.reserved[0..4].copy_from_slice(&seconds.to_le_bytes());
-    }
-
-    /// Seconds after the mark (`CreditLine::accelerated_at`) before a line in collection can be
-    /// written off (audit F-03). At least `MIN_COLLECTION_PERIOD_SECONDS`; set at `init_pool`,
-    /// changed by the admin with `set_collection_period`.
-    pub fn collection_period_seconds(&self) -> u32 {
-        let mut b = [0u8; 4];
-        b.copy_from_slice(&self.reserved[12..16]);
-        u32::from_le_bytes(b)
-    }
-
-    pub fn set_collection_period_seconds(&mut self, seconds: u32) {
-        self.reserved[12..16].copy_from_slice(&seconds.to_le_bytes());
-    }
-    /// Seconds from a cancellation request before the holder may cancel alone (the backstop on
-    /// the attestor, step 6d); at least `MIN_CANCEL_DELAY_SECONDS`, changed by the admin with
-    /// `set_cancel_delay`. A request fixes its own deadline, so a change never moves one pending.
-    pub fn cancel_delay_seconds(&self) -> u32 {
-        let mut b = [0u8; 4];
-        b.copy_from_slice(&self.reserved[8..12]);
-        u32::from_le_bytes(b)
-    }
-    pub fn set_cancel_delay_seconds(&mut self, seconds: u32) {
-        self.reserved[8..12].copy_from_slice(&seconds.to_le_bytes());
     }
 }
 
@@ -231,70 +161,68 @@ pub enum LineStatus {
 #[account]
 #[derive(InitSpace)]
 pub struct CreditLine {
-    pub version: u8,
     pub pool: Pubkey,
     pub line_id: u64,
     pub borrower: Pubkey,
     /// A public program that co-signed the opening; `None` for a commercial line.
     pub sponsor: Option<Pubkey>,
+    /// `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named.
+    pub sponsor_role: u8,
     /// Hash of the signed credit agreement.
     pub agreement_hash: [u8; 32],
+    /// Salted merkle root of the credit file in the agreements engine. A commitment: no document,
+    /// name or folio is derivable from it.
+    pub expediente_root: [u8; 32],
+    pub status: LineStatus,
     /// The approved commitment; `available = principal - drawn`.
     pub principal: u64,
     /// Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
     /// the last due date.
     pub rate_bps: u16,
-    /// Ordinary interest charged so far: the sum over tranches of
-    /// `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its
-    /// draw. Zero at opening; it changes only at a draw.
-    pub interest_due: u64,
+    /// The maturity of a bullet line.
     pub term_end: i64,
+    /// Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
+    /// `term_end` on a bullet line; `suspend_draws` brings it to now.
+    pub availability_end: i64,
+    /// Principal transferred to the borrower so far; `drawn <= principal`, never decreases.
+    pub drawn: u64,
+    /// Tranches drawn; at most `MAX_DRAWS`.
+    pub draws: u16,
+    /// Ordinary interest charged so far: the sum over tranches of
+    /// `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its draw.
+    pub interest_due: u64,
     pub principal_repaid: u64,
     pub interest_repaid: u64,
-    pub status: LineStatus,
+    /// The index of the oldest pagaré no repayment has marked paid. `repay` requires the records
+    /// `[pagares_paid ..= last_touched]` and moves it.
+    pub pagares_paid: u16,
+    /// The first due date; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`.
+    /// Zero on a bullet line.
+    pub first_due_at: i64,
+    pub interval_seconds: i64,
+    /// Installments of the schedule, `1..=MAX_INSTALLMENTS`; zero on a bullet line.
+    pub installments: u16,
+    /// Annual late interest rate on overdue principal, in basis points.
+    pub late_bps: u16,
+    /// Missed installments that allow `mark_in_collection`.
+    pub max_missed: u8,
+    /// Late interest collected so far.
+    pub late_collected: u64,
+    /// Late interest is settled up to this instant; zero until a repayment collects some.
+    pub late_paid_until: i64,
     pub opened_at: i64,
     /// Time of the first draw; informational (the calendar is `first_due_at`).
     pub drawn_at: i64,
     pub closed_at: i64,
-    /// Zero on a bullet line (single maturity). On a scheduled line, the installment schedule,
-    /// read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:
-    ///
-    /// | bytes  | field              | type    | meaning                                         |
-    /// |--------|--------------------|---------|-------------------------------------------------|
-    /// | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates                       |
-    /// | 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |
-    /// | 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |
-    /// | 12     | `max_missed`       | u8      | missed installments that allow collection       |
-    /// | 13     | `flags`            | u8      | reserved, zero                                  |
-    /// | 14..22 | `late_collected`   | u64 LE  | late interest collected so far                  |
-    /// | 22..30 | `late_paid_until`  | i64 LE  | late interest is settled up to this time        |
-    /// | 30..32 | unused             | zero    |                                                 |
-    pub reserved: [u8; 32],
-    pub bump: u8,
-    // Appended after `bump`, so the earlier offsets hold.
-    /// Principal transferred to the borrower so far; `drawn <= principal`, never decreases.
-    pub drawn: u64,
-    /// Number of tranches drawn; at most `MAX_DRAWS`.
-    pub draws: u16,
-    /// Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
-    /// `term_end` on a bullet line, fixed at opening; `suspend_draws` brings it to now.
-    pub availability_end: i64,
-    /// The first due date, from the signed contract; installment `k` is due at
-    /// `first_due_at + (k - 1) * interval`. Zero on a bullet line.
-    pub first_due_at: i64,
-    /// `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named.
-    pub sponsor_role: u8,
-    /// Salted merkle root of the credit file in the agreements engine. A commitment: no document,
-    /// name or folio is derivable from it.
-    pub expediente_root: [u8; 32],
-    /// When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.
-    /// From then on every installment is due and late interest runs on all remaining principal.
-    /// Also the start of the collection period: `write_off` waits
-    /// `Pool::collection_period_seconds` from it.
+    /// When `mark_in_collection` accelerated the balance; zero before. From then on every
+    /// installment is due, and `write_off` waits `Pool::collection_period_seconds` from it.
     pub accelerated_at: i64,
+    pub bump: u8,
+    /// Zero; for fields added after mainnet.
+    pub reserved: [u8; 64],
 }
 
-/// How the pagaré text was signed (C6a): the borrower's wallet alone.
+/// How the pagaré text was signed: the borrower's wallet alone.
 pub const SIGNATURE_WALLET: u8 = 0;
 /// A PSC (prestador de servicios de certificación) certificate and the wallet.
 pub const SIGNATURE_PSC_WALLET: u8 = 1;
@@ -303,23 +231,19 @@ pub const SIGNATURE_EFIRMA_WALLET: u8 = 2;
 
 /// `Pagare::status`: the título is outstanding (the asset exists, held by the pool or endorsed).
 pub const PAGARE_OUTSTANDING: u8 = 0;
-/// `Pagare::status`: paid and extinguished by `cancel_pagare` (the asset is burnt; the sidecar
-/// stays as the "PAGADO" record with the receipt's hash).
+/// `Pagare::status`: paid and extinguished by `cancel_pagare`; the asset is burnt and the record
+/// stays as the PAGADO mark.
 pub const PAGARE_PAID: u8 = 1;
-/// `Pagare::status`: paid (the payment entry reached its `drawn_through`), the burn still owed.
+/// `Pagare::status`: a repayment reached its `drawn_through`; the burn is still owed.
 pub const PAGARE_PAID_PENDING_CANCEL: u8 = 2;
-
-/// The floor of `Pool::cancel_delay_seconds`: seven days (step 6d, the backstop on the attestor).
-pub const MIN_CANCEL_DELAY_SECONDS: u32 = 7 * 86_400;
 
 /// `Pagare::flags` bit: the asset carries an owner-managed `BurnDelegate` plugin, so a later
 /// procuración approves its authority instead of adding the plugin again.
 pub const PAGARE_FLAG_BURN_DELEGATE: u8 = 1 << 0;
-/// `Pagare::flags` bit: an endoso en procuración is in force (set by `endorse_pagare`, cleared by
-/// `revoke_procuracion` and by the extinction).
+/// `Pagare::flags` bit: an endoso en procuración is in force.
 pub const PAGARE_FLAG_PROCURACION: u8 = 1 << 1;
 
-/// Registry entry kinds (`Pagare::last_kind`, `PagareEntry::kind`); an unknown kind is refused.
+/// Registry entry kinds (`Pagare::last_kind`, `PagareEntry::kind`).
 pub const KIND_EMISION: u8 = 0;
 pub const KIND_PROPIEDAD: u8 = 1;
 pub const KIND_PROCURACION: u8 = 2;
@@ -332,17 +256,14 @@ pub const KIND_ENDOSO_TARDIO: u8 = 8;
 pub const KIND_PAGADO: u8 = 9;
 pub const KIND_SOLICITUD_CANCELACION: u8 = 10;
 pub const KIND_RECIBO: u8 = 11;
-/// The highest kind the program knows.
-pub const KIND_MAX: u8 = KIND_RECIBO;
 
-/// The program's record of one pagaré, the sidecar of the Core asset `draw` mints (C22). It holds
-/// no folio and nothing personal, and is never closed: after `cancel_pagare` it stays as the
-/// PAGADO mark.
+/// The program's record of one pagaré, beside the Core asset `draw` mints. It holds no folio and
+/// nothing personal, and is never closed: after `cancel_pagare` it stays as the PAGADO mark.
 #[account]
 #[derive(InitSpace)]
 pub struct Pagare {
     pub line: Pubkey,
-    /// Which disposición of the line, 0-based: the `draws` count at the time of the draw.
+    /// Which tranche of the line, 0-based.
     pub draw_index: u16,
     /// The Core asset at `[PAGARE_ASSET, line, draw_index]`.
     pub asset: Pubkey,
@@ -351,42 +272,44 @@ pub struct Pagare {
     /// The tranche this pagaré documents.
     pub amount: u64,
     pub issued_at: i64,
-    /// The line's last due date at issuance: when the last payment is owed.
+    /// The line's last due date at issuance.
     pub due_at: i64,
-    /// The line's `drawn` after this tranche: the sum of the amounts of pagarés 0..=draw_index.
-    /// The coverage rule reads it instead of summing earlier sidecars (pagarés are covered oldest
-    /// first): pagaré k is paid once the line's `principal_repaid` reaches `drawn_through`.
+    /// The line's `drawn` after this tranche. Pagarés are covered oldest first, so pagaré k is
+    /// paid once the line's `principal_repaid` reaches it.
     pub drawn_through: u64,
-    /// Hash of the PSC certificate that signed the pagaré text (C6a); zero only when
+    /// Hash of the PSC certificate that signed the pagaré text; zero only when
     /// `signature_method` is `SIGNATURE_WALLET`.
     pub cert_fingerprint: [u8; 32],
-    /// `SIGNATURE_WALLET`, `SIGNATURE_PSC_WALLET` or `SIGNATURE_EFIRMA_WALLET`.
+    /// `SIGNATURE_*`.
     pub signature_method: u8,
-    /// `PAGARE_OUTSTANDING` or `PAGARE_PAID`.
+    /// `PAGARE_OUTSTANDING`, `PAGARE_PAID_PENDING_CANCEL` or `PAGARE_PAID`; never reverts.
     pub status: u8,
-    /// When `cancel_pagare` marked it paid; zero while outstanding.
+    /// When the repayment that covered it landed; zero while outstanding.
     pub paid_at: i64,
-    /// Hash of the receipt the payment entry that marked it paid carried (LGTOC 129); zero while
-    /// outstanding.
+    /// The receipt hash of that repayment: the payer's, until the holder annotates the real one
+    /// (`annotate_payment`, before the burn).
     pub receipt_hash: [u8; 32],
-    pub bump: u8,
-    /// The procurador of the endoso en procuración in force (`flags` bit 1); the zero key when
-    /// there is none. Set by `endorse_pagare`, cleared by `revoke_procuracion`.
+    /// The receipt hash `cancel_pagare` was given; zero until the burn.
+    pub cancel_receipt_hash: [u8; 32],
+    /// The deadline of a pending cancellation request, after which the holder may cancel alone;
+    /// zero when none.
+    pub cancel_after: i64,
+    /// The receipt hash of that request.
+    pub requested_receipt_hash: [u8; 32],
+    /// The procurador of the endoso en procuración in force; the zero key when none. Cleared by
+    /// `revoke_procuracion` and by the extinction.
     pub procurador: Pubkey,
+    /// `PAGARE_FLAG_*` bits.
+    pub flags: u8,
     /// The registry: `sha256(log_root || entry_hash)` over every entry, the issuance entry first.
     pub log_root: [u8; 32],
     /// Entries in the chain; the issuance entry is 1.
     pub entry_count: u32,
     /// `KIND_*` of the last entry.
     pub last_kind: u8,
-    /// `PAGARE_FLAG_*` bits.
-    pub flags: u8,
-    /// Hash of the final receipt `cancel_pagare` was given; zero until the burn.
-    pub cancel_receipt_hash: [u8; 32],
-    /// When the holder requested a cancellation without the attestor (the backstop); zero otherwise.
-    pub cancel_after: i64,
-    /// The receipt hash of that request.
-    pub requested_receipt_hash: [u8; 32],
+    pub bump: u8,
+    /// Zero; for fields added after mainnet.
+    pub reserved: [u8; 32],
 }
 
 /// Installment terms requested by `open_line`; fixed for the life of the line.
@@ -394,7 +317,7 @@ pub struct Pagare {
 pub struct ScheduleParams {
     /// The first due date (unix seconds), from the signed contract; must be after the opening.
     pub first_due_at: i64,
-    /// Seconds between due dates; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`.
+    /// Seconds between due dates.
     pub interval_seconds: i64,
     /// `drawn + interest_due` is paid in this many installments.
     pub installments: u16,
@@ -404,68 +327,24 @@ pub struct ScheduleParams {
     pub max_missed: u8,
 }
 
-/// The schedule of a scheduled line, unpacked from `CreditLine.reserved`.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+/// The schedule terms of a scheduled line, read from its fields.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Schedule {
     pub interval_seconds: i64,
     pub installments: u16,
     pub late_bps: u16,
     pub max_missed: u8,
-    pub flags: u8,
-    pub late_collected: u64,
-    /// Every repayment settles the late interest accrued until its own time; late interest
-    /// accrues again only after this watermark. Zero until the first repayment.
-    pub late_paid_until: i64,
-}
-
-impl Schedule {
-    pub fn unpack(r: &[u8; 32]) -> Self {
-        let mut i64b = [0u8; 8];
-        let mut u16b = [0u8; 2];
-        let mut u64b = [0u8; 8];
-        i64b.copy_from_slice(&r[0..8]);
-        let interval_seconds = i64::from_le_bytes(i64b);
-        u16b.copy_from_slice(&r[8..10]);
-        let installments = u16::from_le_bytes(u16b);
-        u16b.copy_from_slice(&r[10..12]);
-        let late_bps = u16::from_le_bytes(u16b);
-        u64b.copy_from_slice(&r[14..22]);
-        let late_collected = u64::from_le_bytes(u64b);
-        i64b.copy_from_slice(&r[22..30]);
-        let late_paid_until = i64::from_le_bytes(i64b);
-        Self { interval_seconds, installments, late_bps, max_missed: r[12], flags: r[13], late_collected, late_paid_until }
-    }
-
-    pub fn pack(&self, r: &mut [u8; 32]) {
-        r[0..8].copy_from_slice(&self.interval_seconds.to_le_bytes());
-        r[8..10].copy_from_slice(&self.installments.to_le_bytes());
-        r[10..12].copy_from_slice(&self.late_bps.to_le_bytes());
-        r[12] = self.max_missed;
-        r[13] = self.flags;
-        r[14..22].copy_from_slice(&self.late_collected.to_le_bytes());
-        r[22..30].copy_from_slice(&self.late_paid_until.to_le_bytes());
-    }
 }
 
 impl CreditLine {
-    /// The installment schedule of a scheduled line; `None` for a bullet line (whose `reserved`
-    /// bytes are all zero, so `installments == 0`).
+    /// The installment schedule; `None` on a bullet line (`installments == 0`).
     pub fn schedule(&self) -> Option<Schedule> {
-        let s = Schedule::unpack(&self.reserved);
-        (s.installments > 0).then_some(s)
-    }
-
-    /// The payment cursor (step 6d): the index of the oldest pagaré not yet marked paid, in
-    /// `reserved` bytes 30..32 (u16 LE), which the `Schedule` never writes; zero on a bullet line
-    /// like the rest. `repay` requires the sidecars `[pagares_paid ..= last_touched]` and moves it.
-    pub fn pagares_paid(&self) -> u16 {
-        u16::from_le_bytes([self.reserved[30], self.reserved[31]])
-    }
-    pub fn set_pagares_paid(&mut self, n: u16) {
-        self.reserved[30..32].copy_from_slice(&n.to_le_bytes());
-    }
-    pub fn set_schedule(&mut self, s: &Schedule) {
-        s.pack(&mut self.reserved);
+        (self.installments > 0).then_some(Schedule {
+            interval_seconds: self.interval_seconds,
+            installments: self.installments,
+            late_bps: self.late_bps,
+            max_missed: self.max_missed,
+        })
     }
 
     /// The instant one interval before the first due date, from which `math` counts the
@@ -476,9 +355,8 @@ impl CreditLine {
         self.first_due_at.checked_sub(s.interval_seconds)
     }
 
-    /// When the last payment is owed: the last due date,
-    /// `first_due_at + (installments - 1) * interval`, on a scheduled line; `term_end` on a bullet
-    /// line. Each tranche's interest runs from its draw to this instant.
+    /// When the last payment is owed: `first_due_at + (installments - 1) * interval` on a scheduled
+    /// line, `term_end` on a bullet line. Each tranche's interest runs from its draw to this instant.
     pub fn last_due(&self) -> Option<i64> {
         match self.schedule() {
             Some(s) => s
@@ -501,25 +379,29 @@ mod tests {
 
     fn pool(outstanding_principal: u64) -> Pool {
         Pool {
-            version: POOL_VERSION,
             admin: Pubkey::default(),
+            attestor: Pubkey::default(),
             asset_mint: Pubkey::default(),
-            vault: Pubkey::default(),
             share_mint: Pubkey::default(),
+            vault: Pubkey::default(),
             dead_shares: Pubkey::default(),
+            collection: Pubkey::default(),
             outstanding_principal,
             interest_collected: 0,
             written_off: 0,
             line_count: 0,
+            grace_period_seconds: 0,
+            collection_period_seconds: 0,
+            cancel_delay_seconds: 0,
+            max_line_bps: 0,
+            asset_controls: 0,
+            permissioned: false,
             paused: false,
-            reserved: [0; 32],
             bump: 0,
-            attestor: Pubkey::default(),
-            collection: Pubkey::default(),
+            reserved: [0; 64],
         }
     }
 
-    /// The invariants every money instruction re-checks before returning.
     #[test]
     fn check_accepts_a_consistent_pool_and_refuses_a_broken_one() {
         let p = pool(5);

@@ -3,15 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import {
-  LINE_VERSION,
-  decodeSchedule,
-  lineArrears,
-  maxLinePrincipal,
-  poolFlags,
-  poolGracePeriodSeconds,
-  poolMaxLineBps,
-} from "../src/schedule";
+import { lineArrears, lineSchedule, maxLinePrincipal } from "../src/schedule";
 
 type Vector = {
   total: string;
@@ -60,8 +52,7 @@ test("lineArrears agrees with math::arrears on every vector", () => {
         installments: v.installments,
         lateBps: v.late_bps,
         maxMissed: 3,
-        flags: 0,
-        lateCollected: BigInt(v.late_collected),
+          lateCollected: BigInt(v.late_collected),
         latePaidUntil: BigInt(v.late_paid_until),
       },
       BigInt(v.grace),
@@ -92,59 +83,20 @@ test("lineArrears agrees with math::arrears on every vector", () => {
   });
 });
 
-test("decodeSchedule reads the packed CreditLine.reserved layout", () => {
-  const reserved = new Uint8Array(32);
-  const dv = new DataView(reserved.buffer);
-  dv.setBigInt64(0, 2_592_000n, true); // interval_seconds
-  dv.setUint16(8, 6, true); // installments
-  dv.setUint16(10, 5_000, true); // late_bps
-  dv.setUint8(12, 3); // max_missed
-  dv.setUint8(13, 0); // flags
-  dv.setBigUint64(14, 1_234n, true); // late_collected
-  dv.setBigInt64(22, 1_700_000_000n, true); // late_paid_until
-  assert.deepEqual(decodeSchedule({ version: LINE_VERSION, reserved }), {
+test("lineSchedule reads the schedule fields and returns null for a bullet line", () => {
+  const line = {
     intervalSeconds: 2_592_000n,
     installments: 6,
     lateBps: 5_000,
     maxMissed: 3,
-    flags: 0,
     lateCollected: 1_234n,
     latePaidUntil: 1_700_000_000n,
-  });
-  assert.equal(decodeSchedule({ version: 1, reserved }), null);
+  };
+  assert.deepEqual(lineSchedule(line), line);
+  assert.equal(lineSchedule({ ...line, installments: 0 }), null);
 });
 
-test("poolGracePeriodSeconds reads Pool.reserved[0..4]", () => {
-  const reserved = new Uint8Array(32);
-  new DataView(reserved.buffer).setUint32(0, 86_400, true);
-  assert.equal(poolGracePeriodSeconds(reserved), 86_400n);
-});
-
-test("poolFlags reads the permissioned and asset-control bytes of Pool.reserved", () => {
-  const reserved = new Uint8Array(32);
-  assert.deepEqual(poolFlags(reserved), {
-    permissioned: false,
-    assetFreezable: false,
-    assetPausable: false,
-  });
-  reserved[6] = 1;
-  reserved[7] = 0b11;
-  assert.deepEqual(poolFlags(reserved), {
-    permissioned: true,
-    assetFreezable: true,
-    assetPausable: true,
-  });
-  reserved[7] = 0b10;
-  assert.equal(poolFlags(reserved).assetFreezable, false);
-  assert.equal(poolFlags(reserved).assetPausable, true);
-});
-
-test("poolMaxLineBps reads Pool.reserved[4..6] and maxLinePrincipal applies it to the NAV", () => {
-  const reserved = new Uint8Array(32);
-  const dv = new DataView(reserved.buffer);
-  dv.setUint32(0, 86_400, true);
-  dv.setUint16(4, 1_000, true);
-  assert.equal(poolMaxLineBps(reserved), 1_000);
+test("maxLinePrincipal applies the cap to the NAV, rounded down", () => {
   assert.equal(maxLinePrincipal(10_000_000n, 1_000), 1_000_000n);
   assert.equal(
     maxLinePrincipal(10_000_001n, 1_000),
@@ -170,7 +122,6 @@ test("lateDue is never negative when lateCollected exceeds the principal (R-24)"
       installments: 6,
       lateBps: 10_000,
       maxMissed: 3,
-      flags: 0,
       lateCollected: 601n,
       latePaidUntil: 0n,
     },

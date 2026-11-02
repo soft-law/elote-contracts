@@ -556,7 +556,7 @@ pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, 
     require!(pagare.status == PAGARE_PAID_PENDING_CANCEL, PoolError::PagareNotCovered);
     let now = Clock::get()?.unix_timestamp;
     let deadline = now
-        .checked_add(i64::from(pool.cancel_delay_seconds()))
+        .checked_add(i64::from(pool.cancel_delay_seconds))
         .ok_or(PoolError::Overflow)?
         .max(pagare.cancel_after);
     let pool_key = pool.key();

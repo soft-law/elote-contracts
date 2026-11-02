@@ -352,7 +352,7 @@ fn limit_a_repay_touching_more_than_six_pagare_records_must_be_split() {
     let cu2 = env.send(ix, &borrower, &[]).compute_units_consumed;
     assert!(cu1 < CEILING && cu2 < CEILING, "split: {cu1} and {cu2} CU");
     let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.pagares_paid()), (LineStatus::Repaid, 8));
+    assert_eq!((line.status, line.pagares_paid), (LineStatus::Repaid, 8));
 }
 
 /// `repay` takes exactly the pagaré records `[pagares_paid ..= last_touched]`, computed by the
@@ -386,5 +386,5 @@ fn limit_a_payment_landing_first_makes_an_in_flight_repay_retry() {
     // The retry, built from the line as it is now.
     let retry = env.repay_ix(&k, line_id, &borrower.pubkey(), amount);
     env.send(retry, &borrower, &[]);
-    assert_eq!(env.line(&k, line_id).pagares_paid(), 1);
+    assert_eq!(env.line(&k, line_id).pagares_paid, 1);
 }

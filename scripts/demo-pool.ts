@@ -65,16 +65,14 @@ import {
   drawPagareAccounts,
   fetchPagare,
   findPagarePda,
-  pagaresPaidOf,
   repaySidecars,
   withRemainingAccounts,
   getInitPoolInstructionAsync,
   getOpenLineInstructionAsync,
   getRedeemInstructionAsync,
   getRepayInstructionAsync,
-  decodeSchedule,
   lineArrears,
-  poolGracePeriodSeconds,
+  lineSchedule,
 } from "../clients/js/src/index.ts";
 
 const DISCLAIMER = "Demo on Solana devnet with test assets. Not an offer of securities.";
@@ -396,7 +394,7 @@ async function repayRemaining(lineAddress: Address, amount: bigint, late: bigint
     const [pagare] = await findPagarePda({ line: lineAddress, drawIndex });
     drawnThrough.push((await fetchPagare(rpc, pagare, { commitment: "confirmed" })).data.drawnThrough);
   }
-  return repaySidecars({ line: lineAddress, pagaresPaid: pagaresPaidOf(l.reserved), drawnThrough, principalAfter });
+  return repaySidecars({ line: lineAddress, pagaresPaid: l.pagaresPaid, drawnThrough, principalAfter });
 }
 
 const pagareAccounts = async (lineAddress: Address, drawIndex: number) => ({
@@ -551,10 +549,10 @@ async function scheduleDemo() {
     }),
   ]);
 
-  const grace = poolGracePeriodSeconds((await fetchPool(rpc, pool, { commitment: "confirmed" })).data.reserved);
+  const grace = BigInt((await fetchPool(rpc, pool, { commitment: "confirmed" })).data.gracePeriodSeconds);
   const read = async () => {
     const l = (await fetchCreditLine(rpc, sLine, { commitment: "confirmed" })).data;
-    const s = decodeSchedule(l)!;
+    const s = lineSchedule(l)!;
     const now = await chainNow();
     return { l, s, now, a: lineArrears(l, s, grace, now) };
   };

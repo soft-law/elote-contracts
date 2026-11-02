@@ -14,7 +14,7 @@ use crate::events::{
 use crate::math;
 use crate::state::{
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
-    MIN_CANCEL_DELAY_SECONDS, MIN_COLLECTION_PERIOD_SECONDS, POOL_VERSION,
+    MIN_CANCEL_DELAY_SECONDS, MIN_COLLECTION_PERIOD_SECONDS,
 };
 
 /// Signs CPIs as the pool PDA.
@@ -240,7 +240,6 @@ pub fn init_pool(
     let permissioned = validate_share_mint(&ctx)?;
     validate_collection(&ctx.accounts.collection.to_account_info(), &ctx.accounts.pool.key())?;
     let pool = &mut ctx.accounts.pool;
-    pool.version = POOL_VERSION;
     pool.admin = ctx.accounts.admin.key();
     pool.asset_mint = ctx.accounts.asset_mint.key();
     pool.vault = ctx.accounts.vault.key();
@@ -251,14 +250,14 @@ pub fn init_pool(
     pool.written_off = 0;
     pool.line_count = 0;
     pool.paused = false;
-    pool.reserved = [0; 32];
-    pool.set_grace_period_seconds(grace_period_seconds);
-    pool.set_max_line_bps(max_line_bps);
-    pool.set_asset_controls(controls);
-    pool.set_permissioned(permissioned);
-    pool.set_collection_period_seconds(collection_period_seconds);
-    pool.set_cancel_delay_seconds(cancel_delay_seconds);
+    pool.grace_period_seconds = grace_period_seconds;
+    pool.max_line_bps = max_line_bps;
+    pool.asset_controls = controls;
+    pool.permissioned = permissioned;
+    pool.collection_period_seconds = collection_period_seconds;
+    pool.cancel_delay_seconds = cancel_delay_seconds;
     pool.bump = ctx.bumps.pool;
+    pool.reserved = [0; 64];
     pool.attestor = attestor;
     pool.collection = ctx.accounts.collection.key();
 
@@ -270,7 +269,7 @@ pub fn init_pool(
     });
     emit_cpi!(PoolConfigured { pool: pool.key(), grace_period_seconds });
     emit_cpi!(PoolLineCapSet { pool: pool.key(), max_line_bps });
-    emit_cpi!(PoolFlags { pool: pool.key(), asset_controls: controls, permissioned: pool.permissioned() });
+    emit_cpi!(PoolFlags { pool: pool.key(), asset_controls: controls, permissioned });
     emit_cpi!(AttestorSet { pool: pool.key(), attestor });
     emit_cpi!(PoolCollectionSet { pool: pool.key(), collection: pool.collection });
     emit_cpi!(CollectionPeriodSet { pool: pool.key(), collection_period_seconds });
@@ -301,7 +300,7 @@ pub struct SetCollectionPeriod<'info> {
 pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_period_seconds: u32) -> Result<()> {
     require!(collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
     let pool = &mut ctx.accounts.pool;
-    pool.set_collection_period_seconds(collection_period_seconds);
+    pool.collection_period_seconds = collection_period_seconds;
     emit_cpi!(CollectionPeriodSet { pool: pool.key(), collection_period_seconds });
     Ok(())
 }
@@ -622,7 +621,7 @@ pub struct SetCancelDelay<'info> {
 pub fn set_cancel_delay(ctx: Context<SetCancelDelay>, cancel_delay_seconds: u32) -> Result<()> {
     require!(cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS, PoolError::CancelDelayTooShort);
     let pool = &mut ctx.accounts.pool;
-    pool.set_cancel_delay_seconds(cancel_delay_seconds);
+    pool.cancel_delay_seconds = cancel_delay_seconds;
     emit_cpi!(CancelDelaySet { pool: pool.key(), cancel_delay_seconds });
     Ok(())
 }

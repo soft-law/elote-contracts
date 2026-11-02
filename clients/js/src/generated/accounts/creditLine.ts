@@ -64,14 +64,21 @@ export function getCreditLineDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type CreditLine = {
   discriminator: ReadonlyUint8Array;
-  version: number;
   pool: Address;
   lineId: bigint;
   borrower: Address;
   /** A public program that co-signed the opening; `None` for a commercial line. */
   sponsor: Option<Address>;
+  /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
+  sponsorRole: number;
   /** Hash of the signed credit agreement. */
   agreementHash: ReadonlyUint8Array;
+  /**
+   * Salted merkle root of the credit file in the agreements engine. A commitment: no document,
+   * name or folio is derivable from it.
+   */
+  expedienteRoot: ReadonlyUint8Array;
+  status: LineStatus;
   /** The approved commitment; `available = principal - drawn`. */
   principal: bigint;
   /**
@@ -79,76 +86,75 @@ export type CreditLine = {
    * the last due date.
    */
   rateBps: number;
+  /** The maturity of a bullet line. */
+  termEnd: bigint;
+  /**
+   * Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
+   * `term_end` on a bullet line; `suspend_draws` brings it to now.
+   */
+  availabilityEnd: bigint;
+  /** Principal transferred to the borrower so far; `drawn <= principal`, never decreases. */
+  drawn: bigint;
+  /** Tranches drawn; at most `MAX_DRAWS`. */
+  draws: number;
   /**
    * Ordinary interest charged so far: the sum over tranches of
-   * `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its
-   * draw. Zero at opening; it changes only at a draw.
+   * `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its draw.
    */
   interestDue: bigint;
-  termEnd: bigint;
   principalRepaid: bigint;
   interestRepaid: bigint;
-  status: LineStatus;
+  /**
+   * The index of the oldest pagaré no repayment has marked paid. `repay` requires the records
+   * `[pagares_paid ..= last_touched]` and moves it.
+   */
+  pagaresPaid: number;
+  /**
+   * The first due date; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`.
+   * Zero on a bullet line.
+   */
+  firstDueAt: bigint;
+  intervalSeconds: bigint;
+  /** Installments of the schedule, `1..=MAX_INSTALLMENTS`; zero on a bullet line. */
+  installments: number;
+  /** Annual late interest rate on overdue principal, in basis points. */
+  lateBps: number;
+  /** Missed installments that allow `mark_in_collection`. */
+  maxMissed: number;
+  /** Late interest collected so far. */
+  lateCollected: bigint;
+  /** Late interest is settled up to this instant; zero until a repayment collects some. */
+  latePaidUntil: bigint;
   openedAt: bigint;
   /** Time of the first draw; informational (the calendar is `first_due_at`). */
   drawnAt: bigint;
   closedAt: bigint;
   /**
-   * Zero on a bullet line (single maturity). On a scheduled line, the installment schedule,
-   * read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:
-   *
-   * | bytes  | field              | type    | meaning                                         |
-   * |--------|--------------------|---------|-------------------------------------------------|
-   * | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates                       |
-   * | 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |
-   * | 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |
-   * | 12     | `max_missed`       | u8      | missed installments that allow collection       |
-   * | 13     | `flags`            | u8      | reserved, zero                                  |
-   * | 14..22 | `late_collected`   | u64 LE  | late interest collected so far                  |
-   * | 22..30 | `late_paid_until`  | i64 LE  | late interest is settled up to this time        |
-   * | 30..32 | unused             | zero    |                                                 |
-   */
-  reserved: ReadonlyUint8Array;
-  bump: number;
-  /** Principal transferred to the borrower so far; `drawn <= principal`, never decreases. */
-  drawn: bigint;
-  /** Number of tranches drawn; at most `MAX_DRAWS`. */
-  draws: number;
-  /**
-   * Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
-   * `term_end` on a bullet line, fixed at opening; `suspend_draws` brings it to now.
-   */
-  availabilityEnd: bigint;
-  /**
-   * The first due date, from the signed contract; installment `k` is due at
-   * `first_due_at + (k - 1) * interval`. Zero on a bullet line.
-   */
-  firstDueAt: bigint;
-  /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
-  sponsorRole: number;
-  /**
-   * Salted merkle root of the credit file in the agreements engine. A commitment: no document,
-   * name or folio is derivable from it.
-   */
-  expedienteRoot: ReadonlyUint8Array;
-  /**
-   * When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.
-   * From then on every installment is due and late interest runs on all remaining principal.
-   * Also the start of the collection period: `write_off` waits
-   * `Pool::collection_period_seconds` from it.
+   * When `mark_in_collection` accelerated the balance; zero before. From then on every
+   * installment is due, and `write_off` waits `Pool::collection_period_seconds` from it.
    */
   acceleratedAt: bigint;
+  bump: number;
+  /** Zero; for fields added after mainnet. */
+  reserved: ReadonlyUint8Array;
 };
 
 export type CreditLineArgs = {
-  version: number;
   pool: Address | HasAddress;
   lineId: number | bigint;
   borrower: Address | HasAddress;
   /** A public program that co-signed the opening; `None` for a commercial line. */
   sponsor: OptionOrNullable<Address | HasAddress>;
+  /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
+  sponsorRole: number;
   /** Hash of the signed credit agreement. */
   agreementHash: ReadonlyUint8Array;
+  /**
+   * Salted merkle root of the credit file in the agreements engine. A commitment: no document,
+   * name or folio is derivable from it.
+   */
+  expedienteRoot: ReadonlyUint8Array;
+  status: LineStatusArgs;
   /** The approved commitment; `available = principal - drawn`. */
   principal: number | bigint;
   /**
@@ -156,65 +162,57 @@ export type CreditLineArgs = {
    * the last due date.
    */
   rateBps: number;
+  /** The maturity of a bullet line. */
+  termEnd: number | bigint;
+  /**
+   * Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
+   * `term_end` on a bullet line; `suspend_draws` brings it to now.
+   */
+  availabilityEnd: number | bigint;
+  /** Principal transferred to the borrower so far; `drawn <= principal`, never decreases. */
+  drawn: number | bigint;
+  /** Tranches drawn; at most `MAX_DRAWS`. */
+  draws: number;
   /**
    * Ordinary interest charged so far: the sum over tranches of
-   * `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its
-   * draw. Zero at opening; it changes only at a draw.
+   * `amount * rate_bps * (last_due - drawn) / (BPS * SECONDS_PER_YEAR)`, each fixed at its draw.
    */
   interestDue: number | bigint;
-  termEnd: number | bigint;
   principalRepaid: number | bigint;
   interestRepaid: number | bigint;
-  status: LineStatusArgs;
+  /**
+   * The index of the oldest pagaré no repayment has marked paid. `repay` requires the records
+   * `[pagares_paid ..= last_touched]` and moves it.
+   */
+  pagaresPaid: number;
+  /**
+   * The first due date; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`.
+   * Zero on a bullet line.
+   */
+  firstDueAt: number | bigint;
+  intervalSeconds: number | bigint;
+  /** Installments of the schedule, `1..=MAX_INSTALLMENTS`; zero on a bullet line. */
+  installments: number;
+  /** Annual late interest rate on overdue principal, in basis points. */
+  lateBps: number;
+  /** Missed installments that allow `mark_in_collection`. */
+  maxMissed: number;
+  /** Late interest collected so far. */
+  lateCollected: number | bigint;
+  /** Late interest is settled up to this instant; zero until a repayment collects some. */
+  latePaidUntil: number | bigint;
   openedAt: number | bigint;
   /** Time of the first draw; informational (the calendar is `first_due_at`). */
   drawnAt: number | bigint;
   closedAt: number | bigint;
   /**
-   * Zero on a bullet line (single maturity). On a scheduled line, the installment schedule,
-   * read and written only through [`CreditLine::schedule`] and [`CreditLine::set_schedule`]:
-   *
-   * | bytes  | field              | type    | meaning                                         |
-   * |--------|--------------------|---------|-------------------------------------------------|
-   * | 0..8   | `interval_seconds` | i64 LE  | seconds between due dates                       |
-   * | 8..10  | `installments`     | u16 LE  | number of installments, 1..=`MAX_INSTALLMENTS`  |
-   * | 10..12 | `late_bps`         | u16 LE  | annual late interest rate on overdue amounts    |
-   * | 12     | `max_missed`       | u8      | missed installments that allow collection       |
-   * | 13     | `flags`            | u8      | reserved, zero                                  |
-   * | 14..22 | `late_collected`   | u64 LE  | late interest collected so far                  |
-   * | 22..30 | `late_paid_until`  | i64 LE  | late interest is settled up to this time        |
-   * | 30..32 | unused             | zero    |                                                 |
-   */
-  reserved: ReadonlyUint8Array;
-  bump: number;
-  /** Principal transferred to the borrower so far; `drawn <= principal`, never decreases. */
-  drawn: number | bigint;
-  /** Number of tranches drawn; at most `MAX_DRAWS`. */
-  draws: number;
-  /**
-   * Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
-   * `term_end` on a bullet line, fixed at opening; `suspend_draws` brings it to now.
-   */
-  availabilityEnd: number | bigint;
-  /**
-   * The first due date, from the signed contract; installment `k` is due at
-   * `first_due_at + (k - 1) * interval`. Zero on a bullet line.
-   */
-  firstDueAt: number | bigint;
-  /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
-  sponsorRole: number;
-  /**
-   * Salted merkle root of the credit file in the agreements engine. A commitment: no document,
-   * name or folio is derivable from it.
-   */
-  expedienteRoot: ReadonlyUint8Array;
-  /**
-   * When `mark_in_collection` accelerated the balance (vencimiento anticipado); zero before.
-   * From then on every installment is due and late interest runs on all remaining principal.
-   * Also the start of the collection period: `write_off` waits
-   * `Pool::collection_period_seconds` from it.
+   * When `mark_in_collection` accelerated the balance; zero before. From then on every
+   * installment is due, and `write_off` waits `Pool::collection_period_seconds` from it.
    */
   acceleratedAt: number | bigint;
+  bump: number;
+  /** Zero; for fields added after mainnet. */
+  reserved: ReadonlyUint8Array;
 };
 
 /** Gets the encoder for {@link CreditLineArgs} account data. */
@@ -222,31 +220,37 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["version", getU8Encoder()],
       ["pool", getAddressEncoder()],
       ["lineId", getU64Encoder()],
       ["borrower", getAddressEncoder()],
       ["sponsor", getOptionEncoder(getAddressEncoder())],
+      ["sponsorRole", getU8Encoder()],
       ["agreementHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
+      ["status", getLineStatusEncoder()],
       ["principal", getU64Encoder()],
       ["rateBps", getU16Encoder()],
-      ["interestDue", getU64Encoder()],
       ["termEnd", getI64Encoder()],
+      ["availabilityEnd", getI64Encoder()],
+      ["drawn", getU64Encoder()],
+      ["draws", getU16Encoder()],
+      ["interestDue", getU64Encoder()],
       ["principalRepaid", getU64Encoder()],
       ["interestRepaid", getU64Encoder()],
-      ["status", getLineStatusEncoder()],
+      ["pagaresPaid", getU16Encoder()],
+      ["firstDueAt", getI64Encoder()],
+      ["intervalSeconds", getI64Encoder()],
+      ["installments", getU16Encoder()],
+      ["lateBps", getU16Encoder()],
+      ["maxMissed", getU8Encoder()],
+      ["lateCollected", getU64Encoder()],
+      ["latePaidUntil", getI64Encoder()],
       ["openedAt", getI64Encoder()],
       ["drawnAt", getI64Encoder()],
       ["closedAt", getI64Encoder()],
-      ["reserved", fixEncoderSize(getBytesEncoder(), 32)],
-      ["bump", getU8Encoder()],
-      ["drawn", getU64Encoder()],
-      ["draws", getU16Encoder()],
-      ["availabilityEnd", getI64Encoder()],
-      ["firstDueAt", getI64Encoder()],
-      ["sponsorRole", getU8Encoder()],
-      ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
       ["acceleratedAt", getI64Encoder()],
+      ["bump", getU8Encoder()],
+      ["reserved", fixEncoderSize(getBytesEncoder(), 64)],
     ]),
     (value) => ({ ...value, discriminator: CREDIT_LINE_DISCRIMINATOR }),
   );
@@ -256,31 +260,37 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
 export function getCreditLineDecoder(): Decoder<CreditLine> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["version", getU8Decoder()],
     ["pool", getAddressDecoder()],
     ["lineId", getU64Decoder()],
     ["borrower", getAddressDecoder()],
     ["sponsor", getOptionDecoder(getAddressDecoder())],
+    ["sponsorRole", getU8Decoder()],
     ["agreementHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
+    ["status", getLineStatusDecoder()],
     ["principal", getU64Decoder()],
     ["rateBps", getU16Decoder()],
-    ["interestDue", getU64Decoder()],
     ["termEnd", getI64Decoder()],
+    ["availabilityEnd", getI64Decoder()],
+    ["drawn", getU64Decoder()],
+    ["draws", getU16Decoder()],
+    ["interestDue", getU64Decoder()],
     ["principalRepaid", getU64Decoder()],
     ["interestRepaid", getU64Decoder()],
-    ["status", getLineStatusDecoder()],
+    ["pagaresPaid", getU16Decoder()],
+    ["firstDueAt", getI64Decoder()],
+    ["intervalSeconds", getI64Decoder()],
+    ["installments", getU16Decoder()],
+    ["lateBps", getU16Decoder()],
+    ["maxMissed", getU8Decoder()],
+    ["lateCollected", getU64Decoder()],
+    ["latePaidUntil", getI64Decoder()],
     ["openedAt", getI64Decoder()],
     ["drawnAt", getI64Decoder()],
     ["closedAt", getI64Decoder()],
-    ["reserved", fixDecoderSize(getBytesDecoder(), 32)],
-    ["bump", getU8Decoder()],
-    ["drawn", getU64Decoder()],
-    ["draws", getU16Decoder()],
-    ["availabilityEnd", getI64Decoder()],
-    ["firstDueAt", getI64Decoder()],
-    ["sponsorRole", getU8Decoder()],
-    ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
     ["acceleratedAt", getI64Decoder()],
+    ["bump", getU8Decoder()],
+    ["reserved", fixDecoderSize(getBytesDecoder(), 64)],
   ]);
 }
 

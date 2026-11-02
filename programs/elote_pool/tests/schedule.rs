@@ -49,7 +49,6 @@ fn open_scheduled_line_records_the_schedule() {
     );
 
     let line = env.line(&k, line_id);
-    assert_eq!(line.version, 3, "every line is version 3");
     assert_eq!((line.first_due_at, line.availability_end), (p.first_due_at(), p.first_due_at()));
     assert_eq!((line.drawn, line.draws, line.interest_due), (0, 0, 0));
     assert_eq!(line.anchor(), Some(p.first_due_at() - p.interval()));
@@ -62,27 +61,17 @@ fn open_scheduled_line_records_the_schedule() {
             installments: 6,
             late_bps: 5_000,
             max_missed: 3,
-            flags: 0,
-            late_collected: 0,
-            late_paid_until: 0,
         }
     );
-    // The byte layout of `reserved`.
-    let r = line.reserved;
-    assert_eq!(&r[0..8], &p.interval().to_le_bytes());
-    assert_eq!(&r[8..10], &6u16.to_le_bytes());
-    assert_eq!(&r[10..12], &5_000u16.to_le_bytes());
-    assert_eq!((r[12], r[13]), (3, 0));
-    assert_eq!(&r[14..32], &[0u8; 18]);
+    assert_eq!((line.late_collected, line.late_paid_until, line.pagares_paid), (0, 0, 0));
 
-    // A bullet line is version 3 too: zero reserved bytes, no schedule, no LineScheduled event,
-    // its draw window open until the term.
+    // A bullet line: no installments, no schedule, no LineScheduled event, its draw window open
+    // until the term.
     let p1 = env.line_params(UNIT, 1_000);
     let (v1, meta) = env.open_line_with(&k, &borrower, &p1, None);
     assert!(find_event::<LineScheduled>(&meta).is_none());
     let line = env.line(&k, v1);
-    assert_eq!(line.version, 3);
-    assert_eq!(line.reserved, [0u8; 32]);
+    assert_eq!((line.installments, line.interval_seconds, line.late_bps, line.max_missed), (0, 0, 0, 0));
     assert_eq!(line.schedule(), None);
     assert_eq!((line.first_due_at, line.availability_end), (0, p1.term_end));
     assert_eq!((line.anchor(), line.last_due()), (None, Some(p1.term_end)));
@@ -218,7 +207,7 @@ fn installments_paid_on_their_due_dates_add_up_and_close_the_line() {
     let line = env.line(&k, line_id);
     assert_eq!(line.status, LineStatus::Repaid);
     assert_eq!(line.principal_repaid, 1_000_003);
-    assert_eq!(line.schedule().unwrap().late_collected, 0);
+    assert_eq!(line.late_collected, 0);
     assert_eq!(borrower_balance(&env, &k, &b), 0);
 }
 
@@ -274,8 +263,8 @@ fn late_interest_accrues_after_grace_and_is_collected_first() {
     let pool = env.pool(&k);
     assert_eq!(pool.interest_collected, 720_000, "late interest is not ordinary interest");
     assert_eq!(pool.outstanding_principal, 5_600_000);
-    let s = env.line(&k, line_id).schedule().unwrap();
-    assert_eq!((s.late_collected, s.late_paid_until), (10_000, env.now()));
+    let l = env.line(&k, line_id);
+    assert_eq!((l.late_collected, l.late_paid_until), (10_000, env.now()));
     let a = env.arrears(&k, line_id);
     assert_eq!((a.missed, a.late_due), (0, 0));
 
@@ -283,7 +272,7 @@ fn late_interest_accrues_after_grace_and_is_collected_first() {
     env.warp(env.now() + 24 * 3600);
     let ev = env.repay(&k, line_id, &b, 1);
     assert_eq!((ev.interest_part, ev.principal_part), (0, 1));
-    assert_eq!(env.line(&k, line_id).schedule().unwrap().late_collected, 10_000);
+    assert_eq!(env.line(&k, line_id).late_collected, 10_000);
 }
 
 #[test]
@@ -312,7 +301,7 @@ fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
     assert_eq!(before - borrower_balance(&env, &k, &b), late + total);
     let line = env.line(&k, line_id);
     assert_eq!(line.status, LineStatus::Repaid);
-    assert_eq!(line.schedule().unwrap().late_collected, late);
+    assert_eq!(line.late_collected, late);
 }
 
 /// One repayment order for every line since line v3: late interest, then interest, then
@@ -617,12 +606,12 @@ fn late_interest_over_the_life_of_a_line_never_exceeds_its_principal() {
         let ev = env.repay(&k, line_id, &b, a.late_due);
         assert_eq!((ev.interest_part, ev.principal_part), (0, 0), "only late interest");
         settlements += 1;
-        assert!(env.line(&k, line_id).schedule().unwrap().late_collected <= UNIT);
+        assert!(env.line(&k, line_id).late_collected <= UNIT);
     }
     // About 0.55 a year on 1.1 overdue: the first year is collected in full, the second only up
     // to the principal (1.0 in all), and nothing after that.
     assert_eq!(settlements, 2);
-    assert_eq!(env.line(&k, line_id).schedule().unwrap().late_collected, UNIT);
+    assert_eq!(env.line(&k, line_id).late_collected, UNIT);
     assert_eq!(env.arrears(&k, line_id).missed, 3);
 
     // From then on a payment goes to interest and principal.
@@ -696,8 +685,8 @@ fn a_repayment_that_settles_no_late_interest_leaves_the_watermark_where_it_was()
     let meta = env.send(ix, &b, &[]);
     let ev: LateInterestCollected = find_event(&meta).expect("the second repayment settles one unit");
     assert_eq!(ev.amount, 1);
-    let s = env.line(&k, line_id).schedule().unwrap();
-    assert_eq!((s.late_collected, s.late_paid_until), (1, env.now()));
+    let l = env.line(&k, line_id);
+    assert_eq!((l.late_collected, l.late_paid_until), (1, env.now()));
 }
 
 /// Decision 28 (vencimiento anticipado at the third missed installment): the mark records the

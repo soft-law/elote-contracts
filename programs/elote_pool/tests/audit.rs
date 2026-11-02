@@ -203,7 +203,7 @@ fn f03_write_off_waits_for_the_pools_collection_period_from_the_mark() {
     let (k, meta) = env.setup_pool();
     let ev: CollectionPeriodSet = find_event(&meta).expect("CollectionPeriodSet");
     assert_eq!((ev.pool, ev.collection_period_seconds), (k.pool, COLLECTION_PERIOD));
-    assert_eq!(env.pool(&k).collection_period_seconds(), COLLECTION_PERIOD);
+    assert_eq!(env.pool(&k).collection_period_seconds, COLLECTION_PERIOD);
     let ix = env.set_collection_period_ix(&k, &admin.pubkey(), COLLECTION_PERIOD - 1);
     env.expect_err(ix, &admin, &[], E_COLLECTION_PERIOD_TOO_SHORT);
     let stranger = env.funded(1);

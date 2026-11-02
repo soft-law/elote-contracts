@@ -11,7 +11,7 @@
 // --principal       amount in tMXN, up to 6 decimals (500, 1250.5)
 // --rate-bps        fixed interest on the principal, in basis points (default 1200)
 // --term-days       days from now to the end of the term (default 90)
-// --installments    open a scheduled line (version 2) with this many installments; needs --interval-days
+// --installments    open a scheduled line with this many installments; needs --interval-days
 // --interval-days   days between installments; due dates count from the draw, so the term must be
 //                   longer than installments * interval
 // --late-rate-bps   annual late interest on overdue amounts (default 10000, as in the demo)
@@ -47,7 +47,7 @@ import { fetchToken } from "@solana-program/token";
 import {
   type ElotePoolError,
   LineStatus,
-  decodeSchedule,
+  lineSchedule,
   fetchCreditLine,
   fetchMaybePool,
   findLinePda,
@@ -56,7 +56,6 @@ import {
   getOpenLineInstructionAsync,
   isElotePoolError,
   maxLinePrincipal,
-  poolMaxLineBps,
 } from "../clients/js/src/index.ts";
 
 const DISCLAIMER = "Demo on Solana devnet with test assets. Not an offer of securities.";
@@ -272,7 +271,7 @@ async function main() {
   const termEnd = BigInt(Math.floor(Date.now() / 1000)) + BigInt(termDays) * DAY;
   const vault = await fetchToken(rpc, pool.vault, { commitment: "confirmed" });
   // The concentration cap, checked here before signing; LineTooLarge on chain is the backstop.
-  const maxBps = poolMaxLineBps(pool.reserved);
+  const maxBps = pool.maxLineBps;
   const cap = maxLinePrincipal(vault.data.amount + pool.outstandingPrincipal, maxBps);
   if (principal > cap) {
     fail(`the principal (${fmt(principal)}) exceeds this pool's largest line: ${maxBps} bps of the NAV, ${fmt(cap)} right now`);
@@ -327,7 +326,7 @@ async function main() {
   if (!confirmed) fail(`open_line not confirmed in time (${signature}); check the explorer before retrying`);
 
   const opened = (await fetchCreditLine(rpc, line, { commitment: "confirmed" })).data;
-  const s = decodeSchedule(opened);
+  const s = lineSchedule(opened);
   const lines = [
     `cluster     ${cluster}`,
     `pool        ${poolAddress}`,
@@ -340,7 +339,7 @@ async function main() {
     `rate        ${opened.rateBps} bps a year, charged per tranche at the draw (interest so far ${fmt(opened.interestDue)} tMXN)`,
     `term        ${termDays} days, ends ${new Date(Number(opened.termEnd) * 1000).toISOString()}`,
     `draws until ${new Date(Number(opened.availabilityEnd) * 1000).toISOString()}`,
-    `version     ${opened.version}${s ? " (scheduled)" : " (bullet)"}`,
+    `kind        ${s ? "scheduled" : "bullet"}`,
     s
       ? `schedule    ${s.installments} installments every ${s.intervalSeconds / DAY} days from ${new Date(Number(opened.firstDueAt) * 1000).toISOString()}, late interest ${s.lateBps} bps a year, collection after ${s.maxMissed} missed`
       : `schedule    none`,

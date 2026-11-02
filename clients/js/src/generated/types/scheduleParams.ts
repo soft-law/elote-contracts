@@ -25,7 +25,7 @@ import {
 export type ScheduleParams = {
   /** The first due date (unix seconds), from the signed contract; must be after the opening. */
   firstDueAt: bigint;
-  /** Seconds between due dates; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`. */
+  /** Seconds between due dates. */
   intervalSeconds: bigint;
   /** `drawn + interest_due` is paid in this many installments. */
   installments: number;
@@ -38,7 +38,7 @@ export type ScheduleParams = {
 export type ScheduleParamsArgs = {
   /** The first due date (unix seconds), from the signed contract; must be after the opening. */
   firstDueAt: number | bigint;
-  /** Seconds between due dates; installment `k` is due at `first_due_at + (k - 1) * interval_seconds`. */
+  /** Seconds between due dates. */
   intervalSeconds: number | bigint;
   /** `drawn + interest_due` is paid in this many installments. */
   installments: number;

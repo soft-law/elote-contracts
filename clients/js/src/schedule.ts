@@ -1,47 +1,9 @@
-// Reads the packed `reserved` bytes of `Pool` and `CreditLine` and computes the arrears of a
-// scheduled line exactly as the program does (`programs/elote_pool/src/math.rs`). Hand-written:
-// not produced by Codama.
+// Computes the arrears of a scheduled line exactly as the program does
+// (`programs/elote_pool/src/math.rs`). Hand-written: not produced by Codama.
 
 const BPS = 10_000n;
 /** The year that annualizes `late_bps`: 365 days. */
 export const SECONDS_PER_YEAR = 31_536_000n;
-/** `CreditLine.version` of every line the program opens since line v3 (bullet or scheduled). */
-export const LINE_VERSION = 3;
-
-type Bytes = ArrayLike<number>;
-
-const view = (b: Bytes) =>
-  new DataView(Uint8Array.from(b as ArrayLike<number>).buffer);
-
-/** `Pool.reserved[0..4]`: the pool's grace period in seconds (u32 LE). */
-export function poolGracePeriodSeconds(reserved: Bytes): bigint {
-  return BigInt(view(reserved).getUint32(0, true));
-}
-
-export type PoolFlags = {
-  /** `reserved[6]`: shares are frozen by default (Token ACL); holders need a thaw. */
-  permissioned: boolean;
-  /** `reserved[7]` bit 0: the asset's issuer can freeze the vault. */
-  assetFreezable: boolean;
-  /** `reserved[7]` bit 1: the asset carries the Token-2022 `Pausable` extension. */
-  assetPausable: boolean;
-};
-
-/** The read-only facts `init_pool` recorded about the two mints (`Pool.reserved[6..8]`). */
-export function poolFlags(reserved: Bytes): PoolFlags {
-  const v = view(reserved);
-  const controls = v.getUint8(7);
-  return {
-    permissioned: v.getUint8(6) === 1,
-    assetFreezable: (controls & 0b01) !== 0,
-    assetPausable: (controls & 0b10) !== 0,
-  };
-}
-
-/** `Pool.reserved[4..6]`: the largest line as a share of the NAV, in basis points (u16 LE). */
-export function poolMaxLineBps(reserved: Bytes): number {
-  return view(reserved).getUint16(4, true);
-}
 
 /**
  * The largest principal `open_line` accepts at `nav` under `maxLineBps`, rounded down as
@@ -57,31 +19,15 @@ export type Schedule = {
   installments: number;
   lateBps: number;
   maxMissed: number;
-  flags: number;
   lateCollected: bigint;
   latePaidUntil: bigint;
 };
 
-/**
- * `CreditLine.reserved` of a scheduled line; `null` for a bullet line (whose reserved bytes are
- * all zero, so `installments` is 0) or a line of another version.
- */
-export function decodeSchedule(line: {
-  version: number;
-  reserved: Bytes;
-}): Schedule | null {
-  if (line.version !== LINE_VERSION) return null;
-  const v = view(line.reserved);
-  if (v.getUint16(8, true) === 0) return null;
-  return {
-    intervalSeconds: v.getBigInt64(0, true),
-    installments: v.getUint16(8, true),
-    lateBps: v.getUint16(10, true),
-    maxMissed: v.getUint8(12),
-    flags: v.getUint8(13),
-    lateCollected: v.getBigUint64(14, true),
-    latePaidUntil: v.getBigInt64(22, true),
-  };
+/** The schedule of a line, from its fields; `null` for a bullet line (`installments` is 0). */
+export function lineSchedule(line: Schedule): Schedule | null {
+  if (line.installments === 0) return null;
+  const { intervalSeconds, installments, lateBps, maxMissed, lateCollected, latePaidUntil } = line;
+  return { intervalSeconds, installments, lateBps, maxMissed, lateCollected, latePaidUntil };
 }
 
 export type Arrears = {
