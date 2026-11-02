@@ -79,6 +79,10 @@ export function pagaresPaidOf(reserved: ReadonlyUint8Array | Uint8Array | readon
  * (`PagareAccountsMismatch`). `drawnThrough[i]` is `Pagare.drawnThrough` of draw `i` for every
  * draw of the line; `principalAfter` is `principalRepaid` plus the payment's principal part (the
  * program applies late interest, then interest, then principal, never more than is due).
+ *
+ * The set depends on the line at the time the transaction is built: a payment by anyone that lands
+ * first can change it, and the program then refuses this one with `PagareAccountsMismatch` while
+ * nothing moves. Re-read the line and the cursor, recompute the set and retry.
  */
 export async function repaySidecars(
   input: { line: Address; pagaresPaid: number; drawnThrough: readonly bigint[]; principalAfter: bigint },

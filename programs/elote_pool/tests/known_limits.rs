@@ -354,3 +354,37 @@ fn limit_a_repay_touching_more_than_six_pagare_records_must_be_split() {
     let line = env.line(&k, line_id);
     assert_eq!((line.status, line.pagares_paid()), (LineStatus::Repaid, 8));
 }
+
+/// `repay` takes exactly the pagaré records `[pagares_paid ..= last_touched]`, computed by the
+/// client from the line when it builds the transaction. Another payment landing first can change
+/// that set (here a stranger's one unit makes the borrower's amount cover pagaré 0 exactly, so
+/// the set grows from `[0]` to `[0, 1]`), and the borrower's transaction fails with
+/// `PagareAccountsMismatch`. Nothing moves; the client re-reads `pagares_paid` and the line and
+/// retries (re-audit N-02).
+#[test]
+fn limit_a_payment_landing_first_makes_an_in_flight_repay_retry() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let investor = env.investor(&k, 20 * UNIT);
+    env.deposit(&k, &investor, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(3 * UNIT, 1_000);
+    let line_id = env.open_line_with(&k, &borrower, &p, None).0;
+    for _ in 0..3 {
+        env.draw_amount(&k, line_id, &borrower, UNIT);
+    }
+    let admin = env.admin.insecure_clone();
+    let amount = env.line(&k, line_id).interest_due + UNIT - 1;
+    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 10 * UNIT);
+    let in_flight = env.repay_ix(&k, line_id, &borrower.pubkey(), amount);
+
+    let stranger = env.funded(1);
+    env.mint_to(&k.asset_mint, &admin, &stranger.pubkey(), 10);
+    env.repay(&k, line_id, &stranger, 1);
+    env.expect_err(in_flight, &borrower, &[], E_PAGARE_ACCOUNTS_MISMATCH);
+
+    // The retry, built from the line as it is now.
+    let retry = env.repay_ix(&k, line_id, &borrower.pubkey(), amount);
+    env.send(retry, &borrower, &[]);
+    assert_eq!(env.line(&k, line_id).pagares_paid(), 1);
+}
