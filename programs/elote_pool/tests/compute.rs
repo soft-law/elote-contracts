@@ -208,11 +208,11 @@ fn arrears_instructions_stay_under_the_ceiling_at_18_and_120_installments() {
     }
 }
 
-/// The ceiling case of the payment entries: one payment covering six pagarés (the client rule) on
-/// a 120-installment line with every installment missed (late interest on all of them). Eight
-/// measured 107 605 CU with the same code, over the ceiling.
+/// The ceiling case of the payment entries: one payment covering five pagarés (the client rule,
+/// `MAX_SIDECARS_PER_REPAY`) on a 120-installment line with every installment missed (late
+/// interest on all of them), with at least 5 000 CU to spare. Six leave less than that margin.
 #[test]
-fn a_payment_covering_six_sidecars_stays_under_the_ceiling() {
+fn a_payment_covering_five_sidecars_stays_under_the_ceiling() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool_with_grace(0);
     let investor = env.investor(&k, 200 * UNIT);
@@ -220,7 +220,7 @@ fn a_payment_covering_six_sidecars_stays_under_the_ceiling() {
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(60 * UNIT, 1_200, 120, 5_000);
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
-    for _ in 0..6 {
+    for _ in 0..5 {
         env.draw_amount(&k, line_id, &borrower, 10 * UNIT);
     }
     let t0 = env.line(&k, line_id).drawn_at;
@@ -230,10 +230,10 @@ fn a_payment_covering_six_sidecars_stays_under_the_ceiling() {
     let admin = env.admin.insecure_clone();
     env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), owed);
     let sidecars = env.payment_sidecars(&k, line_id, owed);
-    assert_eq!(sidecars.len(), 6);
+    assert_eq!(sidecars.len(), 5);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), owed);
     let cu = env.send(ix, &borrower, &[]).compute_units_consumed;
-    println!("repay covering six sidecars at 120 installments, all missed: {cu} CU");
-    assert_eq!(env.line(&k, line_id).pagares_paid, 6);
-    assert!(cu < CEILING, "the six-sidecar repay used {cu} CU, ceiling {CEILING}");
+    println!("repay covering five sidecars at 120 installments, all missed: {cu} CU");
+    assert_eq!(env.line(&k, line_id).pagares_paid, 5);
+    assert!(cu + 5_000 <= CEILING, "the five-sidecar repay used {cu} CU, ceiling {CEILING} less a 5 000 CU margin");
 }

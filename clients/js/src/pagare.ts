@@ -64,6 +64,13 @@ export async function drawPagareAccounts(
 }
 
 /**
+ * The most pagaré records one `repay` should touch: five stay at least 5,000 CU under the
+ * 100,000 CU ceiling. Split a payment whose `repaySidecars` returns more into several `repay`
+ * calls; the amount is free.
+ */
+export const MAX_SIDECARS_PER_REPAY = 5;
+
+/**
  * The pagaré records a `repay` must pass as remaining accounts, `[pagaresPaid ..= lastTouched]`,
  * oldest first: from the line's cursor through the first pagaré whose `drawnThrough` exceeds the
  * line's `principalRepaid` after the payment, or the last draw when none does; none once the

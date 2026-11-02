@@ -303,10 +303,10 @@ fn limit_draw_accepts_a_valid_non_canonical_pagare_bump() {
 /// Nothing in the program bounds how many pagaré records one `repay` touches (up to `MAX_DRAWS`),
 /// and each costs compute: a payment that marks eight of them paid runs over the project's
 /// 100 000 CU ceiling. The client splits such a payment (the amount is free); two payments of
-/// four records each stay under it. The client rule is at most six records per `repay`
-/// (`tests/compute.rs` pins six under the ceiling).
+/// four records each stay under it. The client rule is at most five records per `repay`
+/// (`MAX_SIDECARS_PER_REPAY`; `tests/compute.rs` pins five under the ceiling with a margin).
 #[test]
-fn limit_a_repay_touching_more_than_six_pagare_records_must_be_split() {
+fn limit_a_repay_touching_more_than_five_pagare_records_must_be_split() {
     const CEILING: u64 = 100_000;
     fn eight_draws(env: &mut Env) -> (PoolKeys, solana_keypair::Keypair, u64) {
         let (k, _) = env.setup_pool_with_grace(0);
