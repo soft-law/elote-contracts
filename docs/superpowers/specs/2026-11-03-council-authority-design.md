@@ -120,6 +120,10 @@ for this change.
   creator keeps no power over investors. Other small calls (rent payer inside Squads, pause scope:
   draws, deposits and new requests; repay and redeem stay open; the council rotates the guardian)
   are left to the builder and noted in ARCHITECTURE.
+- **Who pays the request's rent:** `request_line` separates the payer from the borrower (the
+  borrower signs, a separate `payer` funds the account). In the product Elote's backend pays (about
+  0.0035 SOL for a 375-byte line), so the borrower deposits nothing; withdraw, reject and expiry
+  return the rent to that payer. Nothing about it is shown to the borrower.
 
 ## CU spike results (2026-11-03, real Squads v4 binary in LiteSVM, throwaway)
 
