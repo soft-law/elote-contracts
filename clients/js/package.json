@@ -49,6 +49,7 @@
     "@solana/program-client-core": "^8.3.0"
   },
   "devDependencies": {
-    "tsup": "^9"
+    "tsup": "^9",
+    "typescript": "^5.7.3"
   }
 }
