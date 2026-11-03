@@ -2509,6 +2509,45 @@
   ],
   "events": [
     {
+      "name": "AccelerationNoticeSet",
+      "discriminator": [
+        125,
+        172,
+        92,
+        92,
+        176,
+        121,
+        4,
+        211
+      ]
+    },
+    {
+      "name": "AccelerationProposed",
+      "discriminator": [
+        182,
+        65,
+        132,
+        178,
+        17,
+        129,
+        23,
+        220
+      ]
+    },
+    {
+      "name": "AccelerationWithdrawn",
+      "discriminator": [
+        167,
+        117,
+        100,
+        178,
+        77,
+        197,
+        70,
+        62
+      ]
+    },
+    {
       "name": "AttestorSet",
       "discriminator": [
         172,
@@ -2532,6 +2571,19 @@
         124,
         225,
         90
+      ]
+    },
+    {
+      "name": "CancelGraceSet",
+      "discriminator": [
+        218,
+        221,
+        95,
+        147,
+        75,
+        72,
+        252,
+        88
       ]
     },
     {
@@ -2561,6 +2613,32 @@
       ]
     },
     {
+      "name": "CouncilAccepted",
+      "discriminator": [
+        143,
+        175,
+        147,
+        96,
+        54,
+        238,
+        101,
+        139
+      ]
+    },
+    {
+      "name": "CouncilProposed",
+      "discriminator": [
+        39,
+        245,
+        43,
+        165,
+        247,
+        38,
+        221,
+        104
+      ]
+    },
+    {
       "name": "Deposited",
       "discriminator": [
         111,
@@ -2574,6 +2652,19 @@
       ]
     },
     {
+      "name": "GuardianSet",
+      "discriminator": [
+        159,
+        49,
+        155,
+        156,
+        176,
+        88,
+        29,
+        190
+      ]
+    },
+    {
       "name": "LateInterestCollected",
       "discriminator": [
         222,
@@ -2584,6 +2675,32 @@
         150,
         231,
         151
+      ]
+    },
+    {
+      "name": "LineAccelerated",
+      "discriminator": [
+        34,
+        30,
+        247,
+        45,
+        192,
+        137,
+        69,
+        100
+      ]
+    },
+    {
+      "name": "LineApproved",
+      "discriminator": [
+        93,
+        76,
+        97,
+        115,
+        202,
+        48,
+        39,
+        243
       ]
     },
     {
@@ -2610,6 +2727,19 @@
         91,
         185,
         148
+      ]
+    },
+    {
+      "name": "LineDrawsResumed",
+      "discriminator": [
+        45,
+        170,
+        154,
+        58,
+        109,
+        195,
+        106,
+        96
       ]
     },
     {
@@ -2652,6 +2782,19 @@
       ]
     },
     {
+      "name": "LineRejected",
+      "discriminator": [
+        34,
+        61,
+        26,
+        124,
+        60,
+        121,
+        154,
+        84
+      ]
+    },
+    {
       "name": "LineRepaid",
       "discriminator": [
         127,
@@ -2662,6 +2805,19 @@
         66,
         127,
         175
+      ]
+    },
+    {
+      "name": "LineRequested",
+      "discriminator": [
+        160,
+        73,
+        85,
+        69,
+        91,
+        169,
+        111,
+        54
       ]
     },
     {
@@ -2678,6 +2834,19 @@
       ]
     },
     {
+      "name": "MaxLineBpsSet",
+      "discriminator": [
+        211,
+        90,
+        80,
+        88,
+        180,
+        188,
+        114,
+        86
+      ]
+    },
+    {
       "name": "NavUpdated",
       "discriminator": [
         182,
@@ -2688,6 +2857,19 @@
         24,
         110,
         154
+      ]
+    },
+    {
+      "name": "OutstandingCapSet",
+      "discriminator": [
+        247,
+        19,
+        239,
+        47,
+        59,
+        107,
+        152,
+        165
       ]
     },
     {
@@ -2782,6 +2964,19 @@
       ]
     },
     {
+      "name": "PoolResumed",
+      "discriminator": [
+        51,
+        133,
+        198,
+        21,
+        248,
+        217,
+        110,
+        149
+      ]
+    },
+    {
       "name": "Redeemed",
       "discriminator": [
         14,
@@ -2792,6 +2987,19 @@
         165,
         107,
         38
+      ]
+    },
+    {
+      "name": "RequestWithdrawn",
+      "discriminator": [
+        62,
+        227,
+        173,
+        197,
+        18,
+        139,
+        38,
+        98
       ]
     }
   ],
@@ -2823,211 +3031,360 @@
     },
     {
       "code": 6005,
+      "name": "CouncilInvalid",
+      "msg": "The council is not the vault of an autonomous Squads v4 multisig with a majority threshold"
+    },
+    {
+      "code": 6006,
+      "name": "CouncilTooLarge",
+      "msg": "The council multisig has more members than the program checks"
+    },
+    {
+      "code": 6007,
+      "name": "CouncilKindInvalid",
+      "msg": "This council kind is not accepted"
+    },
+    {
+      "code": 6008,
+      "name": "NoPendingCouncil",
+      "msg": "No council rotation is pending, or this signer is not the one proposed"
+    },
+    {
+      "code": 6009,
+      "name": "ProposalExpired",
+      "msg": "The council's decision is past its valid_until"
+    },
+    {
+      "code": 6010,
       "name": "WrongAccount",
       "msg": "Wrong mint or token account"
     },
     {
-      "code": 6006,
+      "code": 6011,
       "name": "AssetMintNotAllowed",
       "msg": "The asset mint carries a Token-2022 extension the pool does not accept"
     },
     {
-      "code": 6007,
+      "code": 6012,
       "name": "ShareMintNotAllowed",
       "msg": "The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions"
     },
     {
-      "code": 6008,
+      "code": 6013,
+      "name": "AssetNotListed",
+      "msg": "The asset mint is not on this cluster's allow-list"
+    },
+    {
+      "code": 6014,
+      "name": "AssetIsShareMint",
+      "msg": "The asset mint and the share mint are the same"
+    },
+    {
+      "code": 6015,
       "name": "CollectionNotAllowed",
       "msg": "The collection is not a bare Metaplex Core collection whose update authority is the pool"
     },
     {
-      "code": 6009,
+      "code": 6016,
       "name": "PagareAccountsMismatch",
       "msg": "The pagaré records passed are not the ones this payment touches, oldest first"
     },
     {
-      "code": 6010,
+      "code": 6017,
       "name": "AttestorIsAdmin",
       "msg": "The attestor cannot be the admin"
     },
     {
-      "code": 6011,
+      "code": 6018,
       "name": "BorrowerIsAdmin",
       "msg": "The pool admin cannot be the borrower"
     },
     {
-      "code": 6012,
+      "code": 6019,
+      "name": "BorrowerIsCurator",
+      "msg": "A member of the council cannot be the borrower"
+    },
+    {
+      "code": 6020,
       "name": "BorrowerIsAttestor",
       "msg": "The borrower cannot be the attestor"
     },
     {
-      "code": 6013,
+      "code": 6021,
       "name": "EndorseeInvalid",
       "msg": "The endorsee is missing, or is the pool, the admin or the attestor"
     },
     {
-      "code": 6014,
+      "code": 6022,
       "name": "WrongAmount",
       "msg": "Amount is zero or exceeds what is due"
     },
     {
-      "code": 6015,
+      "code": 6023,
       "name": "Overflow",
       "msg": "Arithmetic overflow"
     },
     {
-      "code": 6016,
+      "code": 6024,
       "name": "InvariantBroken",
       "msg": "A pool invariant does not hold after this instruction; the transaction is refused"
     },
     {
-      "code": 6017,
+      "code": 6025,
       "name": "InsufficientLiquidity",
       "msg": "Not enough liquidity in the vault"
     },
     {
-      "code": 6018,
+      "code": 6026,
       "name": "ZeroShares",
       "msg": "The deposit would mint zero shares"
     },
     {
-      "code": 6019,
+      "code": 6027,
       "name": "FirstDepositTooSmall",
       "msg": "First deposit below the minimum"
     },
     {
-      "code": 6020,
+      "code": 6028,
       "name": "SlippageExceeded",
       "msg": "The result is below the minimum the caller accepts"
     },
     {
-      "code": 6021,
+      "code": 6029,
       "name": "LineTooLarge",
       "msg": "The principal exceeds the pool's maximum line, max_line_bps of the NAV"
     },
     {
-      "code": 6022,
+      "code": 6030,
+      "name": "OutstandingCapExceeded",
+      "msg": "The draw would take the pool's outstanding principal above its cap"
+    },
+    {
+      "code": 6031,
       "name": "CollectionPeriodTooShort",
       "msg": "The collection period is shorter than the minimum"
     },
     {
-      "code": 6023,
+      "code": 6032,
       "name": "CancelDelayTooShort",
       "msg": "The cancel delay is below the seven-day floor"
     },
     {
-      "code": 6024,
+      "code": 6033,
+      "name": "AccelerationNoticeTooShort",
+      "msg": "The acceleration notice is below the seven-day floor"
+    },
+    {
+      "code": 6034,
+      "name": "CancelGraceTooShort",
+      "msg": "The borrower's cancel grace is below the thirty-day floor"
+    },
+    {
+      "code": 6035,
       "name": "LineStatus",
       "msg": "The line is not in the required status"
     },
     {
-      "code": 6025,
+      "code": 6036,
       "name": "AgreementHashRequired",
       "msg": "The signed agreement's hash is required"
     },
     {
-      "code": 6026,
+      "code": 6037,
       "name": "ExpedienteRootRequired",
       "msg": "The expediente root is required"
     },
     {
-      "code": 6027,
+      "code": 6038,
+      "name": "PagareTemplateHashRequired",
+      "msg": "The pagaré template's hash is required"
+    },
+    {
+      "code": 6039,
+      "name": "ExpedienteMismatch",
+      "msg": "The expediente root or the terms hash is not the one the borrower requested"
+    },
+    {
+      "code": 6040,
+      "name": "RequestExpired",
+      "msg": "The request is older than the council's review window"
+    },
+    {
+      "code": 6041,
       "name": "SponsorRoleInvalid",
       "msg": "sponsor_role is unknown"
     },
     {
-      "code": 6028,
+      "code": 6042,
       "name": "TermEnded",
       "msg": "The term has ended, or would end before the opening"
     },
     {
-      "code": 6029,
+      "code": 6043,
       "name": "InvalidSchedule",
       "msg": "The installment schedule is not valid"
     },
     {
-      "code": 6030,
+      "code": 6044,
       "name": "ScheduleEndsAfterTerm",
       "msg": "The last installment would fall due after the term"
     },
     {
-      "code": 6031,
+      "code": 6045,
       "name": "NotScheduled",
       "msg": "The line has no installment schedule"
     },
     {
-      "code": 6032,
+      "code": 6046,
       "name": "AvailabilityEnded",
       "msg": "The draw window of this line has closed"
     },
     {
-      "code": 6033,
+      "code": 6047,
       "name": "TooManyDraws",
       "msg": "The line has reached its maximum number of draws"
     },
     {
-      "code": 6034,
+      "code": 6048,
+      "name": "DrawsNotSuspended",
+      "msg": "The line's draws are not suspended"
+    },
+    {
+      "code": 6049,
+      "name": "AccelerationState",
+      "msg": "No acceleration is pending on this line, or one already is"
+    },
+    {
+      "code": 6050,
+      "name": "AccelerationNotDue",
+      "msg": "The acceleration notice has not run"
+    },
+    {
+      "code": 6051,
       "name": "LateInterestUnpaid",
       "msg": "The repayment must cover the late interest due"
     },
     {
-      "code": 6035,
+      "code": 6052,
       "name": "NotEnoughMissed",
       "msg": "Fewer installments missed than the line allows before collection"
     },
     {
-      "code": 6036,
+      "code": 6053,
       "name": "TermNotEnded",
       "msg": "The term has not ended"
     },
     {
-      "code": 6037,
+      "code": 6054,
       "name": "WriteOffTooEarly",
       "msg": "A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace"
     },
     {
-      "code": 6038,
+      "code": 6055,
       "name": "DocumentHashRequired",
       "msg": "The signed document's hash is required"
     },
     {
-      "code": 6039,
+      "code": 6056,
       "name": "SignatureMethodInvalid",
       "msg": "signature_method is unknown, or lacks its certificate fingerprint"
     },
     {
-      "code": 6040,
+      "code": 6057,
       "name": "PagareNotCovered",
       "msg": "No repayment has marked this pagaré paid"
     },
     {
-      "code": 6041,
+      "code": 6058,
       "name": "PagareAlreadyPaid",
       "msg": "This pagaré is already extinguished"
     },
     {
-      "code": 6042,
+      "code": 6059,
+      "name": "CancelGraceNotElapsed",
+      "msg": "The borrower may cancel alone only after the cancel grace from the payment"
+    },
+    {
+      "code": 6060,
       "name": "EndosoKindInvalid",
       "msg": "This kind of endoso is not one the program records"
     },
     {
-      "code": 6043,
+      "code": 6061,
       "name": "ProcuracionState",
       "msg": "The pagaré has no procuración in force, or already has one"
     },
     {
-      "code": 6044,
+      "code": 6062,
       "name": "AnnotationKindInvalid",
       "msg": "This kind is not a court annotation"
     },
     {
-      "code": 6045,
+      "code": 6063,
       "name": "EntryNotFound",
       "msg": "The referenced registry entry does not exist"
     }
   ],
   "types": [
+    {
+      "name": "AccelerationNoticeSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "acceleration_notice_seconds",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AccelerationProposed",
+      "docs": [
+        "The council proposed to collect the line early; draws are suspended at once, and",
+        "`accelerate_line` may fire from `due_at`. The notice is addressed to the borrower."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "due_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AccelerationWithdrawn",
+      "docs": [
+        "The proposal is withdrawn; draws stay suspended until `resume_draws`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
     {
       "name": "AttestorSet",
       "docs": [
@@ -3062,6 +3419,22 @@
           },
           {
             "name": "cancel_delay_seconds",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CancelGraceSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "cancel_grace_seconds",
             "type": "u32"
           }
         ]
@@ -3124,6 +3497,53 @@
           {
             "name": "collection_period_seconds",
             "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouncilAccepted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          },
+          {
+            "name": "kind",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouncilProposed",
+      "docs": [
+        "`council` must sign `accept_council` before it becomes the pool's council."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "council",
+            "type": "pubkey"
+          },
+          {
+            "name": "kind",
+            "type": "u8"
           }
         ]
       }
@@ -3334,6 +3754,68 @@
             "type": "u8"
           },
           {
+            "name": "requested_at",
+            "type": "i64"
+          },
+          {
+            "name": "approved_at",
+            "type": "i64"
+          },
+          {
+            "name": "terms_hash",
+            "docs": [
+              "`sha256` of the stored terms in the fixed encoding; the council's approval names it."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "pagare_template_hash",
+            "docs": [
+              "Hash of the approved pagaré text every draw's pagaré hash is derived from."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "payer",
+            "docs": [
+              "Funded the request; receives the rent back on withdraw, reject or expiry."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "draw_time_weight",
+            "docs": [
+              "`Σ amount × drawn_at` over the draws: a bullet line's interest accrued at a mark is",
+              "`rate × (drawn × mark − draw_time_weight)`."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "availability_end_saved",
+            "docs": [
+              "The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which",
+              "`resume_draws` restores; zero when draws are not suspended."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "acceleration_due_at",
+            "docs": [
+              "When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending."
+            ],
+            "type": "i64"
+          },
+          {
             "name": "reserved",
             "docs": [
               "Zero; for fields added after mainnet."
@@ -3381,6 +3863,25 @@
       }
     },
     {
+      "name": "GuardianSet",
+      "docs": [
+        "The zero key means no guardian."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "guardian",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
       "name": "LateInterestCollected",
       "docs": [
         "Late interest collected by a repayment of a scheduled line; it stays in the pool and raises",
@@ -3400,6 +3901,75 @@
           {
             "name": "amount",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineAccelerated",
+      "docs": [
+        "The council accelerated the line after the notice: the same effect as `LineInCollection`,",
+        "without missed installments."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "remaining",
+            "type": "u64"
+          },
+          {
+            "name": "interest_forgiven",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineApproved",
+      "docs": [
+        "The council approved exactly this expediente and these terms."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "expediente_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "terms_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "availability_end",
+            "type": "i64"
           }
         ]
       }
@@ -3463,6 +4033,29 @@
           {
             "name": "outstanding_after",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineDrawsResumed",
+      "docs": [
+        "Draws resumed with the window they had before the suspension."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "availability_end",
+            "type": "i64"
           }
         ]
       }
@@ -3614,6 +4207,22 @@
       }
     },
     {
+      "name": "LineRejected",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "LineRepaid",
       "type": {
         "kind": "struct",
@@ -3650,10 +4259,119 @@
       }
     },
     {
+      "name": "LineRequested",
+      "docs": [
+        "Every term `request_line` stored, with the hash of their fixed encoding. On a bullet line the",
+        "schedule fields are zero; `payer` funded the request and gets its rent back."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "borrower",
+            "type": "pubkey"
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "sponsor",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "sponsor_role",
+            "type": "u8"
+          },
+          {
+            "name": "agreement_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "expediente_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "pagare_template_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "terms_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "principal",
+            "type": "u64"
+          },
+          {
+            "name": "rate_bps",
+            "type": "u16"
+          },
+          {
+            "name": "term_end",
+            "type": "i64"
+          },
+          {
+            "name": "first_due_at",
+            "type": "i64"
+          },
+          {
+            "name": "interval_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "installments",
+            "type": "u16"
+          },
+          {
+            "name": "late_bps",
+            "type": "u16"
+          },
+          {
+            "name": "max_missed",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "LineStatus",
       "type": {
         "kind": "enum",
         "variants": [
+          {
+            "name": "Requested"
+          },
           {
             "name": "Approved"
           },
@@ -3700,6 +4418,22 @@
       }
     },
     {
+      "name": "MaxLineBpsSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_line_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
       "name": "NavUpdated",
       "docs": [
         "The NAV and the share supply after every instruction that moves either (`deposit`, `redeem`,",
@@ -3718,6 +4452,22 @@
           },
           {
             "name": "share_supply",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OutstandingCapSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_outstanding_principal",
             "type": "u64"
           }
         ]
@@ -4344,6 +5094,90 @@
             "type": "u8"
           },
           {
+            "name": "creator",
+            "docs": [
+              "Paid for and seeds the pool; no other power."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "council_kind",
+            "docs": [
+              "`COUNCIL_SQUADS` or `COUNCIL_GENERIC`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "multisig",
+            "docs": [
+              "The Squads multisig whose vault is the council; the zero key under `COUNCIL_GENERIC`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "council_vault_bump",
+            "docs": [
+              "The bump of the council's vault PDA `[\"multisig\", multisig, \"vault\", 0]`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "pending_council",
+            "docs": [
+              "The authority `propose_council` named, until it signs `accept_council`; the zero key when",
+              "none."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "pending_council_kind",
+            "type": "u8"
+          },
+          {
+            "name": "guardian",
+            "docs": [
+              "A key that may only pause the pool, beside every council member; the zero key when none."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "max_outstanding_principal",
+            "docs": [
+              "The most principal the pool lends at once, in asset units; checked at every draw."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "acceleration_notice_seconds",
+            "docs": [
+              "Seconds from `propose_acceleration` before `accelerate_line`; at least",
+              "`MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "cancel_grace_seconds",
+            "docs": [
+              "Seconds from a pagaré's payment before its borrower may cancel it alone; at least",
+              "`MIN_CANCEL_GRACE_SECONDS`."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "impaired_principal",
+            "docs": [
+              "Principal of the lines in collection, for a provision at the mark; zero, not yet used."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "provision_bps",
+            "docs": [
+              "The provision on `impaired_principal`, in basis points; zero, not yet used."
+            ],
+            "type": "u16"
+          },
+          {
             "name": "reserved",
             "docs": [
               "Zero; for fields added after mainnet."
@@ -4435,6 +5269,18 @@
       }
     },
     {
+      "name": "PoolResumed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
       "name": "Redeemed",
       "type": {
         "kind": "struct",
@@ -4461,6 +5307,22 @@
           },
           {
             "name": "supply_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RequestWithdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
             "type": "u64"
           }
         ]

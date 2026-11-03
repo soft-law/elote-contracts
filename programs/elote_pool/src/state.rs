@@ -53,6 +53,24 @@ pub const MIN_COLLECTION_PERIOD_SECONDS: u32 = 30 * 86_400;
 pub const MIN_CANCEL_DELAY_SECONDS: u32 = 7 * 86_400;
 /// The year that annualizes `late_bps`: 365 days.
 pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
+/// The Squads v4 program whose multisig vaults may be a pool's council.
+pub const SQUADS_PROGRAM_ID: Pubkey = pubkey!("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf");
+/// `Pool::council_kind`: the vault (index 0) of an autonomous Squads v4 multisig with a majority
+/// threshold, checked on every council instruction.
+pub const COUNCIL_SQUADS: u8 = 0;
+/// `Pool::council_kind`: any signer, for a future governance PDA; `accept_council` refuses it
+/// until a verified kind exists.
+pub const COUNCIL_GENERIC: u8 = 1;
+/// The most members a council multisig may have, so the check's cost stays bounded.
+pub const MAX_COUNCIL_MEMBERS: usize = 10;
+/// How long a requested line waits for the council: `approve_line` refuses after
+/// `requested_at + REQUEST_TTL_SECONDS`.
+pub const REQUEST_TTL_SECONDS: i64 = 15 * 86_400;
+/// The shortest notice a pool may set between `propose_acceleration` and `accelerate_line`.
+pub const MIN_ACCELERATION_NOTICE_SECONDS: u32 = 7 * 86_400;
+/// The shortest wait a pool may set from a pagaré's payment before its borrower may cancel it
+/// alone.
+pub const MIN_CANCEL_GRACE_SECONDS: u32 = 30 * 86_400;
 /// `Pool::asset_controls` bit: the asset mint has a freeze authority.
 pub const ASSET_CONTROL_FREEZE: u8 = 1 << 0;
 /// `Pool::asset_controls` bit: the asset mint carries the Token-2022 `Pausable` extension.
@@ -103,6 +121,32 @@ pub struct Pool {
     pub permissioned: bool,
     pub paused: bool,
     pub bump: u8,
+    /// Paid for and seeds the pool; no other power.
+    pub creator: Pubkey,
+    /// `COUNCIL_SQUADS` or `COUNCIL_GENERIC`.
+    pub council_kind: u8,
+    /// The Squads multisig whose vault is the council; the zero key under `COUNCIL_GENERIC`.
+    pub multisig: Pubkey,
+    /// The bump of the council's vault PDA `["multisig", multisig, "vault", 0]`.
+    pub council_vault_bump: u8,
+    /// The authority `propose_council` named, until it signs `accept_council`; the zero key when
+    /// none.
+    pub pending_council: Pubkey,
+    pub pending_council_kind: u8,
+    /// A key that may only pause the pool, beside every council member; the zero key when none.
+    pub guardian: Pubkey,
+    /// The most principal the pool lends at once, in asset units; checked at every draw.
+    pub max_outstanding_principal: u64,
+    /// Seconds from `propose_acceleration` before `accelerate_line`; at least
+    /// `MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline.
+    pub acceleration_notice_seconds: u32,
+    /// Seconds from a pagaré's payment before its borrower may cancel it alone; at least
+    /// `MIN_CANCEL_GRACE_SECONDS`.
+    pub cancel_grace_seconds: u32,
+    /// Principal of the lines in collection, for a provision at the mark; zero, not yet used.
+    pub impaired_principal: u64,
+    /// The provision on `impaired_principal`, in basis points; zero, not yet used.
+    pub provision_bps: u16,
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 64],
 }
@@ -142,6 +186,8 @@ impl Pool {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]
 pub enum LineStatus {
+    /// Requested by the borrower, waiting for the council's `approve_line` or `reject_line`.
+    Requested,
     Approved,
     Active,
     Repaid,
@@ -214,6 +260,22 @@ pub struct CreditLine {
     /// installment is due, and `write_off` waits `Pool::collection_period_seconds` from it.
     pub accelerated_at: i64,
     pub bump: u8,
+    pub requested_at: i64,
+    pub approved_at: i64,
+    /// `sha256` of the stored terms in the fixed encoding; the council's approval names it.
+    pub terms_hash: [u8; 32],
+    /// Hash of the approved pagaré text every draw's pagaré hash is derived from.
+    pub pagare_template_hash: [u8; 32],
+    /// Funded the request; receives the rent back on withdraw, reject or expiry.
+    pub payer: Pubkey,
+    /// `Σ amount × drawn_at` over the draws: a bullet line's interest accrued at a mark is
+    /// `rate × (drawn × mark − draw_time_weight)`.
+    pub draw_time_weight: u128,
+    /// The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which
+    /// `resume_draws` restores; zero when draws are not suspended.
+    pub availability_end_saved: i64,
+    /// When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending.
+    pub acceleration_due_at: i64,
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 64],
 }
@@ -392,6 +454,18 @@ mod tests {
             permissioned: false,
             paused: false,
             bump: 0,
+            creator: Pubkey::default(),
+            council_kind: COUNCIL_SQUADS,
+            multisig: Pubkey::default(),
+            council_vault_bump: 0,
+            pending_council: Pubkey::default(),
+            pending_council_kind: 0,
+            guardian: Pubkey::default(),
+            max_outstanding_principal: 0,
+            acceleration_notice_seconds: 0,
+            cancel_grace_seconds: 0,
+            impaired_principal: 0,
+            provision_bps: 0,
             reserved: [0; 64],
         }
     }

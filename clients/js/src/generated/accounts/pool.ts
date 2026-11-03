@@ -112,6 +112,38 @@ export type Pool = {
   permissioned: boolean;
   paused: boolean;
   bump: number;
+  /** Paid for and seeds the pool; no other power. */
+  creator: Address;
+  /** `COUNCIL_SQUADS` or `COUNCIL_GENERIC`. */
+  councilKind: number;
+  /** The Squads multisig whose vault is the council; the zero key under `COUNCIL_GENERIC`. */
+  multisig: Address;
+  /** The bump of the council's vault PDA `["multisig", multisig, "vault", 0]`. */
+  councilVaultBump: number;
+  /**
+   * The authority `propose_council` named, until it signs `accept_council`; the zero key when
+   * none.
+   */
+  pendingCouncil: Address;
+  pendingCouncilKind: number;
+  /** A key that may only pause the pool, beside every council member; the zero key when none. */
+  guardian: Address;
+  /** The most principal the pool lends at once, in asset units; checked at every draw. */
+  maxOutstandingPrincipal: bigint;
+  /**
+   * Seconds from `propose_acceleration` before `accelerate_line`; at least
+   * `MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline.
+   */
+  accelerationNoticeSeconds: number;
+  /**
+   * Seconds from a pagaré's payment before its borrower may cancel it alone; at least
+   * `MIN_CANCEL_GRACE_SECONDS`.
+   */
+  cancelGraceSeconds: number;
+  /** Principal of the lines in collection, for a provision at the mark; zero, not yet used. */
+  impairedPrincipal: bigint;
+  /** The provision on `impaired_principal`, in basis points; zero, not yet used. */
+  provisionBps: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -173,6 +205,38 @@ export type PoolArgs = {
   permissioned: boolean;
   paused: boolean;
   bump: number;
+  /** Paid for and seeds the pool; no other power. */
+  creator: Address | HasAddress;
+  /** `COUNCIL_SQUADS` or `COUNCIL_GENERIC`. */
+  councilKind: number;
+  /** The Squads multisig whose vault is the council; the zero key under `COUNCIL_GENERIC`. */
+  multisig: Address | HasAddress;
+  /** The bump of the council's vault PDA `["multisig", multisig, "vault", 0]`. */
+  councilVaultBump: number;
+  /**
+   * The authority `propose_council` named, until it signs `accept_council`; the zero key when
+   * none.
+   */
+  pendingCouncil: Address | HasAddress;
+  pendingCouncilKind: number;
+  /** A key that may only pause the pool, beside every council member; the zero key when none. */
+  guardian: Address | HasAddress;
+  /** The most principal the pool lends at once, in asset units; checked at every draw. */
+  maxOutstandingPrincipal: number | bigint;
+  /**
+   * Seconds from `propose_acceleration` before `accelerate_line`; at least
+   * `MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline.
+   */
+  accelerationNoticeSeconds: number;
+  /**
+   * Seconds from a pagaré's payment before its borrower may cancel it alone; at least
+   * `MIN_CANCEL_GRACE_SECONDS`.
+   */
+  cancelGraceSeconds: number;
+  /** Principal of the lines in collection, for a provision at the mark; zero, not yet used. */
+  impairedPrincipal: number | bigint;
+  /** The provision on `impaired_principal`, in basis points; zero, not yet used. */
+  provisionBps: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -201,6 +265,18 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["permissioned", getBooleanEncoder()],
       ["paused", getBooleanEncoder()],
       ["bump", getU8Encoder()],
+      ["creator", getAddressEncoder()],
+      ["councilKind", getU8Encoder()],
+      ["multisig", getAddressEncoder()],
+      ["councilVaultBump", getU8Encoder()],
+      ["pendingCouncil", getAddressEncoder()],
+      ["pendingCouncilKind", getU8Encoder()],
+      ["guardian", getAddressEncoder()],
+      ["maxOutstandingPrincipal", getU64Encoder()],
+      ["accelerationNoticeSeconds", getU32Encoder()],
+      ["cancelGraceSeconds", getU32Encoder()],
+      ["impairedPrincipal", getU64Encoder()],
+      ["provisionBps", getU16Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 64)],
     ]),
     (value) => ({ ...value, discriminator: POOL_DISCRIMINATOR }),
@@ -230,6 +306,18 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["permissioned", getBooleanDecoder()],
     ["paused", getBooleanDecoder()],
     ["bump", getU8Decoder()],
+    ["creator", getAddressDecoder()],
+    ["councilKind", getU8Decoder()],
+    ["multisig", getAddressDecoder()],
+    ["councilVaultBump", getU8Decoder()],
+    ["pendingCouncil", getAddressDecoder()],
+    ["pendingCouncilKind", getU8Decoder()],
+    ["guardian", getAddressDecoder()],
+    ["maxOutstandingPrincipal", getU64Decoder()],
+    ["accelerationNoticeSeconds", getU32Decoder()],
+    ["cancelGraceSeconds", getU32Decoder()],
+    ["impairedPrincipal", getU64Decoder()],
+    ["provisionBps", getU16Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 64)],
   ]);
 }
@@ -301,5 +389,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 346;
+  return 503;
 }

@@ -264,3 +264,135 @@ pub struct PagareReceiptAnnotated {
     pub payment_entry_count: u32,
     pub receipt_hash: [u8; 32],
 }
+
+/// Every term `request_line` stored, with the hash of their fixed encoding. On a bullet line the
+/// schedule fields are zero; `payer` funded the request and gets its rent back.
+#[event]
+pub struct LineRequested {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub borrower: Pubkey,
+    pub payer: Pubkey,
+    pub sponsor: Option<Pubkey>,
+    pub sponsor_role: u8,
+    pub agreement_hash: [u8; 32],
+    pub expediente_root: [u8; 32],
+    pub pagare_template_hash: [u8; 32],
+    pub terms_hash: [u8; 32],
+    pub principal: u64,
+    pub rate_bps: u16,
+    pub term_end: i64,
+    pub first_due_at: i64,
+    pub interval_seconds: i64,
+    pub installments: u16,
+    pub late_bps: u16,
+    pub max_missed: u8,
+}
+
+/// The council approved exactly this expediente and these terms.
+#[event]
+pub struct LineApproved {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub expediente_root: [u8; 32],
+    pub terms_hash: [u8; 32],
+    pub availability_end: i64,
+}
+
+#[event]
+pub struct LineRejected {
+    pub pool: Pubkey,
+    pub line_id: u64,
+}
+
+#[event]
+pub struct RequestWithdrawn {
+    pub pool: Pubkey,
+    pub line_id: u64,
+}
+
+/// The council proposed to collect the line early; draws are suspended at once, and
+/// `accelerate_line` may fire from `due_at`. The notice is addressed to the borrower.
+#[event]
+pub struct AccelerationProposed {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub due_at: i64,
+}
+
+/// The proposal is withdrawn; draws stay suspended until `resume_draws`.
+#[event]
+pub struct AccelerationWithdrawn {
+    pub pool: Pubkey,
+    pub line_id: u64,
+}
+
+/// The council accelerated the line after the notice: the same effect as `LineInCollection`,
+/// without missed installments.
+#[event]
+pub struct LineAccelerated {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub remaining: u64,
+    pub interest_forgiven: u64,
+}
+
+/// Draws resumed with the window they had before the suspension.
+#[event]
+pub struct LineDrawsResumed {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub availability_end: i64,
+}
+
+/// `council` must sign `accept_council` before it becomes the pool's council.
+#[event]
+pub struct CouncilProposed {
+    pub pool: Pubkey,
+    pub council: Pubkey,
+    pub kind: u8,
+}
+
+#[event]
+pub struct CouncilAccepted {
+    pub pool: Pubkey,
+    pub old: Pubkey,
+    pub new: Pubkey,
+    pub kind: u8,
+}
+
+#[event]
+pub struct PoolResumed {
+    pub pool: Pubkey,
+}
+
+/// The zero key means no guardian.
+#[event]
+pub struct GuardianSet {
+    pub pool: Pubkey,
+    pub guardian: Pubkey,
+}
+
+#[event]
+pub struct MaxLineBpsSet {
+    pub pool: Pubkey,
+    pub max_line_bps: u16,
+}
+
+#[event]
+pub struct OutstandingCapSet {
+    pub pool: Pubkey,
+    pub max_outstanding_principal: u64,
+}
+
+#[event]
+pub struct AccelerationNoticeSet {
+    pub pool: Pubkey,
+    pub acceleration_notice_seconds: u32,
+}
+
+#[event]
+pub struct CancelGraceSet {
+    pub pool: Pubkey,
+    pub cancel_grace_seconds: u32,
+}

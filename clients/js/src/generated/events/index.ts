@@ -6,20 +6,34 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./accelerationNoticeSet";
+export * from "./accelerationProposed";
+export * from "./accelerationWithdrawn";
 export * from "./attestorSet";
 export * from "./cancelDelaySet";
+export * from "./cancelGraceSet";
 export * from "./cancellationRequested";
 export * from "./collectionPeriodSet";
+export * from "./councilAccepted";
+export * from "./councilProposed";
 export * from "./deposited";
+export * from "./guardianSet";
 export * from "./lateInterestCollected";
+export * from "./lineAccelerated";
+export * from "./lineApproved";
 export * from "./lineCancelled";
 export * from "./lineDrawn";
+export * from "./lineDrawsResumed";
 export * from "./lineDrawsSuspended";
 export * from "./lineInCollection";
 export * from "./lineOpened";
+export * from "./lineRejected";
 export * from "./lineRepaid";
+export * from "./lineRequested";
 export * from "./lineWrittenOff";
+export * from "./maxLineBpsSet";
 export * from "./navUpdated";
+export * from "./outstandingCapSet";
 export * from "./pagareCancelled";
 export * from "./pagareEntry";
 export * from "./pagareIssued";
@@ -27,4 +41,6 @@ export * from "./pagarePayment";
 export * from "./pagareReceiptAnnotated";
 export * from "./poolInitialized";
 export * from "./poolPaused";
+export * from "./poolResumed";
 export * from "./redeemed";
+export * from "./requestWithdrawn";

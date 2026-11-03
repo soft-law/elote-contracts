@@ -25,6 +25,8 @@ import {
   getOptionEncoder,
   getStructDecoder,
   getStructEncoder,
+  getU128Decoder,
+  getU128Encoder,
   getU16Decoder,
   getU16Encoder,
   getU64Decoder,
@@ -134,6 +136,26 @@ export type CreditLine = {
    */
   acceleratedAt: bigint;
   bump: number;
+  requestedAt: bigint;
+  approvedAt: bigint;
+  /** `sha256` of the stored terms in the fixed encoding; the council's approval names it. */
+  termsHash: ReadonlyUint8Array;
+  /** Hash of the approved pagaré text every draw's pagaré hash is derived from. */
+  pagareTemplateHash: ReadonlyUint8Array;
+  /** Funded the request; receives the rent back on withdraw, reject or expiry. */
+  payer: Address;
+  /**
+   * `Σ amount × drawn_at` over the draws: a bullet line's interest accrued at a mark is
+   * `rate × (drawn × mark − draw_time_weight)`.
+   */
+  drawTimeWeight: bigint;
+  /**
+   * The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which
+   * `resume_draws` restores; zero when draws are not suspended.
+   */
+  availabilityEndSaved: bigint;
+  /** When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending. */
+  accelerationDueAt: bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -209,6 +231,26 @@ export type CreditLineArgs = {
    */
   acceleratedAt: number | bigint;
   bump: number;
+  requestedAt: number | bigint;
+  approvedAt: number | bigint;
+  /** `sha256` of the stored terms in the fixed encoding; the council's approval names it. */
+  termsHash: ReadonlyUint8Array;
+  /** Hash of the approved pagaré text every draw's pagaré hash is derived from. */
+  pagareTemplateHash: ReadonlyUint8Array;
+  /** Funded the request; receives the rent back on withdraw, reject or expiry. */
+  payer: Address | HasAddress;
+  /**
+   * `Σ amount × drawn_at` over the draws: a bullet line's interest accrued at a mark is
+   * `rate × (drawn × mark − draw_time_weight)`.
+   */
+  drawTimeWeight: number | bigint;
+  /**
+   * The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which
+   * `resume_draws` restores; zero when draws are not suspended.
+   */
+  availabilityEndSaved: number | bigint;
+  /** When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending. */
+  accelerationDueAt: number | bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -248,6 +290,14 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
       ["closedAt", getI64Encoder()],
       ["acceleratedAt", getI64Encoder()],
       ["bump", getU8Encoder()],
+      ["requestedAt", getI64Encoder()],
+      ["approvedAt", getI64Encoder()],
+      ["termsHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["pagareTemplateHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["payer", getAddressEncoder()],
+      ["drawTimeWeight", getU128Encoder()],
+      ["availabilityEndSaved", getI64Encoder()],
+      ["accelerationDueAt", getI64Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 64)],
     ]),
     (value) => ({ ...value, discriminator: CREDIT_LINE_DISCRIMINATOR }),
@@ -288,6 +338,14 @@ export function getCreditLineDecoder(): Decoder<CreditLine> {
     ["closedAt", getI64Decoder()],
     ["acceleratedAt", getI64Decoder()],
     ["bump", getU8Decoder()],
+    ["requestedAt", getI64Decoder()],
+    ["approvedAt", getI64Decoder()],
+    ["termsHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["pagareTemplateHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["payer", getAddressDecoder()],
+    ["drawTimeWeight", getU128Decoder()],
+    ["availabilityEndSaved", getI64Decoder()],
+    ["accelerationDueAt", getI64Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 64)],
   ]);
 }

@@ -16,6 +16,7 @@ import {
 } from "@solana/kit";
 
 export enum LineStatus {
+  Requested,
   Approved,
   Active,
   Repaid,

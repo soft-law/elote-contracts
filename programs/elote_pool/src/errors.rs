@@ -16,6 +16,18 @@ pub enum PoolError {
     #[msg("The pool is paused")]
     Paused,
 
+    // The council.
+    #[msg("The council is not the vault of an autonomous Squads v4 multisig with a majority threshold")]
+    CouncilInvalid,
+    #[msg("The council multisig has more members than the program checks")]
+    CouncilTooLarge,
+    #[msg("This council kind is not accepted")]
+    CouncilKindInvalid,
+    #[msg("No council rotation is pending, or this signer is not the one proposed")]
+    NoPendingCouncil,
+    #[msg("The council's decision is past its valid_until")]
+    ProposalExpired,
+
     // Accounts.
     #[msg("Wrong mint or token account")]
     WrongAccount,
@@ -23,6 +35,10 @@ pub enum PoolError {
     AssetMintNotAllowed,
     #[msg("The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions")]
     ShareMintNotAllowed,
+    #[msg("The asset mint is not on this cluster's allow-list")]
+    AssetNotListed,
+    #[msg("The asset mint and the share mint are the same")]
+    AssetIsShareMint,
     #[msg("The collection is not a bare Metaplex Core collection whose update authority is the pool")]
     CollectionNotAllowed,
     #[msg("The pagaré records passed are not the ones this payment touches, oldest first")]
@@ -33,6 +49,8 @@ pub enum PoolError {
     AttestorIsAdmin,
     #[msg("The pool admin cannot be the borrower")]
     BorrowerIsAdmin,
+    #[msg("A member of the council cannot be the borrower")]
+    BorrowerIsCurator,
     #[msg("The borrower cannot be the attestor")]
     BorrowerIsAttestor,
     #[msg("The endorsee is missing, or is the pool, the admin or the attestor")]
@@ -55,12 +73,18 @@ pub enum PoolError {
     SlippageExceeded,
     #[msg("The principal exceeds the pool's maximum line, max_line_bps of the NAV")]
     LineTooLarge,
+    #[msg("The draw would take the pool's outstanding principal above its cap")]
+    OutstandingCapExceeded,
 
     // Pool parameters.
     #[msg("The collection period is shorter than the minimum")]
     CollectionPeriodTooShort,
     #[msg("The cancel delay is below the seven-day floor")]
     CancelDelayTooShort,
+    #[msg("The acceleration notice is below the seven-day floor")]
+    AccelerationNoticeTooShort,
+    #[msg("The borrower's cancel grace is below the thirty-day floor")]
+    CancelGraceTooShort,
 
     // Lines.
     #[msg("The line is not in the required status")]
@@ -69,6 +93,12 @@ pub enum PoolError {
     AgreementHashRequired,
     #[msg("The expediente root is required")]
     ExpedienteRootRequired,
+    #[msg("The pagaré template's hash is required")]
+    PagareTemplateHashRequired,
+    #[msg("The expediente root or the terms hash is not the one the borrower requested")]
+    ExpedienteMismatch,
+    #[msg("The request is older than the council's review window")]
+    RequestExpired,
     #[msg("sponsor_role is unknown")]
     SponsorRoleInvalid,
     #[msg("The term has ended, or would end before the opening")]
@@ -83,6 +113,12 @@ pub enum PoolError {
     AvailabilityEnded,
     #[msg("The line has reached its maximum number of draws")]
     TooManyDraws,
+    #[msg("The line's draws are not suspended")]
+    DrawsNotSuspended,
+    #[msg("No acceleration is pending on this line, or one already is")]
+    AccelerationState,
+    #[msg("The acceleration notice has not run")]
+    AccelerationNotDue,
     #[msg("The repayment must cover the late interest due")]
     LateInterestUnpaid,
     #[msg("Fewer installments missed than the line allows before collection")]
@@ -101,6 +137,8 @@ pub enum PoolError {
     PagareNotCovered,
     #[msg("This pagaré is already extinguished")]
     PagareAlreadyPaid,
+    #[msg("The borrower may cancel alone only after the cancel grace from the payment")]
+    CancelGraceNotElapsed,
     #[msg("This kind of endoso is not one the program records")]
     EndosoKindInvalid,
     #[msg("The pagaré has no procuración in force, or already has one")]
