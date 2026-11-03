@@ -115,21 +115,24 @@ pub mod elote_pool {
         instructions::lines::withdraw_request(ctx)
     }
 
-    /// Pays a tranche of `amount` to the borrower against the signed pagaré `document_hash` and
-    /// mints the pagaré as a frozen Core asset owned by the pool, with its `Pagare` record. The
-    /// borrower, the attestor and the rent payer sign; refused while paused, once the draw window
-    /// has closed, or above what the line or the vault has.
+    /// Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the
+    /// borrower signs as `fx_rate` and `fx_date`, and mints the pagaré (its hash derived on chain
+    /// from the approved template and terms) as a frozen Core asset owned by the pool, with its
+    /// `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw
+    /// window has closed, on a changed or stale FIX, or above what the line, the vault or the pool cap
+    /// allows.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         ctx: Context<Draw>,
-        amount: u64,
-        document_hash: [u8; 32],
+        amount_mxn: u64,
+        fx_rate: u64,
+        fx_date: u32,
         asset_bump: u8,
         pagare_bump: u8,
         cert_fingerprint: [u8; 32],
         signature_method: u8,
     ) -> Result<()> {
-        instructions::lines::draw(ctx, amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)
+        instructions::lines::draw(ctx, amount_mxn, fx_rate, fx_date, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
     /// Extinguishes pagaré `draw_index` once a repayment has marked it paid

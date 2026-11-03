@@ -372,8 +372,24 @@ pub const YEAR: i64 = elote_pool::state::SECONDS_PER_YEAR as i64;
 pub const EXPEDIENTE_ROOT: [u8; 32] = [0xe7; 32];
 /// The fixed pagaré template hash the tests request lines with.
 pub const PAGARE_TEMPLATE_HASH: [u8; 32] = [0x7e; 32];
-/// The fixed pagaré hash the tests draw with.
-pub const DOCUMENT_HASH: [u8; 32] = [0xd0; 32];
+/// The harness FIX: 10,000.0000 MXN per USD, at which one centavo is one USDC base unit.
+pub const PARITY_FIX: u64 = 100_000_000;
+/// The clock every `Env` starts at: 2026-11-03T20:00Z.
+pub const START_TIME: i64 = 1_793_736_000;
+
+/// `yyyymmdd` of a day number (days since 1970-01-01).
+pub fn yyyymmdd(days: i64) -> u32 {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (y * 10_000 + m * 100 + d) as u32
+}
 /// The fingerprint of the PSC certificate behind the default test signature (method 1, PSC + wallet).
 pub const CERT_FINGERPRINT: [u8; 32] = [0xcf; 32];
 pub const SIGNATURE_METHOD: u8 = elote_pool::state::SIGNATURE_PSC_WALLET;
@@ -400,6 +416,8 @@ pub struct Env {
     pub multisig: Pubkey,
     pub council_vault_bump: u8,
     pub curators: Vec<Keypair>,
+    /// Pools whose FIX the harness keeps current at `PARITY_FIX` (see `ensure_fix`).
+    pub parity_pools: Vec<PoolKeys>,
     /// The attestor every pool of this env is created with : the agreements
     /// engine's key, which co-signs openings, draws and cancellations.
     pub attestor: Keypair,
@@ -450,7 +468,11 @@ impl Env {
         let attestor = Keypair::new();
         svm.airdrop(&attestor.pubkey(), 10 * LAMPORTS_PER_SOL).expect("airdrop attestor");
 
-        Self { svm, council, creator, multisig, council_vault_bump, curators, attestor }
+        // A real date, so FIX dates (2000-2199) are valid: 2026-11-03T20:00Z, 14:00 in Mexico City.
+        let mut clock = svm.get_sysvar::<anchor_lang::prelude::Clock>();
+        clock.unix_timestamp = START_TIME;
+        svm.set_sysvar(&clock);
+        Self { svm, council, creator, multisig, council_vault_bump, curators, attestor, parity_pools: Vec::new() }
     }
 
     pub fn funded(&mut self, sol: u64) -> Keypair {
@@ -483,8 +505,11 @@ impl Env {
         payer: &Keypair,
         extra: &[&Keypair],
     ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+        // Extra keys the message does not ask to sign are dropped, so a caller may pass a key a
+        // later version stopped requiring; a signer the message needs and nobody gave still fails.
+        let required: Vec<Pubkey> = ixs.iter().flat_map(|ix| ix.accounts.iter().filter(|m| m.is_signer).map(|m| m.pubkey)).collect();
         let mut signers: Vec<&Keypair> = vec![payer];
-        signers.extend_from_slice(extra);
+        signers.extend(extra.iter().copied().filter(|k| required.contains(&k.pubkey()) && k.pubkey() != payer.pubkey()));
         let tx = Transaction::new_signed_with_payer(ixs, Some(&payer.pubkey()), &signers, self.svm.latest_blockhash());
         let res = self.svm.send_transaction(tx);
         // A fresh blockhash per transaction, so two identical instructions are two transactions.
@@ -531,6 +556,36 @@ impl Env {
         let mut clock = self.svm.get_sysvar::<anchor_lang::prelude::Clock>();
         clock.unix_timestamp = ts;
         self.svm.set_sysvar(&clock);
+        for k in self.parity_pools.clone() {
+            self.ensure_fix(&k);
+        }
+    }
+
+    /// Today's date in Mexico City as `yyyymmdd`.
+    pub fn today(&self) -> u32 {
+        yyyymmdd(elote_pool::fx::mexico_city_day(self.now()))
+    }
+
+    /// Publishes `PARITY_FIX` for today through the council unless the pool already has today's
+    /// date or a later one, and keeps it current after every `warp`. The arithmetic tests then read
+    /// centavos and USDC base units as one unit; tests of the conversion set their own FIX.
+    pub fn ensure_fix(&mut self, k: &PoolKeys) {
+        if !self.parity_pools.iter().any(|p| p.pool == k.pool) {
+            self.parity_pools.push(*k);
+        }
+        let today = self.today();
+        let pool = self.pool(k);
+        if pool.fix_date >= today && pool.fix_rate != 0 {
+            return;
+        }
+        let council = self.council.insecure_clone();
+        let ix = self.post_fix_ix(k, &council.pubkey(), PARITY_FIX, today);
+        self.send(ix, &council, &[]);
+    }
+
+    /// Stops keeping `k` at `PARITY_FIX`.
+    pub fn release_fix(&mut self, k: &PoolKeys) {
+        self.parity_pools.retain(|p| p.pool != k.pool);
     }
 
     // -- SPL Token helpers ---------------------------------------------------------------------
@@ -1168,6 +1223,7 @@ impl Env {
     /// backend would), signed by the borrower and the named sponsor. Returns the id and the
     /// request's transaction.
     pub fn request_line_with(&mut self, k: &PoolKeys, borrower: &Keypair, p: &LineParams, sponsor: Option<&Keypair>) -> (u64, TransactionMetadata) {
+        self.ensure_fix(k);
         let payer = self.council.insecure_clone();
         let line_id = self.pool(k).line_count;
         let ix = self.request_line_ix(k, &payer.pubkey(), line_id, &borrower.pubkey(), p, sponsor.map(|s| s.pubkey()));
@@ -1185,6 +1241,12 @@ impl Env {
         let hash = self.terms_hash(k, line_id, borrower, p);
         let ix = self.approve_line_ix(k, &council.pubkey(), line_id, p.expediente_root, hash);
         self.send(ix, &council, &[])
+    }
+
+    /// The pagaré hash `draw` derives for tranche `draw_index` of `amount_mxn` drawn at `drawn_at`.
+    pub fn expected_pagare_hash(&self, k: &PoolKeys, line_id: u64, draw_index: u16, amount_mxn: u64, drawn_at: i64) -> [u8; 32] {
+        let key = line_pda(&k.pool, line_id).0;
+        elote_pool::instructions::lines::pagare_hash(&self.line(k, line_id), &key, draw_index, amount_mxn, drawn_at)
     }
 
     /// Default terms of a bullet line: `principal` at an annual `rate_bps` for exactly one year
@@ -1259,8 +1321,8 @@ impl Env {
     /// A tranche of `amount` against `document_hash`, with the borrower paying the pagaré's
     /// rent; signed by the borrower and the attestor (the attestor is added by `draw` and
     /// `draw_amount`; `draw_ix` only names it).
-    pub fn draw_ix_amount(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey, amount: u64, document_hash: [u8; 32]) -> Instruction {
-        self.draw_ix_paid_by(k, line_id, borrower, borrower, amount, document_hash)
+    pub fn draw_ix_amount(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey, amount: u64) -> Instruction {
+        self.draw_ix_paid_by(k, line_id, borrower, borrower, amount)
     }
 
     /// As `draw_ix_amount`, with `payer` (the relayer) paying the rent of the pagaré asset and
@@ -1274,12 +1336,11 @@ impl Env {
         borrower: &Pubkey,
         payer: &Pubkey,
         amount: u64,
-        document_hash: [u8; 32],
     ) -> Instruction {
         let line = line_pda(&k.pool, line_id).0;
         let draw_index = self.line(k, line_id).draws;
         let (asset_bump, pagare_bump) = (pagare_asset_pda(&line, draw_index).1, pagare_pda(&line, draw_index).1);
-        self.draw_ix_full(k, line_id, borrower, payer, amount, document_hash, asset_bump, pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD)
+        self.draw_ix_full(k, line_id, borrower, payer, amount, asset_bump, pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD)
     }
 
     /// As `draw_ix_amount`, with the signature facts of the pagaré given explicitly.
@@ -1290,14 +1351,13 @@ impl Env {
         line_id: u64,
         borrower: &Pubkey,
         amount: u64,
-        document_hash: [u8; 32],
         cert_fingerprint: [u8; 32],
         signature_method: u8,
     ) -> Instruction {
         let line = line_pda(&k.pool, line_id).0;
         let draw_index = self.line(k, line_id).draws;
         let (asset_bump, pagare_bump) = (pagare_asset_pda(&line, draw_index).1, pagare_pda(&line, draw_index).1);
-        self.draw_ix_full(k, line_id, borrower, borrower, amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)
+        self.draw_ix_full(k, line_id, borrower, borrower, amount, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
     /// As `draw_ix_paid_by`, with the two PDA bumps given explicitly (the program verifies them).
@@ -1309,7 +1369,6 @@ impl Env {
         borrower: &Pubkey,
         payer: &Pubkey,
         amount: u64,
-        document_hash: [u8; 32],
         asset_bump: u8,
         pagare_bump: u8,
         cert_fingerprint: [u8; 32],
@@ -1322,7 +1381,6 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::Draw {
                 borrower: *borrower,
-                attestor: self.attestor.pubkey(),
                 pool: k.pool,
                 line,
                 asset_mint: k.asset_mint,
@@ -1339,7 +1397,10 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::Draw { amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method }.data(),
+            data: {
+                let pool = self.pool(k);
+                elote_pool::instruction::Draw { amount_mxn: amount, fx_rate: pool.fix_rate, fx_date: pool.fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method }.data()
+            },
         }
     }
 
@@ -1544,7 +1605,7 @@ impl Env {
     /// A draw of everything still available on the line.
     pub fn draw_ix(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey) -> Instruction {
         let line = self.line(k, line_id);
-        self.draw_ix_amount(k, line_id, borrower, line.principal - line.drawn, DOCUMENT_HASH)
+        self.draw_ix_amount(k, line_id, borrower, line.principal - line.drawn)
     }
 
     /// Draws everything still available; signed by the borrower and the attestor.
@@ -1557,7 +1618,7 @@ impl Env {
 
     /// Draws one tranche of `amount`; signed by the borrower and the attestor.
     pub fn draw_amount(&mut self, k: &PoolKeys, line_id: u64, borrower: &Keypair, amount: u64) -> elote_pool::events::LineDrawn {
-        let ix = self.draw_ix_amount(k, line_id, &borrower.pubkey(), amount, DOCUMENT_HASH);
+        let ix = self.draw_ix_amount(k, line_id, &borrower.pubkey(), amount);
         let attestor = self.attestor.insecure_clone();
         let meta = self.send(ix, borrower, &[&attestor]);
         find_event(&meta).expect("LineDrawn event")

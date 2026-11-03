@@ -55,7 +55,7 @@ fn open_draw_repay_full_cycle_raises_share_value() {
 
     // Drawn in full at once: 0.4 of interest over the year.
     let ev = env.draw(&k, 0, &borrower);
-    assert_eq!((ev.pool, ev.line_id, ev.amount, ev.outstanding_after), (k.pool, 0, 4 * UNIT, 4 * UNIT));
+    assert_eq!((ev.pool, ev.line_id, ev.amount_mxn, ev.outstanding_after), (k.pool, 0, 4 * UNIT, 4 * UNIT));
     assert_eq!(env.token_balance(&k.vault), 6 * UNIT);
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT);
     assert_eq!(env.nav(&k), 10 * UNIT);
@@ -94,40 +94,22 @@ fn open_draw_repay_full_cycle_raises_share_value() {
     assert_eq!(ev.assets, 1_040_000);
 }
 
-/// The attestor co-signs every draw. A stranger in its place, or the right key without a
-/// signature, is refused.
+/// The borrower draws alone: no other key signs a draw, and nobody else can draw on the line.
 #[test]
-fn the_attestor_must_sign_draws() {
+fn the_borrower_draws_alone() {
     let mut env = Env::new();
     let (k, _) = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
-    let council = env.council.insecure_clone();
-    let attestor = env.attestor.insecure_clone();
-    let stranger = env.funded(1);
+    let stranger = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 1_000);
-
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
 
-    let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
-    let meta = ix.accounts.iter_mut().find(|m| m.pubkey == attestor.pubkey()).unwrap();
-    meta.pubkey = stranger.pubkey();
-    env.expect_err(ix, &borrower, &[&stranger], E_ATTESTOR_REQUIRED);
-    let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
-    let meta = ix.accounts.iter_mut().find(|m| m.pubkey == attestor.pubkey()).unwrap();
-    meta.is_signer = false;
-    assert!(env.try_send(ix, &borrower, &[]).is_err());
-    assert_eq!(env.line(&k, line_id).drawn, 0);
-
-    // After a rotation the new key signs and the old one is a stranger.
-    let new_attestor = env.funded(1);
-    let ix = env.set_attestor_ix(&k, &council.pubkey(), &new_attestor.pubkey());
-    env.send(ix, &council, &[&new_attestor]);
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
-    env.expect_err_with_attestor(ix, &borrower, E_ATTESTOR_REQUIRED);
-    let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
-    let meta = ix.accounts.iter_mut().find(|m| m.pubkey == attestor.pubkey()).unwrap();
-    meta.pubkey = new_attestor.pubkey();
-    env.send(ix, &borrower, &[&new_attestor]);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
+    assert_eq!(ix.accounts.iter().filter(|m| m.is_signer).map(|m| m.pubkey).collect::<Vec<_>>(), vec![borrower.pubkey(), borrower.pubkey()], "the borrower, also as the rent payer");
+    let ix = env.draw_ix_amount(&k, line_id, &stranger.pubkey(), UNIT);
+    env.expect_err(ix, &stranger, &[], E_UNAUTHORIZED);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
+    env.send(ix, &borrower, &[]);
     assert_eq!(env.line(&k, line_id).drawn, UNIT);
 }
 
@@ -277,7 +259,7 @@ fn draw_rejects_insufficient_liquidity_strangers_and_the_pause() {
     // Nothing left to draw: a tranche of zero is refused, and so is one above what is available.
     let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
     env.expect_err_with_attestor(ix, &borrower, E_WRONG_AMOUNT);
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1);
     env.expect_err_with_attestor(ix, &borrower, E_WRONG_AMOUNT);
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT, "drawn in two tranches");
     assert_eq!(env.line(&k, line_id).draws, 2);
@@ -480,7 +462,7 @@ fn draw_state_follows_the_tranches() {
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
 
     let ev = env.draw_amount(&k, line_id, &borrower, UNIT);
-    assert_eq!((ev.amount, ev.drawn, ev.available, ev.interest_due), (UNIT, UNIT, 3 * UNIT, 100_000));
+    assert_eq!((ev.amount_mxn, ev.drawn, ev.available, ev.interest_due), (UNIT, UNIT, 3 * UNIT, 100_000));
     assert_eq!((ev.availability_end, ev.draw_index), (p.term_end, 0));
     let t_first = env.now();
     let line = env.line(&k, line_id);

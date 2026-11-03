@@ -50,7 +50,8 @@ export type PagareIssuedEvent = {
   drawIndex: number;
   asset: Address;
   pagareHash: ReadonlyUint8Array;
-  amount: bigint;
+  amountMxn: bigint;
+  deliveryHash: ReadonlyUint8Array;
   dueAt: bigint;
   holder: Address;
 };
@@ -61,7 +62,8 @@ export type PagareIssuedEventArgs = {
   drawIndex: number;
   asset: Address | HasAddress;
   pagareHash: ReadonlyUint8Array;
-  amount: number | bigint;
+  amountMxn: number | bigint;
+  deliveryHash: ReadonlyUint8Array;
   dueAt: number | bigint;
   holder: Address | HasAddress;
 };
@@ -75,7 +77,8 @@ export function getPagareIssuedEventEncoder(): FixedSizeEncoder<PagareIssuedEven
       ["drawIndex", getU16Encoder()],
       ["asset", getAddressEncoder()],
       ["pagareHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["amount", getU64Encoder()],
+      ["amountMxn", getU64Encoder()],
+      ["deliveryHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["dueAt", getI64Encoder()],
       ["holder", getAddressEncoder()],
     ]),
@@ -92,7 +95,8 @@ export function getPagareIssuedEventDecoder(): FixedSizeDecoder<PagareIssuedEven
       ["drawIndex", getU16Decoder()],
       ["asset", getAddressDecoder()],
       ["pagareHash", fixDecoderSize(getBytesDecoder(), 32)],
-      ["amount", getU64Decoder()],
+      ["amountMxn", getU64Decoder()],
+      ["deliveryHash", fixDecoderSize(getBytesDecoder(), 32)],
       ["dueAt", getI64Decoder()],
       ["holder", getAddressDecoder()],
     ]),

@@ -15,6 +15,8 @@ import {
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
+  getU32Decoder,
+  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
   getU8Decoder,
@@ -59,7 +61,6 @@ export function getDrawDiscriminatorBytes(): ReadonlyUint8Array {
 export type DrawInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountBorrower extends string | AccountMeta<string> = string,
-  TAccountAttestor extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountAssetMint extends string | AccountMeta<string> = string,
@@ -87,10 +88,6 @@ export type DrawInstruction<
         ? ReadonlySignerAccount<TAccountBorrower> &
             AccountSignerMeta<TAccountBorrower>
         : TAccountBorrower,
-      TAccountAttestor extends string
-        ? ReadonlySignerAccount<TAccountAttestor> &
-            AccountSignerMeta<TAccountAttestor>
-        : TAccountAttestor,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -140,8 +137,9 @@ export type DrawInstruction<
 
 export type DrawInstructionData = {
   discriminator: ReadonlyUint8Array;
-  amount: bigint;
-  documentHash: ReadonlyUint8Array;
+  amountMxn: bigint;
+  fxRate: bigint;
+  fxDate: number;
   assetBump: number;
   pagareBump: number;
   certFingerprint: ReadonlyUint8Array;
@@ -149,8 +147,9 @@ export type DrawInstructionData = {
 };
 
 export type DrawInstructionDataArgs = {
-  amount: number | bigint;
-  documentHash: ReadonlyUint8Array;
+  amountMxn: number | bigint;
+  fxRate: number | bigint;
+  fxDate: number;
   assetBump: number;
   pagareBump: number;
   certFingerprint: ReadonlyUint8Array;
@@ -161,8 +160,9 @@ export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructio
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["amount", getU64Encoder()],
-      ["documentHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["amountMxn", getU64Encoder()],
+      ["fxRate", getU64Encoder()],
+      ["fxDate", getU32Encoder()],
       ["assetBump", getU8Encoder()],
       ["pagareBump", getU8Encoder()],
       ["certFingerprint", fixEncoderSize(getBytesEncoder(), 32)],
@@ -175,8 +175,9 @@ export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructio
 export function getDrawInstructionDataDecoder(): FixedSizeDecoder<DrawInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["amount", getU64Decoder()],
-    ["documentHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["amountMxn", getU64Decoder()],
+    ["fxRate", getU64Decoder()],
+    ["fxDate", getU32Decoder()],
     ["assetBump", getU8Decoder()],
     ["pagareBump", getU8Decoder()],
     ["certFingerprint", fixDecoderSize(getBytesDecoder(), 32)],
@@ -196,7 +197,6 @@ export function getDrawInstructionDataCodec(): FixedSizeCodec<
 
 export type DrawAsyncInput<
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
@@ -217,9 +217,8 @@ export type DrawAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
+  /** Signs alone: the signature covers the pagaré hash the program derives and the FIX. */
   borrower: TAccountBorrower;
-  /** Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved. */
-  attestor: TAccountAttestor;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for its decimals (`transfer_checked`). */
@@ -242,8 +241,9 @@ export type DrawAsyncInput<
   systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  amount: DrawInstructionDataArgs["amount"];
-  documentHash: DrawInstructionDataArgs["documentHash"];
+  amountMxn: DrawInstructionDataArgs["amountMxn"];
+  fxRate: DrawInstructionDataArgs["fxRate"];
+  fxDate: DrawInstructionDataArgs["fxDate"];
   assetBump: DrawInstructionDataArgs["assetBump"];
   pagareBump: DrawInstructionDataArgs["pagareBump"];
   certFingerprint: DrawInstructionDataArgs["certFingerprint"];
@@ -252,7 +252,6 @@ export type DrawAsyncInput<
 
 export async function getDrawInstructionAsync<
   TAccountBorrower extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput,
@@ -271,7 +270,6 @@ export async function getDrawInstructionAsync<
 >(
   input: DrawAsyncInput<
     TAccountBorrower,
-    TAccountAttestor,
     TAccountPool,
     TAccountLine,
     TAccountAssetMint,
@@ -296,10 +294,6 @@ export async function getDrawInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
       InstructionAccountInputAddress<TAccountBorrower>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -374,11 +368,6 @@ export async function getDrawInstructionAsync<
   const originalAccounts = {
     borrower: {
       value: input.borrower ?? null,
-      isSigner: true,
-      isWritable: false,
-    },
-    attestor: {
-      value: input.attestor ?? null,
       isSigner: true,
       isWritable: false,
     },
@@ -464,7 +453,6 @@ export async function getDrawInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("borrower", accounts.borrower),
-      getAccountMeta("attestor", accounts.attestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("assetMint", accounts.assetMint),
@@ -489,10 +477,6 @@ export async function getDrawInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
       InstructionAccountInputAddress<TAccountBorrower>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -555,7 +539,6 @@ export async function getDrawInstructionAsync<
 
 export type DrawInput<
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
@@ -576,9 +559,8 @@ export type DrawInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
+  /** Signs alone: the signature covers the pagaré hash the program derives and the FIX. */
   borrower: TAccountBorrower;
-  /** Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved. */
-  attestor: TAccountAttestor;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for its decimals (`transfer_checked`). */
@@ -601,8 +583,9 @@ export type DrawInput<
   systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  amount: DrawInstructionDataArgs["amount"];
-  documentHash: DrawInstructionDataArgs["documentHash"];
+  amountMxn: DrawInstructionDataArgs["amountMxn"];
+  fxRate: DrawInstructionDataArgs["fxRate"];
+  fxDate: DrawInstructionDataArgs["fxDate"];
   assetBump: DrawInstructionDataArgs["assetBump"];
   pagareBump: DrawInstructionDataArgs["pagareBump"];
   certFingerprint: DrawInstructionDataArgs["certFingerprint"];
@@ -611,7 +594,6 @@ export type DrawInput<
 
 export function getDrawInstruction<
   TAccountBorrower extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput,
@@ -630,7 +612,6 @@ export function getDrawInstruction<
 >(
   input: DrawInput<
     TAccountBorrower,
-    TAccountAttestor,
     TAccountPool,
     TAccountLine,
     TAccountAssetMint,
@@ -654,10 +635,6 @@ export function getDrawInstruction<
   ResolvedInstructionAccountMeta<
     TAccountBorrower,
     InstructionAccountInputAddress<TAccountBorrower>
-  >,
-  ResolvedInstructionAccountMeta<
-    TAccountAttestor,
-    InstructionAccountInputAddress<TAccountAttestor>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -731,11 +708,6 @@ export function getDrawInstruction<
   const originalAccounts = {
     borrower: {
       value: input.borrower ?? null,
-      isSigner: true,
-      isWritable: false,
-    },
-    attestor: {
-      value: input.attestor ?? null,
       isSigner: true,
       isWritable: false,
     },
@@ -815,7 +787,6 @@ export function getDrawInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("borrower", accounts.borrower),
-      getAccountMeta("attestor", accounts.attestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("assetMint", accounts.assetMint),
@@ -840,10 +811,6 @@ export function getDrawInstruction<
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
       InstructionAccountInputAddress<TAccountBorrower>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -910,31 +877,30 @@ export type ParsedDrawInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
+    /** Signs alone: the signature covers the pagaré hash the program derives and the FIX. */
     borrower: TAccountMetas[0];
-    /** Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved. */
-    attestor: TAccountMetas[1];
-    pool: TAccountMetas[2];
-    line: TAccountMetas[3];
+    pool: TAccountMetas[1];
+    line: TAccountMetas[2];
     /** Read for its decimals (`transfer_checked`). */
-    assetMint: TAccountMetas[4];
-    vault: TAccountMetas[5];
-    borrowerAssetAccount: TAccountMetas[6];
-    tokenProgram: TAccountMetas[7];
+    assetMint: TAccountMetas[3];
+    vault: TAccountMetas[4];
+    borrowerAssetAccount: TAccountMetas[5];
+    tokenProgram: TAccountMetas[6];
     /** Pays the rent of the pagaré asset and its sidecar. Any signer. */
-    payer: TAccountMetas[8];
+    payer: TAccountMetas[7];
     /**
      * The pagaré's Core asset, created here by the Core program. The client passes the bump so the
      * constraint does not search for it.
      */
-    asset: TAccountMetas[9];
+    asset: TAccountMetas[8];
     /** The pagaré's record, created by the handler (Anchor's `init` would search for the bump). */
-    pagare: TAccountMetas[10];
+    pagare: TAccountMetas[9];
     /** The series' collection the pool controls (validated at `init_pool`). */
-    collection: TAccountMetas[11];
-    mplCoreProgram: TAccountMetas[12];
-    systemProgram: TAccountMetas[13];
-    eventAuthority: TAccountMetas[14];
-    program: TAccountMetas[15];
+    collection: TAccountMetas[10];
+    mplCoreProgram: TAccountMetas[11];
+    systemProgram: TAccountMetas[12];
+    eventAuthority: TAccountMetas[13];
+    program: TAccountMetas[14];
   };
   data: DrawInstructionData;
 };
@@ -947,12 +913,12 @@ export function parseDrawInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedDrawInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 16) {
+  if (instruction.accounts.length < 15) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 16,
+        expectedAccountMetas: 15,
       },
     );
   }
@@ -966,7 +932,6 @@ export function parseDrawInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       borrower: getNextAccount(),
-      attestor: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       assetMint: getNextAccount(),

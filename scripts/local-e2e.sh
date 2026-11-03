@@ -70,7 +70,7 @@ run request-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --pr
 
 echo "== draw.ts: six tranches of 100"
 for i in 0 1 2 3 4 5; do
-  run draw.ts --pool "$POOL" --line-id 1 --borrower-keypair "$KEYS/borrower.json" --amount 100 --document-hash "$HASH"
+  run draw.ts --pool "$POOL" --line-id 1 --borrower-keypair "$KEYS/borrower.json" --amount 100
 done
 
 echo "== repay.ts --all: six pagaré records, so two repay parts"
@@ -97,7 +97,7 @@ solana-keygen new --no-bip39-passphrase --silent -o "$KEYS/procurador.json" >/de
 PROCURADOR="$(solana-keygen pubkey "$KEYS/procurador.json")"
 run request-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --principal 300 --agreement-hash "$HASH"
 for i in 0 1 2; do
-  run draw.ts --pool "$POOL" --line-id 2 --borrower-keypair "$KEYS/borrower.json" --amount 100 --document-hash "$HASH"
+  run draw.ts --pool "$POOL" --line-id 2 --borrower-keypair "$KEYS/borrower.json" --amount 100
 done
 run endorse-pagare.ts --pool "$POOL" --line-id 2 --draw-index 0 --procurador "$PROCURADOR" | tee "$WORK/endorse.log"
 grep -q "procuración in force, procurador $PROCURADOR" "$WORK/endorse.log" || { echo "error: no procuración recorded" >&2; exit 1; }

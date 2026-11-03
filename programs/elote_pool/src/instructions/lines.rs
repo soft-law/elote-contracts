@@ -17,6 +17,7 @@ use crate::events::{
 };
 use crate::math::{self, Arrears, ScheduleTerms};
 use crate::council;
+use crate::fx;
 use crate::pool_signer;
 use crate::registry;
 use crate::terms::{self, LineTerms};
@@ -184,7 +185,7 @@ pub struct ApproveLine<'info> {
 /// The council approves exactly the requested expediente and terms (`ExpedienteMismatch`), within
 /// `REQUEST_TTL_SECONDS` of the request (`RequestExpired`), with the borrower not a member of the
 /// council's multisig (`BorrowerIsCurator`) and the principal at most `max_line_bps` of the NAV now
-/// (`LineTooLarge`). Opens the draw window: to the first due date, or to the term on a bullet line.
+/// (`LineTooLarge`), converted to MXN at the FIX in force. Opens the draw window: to the first due date, or to the term on a bullet line.
 pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_hash: [u8; 32]) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
@@ -197,8 +198,11 @@ pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_
     require!(expediente_root == line.expediente_root && terms_hash == line.terms_hash, PoolError::ExpedienteMismatch);
     require!(!council::is_member(&multisig, &line.borrower)?, PoolError::BorrowerIsCurator);
     let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
+    // The NAV is in USDC and the principal in MXN: the cap is converted at the FIX in force.
+    require!(pool.fix_rate != 0, PoolError::FixStale);
     let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
-    require!(line.principal <= cap, PoolError::LineTooLarge);
+    let cap_mxn = fx::mxn_for_usdc(cap, pool.fix_rate).ok_or(PoolError::Overflow)?;
+    require!(line.principal <= cap_mxn, PoolError::LineTooLarge);
     let availability_end = if line.installments > 0 { line.first_due_at } else { line.term_end };
     require!(availability_end > now, PoolError::TermEnded);
     line.status = LineStatus::Approved;
@@ -307,20 +311,17 @@ fn last_due_of(s: &ScheduleParams) -> Result<i64> {
 
 #[event_cpi]
 #[derive(Accounts)]
-#[instruction(amount: u64, document_hash: [u8; 32], asset_bump: u8, pagare_bump: u8)]
+#[instruction(amount_mxn: u64, fx_rate: u64, fx_date: u32, asset_bump: u8, pagare_bump: u8)]
 pub struct Draw<'info> {
+    /// Signs alone: the signature covers the pagaré hash the program derives and the FIX.
     pub borrower: Signer<'info>,
-
-    /// Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved.
-    #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
-    pub attestor: Signer<'info>,
 
     #[account(
         mut,
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Account<'info, Pool>,
+    pub pool: Box<Account<'info, Pool>>,
 
     #[account(
         mut,
@@ -329,7 +330,7 @@ pub struct Draw<'info> {
         has_one = pool @ PoolError::WrongAccount,
         has_one = borrower @ PoolError::Unauthorized,
     )]
-    pub line: Account<'info, CreditLine>,
+    pub line: Box<Account<'info, CreditLine>>,
 
     /// Read for its decimals (`transfer_checked`).
     #[account(address = pool.asset_mint @ PoolError::WrongAccount)]
@@ -446,8 +447,8 @@ fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) 
     // Hex, not base58: base58 of a 32-byte key is too costly on chain.
     let attributes = vec![
         Attribute { key: "pagare_hash".into(), value: hex(&document_hash) },
-        Attribute { key: "amount".into(), value: dec_u(amount) },
-        Attribute { key: "currency".into(), value: hex(pool.asset_mint.as_ref()) },
+        Attribute { key: "amount_mxn".into(), value: dec_u(amount) },
+        Attribute { key: "currency".into(), value: "MXN".into() },
         Attribute { key: "issued_at".into(), value: dec(issued_at) },
         Attribute { key: "due_at".into(), value: dec(due_at) },
         Attribute { key: "line".into(), value: dec_u(line.line_id) },
@@ -532,19 +533,42 @@ fn create_sidecar<'info>(accounts: &Draw<'info>, pagare_bump: u8, record: &Pagar
     Ok(())
 }
 
-/// One tranche, signed by the borrower and the attestor, with its pagaré asset and record. Every
-/// check runs before anything is written, in this order: not paused;
-/// `Approved` or `Active`; `0 < amount <= principal - drawn`; `now < availability_end`, strictly
-/// (an installment counts as due at the second it falls due); on a scheduled line
-/// `drawn + interest_due >= installments` after the tranche, so every installment keeps at least
-/// one unit; fewer than `MAX_DRAWS` tranches; the vault has the liquidity; a non-zero
-/// `document_hash`; a valid signature method. The tranche's interest, at the annual rate from now
-/// to the last due date, is fixed here and added to `interest_due`.
+/// `sha256(pagare_template_hash || terms_hash || line || draw_index u16 || amount_mxn u64 ||
+/// drawn_at i64)`, little endian: the pagaré the borrower signs, derived from the approved text and
+/// terms, promising `amount_mxn` centavos of MXN.
+pub fn pagare_hash(line: &CreditLine, line_key: &Pubkey, draw_index: u16, amount_mxn: u64, drawn_at: i64) -> [u8; 32] {
+    solana_sha256_hasher::hashv(&[
+        &line.pagare_template_hash,
+        &line.terms_hash,
+        line_key.as_ref(),
+        &draw_index.to_le_bytes(),
+        &amount_mxn.to_le_bytes(),
+        &drawn_at.to_le_bytes(),
+    ])
+    .to_bytes()
+}
+
+/// `sha256(pagare_hash || fx_rate u64 || fx_date u32 || usdc_delivered u64)`: the delivery the
+/// borrower instructed, in USDC at the FIX.
+pub fn delivery_hash(pagare_hash: &[u8; 32], fx_rate: u64, fx_date: u32, usdc_delivered: u64) -> [u8; 32] {
+    solana_sha256_hasher::hashv(&[pagare_hash, &fx_rate.to_le_bytes(), &fx_date.to_le_bytes(), &usdc_delivered.to_le_bytes()]).to_bytes()
+}
+
+/// One tranche of `amount_mxn` centavos, signed by the borrower alone, delivered as USDC at the FIX
+/// in force, which the borrower signs as `fx_rate` and `fx_date` (`FixMismatch` if it changed,
+/// `FixStale` if older than `fx::MAX_FIX_AGE_DAYS`). Every check runs before anything is written:
+/// not paused; `Approved` or `Active`; `0 < amount_mxn <= principal - drawn`; `now <
+/// availability_end`, strictly; on a scheduled line every installment keeps at least one centavo;
+/// fewer than `MAX_DRAWS` tranches; at least one USDC base unit delivered; the vault has it; the
+/// pool's outstanding cost stays within `max_outstanding_principal`; a valid signature method. The
+/// program derives the pagaré hash and the delivery hash; the tranche's interest, at the annual rate
+/// from now to the last due date, is fixed here.
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ctx: Context<Draw>,
-    amount: u64,
-    document_hash: [u8; 32],
+    amount_mxn: u64,
+    fx_rate: u64,
+    fx_date: u32,
     asset_bump: u8,
     pagare_bump: u8,
     cert_fingerprint: [u8; 32],
@@ -555,26 +579,35 @@ pub fn draw(
     require!(!pool.paused, PoolError::Paused);
     require!(matches!(line.status, LineStatus::Approved | LineStatus::Active), PoolError::LineStatus);
     let available = line.available().ok_or(PoolError::Overflow)?;
-    require!(amount > 0 && amount <= available, PoolError::WrongAmount);
+    require!(amount_mxn > 0 && amount_mxn <= available, PoolError::WrongAmount);
     let now = Clock::get()?.unix_timestamp;
     require!(now < line.availability_end, PoolError::AvailabilityEnded);
+    require!(pool.fix_rate != 0 && fx_rate == pool.fix_rate && fx_date == pool.fix_date, PoolError::FixMismatch);
+    let age = fx::mexico_city_day(now).checked_sub(fx::fix_day(pool.fix_date)?).ok_or(PoolError::Overflow)?;
+    require!(age <= fx::MAX_FIX_AGE_DAYS, PoolError::FixStale);
     let last_due = line.last_due().ok_or(PoolError::Overflow)?;
     let seconds = u64::try_from(last_due.checked_sub(now).ok_or(PoolError::Overflow)?).map_err(|_| PoolError::Overflow)?;
-    let interest = math::tranche_interest(amount, line.rate_bps, seconds).ok_or(PoolError::Overflow)?;
-    let drawn_after = line.drawn.checked_add(amount).ok_or(PoolError::Overflow)?;
+    let interest = math::tranche_interest(amount_mxn, line.rate_bps, seconds).ok_or(PoolError::Overflow)?;
+    let drawn_after = line.drawn.checked_add(amount_mxn).ok_or(PoolError::Overflow)?;
     let interest_after = line.interest_due.checked_add(interest).ok_or(PoolError::Overflow)?;
     if let Some(s) = line.schedule() {
         let total_after = drawn_after.checked_add(interest_after).ok_or(PoolError::Overflow)?;
         require!(total_after >= u64::from(s.installments), PoolError::InvalidSchedule);
     }
     require!(line.draws < MAX_DRAWS, PoolError::TooManyDraws);
-    require!(amount <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
-    require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
+    let usdc = fx::usdc_for_mxn(amount_mxn, fx_rate).ok_or(PoolError::Overflow)?;
+    require!(usdc > 0, PoolError::WrongAmount);
+    require!(usdc <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
+    let outstanding_after = pool.outstanding_principal.checked_add(usdc).ok_or(PoolError::Overflow)?;
+    require!(outstanding_after <= pool.max_outstanding_principal, PoolError::OutstandingCapExceeded);
     // The certificate fingerprint may be zero only for a wallet-only signature.
     require!(
         signature_method <= SIGNATURE_EFIRMA_WALLET && (signature_method == SIGNATURE_WALLET || cert_fingerprint != [0u8; 32]),
         PoolError::SignatureMethodInvalid
     );
+    let draw_index = line.draws;
+    let document_hash = pagare_hash(line, &line.key(), draw_index, amount_mxn, now);
+    let delivery = delivery_hash(&document_hash, fx_rate, fx_date, usdc);
 
     token::transfer_checked(
         CpiContext::new_with_signer(
@@ -587,17 +620,16 @@ pub fn draw(
             },
             pool_signer!(pool),
         ),
-        amount,
+        usdc,
         ctx.accounts.asset_mint.decimals,
     )?;
 
-    let draw_index = ctx.accounts.line.draws;
     let record = Pagare {
         line: ctx.accounts.line.key(),
         draw_index,
         asset: ctx.accounts.asset.key(),
         pagare_hash: document_hash,
-        amount_mxn: amount,
+        amount_mxn,
         issued_at: now,
         due_at: last_due,
         drawn_through: drawn_after,
@@ -615,10 +647,10 @@ pub fn draw(
         entry_count: 0,
         last_kind: 0,
         bump: pagare_bump,
-        fx_rate: 0,
-        fx_date: 0,
-        usdc_delivered: 0,
-        delivery_hash: [0; 32],
+        fx_rate,
+        fx_date,
+        usdc_delivered: usdc,
+        delivery_hash: delivery,
         reserved: [0; 32],
     };
     // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.
@@ -630,9 +662,12 @@ pub fn draw(
     create_sidecar(ctx.accounts, pagare_bump, &record)?;
 
     let pool = &mut ctx.accounts.pool;
-    pool.outstanding_principal = pool.outstanding_principal.checked_add(amount).ok_or(PoolError::Overflow)?;
+    pool.outstanding_principal = outstanding_after;
     let line = &mut ctx.accounts.line;
     line.drawn = drawn_after;
+    line.usdc_drawn = line.usdc_drawn.checked_add(usdc).ok_or(PoolError::Overflow)?;
+    let weight = u128::from(amount_mxn).checked_mul(u128::try_from(now).map_err(|_| PoolError::Overflow)?).ok_or(PoolError::Overflow)?;
+    line.draw_time_weight = line.draw_time_weight.checked_add(weight).ok_or(PoolError::Overflow)?;
     line.draws = line.draws.checked_add(1).ok_or(PoolError::Overflow)?;
     line.interest_due = interest_after;
     if line.status == LineStatus::Approved {
@@ -648,7 +683,10 @@ pub fn draw(
         pool: pool.key(),
         line_id: line.line_id,
         draw_index,
-        amount,
+        amount_mxn,
+        fx_rate,
+        fx_date,
+        usdc_delivered: usdc,
         drawn: line.drawn,
         available: line.available().ok_or(PoolError::Overflow)?,
         interest_due: line.interest_due,
@@ -661,7 +699,8 @@ pub fn draw(
         draw_index,
         asset: ctx.accounts.asset.key(),
         pagare_hash: document_hash,
-        amount,
+        amount_mxn,
+        delivery_hash: delivery,
         due_at: last_due,
         holder: pool.key(),
     });

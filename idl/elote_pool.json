@@ -820,10 +820,12 @@
     {
       "name": "draw",
       "docs": [
-        "Pays a tranche of `amount` to the borrower against the signed pagaré `document_hash` and",
-        "mints the pagaré as a frozen Core asset owned by the pool, with its `Pagare` record. The",
-        "borrower, the attestor and the rent payer sign; refused while paused, once the draw window",
-        "has closed, or above what the line or the vault has."
+        "Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the",
+        "borrower signs as `fx_rate` and `fx_date`, and mints the pagaré (its hash derived on chain",
+        "from the approved template and terms) as a frozen Core asset owned by the pool, with its",
+        "`Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw",
+        "window has closed, on a changed or stale FIX, or above what the line, the vault or the pool cap",
+        "allows."
       ],
       "discriminator": [
         61,
@@ -838,17 +840,13 @@
       "accounts": [
         {
           "name": "borrower",
+          "docs": [
+            "Signs alone: the signature covers the pagaré hash the program derives and the FIX."
+          ],
           "signer": true,
           "relations": [
             "line"
           ]
-        },
-        {
-          "name": "attestor",
-          "docs": [
-            "Attests that the pagaré behind `document_hash` was signed by the borrower and is conserved."
-          ],
-          "signer": true
         },
         {
           "name": "pool",
@@ -1024,17 +1022,16 @@
       ],
       "args": [
         {
-          "name": "amount",
+          "name": "amount_mxn",
           "type": "u64"
         },
         {
-          "name": "document_hash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
+          "name": "fx_rate",
+          "type": "u64"
+        },
+        {
+          "name": "fx_date",
+          "type": "u32"
         },
         {
           "name": "asset_bump",
@@ -3751,7 +3748,7 @@
     {
       "code": 6059,
       "name": "FixStale",
-      "msg": "The published FIX is too old for a draw"
+      "msg": "No FIX is published, or it is too old for a draw"
     },
     {
       "code": 6060,
@@ -4661,7 +4658,8 @@
     {
       "name": "LineDrawn",
       "docs": [
-        "One tranche, `amount`, and the line after it; `outstanding_after` is the pool's."
+        "One tranche of `amount_mxn` centavos delivered as `usdc_delivered` at the FIX (`fx_rate`,",
+        "`fx_date`), and the line after it; `outstanding_after` is the pool's cost in USDC."
       ],
       "type": {
         "kind": "struct",
@@ -4679,7 +4677,19 @@
             "type": "u16"
           },
           {
-            "name": "amount",
+            "name": "amount_mxn",
+            "type": "u64"
+          },
+          {
+            "name": "fx_rate",
+            "type": "u64"
+          },
+          {
+            "name": "fx_date",
+            "type": "u32"
+          },
+          {
+            "name": "usdc_delivered",
             "type": "u64"
           },
           {
@@ -5510,8 +5520,17 @@
             }
           },
           {
-            "name": "amount",
+            "name": "amount_mxn",
             "type": "u64"
+          },
+          {
+            "name": "delivery_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "due_at",

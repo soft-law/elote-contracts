@@ -87,7 +87,8 @@ pub struct PagareIssued {
     pub draw_index: u16,
     pub asset: Pubkey,
     pub pagare_hash: [u8; 32],
-    pub amount: u64,
+    pub amount_mxn: u64,
+    pub delivery_hash: [u8; 32],
     pub due_at: i64,
     pub holder: Pubkey,
 }
@@ -150,13 +151,17 @@ pub struct LineCancelled {
     pub line_id: u64,
 }
 
-/// One tranche, `amount`, and the line after it; `outstanding_after` is the pool's.
+/// One tranche of `amount_mxn` centavos delivered as `usdc_delivered` at the FIX (`fx_rate`,
+/// `fx_date`), and the line after it; `outstanding_after` is the pool's cost in USDC.
 #[event]
 pub struct LineDrawn {
     pub pool: Pubkey,
     pub line_id: u64,
     pub draw_index: u16,
-    pub amount: u64,
+    pub amount_mxn: u64,
+    pub fx_rate: u64,
+    pub fx_date: u32,
+    pub usdc_delivered: u64,
     pub drawn: u64,
     pub available: u64,
     pub interest_due: u64,

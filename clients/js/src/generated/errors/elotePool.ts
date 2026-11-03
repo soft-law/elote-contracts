@@ -133,7 +133,7 @@ export const ELOTE_POOL_ERROR__FIX_DATE_INVALID = 0x17a8; // 6056
 export const ELOTE_POOL_ERROR__FIX_JUMP = 0x17a9; // 6057
 /** FixMismatch: The FIX signed is not the one published now */
 export const ELOTE_POOL_ERROR__FIX_MISMATCH = 0x17aa; // 6058
-/** FixStale: The published FIX is too old for a draw */
+/** FixStale: No FIX is published, or it is too old for a draw */
 export const ELOTE_POOL_ERROR__FIX_STALE = 0x17ab; // 6059
 /** DocumentHashRequired: The signed document's hash is required */
 export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x17ac; // 6060
@@ -261,7 +261,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__FIX_DATE_INVALID]: `The FIX date is not a valid date, is in the future, or is older than the published one`,
     [ELOTE_POOL_ERROR__FIX_JUMP]: `The FIX moves more than the feeder may publish; the council must`,
     [ELOTE_POOL_ERROR__FIX_MISMATCH]: `The FIX signed is not the one published now`,
-    [ELOTE_POOL_ERROR__FIX_STALE]: `The published FIX is too old for a draw`,
+    [ELOTE_POOL_ERROR__FIX_STALE]: `No FIX is published, or it is too old for a draw`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
     [ELOTE_POOL_ERROR__INVALID_SCHEDULE]: `The installment schedule is not valid`,
     [ELOTE_POOL_ERROR__INVARIANT_BROKEN]: `A pool invariant does not hold after this instruction; the transaction is refused`,

@@ -290,7 +290,7 @@ fn limit_draw_accepts_a_valid_non_canonical_pagare_bump() {
 
     let b = borrower.pubkey();
     let pagare_bump = pagare_pda(&line_key, 0).1;
-    let mut ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, odd_bump, pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD);
+    let mut ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, odd_bump, pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD);
     let i = ix.accounts.iter().position(|m| m.pubkey == canonical).unwrap();
     ix.accounts[i].pubkey = odd;
     env.send_with_attestor(ix, &borrower);

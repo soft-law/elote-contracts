@@ -37,7 +37,7 @@ fn two_tranches_sum_to_the_commitment_and_a_third_is_refused() {
     let line_id = open(&mut env, &k, &borrower, &p);
 
     let ev = env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
-    assert_eq!((ev.amount, ev.drawn, ev.available), (3 * UNIT, 3 * UNIT, UNIT));
+    assert_eq!((ev.amount_mxn, ev.drawn, ev.available), (3 * UNIT, 3 * UNIT, UNIT));
     assert_eq!(env.pool(&k).outstanding_principal, 3 * UNIT);
     assert_eq!(env.nav(&k), 10 * UNIT, "a draw moves no value");
     assert_eq!(env.token_balance(&k.vault), 7 * UNIT);
@@ -47,7 +47,7 @@ fn two_tranches_sum_to_the_commitment_and_a_third_is_refused() {
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT);
     assert_eq!(env.token_balance(&k.asset_ata(&borrower.pubkey())), 4 * UNIT);
 
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1);
     env.expect_err_with_attestor(ix, &borrower, E_WRONG_AMOUNT);
     assert_eq!(env.line(&k, line_id).draws, 2);
 }
@@ -143,9 +143,9 @@ fn a_tranche_may_not_leave_the_schedule_unpayable() {
     let p = env.scheduled_params(UNIT, 0, 12, 5_000); // 0%: no interest helps the count
     let line_id = open(&mut env, &k, &borrower, &p);
 
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 5, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 5);
     env.expect_err_with_attestor(ix, &borrower, E_INVALID_SCHEDULE);
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 11, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 11);
     env.expect_err_with_attestor(ix, &borrower, E_INVALID_SCHEDULE);
     env.draw_amount(&k, line_id, &borrower, 12);
     assert_eq!(env.arrears(&k, line_id).due, 0);
@@ -227,7 +227,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
 
     env.set_paused(&k, true);
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     env.expect_err_with_attestor(ix, &borrower, E_PAUSED);
     env.set_paused(&k, false);
 
@@ -236,7 +236,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
     let p2 = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let second = open(&mut env, &k, &borrower, &p2);
-    let ix = env.draw_ix_amount(&k, second, &borrower.pubkey(), 6 * UNIT, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, second, &borrower.pubkey(), 6 * UNIT);
     env.expect_err_with_attestor(ix, &borrower, E_INSUFFICIENT_LIQUIDITY);
     env.deposit(&k, &investor, 10 * UNIT);
     env.draw_amount(&k, second, &borrower, 6 * UNIT);
@@ -244,7 +244,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     // After the window: the first line's first due date has passed, with 1.0 still available.
     env.warp(p.first_due_at());
     assert_eq!(env.line(&k, line_id).available(), Some(UNIT));
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1);
     env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
 
     // In collection (three installments missed past the grace of the third): no tranche either,
@@ -253,7 +253,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     let keeper = env.funded(1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &keeper, &[]);
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1);
     env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
 }
 
@@ -313,7 +313,7 @@ fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
         env.draw_amount(&k, many, &borrower, 1);
     }
     assert_eq!(env.line(&k, many).draws, 64);
-    let ix = env.draw_ix_amount(&k, many, &borrower.pubkey(), 1, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, many, &borrower.pubkey(), 1);
     env.expect_err_with_attestor(ix, &borrower, E_TOO_MANY_DRAWS);
     assert_eq!(env.line(&k, many).available(), Some(36));
 }
@@ -344,7 +344,7 @@ fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
 
     // No more tranches, even a second later; the pool is not paused and repayment works.
     env.warp(env.now() + 1);
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
     assert!(!env.pool(&k).paused);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 100_000);
@@ -359,7 +359,7 @@ fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
     let ix = env.suspend_draws_ix(&k, fresh, &council.pubkey());
     let meta = env.send(ix, &council, &[]);
     assert_eq!(find_event::<LineDrawsSuspended>(&meta).unwrap().available_forfeited, 4 * UNIT);
-    let ix = env.draw_ix_amount(&k, fresh, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, fresh, &borrower.pubkey(), UNIT);
     env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
     assert_eq!(env.line(&k, fresh).status, LineStatus::Approved);
 }
@@ -388,7 +388,7 @@ fn cancel_line_clears_an_undrawn_commitment_only() {
     assert_eq!(env.pool(&k).line_count, 1, "the id stays taken");
 
     // Terminal: no draw, no repayment, no write-off, no second cancel, no suspension.
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 1);
     env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
@@ -409,19 +409,34 @@ fn cancel_line_clears_an_undrawn_commitment_only() {
     assert_eq!(env.pool(&k).outstanding_principal, UNIT);
 }
 
-/// The pagaré hash travels in the event; a zero hash is refused like a zero agreement hash.
+/// The pagaré hash is derived on chain from the approved template and terms, the line, the draw
+/// index, the amount in MXN and the draw's time; the delivery hash binds the FIX and the USDC paid.
 #[test]
-fn a_draw_carries_its_document_hash_and_refuses_a_zero_one() {
+fn a_draw_derives_the_pagare_hash_and_the_delivery_hash() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, [0; 32]);
-    env.expect_err_with_attestor(ix, &borrower, E_DOCUMENT_HASH_REQUIRED);
-    let hash = [0x5a; 32];
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, hash);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     let meta = env.send_with_attestor(ix, &borrower);
+    let t0 = env.now();
     let ev: PagareIssued = find_event(&meta).unwrap();
-    assert_eq!(ev.pagare_hash, hash);
+    let line = env.line(&k, line_id);
+    let key = line_pda(&k.pool, line_id).0;
+    let manual = <sha2::Sha256 as sha2::Digest>::digest(
+        [&line.pagare_template_hash[..], &line.terms_hash, key.as_ref(), &0u16.to_le_bytes(), &UNIT.to_le_bytes(), &t0.to_le_bytes()].concat(),
+    );
+    assert_eq!(ev.pagare_hash[..], manual[..]);
+    let record = env.pagare(&k, line_id, 0);
+    let delivery = <sha2::Sha256 as sha2::Digest>::digest(
+        [&ev.pagare_hash[..], &record.fx_rate.to_le_bytes(), &record.fx_date.to_le_bytes(), &record.usdc_delivered.to_le_bytes()].concat(),
+    );
+    assert_eq!((ev.delivery_hash[..] == delivery[..], record.delivery_hash), (true, ev.delivery_hash));
+
+    // The same amount a second later is another pagaré.
+    env.warp(t0 + 1);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
+    let ev2: PagareIssued = find_event(&env.send_with_attestor(ix, &borrower)).unwrap();
+    assert_ne!(ev2.pagare_hash, ev.pagare_hash);
 }

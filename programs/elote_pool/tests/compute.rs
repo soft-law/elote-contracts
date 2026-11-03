@@ -74,9 +74,9 @@ fn draw_stays_under_the_ceiling_at_120_installments() {
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(100 * UNIT, 1_200, 120, 5_000);
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 40 * UNIT, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 40 * UNIT);
     let first = env.send_with_attestor(ix, &borrower).compute_units_consumed;
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 60 * UNIT, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 60 * UNIT);
     let second = env.send_with_attestor(ix, &borrower).compute_units_consumed;
     println!("draw, first tranche at 120 installments: {first} CU");
     println!("draw, second tranche at 120 installments: {second} CU");

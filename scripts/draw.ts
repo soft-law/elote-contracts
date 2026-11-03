@@ -1,18 +1,16 @@
 // Draws one tranche of an approved line: the borrower receives `--amount` and the program mints the
 // tranche's pagaré (a frozen Metaplex Core asset owned by the pool, in the pool's collection) and its
-// record. The borrower and the pool's attestor sign; the admin pays the two accounts' rent as the
-// app's relayer would.
+// record. The borrower signs alone, over the FIX in force, which the script prints with the USDC
+// to be delivered before asking; the admin pays the two accounts' rent as the app's relayer would.
+// The pagaré hash is derived on chain from the approved template and terms.
 //
 //   npx tsx scripts/draw.ts --cluster local|devnet --pool <address> --line-id <n>
-//        --borrower-keypair <path> --amount <tMXN> [--document-hash <64 hex>]
-//        [--signature-method wallet|psc|efirma --cert-fingerprint <64 hex>]
-//        [--attestor-keypair <path>] [--yes]
+//        --borrower-keypair <path> --amount <MXN> [--signature-method wallet|psc|efirma
+//        --cert-fingerprint <64 hex>] [--yes]
 //
-// --amount            the tranche in tMXN, up to 6 decimals; at most what the line has left
-// --document-hash     hash of the signed pagaré text (a placeholder if absent)
+// --amount            the tranche in the line's units, at most what the line has left
 // --signature-method  how the pagaré text was signed: wallet (the default), psc or efirma
 // --cert-fingerprint  hash of the signing certificate; required with psc or efirma
-// --attestor-keypair  default ELOTE_ATTESTOR_KEYPAIR or .demo-keys/attestor.json
 // --yes               send without asking when the cluster is not this machine
 //
 // The admin key comes from ELOTE_ADMIN_KEYPAIR or .demo-keys/admin.json; ELOTE_RPC overrides the
@@ -43,7 +41,6 @@ import {
   loadSigner,
   parseAmount,
   required,
-  roleSigner,
   sendOrFail,
 } from "./lib/cli.ts";
 import { ataOf, loadLine, loadPool } from "./lib/pool.ts";
@@ -51,8 +48,7 @@ import { ataOf, loadLine, loadPool } from "./lib/pool.ts";
 const METHODS = { wallet: 0, psc: 1, efirma: 2 } as const; // state::SIGNATURE_*
 
 checkFlags([
-  "cluster", "pool", "line-id", "borrower-keypair", "amount", "document-hash", "signature-method",
-  "cert-fingerprint", "attestor-keypair", "yes",
+  "cluster", "pool", "line-id", "borrower-keypair", "amount", "signature-method", "cert-fingerprint", "yes",
 ]);
 const c = cluster();
 const poolAddress = address(required("pool"));
@@ -65,15 +61,12 @@ if (!(methodName in METHODS)) fail("--signature-method must be wallet, psc or ef
 const signatureMethod = METHODS[methodName as keyof typeof METHODS];
 if (signatureMethod === 0 && arg("cert-fingerprint") !== undefined) fail("--cert-fingerprint goes with psc or efirma only");
 
-await confirmCluster(c, "draw");
-const documentHash = hash32("document-hash", "elote.fun demo pagaré");
 const certFingerprint = signatureMethod === 0 ? new Uint8Array(32) : hash32("cert-fingerprint");
 const admin = await loadSigner("admin", process.env.ELOTE_ADMIN_KEYPAIR ?? ".demo-keys/admin.json");
 const borrower = await loadSigner("borrower", required("borrower-keypair"));
-const attestor = await roleSigner("attestor");
 
 const pool = await loadPool(c, poolAddress);
-if (pool.attestor !== attestor.address) fail(`the attestor key (${attestor.address}) is not this pool's attestor (${pool.attestor})`);
+if (pool.fixRate === 0n) fail("no FIX is published on this pool: the council or the feeder posts it first");
 if (pool.paused) fail("the pool is paused: openings and draws are blocked until the admin resumes it");
 const { line, data: l } = await loadLine(c, poolAddress, lineId);
 if (l.borrower !== borrower.address) fail(`the borrower key (${borrower.address}) is not this line's borrower (${l.borrower})`);
@@ -81,12 +74,16 @@ if (l.status !== LineStatus.Approved && l.status !== LineStatus.Active) fail(`th
 if (amount > l.principal - l.drawn) fail(`the line has ${fmt(l.principal - l.drawn)} tMXN left to draw`);
 
 const drawIndex = l.draws;
+// The borrower confirms the FIX and the USDC shown here; a FIX published in between fails the draw
+// (FixMismatch) and the script must be run again.
+const usdc = (amount * 100_000_000n) / pool.fixRate;
+console.log(`FIX ${pool.fixRate} (x10^4 MXN per USD) of ${pool.fixDate}: ${fmt(amount)} MXN delivered as ${usdc} USDC base units`);
+await confirmCluster(c, "draw");
 const borrowerAsset = await ataOf(borrower.address, pool.assetMint);
 const signature = await sendOrFail(c, `draw ${fmt(amount)} tMXN, pagaré ${drawIndex}`, borrower, [
   await getCreateAssociatedTokenIdempotentInstructionAsync({ payer: borrower, owner: borrower.address, mint: pool.assetMint }),
   await getDrawInstructionAsync({
     borrower,
-    attestor,
     pool: poolAddress,
     line,
     assetMint: pool.assetMint,
@@ -96,8 +93,9 @@ const signature = await sendOrFail(c, `draw ${fmt(amount)} tMXN, pagaré ${drawI
     payer: admin,
     ...(await drawPagareAccounts({ line, drawIndex, collection: pool.collection })),
     systemProgram: SYSTEM_PROGRAM_ADDRESS,
-    amount,
-    documentHash,
+    amountMxn: amount,
+    fxRate: pool.fixRate,
+    fxDate: pool.fixDate,
     certFingerprint,
     signatureMethod,
   }),

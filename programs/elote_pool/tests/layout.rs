@@ -28,7 +28,8 @@ fn account_sizes_are_fixed_and_reserved_starts_zero() {
     let pagare = env.pagare(&k, line_id, 0);
     assert_eq!(pool.reserved, [0u8; 64]);
     assert_eq!((pool.impaired_principal, pool.provision_bps), (0, 0), "room for the provision at the mark, unused");
-    assert_eq!((line.draw_time_weight, line.acceleration_due_at, line.availability_end_saved), (0, 0, 0));
+    assert_eq!(line.draw_time_weight, u128::from(UNIT) * env.now() as u128, "amount times draw time");
+    assert_eq!((line.acceleration_due_at, line.availability_end_saved), (0, 0));
     assert_eq!(line.reserved, [0u8; 64]);
     assert_eq!(pagare.reserved, [0u8; 32]);
     for (key, len) in [

@@ -41,16 +41,16 @@ fn every_draw_issues_one_frozen_pagare_held_by_the_pool() {
     let line_key = line_pda(&k.pool, line_id).0;
     let last_due = p.first_due_at() + 5 * p.interval();
 
-    let hash0 = [0x11; 32];
     let before = env.account(&relayer.pubkey()).lamports;
-    let ix = env.draw_ix_paid_by(&k, line_id, &borrower.pubkey(), &relayer.pubkey(), 4 * UNIT, hash0);
+    let ix = env.draw_ix_paid_by(&k, line_id, &borrower.pubkey(), &relayer.pubkey(), 4 * UNIT);
     let attestor = env.attestor.insecure_clone();
     let meta = env.send(ix, &relayer, &[&borrower, &attestor]);
     let t0 = env.now();
+    let hash0 = env.expected_pagare_hash(&k, line_id, 0, 4 * UNIT, t0);
     let ev: PagareIssued = find_event(&meta).expect("PagareIssued");
     let asset0 = pagare_asset_pda(&line_key, 0).0;
     assert_eq!(
-        (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.pagare_hash, ev.amount, ev.due_at, ev.holder),
+        (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.pagare_hash, ev.amount_mxn, ev.due_at, ev.holder),
         (k.pool, line_id, 0, asset0, hash0, 4 * UNIT, last_due, k.pool)
     );
     assert!(env.account(&relayer.pubkey()).lamports < before - 5_000_000, "the relayer paid the rent of two accounts");
@@ -75,13 +75,13 @@ fn every_draw_issues_one_frozen_pagare_held_by_the_pool() {
     assert_eq!(env.collection_state(&k.collection).num_minted, 1);
 
     // A second tranche: a second asset and sidecar, index 1, the collection counts two.
-    let hash1 = [0x22; 32];
     env.warp(t0 + 1_000);
-    let ix = env.draw_ix_paid_by(&k, line_id, &borrower.pubkey(), &relayer.pubkey(), UNIT, hash1);
+    let ix = env.draw_ix_paid_by(&k, line_id, &borrower.pubkey(), &relayer.pubkey(), UNIT);
     let meta = env.send(ix, &relayer, &[&borrower, &attestor]);
     let ev: PagareIssued = find_event(&meta).expect("PagareIssued");
+    let hash1 = env.expected_pagare_hash(&k, line_id, 1, UNIT, t0 + 1_000);
     let asset1 = pagare_asset_pda(&line_key, 1).0;
-    assert_eq!((ev.draw_index, ev.asset, ev.pagare_hash, ev.amount), (1, asset1, hash1, UNIT));
+    assert_eq!((ev.draw_index, ev.asset, ev.pagare_hash, ev.amount_mxn), (1, asset1, hash1, UNIT));
     let sidecar = env.pagare(&k, line_id, 1);
     assert_eq!((sidecar.draw_index, sidecar.issued_at, sidecar.due_at), (1, t0 + 1_000, last_due));
     assert_eq!(env.asset_state(&asset1).base.owner, k.pool);
@@ -98,10 +98,10 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     let borrower = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
-    let hash = [0xab; 32];
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 3 * UNIT, hash);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 3 * UNIT);
     env.send_with_attestor(ix, &borrower);
     let issued_at = env.now();
+    let hash = env.expected_pagare_hash(&k, line_id, 0, 3 * UNIT, issued_at);
     let line_key = line_pda(&k.pool, line_id).0;
     let asset = env.asset_state(&pagare_asset_pda(&line_key, 0).0);
     let pool_authority = |t: &BaseAuthority| {
@@ -135,7 +135,6 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     let list: Vec<(&str, &str)> =
         attributes.attributes.attribute_list.iter().map(|a| (a.key.as_str(), a.value.as_str())).collect();
     let amount = (3 * UNIT).to_string();
-    let currency = hex(k.asset_mint.as_ref());
     let issued = issued_at.to_string();
     let due = p.term_end.to_string();
     let line_s = line_id.to_string();
@@ -143,8 +142,8 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
         list,
         vec![
             ("pagare_hash", hex(&hash).as_str()),
-            ("amount", amount.as_str()),
-            ("currency", currency.as_str()),
+            ("amount_mxn", amount.as_str()),
+            ("currency", "MXN"),
             ("issued_at", issued.as_str()),
             ("due_at", due.as_str()),
             ("line", line_s.as_str()),
@@ -196,11 +195,11 @@ fn a_zero_fingerprint_is_allowed_only_for_a_wallet_only_signature() {
     let attestor = env.attestor.insecure_clone();
     let b = borrower.pubkey();
     for (fingerprint, method) in [([0; 32], 1), ([0; 32], 2), (CERT_FINGERPRINT, 3), ([0; 32], 3)] {
-        let ix = env.draw_ix_signed(&k, line_id, &b, UNIT, DOCUMENT_HASH, fingerprint, method);
+        let ix = env.draw_ix_signed(&k, line_id, &b, UNIT, fingerprint, method);
         env.expect_err(ix, &borrower, &[&attestor], E_SIGNATURE_METHOD_INVALID);
     }
     for (i, (fingerprint, method)) in [([0; 32], 0), (CERT_FINGERPRINT, 0), (CERT_FINGERPRINT, 2)].into_iter().enumerate() {
-        let ix = env.draw_ix_signed(&k, line_id, &b, UNIT, DOCUMENT_HASH, fingerprint, method);
+        let ix = env.draw_ix_signed(&k, line_id, &b, UNIT, fingerprint, method);
         env.send_with_attestor(ix, &borrower);
         let sidecar = env.pagare(&k, line_id, i as u16);
         assert_eq!((sidecar.cert_fingerprint, sidecar.signature_method), (fingerprint, method));
@@ -230,7 +229,7 @@ fn a_draw_survives_pre_funded_pagare_addresses() {
         env.svm.airdrop(&sidecar, sidecar_funding).unwrap();
         let before = env.account(&borrower.pubkey()).lamports;
 
-        let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+        let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
         env.send_with_attestor(ix, &borrower);
         // The payer (here the borrower) received both strays and paid the fee and both rents out
         // of them: about one SOL richer; the sidecar holds exactly its rent.
@@ -238,7 +237,8 @@ fn a_draw_survives_pre_funded_pagare_addresses() {
         assert_eq!(env.account(&sidecar).lamports, sidecar_rent);
         let asset_state = env.asset_state(&asset);
         assert_eq!((asset_state.base.key, asset_state.base.owner), (Key::AssetV1, k.pool));
-        assert_eq!(env.pagare(&k, line_id, i as u16).pagare_hash, DOCUMENT_HASH);
+        let expected = env.expected_pagare_hash(&k, line_id, i as u16, UNIT, env.now());
+        assert_eq!(env.pagare(&k, line_id, i as u16).pagare_hash, expected);
     }
     assert_eq!(env.line(&k, line_id).draws, 2);
 }
@@ -257,7 +257,7 @@ fn a_draw_with_the_wrong_pagare_accounts_is_refused() {
 
     // The asset address of the next-but-one draw, or an arbitrary one.
     for wrong in [pagare_asset_pda(&line_key, 1).0, solana_pubkey::Pubkey::new_unique()] {
-        let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+        let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
         let i = ix.accounts.iter().position(|m| m.pubkey == pagare_asset_pda(&line_key, 0).0).unwrap();
         ix.accounts[i].pubkey = wrong;
         env.expect_err(ix, &borrower, &[&attestor], E_CONSTRAINT_SEEDS);
@@ -266,13 +266,13 @@ fn a_draw_with_the_wrong_pagare_accounts_is_refused() {
     // each with one `create_program_address`, so no bump search runs on chain.
     let (asset_bump, pagare_bump) = (pagare_asset_pda(&line_key, 0).1, pagare_pda(&line_key, 0).1);
     let b = borrower.pubkey();
-    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, asset_bump.wrapping_sub(1), pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD);
+    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, asset_bump.wrapping_sub(1), pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD);
     env.expect_err(ix, &borrower, &[&attestor], E_CONSTRAINT_SEEDS);
-    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, DOCUMENT_HASH, asset_bump, pagare_bump.wrapping_sub(1), CERT_FINGERPRINT, SIGNATURE_METHOD);
+    let ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, asset_bump, pagare_bump.wrapping_sub(1), CERT_FINGERPRINT, SIGNATURE_METHOD);
     env.expect_err(ix, &borrower, &[&attestor], E_CONSTRAINT_SEEDS);
     // A collection that is not the pool's.
     let other = env.create_collection(&k.pool);
-    let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     let i = ix.accounts.iter().position(|m| m.pubkey == k.collection).unwrap();
     ix.accounts[i].pubkey = other;
     env.expect_err(ix, &borrower, &[&attestor], E_WRONG_ACCOUNT);
@@ -578,11 +578,11 @@ fn a_draw_writes_the_issuance_entry_of_the_registry() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
 
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     let meta = env.send_with_attestor(ix, &borrower);
     let now = env.now();
     let sidecar = env.pagare(&k, line_id, 0);
-    let expected = entry_hash(&sidecar.asset, KIND_EMISION, &k.pool, &k.pool, &DOCUMENT_HASH, now, 1);
+    let expected = entry_hash(&sidecar.asset, KIND_EMISION, &k.pool, &k.pool, &env.expected_pagare_hash(&k, line_id, 0, UNIT, now), now, 1);
     assert_eq!((sidecar.entry_count, sidecar.last_kind, sidecar.flags), (1, KIND_EMISION, 0));
     assert_eq!(sidecar.log_root, chain(&[0; 32], &expected), "genesis: the issuance entry over an empty root");
     assert_eq!((sidecar.cancel_receipt_hash, sidecar.cancel_after, sidecar.requested_receipt_hash), ([0; 32], 0, [0; 32]));

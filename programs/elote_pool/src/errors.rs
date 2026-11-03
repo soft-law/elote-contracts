@@ -137,7 +137,7 @@ pub enum PoolError {
     FixJump,
     #[msg("The FIX signed is not the one published now")]
     FixMismatch,
-    #[msg("The published FIX is too old for a draw")]
+    #[msg("No FIX is published, or it is too old for a draw")]
     FixStale,
 
     // Pagarés.

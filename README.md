@@ -320,9 +320,10 @@ script prints the line id, the terms, the terms hash the council approves, the s
 explorer link. The council's approval goes through Squads (PR 4, commit 10).
 
 `scripts/draw.ts --pool <address> --line-id <n> --borrower-keypair <path> --amount <tMXN>` draws one
-tranche and mints its pagaré, with `--document-hash`, `--signature-method wallet|psc|efirma` and
-`--cert-fingerprint` (required with psc or efirma); the borrower and the attestor sign, the admin
-pays the pagaré's rent.
+tranche and mints its pagaré, with `--signature-method wallet|psc|efirma` and `--cert-fingerprint`
+(required with psc or efirma). The script prints the FIX in force and the USDC it delivers before
+asking; the borrower signs alone (a FIX published in between fails the draw) and the admin pays the
+pagaré's rent. The pagaré hash is derived on chain from the approved template and terms.
 
 `scripts/repay.ts --pool <address> --line-id <n> --amount <tMXN> | --all` pays on a line (the
 borrower by default, `--payer-keypair` for anyone else; `--receipt-hash`, zero meaning "to

@@ -104,3 +104,108 @@ fn today_in_mexico_city_starts_six_hours_after_midnight_utc() {
     let ix = env.post_fix_ix(&k, &council.pubkey(), 183_740, 20261104);
     env.send(ix, &council, &[]);
 }
+
+/// A pool of 5,000 USDC at the real FIX of 18.3740 MXN per USD, with a MXN 50,000 line approved.
+fn real_fix_pool(env: &mut Env, max_outstanding: u64) -> (PoolKeys, Keypair, u64) {
+    let council = env.council.insecure_clone();
+    let asset = env.create_mint(&council.pubkey(), 6);
+    let k = env.pool_keys_for(&asset);
+    let mut p = env.init_params(0, BPS, env.attestor.pubkey(), COLLECTION_PERIOD, CANCEL_DELAY);
+    p.max_outstanding_principal = max_outstanding;
+    let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), p);
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 183_740, env.today());
+    env.send(ix, &council, &[]);
+    let investor = env.investor(&k, 5_000 * UNIT);
+    env.deposit(&k, &investor, 5_000 * UNIT);
+    let borrower = env.borrower(&k);
+    let terms = env.line_params(5_000_000, 1_200); // MXN 50,000.00
+    let (id, _) = env.request_line_with(&k, &borrower, &terms, None);
+    env.release_fix(&k);
+    env.approve_line(&k, id, &borrower.pubkey(), &terms);
+    (k, borrower, id)
+}
+
+#[test]
+fn a_draw_delivers_usdc_at_the_fix_the_borrower_signed() {
+    let mut env = Env::new();
+    let (k, borrower, id) = real_fix_pool(&mut env, u64::MAX);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 5_000_000);
+    let meta = env.send(ix, &borrower, &[]);
+    let usdc = 2_721_236_529; // floor(5_000_000 * 10^8 / 183_740)
+    assert_eq!(env.token_balance(&k.asset_ata(&borrower.pubkey())), usdc);
+    let ev: elote_pool::events::LineDrawn = find_event(&meta).expect("LineDrawn");
+    assert_eq!((ev.amount_mxn, ev.fx_rate, ev.fx_date, ev.usdc_delivered), (5_000_000, 183_740, env.today(), usdc));
+    let record = env.pagare(&k, id, 0);
+    assert_eq!((record.amount_mxn, record.fx_rate, record.fx_date, record.usdc_delivered), (5_000_000, 183_740, env.today(), usdc));
+    let line = env.line(&k, id);
+    assert_eq!((line.drawn, line.usdc_drawn), (5_000_000, usdc), "the line counts MXN; its cost is in USDC");
+    assert_eq!(env.pool(&k).outstanding_principal, usdc, "the pool's outstanding is the USDC cost");
+    assert_eq!(env.nav(&k), 5_000 * UNIT, "a draw moves no value");
+}
+
+#[test]
+fn a_changed_fix_fails_the_draw_and_the_borrower_confirms_again() {
+    let mut env = Env::new();
+    let (k, borrower, id) = real_fix_pool(&mut env, u64::MAX);
+    let council = env.council.insecure_clone();
+    let shown = env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT);
+    // The council corrects today's FIX between the screen and the signature.
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 183_750, env.today());
+    env.send(ix, &council, &[]);
+    env.expect_err(shown, &borrower, &[], code(PoolError::FixMismatch));
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT);
+    env.send(ix, &borrower, &[]);
+    assert_eq!(env.pagare(&k, id, 0).fx_rate, 183_750);
+}
+
+#[test]
+fn a_fix_older_than_five_days_stops_draws() {
+    let mut env = Env::new();
+    let (k, borrower, id) = real_fix_pool(&mut env, u64::MAX);
+    env.warp(env.now() + 5 * DAY);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT);
+    env.send(ix, &borrower, &[]);
+    env.warp(env.now() + DAY);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT);
+    env.expect_err(ix, &borrower, &[], code(PoolError::FixStale));
+}
+
+#[test]
+fn the_pool_cap_on_outstanding_cost_holds_at_every_draw() {
+    let mut env = Env::new();
+    let (k, borrower, id) = real_fix_pool(&mut env, 1_000 * UNIT);
+    // MXN 18,374.00 is exactly 1,000 USDC.
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 1_837_401);
+    env.expect_err(ix, &borrower, &[], code(PoolError::OutstandingCapExceeded));
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 1_837_400);
+    env.send(ix, &borrower, &[]);
+    assert_eq!(env.pool(&k).outstanding_principal, 1_000 * UNIT);
+}
+
+#[test]
+fn the_line_cap_is_measured_in_mxn_at_the_fix() {
+    let mut env = Env::new();
+    let council = env.council.insecure_clone();
+    let asset = env.create_mint(&council.pubkey(), 6);
+    let (k, ix) = env.init_pool_full(&asset, 0, 1_000); // 10% of the NAV per line
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 200_000, env.today()); // 20 MXN per USD
+    env.send(ix, &council, &[]);
+    let investor = env.investor(&k, 1_000 * UNIT);
+    env.deposit(&k, &investor, 1_000 * UNIT);
+    let borrower = env.borrower(&k);
+    // 10% of 1,000 USDC is 100 USDC, MXN 2,000.00.
+    for (principal, ok) in [(200_001u64, false), (200_000, true)] {
+        let p = env.line_params(principal, 0);
+        let (id, _) = env.request_line_with(&k, &borrower, &p, None);
+        env.release_fix(&k);
+        let hash = env.terms_hash(&k, id, &borrower.pubkey(), &p);
+        let ix = env.approve_line_ix(&k, &council.pubkey(), id, p.expediente_root, hash);
+        if ok {
+            env.send(ix, &council, &[]);
+        } else {
+            env.expect_err(ix, &council, &[], E_LINE_TOO_LARGE);
+        }
+    }
+}

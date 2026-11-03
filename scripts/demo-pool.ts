@@ -282,7 +282,6 @@ const borrowerAsset = await ataOf(borrower.address, assetMint.address);
 async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
   return getDrawInstructionAsync({
     borrower,
-    attestor,
     pool,
     line: lineAddress,
     assetMint: assetMint.address,
@@ -292,8 +291,9 @@ async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
     payer: admin,
     ...(await drawPagareAccounts({ line: lineAddress, drawIndex, collection })),
     systemProgram: SYSTEM_PROGRAM_ADDRESS,
-    amount,
-    documentHash: hash, // the signed pagaré's hash; the agreement hash stands in
+    amountMxn: amount,
+    fxRate: (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.fixRate,
+    fxDate: (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.fixDate,
     certFingerprint: new Uint8Array(32), // wallet-only signature in the demo: no certificate
     signatureMethod: 0,
   });

@@ -23,6 +23,8 @@ import {
   getStructEncoder,
   getU16Decoder,
   getU16Encoder,
+  getU32Decoder,
+  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
   type Address,
@@ -46,7 +48,10 @@ export type LineDrawnEvent = {
   pool: Address;
   lineId: bigint;
   drawIndex: number;
-  amount: bigint;
+  amountMxn: bigint;
+  fxRate: bigint;
+  fxDate: number;
+  usdcDelivered: bigint;
   drawn: bigint;
   available: bigint;
   interestDue: bigint;
@@ -58,7 +63,10 @@ export type LineDrawnEventArgs = {
   pool: Address | HasAddress;
   lineId: number | bigint;
   drawIndex: number;
-  amount: number | bigint;
+  amountMxn: number | bigint;
+  fxRate: number | bigint;
+  fxDate: number;
+  usdcDelivered: number | bigint;
   drawn: number | bigint;
   available: number | bigint;
   interestDue: number | bigint;
@@ -73,7 +81,10 @@ export function getLineDrawnEventEncoder(): FixedSizeEncoder<LineDrawnEventArgs>
       ["pool", getAddressEncoder()],
       ["lineId", getU64Encoder()],
       ["drawIndex", getU16Encoder()],
-      ["amount", getU64Encoder()],
+      ["amountMxn", getU64Encoder()],
+      ["fxRate", getU64Encoder()],
+      ["fxDate", getU32Encoder()],
+      ["usdcDelivered", getU64Encoder()],
       ["drawn", getU64Encoder()],
       ["available", getU64Encoder()],
       ["interestDue", getU64Encoder()],
@@ -91,7 +102,10 @@ export function getLineDrawnEventDecoder(): FixedSizeDecoder<LineDrawnEvent> {
       ["pool", getAddressDecoder()],
       ["lineId", getU64Decoder()],
       ["drawIndex", getU16Decoder()],
-      ["amount", getU64Decoder()],
+      ["amountMxn", getU64Decoder()],
+      ["fxRate", getU64Decoder()],
+      ["fxDate", getU32Decoder()],
+      ["usdcDelivered", getU64Decoder()],
       ["drawn", getU64Decoder()],
       ["available", getU64Decoder()],
       ["interestDue", getU64Decoder()],

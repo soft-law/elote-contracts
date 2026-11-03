@@ -40,7 +40,7 @@ fn a_request_stores_the_terms_and_the_payer_funds_it() {
     assert_eq!((ev.terms_hash, line.terms_hash), (env.terms_hash(&k, 0, &borrower.pubkey(), &p), ev.terms_hash));
     assert_eq!(env.pool(&k).line_count, 1);
 
-    let ix = env.draw_ix_amount(&k, 0, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
+    let ix = env.draw_ix_amount(&k, 0, &borrower.pubkey(), UNIT);
     env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
 }
 
@@ -75,6 +75,7 @@ fn the_council_approves_exactly_the_requested_expediente_and_terms() {
 
     let ix = env.approve_line_ix(&k, &council.pubkey(), id, p.expediente_root, hash);
     env.expect_err(ix, &council, &[], E_LINE_STATUS);
+    env.ensure_fix(&k);
     env.draw(&k, id, &borrower);
 }
 
