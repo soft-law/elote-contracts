@@ -19,8 +19,8 @@ for this change.
 
 ## Decided by Mario (2026-11-03)
 
-1. KYC applies to borrowers and to curators. Investors do not go through KYC (pilot scope; whether
-   this holds in production is open, see "Open for Mario").
+1. KYC applies to borrowers and to curators. Investors do not go through KYC on devnet; mainnet is
+   open.
 2. The borrower requests the line; the council approves the full expediente once. One approval
    covers the whole credit (all draws).
 3. The "attestation check" the program enforces is the council's approval of the expediente.
@@ -124,6 +124,30 @@ for this change.
   borrower signs, a separate `payer` funds the account). In the product Elote's backend pays (about
   0.0035 SOL for a 375-byte line), so the borrower deposits nothing; withdraw, reject and expiry
   return the rent to that payer. Nothing about it is shown to the borrower.
+
+## Settled after research's legal review (2026-11-03, brief-tok/T-consejo-curadores-revision.md)
+
+1. **The third-missed-installment trigger stays.** `mark_in_collection` (anyone, objective trigger,
+   written in the pagaré) is unchanged; council acceleration is an additional route, grounded in
+   fraud or false-information causes written in the loan contract, not a discretionary power.
+2. **Investors without KYC: devnet only.** Mainnet needs Mario's decision (research: LGOAAC 95 Bis
+   and 87-P, deposit-taking and securities risk).
+3. **The borrower's signature covers the calendar.** The on-chain pagaré hash becomes
+   `sha256(pagare_template_hash || terms_hash || line || draw_index || amount || drawn_at)`;
+   `terms_hash` already includes the schedule, so the signed hash binds the template, the terms and
+   the calendar.
+4. **A debtor exit that does not depend on the council:** once a pagaré is PAGADO (written by
+   `repay` with the payer's receipt hash), if the council has not cancelled it within
+   `cancel_grace_seconds` (pool parameter, provisional 30 days), the borrower may cancel it alone.
+   This keeps the PAGADO mark as the debtor's protection and removes the 2-of-2 deadlock risk for
+   the debtor.
+5. **council_kind 1 is not a token vote.** A future investors' DAO must not be a token-weighted
+   governance of the SOFOM's credit committee (research S2); any move to council_kind 1 needs a
+   legal review first. The program cannot tell governance types apart, so this is a written rule in
+   SECURITY and the runbook.
+6. **No token-to-pool flows.** Research lists ten flows the program must refuse (for example,
+   a community token as pool asset, share mint or fee recipient); the dev checks each against the
+   asset and share-mint policy and adds the missing refusals.
 
 ## Settled after the dev's review (coordinator's calls, 2026-11-03)
 
