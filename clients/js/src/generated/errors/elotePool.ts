@@ -127,24 +127,32 @@ export const ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED = 0x17a5; // 6053
 export const ELOTE_POOL_ERROR__TERM_NOT_ENDED = 0x17a6; // 6054
 /** WriteOffTooEarly: A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace */
 export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x17a7; // 6055
+/** FixDateInvalid: The FIX date is not a valid date, is in the future, or is older than the published one */
+export const ELOTE_POOL_ERROR__FIX_DATE_INVALID = 0x17a8; // 6056
+/** FixJump: The FIX moves more than the feeder may publish; the council must */
+export const ELOTE_POOL_ERROR__FIX_JUMP = 0x17a9; // 6057
+/** FixMismatch: The FIX signed is not the one published now */
+export const ELOTE_POOL_ERROR__FIX_MISMATCH = 0x17aa; // 6058
+/** FixStale: The published FIX is too old for a draw */
+export const ELOTE_POOL_ERROR__FIX_STALE = 0x17ab; // 6059
 /** DocumentHashRequired: The signed document's hash is required */
-export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x17a8; // 6056
+export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x17ac; // 6060
 /** SignatureMethodInvalid: signature_method is unknown, or lacks its certificate fingerprint */
-export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x17a9; // 6057
+export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x17ad; // 6061
 /** PagareNotCovered: No repayment has marked this pagaré paid */
-export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x17aa; // 6058
+export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x17ae; // 6062
 /** PagareAlreadyPaid: This pagaré is already extinguished */
-export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x17ab; // 6059
+export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x17af; // 6063
 /** CancelGraceNotElapsed: The borrower may cancel alone only after the cancel grace from the payment */
-export const ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED = 0x17ac; // 6060
+export const ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED = 0x17b0; // 6064
 /** EndosoKindInvalid: This kind of endoso is not one the program records */
-export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x17ad; // 6061
+export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x17b1; // 6065
 /** ProcuracionState: The pagaré has no procuración in force, or already has one */
-export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x17ae; // 6062
+export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x17b2; // 6066
 /** AnnotationKindInvalid: This kind is not a court annotation */
-export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x17af; // 6063
+export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x17b3; // 6067
 /** EntryNotFound: The referenced registry entry does not exist */
-export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x17b0; // 6064
+export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x17b4; // 6068
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -177,6 +185,10 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__EXPEDIENTE_MISMATCH
   | typeof ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
+  | typeof ELOTE_POOL_ERROR__FIX_DATE_INVALID
+  | typeof ELOTE_POOL_ERROR__FIX_JUMP
+  | typeof ELOTE_POOL_ERROR__FIX_MISMATCH
+  | typeof ELOTE_POOL_ERROR__FIX_STALE
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
   | typeof ELOTE_POOL_ERROR__INVALID_SCHEDULE
   | typeof ELOTE_POOL_ERROR__INVARIANT_BROKEN
@@ -246,6 +258,10 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__EXPEDIENTE_MISMATCH]: `The expediente root or the terms hash is not the one the borrower requested`,
     [ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED]: `The expediente root is required`,
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
+    [ELOTE_POOL_ERROR__FIX_DATE_INVALID]: `The FIX date is not a valid date, is in the future, or is older than the published one`,
+    [ELOTE_POOL_ERROR__FIX_JUMP]: `The FIX moves more than the feeder may publish; the council must`,
+    [ELOTE_POOL_ERROR__FIX_MISMATCH]: `The FIX signed is not the one published now`,
+    [ELOTE_POOL_ERROR__FIX_STALE]: `The published FIX is too old for a draw`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
     [ELOTE_POOL_ERROR__INVALID_SCHEDULE]: `The installment schedule is not valid`,
     [ELOTE_POOL_ERROR__INVARIANT_BROKEN]: `A pool invariant does not hold after this instruction; the transaction is refused`,

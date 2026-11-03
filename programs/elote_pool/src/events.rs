@@ -380,3 +380,37 @@ pub struct CancelGraceSet {
     pub pool: Pubkey,
     pub cancel_grace_seconds: u32,
 }
+
+/// A FIX publication: Banxico's rate for `fix_date` as published by `by` (the feeder or the
+/// council) at `slot`. Each one can be checked against the DOF.
+#[event]
+pub struct FixPosted {
+    pub pool: Pubkey,
+    pub fix_rate: u64,
+    pub fix_date: u32,
+    pub previous_rate: u64,
+    pub by: Pubkey,
+    pub slot: u64,
+    pub posted_at: i64,
+}
+
+/// The zero key means no feeder: only the council publishes.
+#[event]
+pub struct FxFeederSet {
+    pub pool: Pubkey,
+    pub fx_feeder: Pubkey,
+}
+
+/// The FX result of one repayment's principal, in USDC base units: `cost` is the pool's cost of the
+/// principal repaid (at each pagaré's FIX), `received` the USDC that paid it, `delta = received -
+/// cost`. Emitted by `repay` before `LineRepaid`, with the same `receipt_hash`.
+#[event]
+pub struct FxRealized {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub receipt_hash: [u8; 32],
+    pub cost: u64,
+    pub received: u64,
+    pub delta: i64,
+    pub nav_after: u64,
+}

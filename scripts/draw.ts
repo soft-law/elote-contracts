@@ -110,7 +110,7 @@ console.log(
   [
     `line         ${line} (id ${lineId})`,
     `pagaré       ${drawIndex}: asset ${pagare.asset}, record ${record}`,
-    `amount       ${fmt(pagare.amount)} tMXN; drawn through ${fmt(pagare.drawnThrough)}`,
+    `amount       ${fmt(pagare.amountMxn)} tMXN; drawn through ${fmt(pagare.drawnThrough)}`,
     `due          ${new Date(Number(pagare.dueAt) * 1000).toISOString()}`,
     `line now     drawn ${fmt(after.drawn)} of ${fmt(after.principal)}, interest ${fmt(after.interestDue)}, ${LineStatus[after.status]}`,
     `signature    ${signature}`,

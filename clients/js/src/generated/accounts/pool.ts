@@ -21,6 +21,8 @@ import {
   getBooleanEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getStructDecoder,
   getStructEncoder,
   getU16Decoder,
@@ -145,6 +147,18 @@ export type Pool = {
   impairedPrincipal: bigint;
   /** The provision on `impaired_principal`, in basis points; zero, not yet used. */
   provisionBps: number;
+  /**
+   * The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key
+   * when none (the council publishes). Set and rotated by the council.
+   */
+  fxFeeder: Address;
+  /** The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication. */
+  fixRate: bigint;
+  /** The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back. */
+  fixDate: number;
+  fixPostedAt: bigint;
+  /** The FX gain (positive) or loss realized by repayments, in USDC base units; informative. */
+  fxRealized: bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -239,6 +253,18 @@ export type PoolArgs = {
   impairedPrincipal: number | bigint;
   /** The provision on `impaired_principal`, in basis points; zero, not yet used. */
   provisionBps: number;
+  /**
+   * The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key
+   * when none (the council publishes). Set and rotated by the council.
+   */
+  fxFeeder: Address | HasAddress;
+  /** The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication. */
+  fixRate: number | bigint;
+  /** The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back. */
+  fixDate: number;
+  fixPostedAt: number | bigint;
+  /** The FX gain (positive) or loss realized by repayments, in USDC base units; informative. */
+  fxRealized: number | bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -279,6 +305,11 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["cancelGraceSeconds", getU32Encoder()],
       ["impairedPrincipal", getU64Encoder()],
       ["provisionBps", getU16Encoder()],
+      ["fxFeeder", getAddressEncoder()],
+      ["fixRate", getU64Encoder()],
+      ["fixDate", getU32Encoder()],
+      ["fixPostedAt", getI64Encoder()],
+      ["fxRealized", getI64Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 64)],
     ]),
     (value) => ({ ...value, discriminator: POOL_DISCRIMINATOR }),
@@ -320,6 +351,11 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["cancelGraceSeconds", getU32Decoder()],
     ["impairedPrincipal", getU64Decoder()],
     ["provisionBps", getU16Decoder()],
+    ["fxFeeder", getAddressDecoder()],
+    ["fixRate", getU64Decoder()],
+    ["fixDate", getU32Decoder()],
+    ["fixPostedAt", getI64Decoder()],
+    ["fxRealized", getI64Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 64)],
   ]);
 }
@@ -391,5 +427,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 503;
+  return 563;
 }

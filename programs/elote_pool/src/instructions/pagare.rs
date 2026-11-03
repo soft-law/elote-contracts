@@ -36,14 +36,14 @@ pub struct CancelPagare<'info> {
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Account<'info, Pool>,
+    pub pool: Box<Account<'info, Pool>>,
 
     #[account(
         seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
         bump = line.bump,
         has_one = pool @ PoolError::WrongAccount,
     )]
-    pub line: Account<'info, CreditLine>,
+    pub line: Box<Account<'info, CreditLine>>,
 
     /// The record of pagaré `draw_index` of the line; written, never closed.
     #[account(
@@ -52,7 +52,7 @@ pub struct CancelPagare<'info> {
         bump = pagare.bump,
         has_one = line @ PoolError::WrongAccount,
     )]
-    pub pagare: Account<'info, Pagare>,
+    pub pagare: Box<Account<'info, Pagare>>,
 
     /// The Core asset the record names; burnt by the Core program.
     /// CHECK: must be `pagare.asset`; the Core program checks the rest.
@@ -210,14 +210,14 @@ pub struct EndorsePagare<'info> {
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Account<'info, Pool>,
+    pub pool: Box<Account<'info, Pool>>,
 
     #[account(
         seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
         bump = line.bump,
         has_one = pool @ PoolError::WrongAccount,
     )]
-    pub line: Account<'info, CreditLine>,
+    pub line: Box<Account<'info, CreditLine>>,
 
     #[account(
         mut,
@@ -225,7 +225,7 @@ pub struct EndorsePagare<'info> {
         bump = pagare.bump,
         has_one = line @ PoolError::WrongAccount,
     )]
-    pub pagare: Account<'info, Pagare>,
+    pub pagare: Box<Account<'info, Pagare>>,
 
     /// CHECK: must be `pagare.asset`; the Core program checks the rest.
     #[account(mut, address = pagare.asset @ PoolError::WrongAccount)]
@@ -337,14 +337,14 @@ pub struct RevokeProcuracion<'info> {
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Account<'info, Pool>,
+    pub pool: Box<Account<'info, Pool>>,
 
     #[account(
         seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
         bump = line.bump,
         has_one = pool @ PoolError::WrongAccount,
     )]
-    pub line: Account<'info, CreditLine>,
+    pub line: Box<Account<'info, CreditLine>>,
 
     #[account(
         mut,
@@ -352,7 +352,7 @@ pub struct RevokeProcuracion<'info> {
         bump = pagare.bump,
         has_one = line @ PoolError::WrongAccount,
     )]
-    pub pagare: Account<'info, Pagare>,
+    pub pagare: Box<Account<'info, Pagare>>,
 
     /// CHECK: must be `pagare.asset`; the Core program checks the rest.
     #[account(mut, address = pagare.asset @ PoolError::WrongAccount)]
@@ -430,14 +430,14 @@ pub struct CourtAnnotation<'info> {
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Account<'info, Pool>,
+    pub pool: Box<Account<'info, Pool>>,
 
     #[account(
         seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
         bump = line.bump,
         has_one = pool @ PoolError::WrongAccount,
     )]
-    pub line: Account<'info, CreditLine>,
+    pub line: Box<Account<'info, CreditLine>>,
 
     #[account(
         mut,
@@ -445,7 +445,7 @@ pub struct CourtAnnotation<'info> {
         bump = pagare.bump,
         has_one = line @ PoolError::WrongAccount,
     )]
-    pub pagare: Account<'info, Pagare>,
+    pub pagare: Box<Account<'info, Pagare>>,
 }
 
 /// A court's act on the title, `AnotacionJudicial` or `ConstanciaJudicial` (`AnnotationKindInvalid`),
@@ -488,14 +488,14 @@ pub struct RequestCancellation<'info> {
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Account<'info, Pool>,
+    pub pool: Box<Account<'info, Pool>>,
 
     #[account(
         seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
         bump = line.bump,
         has_one = pool @ PoolError::WrongAccount,
     )]
-    pub line: Account<'info, CreditLine>,
+    pub line: Box<Account<'info, CreditLine>>,
 
     #[account(
         mut,
@@ -503,7 +503,7 @@ pub struct RequestCancellation<'info> {
         bump = pagare.bump,
         has_one = line @ PoolError::WrongAccount,
     )]
-    pub pagare: Account<'info, Pagare>,
+    pub pagare: Box<Account<'info, Pagare>>,
 }
 
 /// Starts the backstop: the holder records the receipt's hash for a cancellation without the
@@ -564,14 +564,14 @@ pub struct AnnotatePayment<'info> {
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
-    pub pool: Account<'info, Pool>,
+    pub pool: Box<Account<'info, Pool>>,
 
     #[account(
         seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
         bump = line.bump,
         has_one = pool @ PoolError::WrongAccount,
     )]
-    pub line: Account<'info, CreditLine>,
+    pub line: Box<Account<'info, CreditLine>>,
 
     #[account(
         mut,
@@ -579,7 +579,7 @@ pub struct AnnotatePayment<'info> {
         bump = pagare.bump,
         has_one = line @ PoolError::WrongAccount,
     )]
-    pub pagare: Account<'info, Pagare>,
+    pub pagare: Box<Account<'info, Pagare>>,
 }
 
 /// The council (holder) or the attestor attaches the real receipt to payment entry `entry_count` of

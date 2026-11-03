@@ -176,6 +176,16 @@ pub struct Pool {
     pub impaired_principal: u64,
     /// The provision on `impaired_principal`, in basis points; zero, not yet used.
     pub provision_bps: u16,
+    /// The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key
+    /// when none (the council publishes). Set and rotated by the council.
+    pub fx_feeder: Pubkey,
+    /// The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication.
+    pub fix_rate: u64,
+    /// The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back.
+    pub fix_date: u32,
+    pub fix_posted_at: i64,
+    /// The FX gain (positive) or loss realized by repayments, in USDC base units; informative.
+    pub fx_realized: i64,
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 64],
 }
@@ -306,6 +316,11 @@ pub struct CreditLine {
     pub availability_end_saved: i64,
     /// When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending.
     pub acceleration_due_at: i64,
+    /// USDC delivered over the draws: the pool's cost of the line.
+    pub usdc_drawn: u64,
+    /// The cost of the principal repaid, at each pagaré's own FIX; `usdc_drawn - usdc_cost_repaid`
+    /// is the cost still outstanding.
+    pub usdc_cost_repaid: u64,
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 64],
 }
@@ -356,8 +371,8 @@ pub struct Pagare {
     pub asset: Pubkey,
     /// Hash of the signed pagaré data message, as `draw` received it.
     pub pagare_hash: [u8; 32],
-    /// The tranche this pagaré documents.
-    pub amount: u64,
+    /// The tranche this pagaré documents, in centavos of MXN: the sum the pagaré promises.
+    pub amount_mxn: u64,
     pub issued_at: i64,
     /// The line's last due date at issuance.
     pub due_at: i64,
@@ -395,6 +410,15 @@ pub struct Pagare {
     /// `KIND_*` of the last entry.
     pub last_kind: u8,
     pub bump: u8,
+    /// The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date.
+    pub fx_rate: u64,
+    pub fx_date: u32,
+    /// USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the
+    /// tranche.
+    pub usdc_delivered: u64,
+    /// `sha256(pagare_hash || fx_rate || fx_date || usdc_delivered)`: the delivery the borrower
+    /// instructed, kept apart from the pagaré, which promises MXN only.
+    pub delivery_hash: [u8; 32],
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 32],
 }
@@ -496,6 +520,11 @@ mod tests {
             cancel_grace_seconds: 0,
             impaired_principal: 0,
             provision_bps: 0,
+            fx_feeder: Pubkey::default(),
+            fix_rate: 0,
+            fix_date: 0,
+            fix_posted_at: 0,
+            fx_realized: 0,
             reserved: [0; 64],
         }
     }

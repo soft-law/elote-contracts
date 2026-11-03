@@ -1480,6 +1480,78 @@
       "args": []
     },
     {
+      "name": "post_fix",
+      "docs": [
+        "Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was",
+        "determined (`yyyymmdd`). The feeder moves forward within 5%; the council publishes the rest."
+      ],
+      "discriminator": [
+        55,
+        246,
+        72,
+        71,
+        2,
+        3,
+        140,
+        249
+      ],
+      "accounts": [
+        {
+          "name": "poster",
+          "docs": [
+            "The feeder or the council."
+          ],
+          "signer": true
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "fix_rate",
+          "type": "u64"
+        },
+        {
+          "name": "fix_date",
+          "type": "u32"
+        }
+      ]
+    },
+    {
       "name": "propose_council",
       "docs": [
         "Pauses or resumes deposits, redemptions, requests and draws. Council only. Nothing else is",
@@ -2456,6 +2528,73 @@
       ]
     },
     {
+      "name": "set_fx_feeder",
+      "docs": [
+        "Names the key that publishes the FIX (the zero key for none). Council only."
+      ],
+      "discriminator": [
+        223,
+        206,
+        6,
+        217,
+        13,
+        173,
+        118,
+        211
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "fx_feeder",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "set_paused",
       "discriminator": [
         91,
@@ -2933,6 +3072,45 @@
         35,
         100,
         57
+      ]
+    },
+    {
+      "name": "FixPosted",
+      "discriminator": [
+        88,
+        37,
+        97,
+        26,
+        191,
+        169,
+        63,
+        231
+      ]
+    },
+    {
+      "name": "FxFeederSet",
+      "discriminator": [
+        22,
+        125,
+        71,
+        131,
+        96,
+        174,
+        47,
+        73
+      ]
+    },
+    {
+      "name": "FxRealized",
+      "discriminator": [
+        83,
+        198,
+        176,
+        80,
+        125,
+        102,
+        85,
+        97
       ]
     },
     {
@@ -3557,46 +3735,66 @@
     },
     {
       "code": 6056,
+      "name": "FixDateInvalid",
+      "msg": "The FIX date is not a valid date, is in the future, or is older than the published one"
+    },
+    {
+      "code": 6057,
+      "name": "FixJump",
+      "msg": "The FIX moves more than the feeder may publish; the council must"
+    },
+    {
+      "code": 6058,
+      "name": "FixMismatch",
+      "msg": "The FIX signed is not the one published now"
+    },
+    {
+      "code": 6059,
+      "name": "FixStale",
+      "msg": "The published FIX is too old for a draw"
+    },
+    {
+      "code": 6060,
       "name": "DocumentHashRequired",
       "msg": "The signed document's hash is required"
     },
     {
-      "code": 6057,
+      "code": 6061,
       "name": "SignatureMethodInvalid",
       "msg": "signature_method is unknown, or lacks its certificate fingerprint"
     },
     {
-      "code": 6058,
+      "code": 6062,
       "name": "PagareNotCovered",
       "msg": "No repayment has marked this pagaré paid"
     },
     {
-      "code": 6059,
+      "code": 6063,
       "name": "PagareAlreadyPaid",
       "msg": "This pagaré is already extinguished"
     },
     {
-      "code": 6060,
+      "code": 6064,
       "name": "CancelGraceNotElapsed",
       "msg": "The borrower may cancel alone only after the cancel grace from the payment"
     },
     {
-      "code": 6061,
+      "code": 6065,
       "name": "EndosoKindInvalid",
       "msg": "This kind of endoso is not one the program records"
     },
     {
-      "code": 6062,
+      "code": 6066,
       "name": "ProcuracionState",
       "msg": "The pagaré has no procuración in force, or already has one"
     },
     {
-      "code": 6063,
+      "code": 6067,
       "name": "AnnotationKindInvalid",
       "msg": "This kind is not a court annotation"
     },
     {
-      "code": 6064,
+      "code": 6068,
       "name": "EntryNotFound",
       "msg": "The referenced registry entry does not exist"
     }
@@ -4095,6 +4293,21 @@
             "type": "i64"
           },
           {
+            "name": "usdc_drawn",
+            "docs": [
+              "USDC delivered over the draws: the pool's cost of the line."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "usdc_cost_repaid",
+            "docs": [
+              "The cost of the principal repaid, at each pagaré's own FIX; `usdc_drawn - usdc_cost_repaid`",
+              "is the cost still outstanding."
+            ],
+            "type": "u64"
+          },
+          {
             "name": "reserved",
             "docs": [
               "Zero; for fields added after mainnet."
@@ -4136,6 +4349,111 @@
           },
           {
             "name": "supply_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FixPosted",
+      "docs": [
+        "A FIX publication: Banxico's rate for `fix_date` as published by `by` (the feeder or the",
+        "council) at `slot`. Each one can be checked against the DOF."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "fix_rate",
+            "type": "u64"
+          },
+          {
+            "name": "fix_date",
+            "type": "u32"
+          },
+          {
+            "name": "previous_rate",
+            "type": "u64"
+          },
+          {
+            "name": "by",
+            "type": "pubkey"
+          },
+          {
+            "name": "slot",
+            "type": "u64"
+          },
+          {
+            "name": "posted_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FxFeederSet",
+      "docs": [
+        "The zero key means no feeder: only the council publishes."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "fx_feeder",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FxRealized",
+      "docs": [
+        "The FX result of one repayment's principal, in USDC base units: `cost` is the pool's cost of the",
+        "principal repaid (at each pagaré's FIX), `received` the USDC that paid it, `delta = received -",
+        "cost`. Emitted by `repay` before `LineRepaid`, with the same `receipt_hash`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "receipt_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "cost",
+            "type": "u64"
+          },
+          {
+            "name": "received",
+            "type": "u64"
+          },
+          {
+            "name": "delta",
+            "type": "i64"
+          },
+          {
+            "name": "nav_after",
             "type": "u64"
           }
         ]
@@ -4851,9 +5169,9 @@
             }
           },
           {
-            "name": "amount",
+            "name": "amount_mxn",
             "docs": [
-              "The tranche this pagaré documents."
+              "The tranche this pagaré documents, in centavos of MXN: the sum the pagaré promises."
             ],
             "type": "u64"
           },
@@ -4999,6 +5317,38 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "fx_rate",
+            "docs": [
+              "The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fx_date",
+            "type": "u32"
+          },
+          {
+            "name": "usdc_delivered",
+            "docs": [
+              "USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the",
+              "tranche."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "delivery_hash",
+            "docs": [
+              "`sha256(pagare_hash || fx_rate || fx_date || usdc_delivered)`: the delivery the borrower",
+              "instructed, kept apart from the pagaré, which promises MXN only."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "reserved",
@@ -5517,6 +5867,39 @@
               "The provision on `impaired_principal`, in basis points; zero, not yet used."
             ],
             "type": "u16"
+          },
+          {
+            "name": "fx_feeder",
+            "docs": [
+              "The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key",
+              "when none (the council publishes). Set and rotated by the council."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fix_rate",
+            "docs": [
+              "The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fix_date",
+            "docs": [
+              "The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "fix_posted_at",
+            "type": "i64"
+          },
+          {
+            "name": "fx_realized",
+            "docs": [
+              "The FX gain (positive) or loss realized by repayments, in USDC base units; informative."
+            ],
+            "type": "i64"
           },
           {
             "name": "reserved",

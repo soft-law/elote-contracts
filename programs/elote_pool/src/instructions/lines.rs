@@ -127,6 +127,8 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
         draw_time_weight: 0,
         availability_end_saved: 0,
         acceleration_due_at: 0,
+        usdc_drawn: 0,
+        usdc_cost_repaid: 0,
         reserved: [0; 64],
     });
     pool.line_count = pool.line_count.checked_add(1).ok_or(PoolError::Overflow)?;
@@ -434,7 +436,7 @@ fn dec_u(mut m: u64) -> String {
 #[allow(clippy::too_many_arguments)]
 fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) -> Result<()> {
     let (draw_index, amount, document_hash, issued_at, due_at) =
-        (record.draw_index, record.amount, record.pagare_hash, record.issued_at, record.due_at);
+        (record.draw_index, record.amount_mxn, record.pagare_hash, record.issued_at, record.due_at);
     use mpl_core::types::{
         AddBlocker, Attribute, Attributes, ImmutableMetadata, PermanentFreezeDelegate, Plugin, PluginAuthority,
         PluginAuthorityPair,
@@ -595,7 +597,7 @@ pub fn draw(
         draw_index,
         asset: ctx.accounts.asset.key(),
         pagare_hash: document_hash,
-        amount,
+        amount_mxn: amount,
         issued_at: now,
         due_at: last_due,
         drawn_through: drawn_after,
@@ -613,6 +615,10 @@ pub fn draw(
         entry_count: 0,
         last_kind: 0,
         bump: pagare_bump,
+        fx_rate: 0,
+        fx_date: 0,
+        usdc_delivered: 0,
+        delivery_hash: [0; 32],
         reserved: [0; 32],
     };
     // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.

@@ -57,7 +57,7 @@ fn every_draw_issues_one_frozen_pagare_held_by_the_pool() {
 
     let sidecar = env.pagare(&k, line_id, 0);
     assert_eq!((sidecar.line, sidecar.draw_index, sidecar.asset), (line_key, 0, asset0));
-    assert_eq!((sidecar.pagare_hash, sidecar.amount, sidecar.issued_at, sidecar.due_at), (hash0, 4 * UNIT, t0, last_due));
+    assert_eq!((sidecar.pagare_hash, sidecar.amount_mxn, sidecar.issued_at, sidecar.due_at), (hash0, 4 * UNIT, t0, last_due));
     assert_eq!((sidecar.cert_fingerprint, sidecar.signature_method), (CERT_FINGERPRINT, SIGNATURE_METHOD));
     assert_eq!((sidecar.status, sidecar.paid_at, sidecar.receipt_hash), (PAGARE_OUTSTANDING, 0, [0; 32]), "outstanding until cancel_pagare");
 
@@ -179,7 +179,7 @@ fn drawn_through_is_the_lines_drawn_after_each_tranche() {
         env.draw_amount(&k, line_id, &borrower, amount);
         total += amount;
         let sidecar = env.pagare(&k, line_id, i as u16);
-        assert_eq!((sidecar.amount, sidecar.drawn_through), (amount, total));
+        assert_eq!((sidecar.amount_mxn, sidecar.drawn_through), (amount, total));
         assert_eq!(sidecar.drawn_through, env.line(&k, line_id).drawn);
     }
 }
@@ -335,8 +335,8 @@ fn cancel_pagare_marks_the_sidecar_paid_and_burns_the_asset() {
     let after = env.pagare(&k, line_id, 0);
     assert_eq!((after.status, after.paid_at, after.receipt_hash), (PAGARE_PAID, now, RECEIPT_HASH));
     assert_eq!(
-        (after.line, after.draw_index, after.asset, after.pagare_hash, after.amount, after.issued_at, after.due_at),
-        (before.line, before.draw_index, before.asset, before.pagare_hash, before.amount, before.issued_at, before.due_at)
+        (after.line, after.draw_index, after.asset, after.pagare_hash, after.amount_mxn, after.issued_at, after.due_at),
+        (before.line, before.draw_index, before.asset, before.pagare_hash, before.amount_mxn, before.issued_at, before.due_at)
     );
     assert_eq!(
         (after.drawn_through, after.cert_fingerprint, after.signature_method, after.bump, after.procurador),
@@ -787,8 +787,8 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     assert_eq!((after.entry_count, after.last_kind), (2, KIND_ANOTACION_JUDICIAL));
     assert_eq!(after.log_root, chain(&before.log_root, &expected));
     assert_eq!(
-        (after.status, after.flags, after.procurador, after.paid_at, after.receipt_hash, after.amount, after.due_at),
-        (before.status, before.flags, before.procurador, before.paid_at, before.receipt_hash, before.amount, before.due_at),
+        (after.status, after.flags, after.procurador, after.paid_at, after.receipt_hash, after.amount_mxn, after.due_at),
+        (before.status, before.flags, before.procurador, before.paid_at, before.receipt_hash, before.amount_mxn, before.due_at),
         "nothing else on the sidecar moves"
     );
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");

@@ -157,6 +157,13 @@ export type CreditLine = {
   availabilityEndSaved: bigint;
   /** When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending. */
   accelerationDueAt: bigint;
+  /** USDC delivered over the draws: the pool's cost of the line. */
+  usdcDrawn: bigint;
+  /**
+   * The cost of the principal repaid, at each pagaré's own FIX; `usdc_drawn - usdc_cost_repaid`
+   * is the cost still outstanding.
+   */
+  usdcCostRepaid: bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -253,6 +260,13 @@ export type CreditLineArgs = {
   availabilityEndSaved: number | bigint;
   /** When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending. */
   accelerationDueAt: number | bigint;
+  /** USDC delivered over the draws: the pool's cost of the line. */
+  usdcDrawn: number | bigint;
+  /**
+   * The cost of the principal repaid, at each pagaré's own FIX; `usdc_drawn - usdc_cost_repaid`
+   * is the cost still outstanding.
+   */
+  usdcCostRepaid: number | bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -300,6 +314,8 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
       ["drawTimeWeight", getU128Encoder()],
       ["availabilityEndSaved", getI64Encoder()],
       ["accelerationDueAt", getI64Encoder()],
+      ["usdcDrawn", getU64Encoder()],
+      ["usdcCostRepaid", getU64Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 64)],
     ]),
     (value) => ({ ...value, discriminator: CREDIT_LINE_DISCRIMINATOR }),
@@ -348,6 +364,8 @@ export function getCreditLineDecoder(): Decoder<CreditLine> {
     ["drawTimeWeight", getU128Decoder()],
     ["availabilityEndSaved", getI64Decoder()],
     ["accelerationDueAt", getI64Decoder()],
+    ["usdcDrawn", getU64Decoder()],
+    ["usdcCostRepaid", getU64Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 64)],
   ]);
 }

@@ -63,8 +63,8 @@ export type Pagare = {
   asset: Address;
   /** Hash of the signed pagaré data message, as `draw` received it. */
   pagareHash: ReadonlyUint8Array;
-  /** The tranche this pagaré documents. */
-  amount: bigint;
+  /** The tranche this pagaré documents, in centavos of MXN: the sum the pagaré promises. */
+  amountMxn: bigint;
   issuedAt: bigint;
   /** The line's last due date at issuance. */
   dueAt: bigint;
@@ -112,6 +112,19 @@ export type Pagare = {
   /** `KIND_*` of the last entry. */
   lastKind: number;
   bump: number;
+  /** The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date. */
+  fxRate: bigint;
+  fxDate: number;
+  /**
+   * USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the
+   * tranche.
+   */
+  usdcDelivered: bigint;
+  /**
+   * `sha256(pagare_hash || fx_rate || fx_date || usdc_delivered)`: the delivery the borrower
+   * instructed, kept apart from the pagaré, which promises MXN only.
+   */
+  deliveryHash: ReadonlyUint8Array;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -124,8 +137,8 @@ export type PagareArgs = {
   asset: Address | HasAddress;
   /** Hash of the signed pagaré data message, as `draw` received it. */
   pagareHash: ReadonlyUint8Array;
-  /** The tranche this pagaré documents. */
-  amount: number | bigint;
+  /** The tranche this pagaré documents, in centavos of MXN: the sum the pagaré promises. */
+  amountMxn: number | bigint;
   issuedAt: number | bigint;
   /** The line's last due date at issuance. */
   dueAt: number | bigint;
@@ -173,6 +186,19 @@ export type PagareArgs = {
   /** `KIND_*` of the last entry. */
   lastKind: number;
   bump: number;
+  /** The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date. */
+  fxRate: number | bigint;
+  fxDate: number;
+  /**
+   * USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the
+   * tranche.
+   */
+  usdcDelivered: number | bigint;
+  /**
+   * `sha256(pagare_hash || fx_rate || fx_date || usdc_delivered)`: the delivery the borrower
+   * instructed, kept apart from the pagaré, which promises MXN only.
+   */
+  deliveryHash: ReadonlyUint8Array;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -186,7 +212,7 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["drawIndex", getU16Encoder()],
       ["asset", getAddressEncoder()],
       ["pagareHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["amount", getU64Encoder()],
+      ["amountMxn", getU64Encoder()],
       ["issuedAt", getI64Encoder()],
       ["dueAt", getI64Encoder()],
       ["drawnThrough", getU64Encoder()],
@@ -204,6 +230,10 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["entryCount", getU32Encoder()],
       ["lastKind", getU8Encoder()],
       ["bump", getU8Encoder()],
+      ["fxRate", getU64Encoder()],
+      ["fxDate", getU32Encoder()],
+      ["usdcDelivered", getU64Encoder()],
+      ["deliveryHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["reserved", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
@@ -218,7 +248,7 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["drawIndex", getU16Decoder()],
     ["asset", getAddressDecoder()],
     ["pagareHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["amount", getU64Decoder()],
+    ["amountMxn", getU64Decoder()],
     ["issuedAt", getI64Decoder()],
     ["dueAt", getI64Decoder()],
     ["drawnThrough", getU64Decoder()],
@@ -236,6 +266,10 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["entryCount", getU32Decoder()],
     ["lastKind", getU8Decoder()],
     ["bump", getU8Decoder()],
+    ["fxRate", getU64Decoder()],
+    ["fxDate", getU32Decoder()],
+    ["usdcDelivered", getU64Decoder()],
+    ["deliveryHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["reserved", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
@@ -307,5 +341,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 387;
+  return 439;
 }

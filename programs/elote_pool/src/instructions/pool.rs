@@ -8,9 +8,10 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    AttestorSet, CancelDelaySet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, NavUpdated, PoolInitialized, PoolPaused, Redeemed,
+    AttestorSet, CancelDelaySet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, FixPosted, FxFeederSet, Deposited, NavUpdated, PoolInitialized, PoolPaused, Redeemed,
 };
 use crate::council;
+use crate::fx;
 use crate::math;
 use crate::state::{self, 
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
@@ -308,6 +309,11 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         cancel_grace_seconds: p.cancel_grace_seconds,
         impaired_principal: 0,
         provision_bps: 0,
+        fx_feeder: Pubkey::default(),
+        fix_rate: 0,
+        fix_date: 0,
+        fix_posted_at: 0,
+        fx_realized: 0,
         reserved: [0; 64],
     });
 
@@ -727,5 +733,84 @@ pub fn accept_council(ctx: Context<AcceptCouncil>) -> Result<()> {
     pool.pending_council = Pubkey::default();
     pool.pending_council_kind = 0;
     emit_cpi!(CouncilAccepted { pool: pool.key(), old, new: new_council, kind: COUNCIL_SQUADS });
+    Ok(())
+}
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct SetFxFeeder<'info> {
+    pub council: Signer<'info>,
+
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+        has_one = council @ PoolError::Unauthorized,
+    )]
+    pub pool: Account<'info, Pool>,
+}
+
+/// Council only: names the key that publishes the FIX, or the zero key for none.
+pub fn set_fx_feeder(ctx: Context<SetFxFeeder>, fx_feeder: Pubkey) -> Result<()> {
+    let pool = &mut ctx.accounts.pool;
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
+    pool.fx_feeder = fx_feeder;
+    emit_cpi!(FxFeederSet { pool: pool.key(), fx_feeder });
+    Ok(())
+}
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct PostFix<'info> {
+    /// The feeder or the council.
+    pub poster: Signer<'info>,
+
+    /// CHECK: `council::check` when the council posts.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+    )]
+    pub pool: Account<'info, Pool>,
+}
+
+/// Publishes Banxico's FIX for `fix_date` (`yyyymmdd`, not after today in Mexico City). The feeder
+/// publishes a later date within `fx::MAX_FIX_JUMP_BPS` of the FIX in force (`FixJump`); the
+/// council publishes the first FIX, larger moves and same-day corrections. The date never moves
+/// back (`FixDateInvalid`).
+pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32) -> Result<()> {
+    let now = Clock::get()?;
+    let poster = ctx.accounts.poster.key();
+    let pool = &mut ctx.accounts.pool;
+    require!(fix_rate > 0, PoolError::WrongAmount);
+    require!(fx::fix_day(fix_date)? <= fx::mexico_city_day(now.unix_timestamp), PoolError::FixDateInvalid);
+    if poster == pool.council {
+        council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
+        require!(fix_date >= pool.fix_date, PoolError::FixDateInvalid);
+    } else {
+        require!(pool.fx_feeder != Pubkey::default() && poster == pool.fx_feeder, PoolError::Unauthorized);
+        require!(fix_date > pool.fix_date, PoolError::FixDateInvalid);
+        require!(pool.fix_rate != 0 && fx::within_band(pool.fix_rate, fix_rate), PoolError::FixJump);
+    }
+    let previous_rate = pool.fix_rate;
+    pool.fix_rate = fix_rate;
+    pool.fix_date = fix_date;
+    pool.fix_posted_at = now.unix_timestamp;
+    emit_cpi!(FixPosted {
+        pool: pool.key(),
+        fix_rate,
+        fix_date,
+        previous_rate,
+        by: poster,
+        slot: now.slot,
+        posted_at: now.unix_timestamp,
+    });
     Ok(())
 }

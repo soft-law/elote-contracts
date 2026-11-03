@@ -11,6 +11,7 @@ use anchor_lang::prelude::*;
 pub mod council;
 pub mod errors;
 pub mod events;
+pub mod fx;
 pub mod instructions;
 pub mod math;
 pub mod registry;
@@ -213,6 +214,17 @@ pub mod elote_pool {
     /// The proposed council signs and takes over, after the same multisig check as `init_pool`.
     pub fn accept_council(ctx: Context<AcceptCouncil>) -> Result<()> {
         instructions::pool::accept_council(ctx)
+    }
+
+    /// Names the key that publishes the FIX (the zero key for none). Council only.
+    pub fn set_fx_feeder(ctx: Context<SetFxFeeder>, fx_feeder: Pubkey) -> Result<()> {
+        instructions::pool::set_fx_feeder(ctx, fx_feeder)
+    }
+
+    /// Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was
+    /// determined (`yyyymmdd`). The feeder moves forward within 5%; the council publishes the rest.
+    pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32) -> Result<()> {
+        instructions::pool::post_fix(ctx, fix_rate, fix_date)
     }
 
     pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {

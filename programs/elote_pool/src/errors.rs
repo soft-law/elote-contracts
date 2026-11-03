@@ -130,6 +130,16 @@ pub enum PoolError {
     #[msg("A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace")]
     WriteOffTooEarly,
 
+    // The FIX.
+    #[msg("The FIX date is not a valid date, is in the future, or is older than the published one")]
+    FixDateInvalid,
+    #[msg("The FIX moves more than the feeder may publish; the council must")]
+    FixJump,
+    #[msg("The FIX signed is not the one published now")]
+    FixMismatch,
+    #[msg("The published FIX is too old for a draw")]
+    FixStale,
+
     // Pagarés.
     #[msg("The signed document's hash is required")]
     DocumentHashRequired,

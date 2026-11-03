@@ -58,6 +58,7 @@ import {
   getEndorsePagareInstructionAsync,
   getInitPoolInstructionAsync,
   getMarkInCollectionInstructionAsync,
+  getPostFixInstructionAsync,
   getProposeCouncilInstructionAsync,
   getRedeemInstructionAsync,
   getRejectLineInstructionAsync,
@@ -68,6 +69,7 @@ import {
   getSetAttestorInstructionAsync,
   getSetCancelDelayInstructionAsync,
   getSetCollectionPeriodInstructionAsync,
+  getSetFxFeederInstructionAsync,
   getSetPausedInstructionAsync,
   getSuspendDrawsInstructionAsync,
   getWithdrawRequestInstructionAsync,
@@ -83,6 +85,7 @@ import {
   parseEndorsePagareInstruction,
   parseInitPoolInstruction,
   parseMarkInCollectionInstruction,
+  parsePostFixInstruction,
   parseProposeCouncilInstruction,
   parseRedeemInstruction,
   parseRejectLineInstruction,
@@ -93,6 +96,7 @@ import {
   parseSetAttestorInstruction,
   parseSetCancelDelayInstruction,
   parseSetCollectionPeriodInstruction,
+  parseSetFxFeederInstruction,
   parseSetPausedInstruction,
   parseSuspendDrawsInstruction,
   parseWithdrawRequestInstruction,
@@ -119,6 +123,7 @@ import {
   type ParsedEndorsePagareInstruction,
   type ParsedInitPoolInstruction,
   type ParsedMarkInCollectionInstruction,
+  type ParsedPostFixInstruction,
   type ParsedProposeCouncilInstruction,
   type ParsedRedeemInstruction,
   type ParsedRejectLineInstruction,
@@ -129,10 +134,12 @@ import {
   type ParsedSetAttestorInstruction,
   type ParsedSetCancelDelayInstruction,
   type ParsedSetCollectionPeriodInstruction,
+  type ParsedSetFxFeederInstruction,
   type ParsedSetPausedInstruction,
   type ParsedSuspendDrawsInstruction,
   type ParsedWithdrawRequestInstruction,
   type ParsedWriteOffInstruction,
+  type PostFixAsyncInput,
   type ProposeCouncilAsyncInput,
   type RedeemAsyncInput,
   type RejectLineAsyncInput,
@@ -143,6 +150,7 @@ import {
   type SetAttestorAsyncInput,
   type SetCancelDelayAsyncInput,
   type SetCollectionPeriodAsyncInput,
+  type SetFxFeederAsyncInput,
   type SetPausedAsyncInput,
   type SuspendDrawsAsyncInput,
   type WithdrawRequestAsyncInput,
@@ -220,6 +228,9 @@ export enum ElotePoolEvent {
   CouncilAccepted,
   CouncilProposed,
   Deposited,
+  FixPosted,
+  FxFeederSet,
+  FxRealized,
   GuardianSet,
   LateInterestCollected,
   LineAccelerated,
@@ -372,6 +383,39 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.Deposited;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([88, 37, 97, 26, 191, 169, 63, 231]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.FixPosted;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([22, 125, 71, 131, 96, 174, 47, 73]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.FxFeederSet;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([83, 198, 176, 80, 125, 102, 85, 97]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.FxRealized;
   }
   if (
     containsBytes(
@@ -676,6 +720,7 @@ export enum ElotePoolInstruction {
   EndorsePagare,
   InitPool,
   MarkInCollection,
+  PostFix,
   ProposeCouncil,
   Redeem,
   RejectLine,
@@ -686,6 +731,7 @@ export enum ElotePoolInstruction {
   SetAttestor,
   SetCancelDelay,
   SetCollectionPeriod,
+  SetFxFeeder,
   SetPaused,
   SuspendDraws,
   WithdrawRequest,
@@ -821,6 +867,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([55, 246, 72, 71, 2, 3, 140, 249]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.PostFix;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([214, 92, 134, 7, 211, 167, 158, 38]),
       ),
       0,
@@ -931,6 +988,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([223, 206, 6, 217, 13, 173, 118, 211]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SetFxFeeder;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([91, 60, 125, 192, 176, 225, 166, 218]),
       ),
       0,
@@ -1014,6 +1082,9 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.MarkInCollection;
     } & ParsedMarkInCollectionInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.PostFix;
+    } & ParsedPostFixInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.ProposeCouncil;
     } & ParsedProposeCouncilInstruction<TProgram>)
   | ({
@@ -1043,6 +1114,9 @@ export type ParsedElotePoolInstruction<
   | ({
       instructionType: ElotePoolInstruction.SetCollectionPeriod;
     } & ParsedSetCollectionPeriodInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.SetFxFeeder;
+    } & ParsedSetFxFeederInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.SetPaused;
     } & ParsedSetPausedInstruction<TProgram>)
@@ -1138,6 +1212,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseMarkInCollectionInstruction(instruction),
       };
     }
+    case ElotePoolInstruction.PostFix: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.PostFix,
+        ...parsePostFixInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.ProposeCouncil: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -1206,6 +1287,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.SetCollectionPeriod,
         ...parseSetCollectionPeriodInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.SetFxFeeder: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SetFxFeeder,
+        ...parseSetFxFeederInstruction(instruction),
       };
     }
     case ElotePoolInstruction.SetPaused: {
@@ -1318,6 +1406,10 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getMarkInCollectionInstructionAsync> &
     SelfPlanAndSendFunctions;
+  postFix: (
+    input: PostFixAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getPostFixInstructionAsync> & SelfPlanAndSendFunctions;
   proposeCouncil: (
     input: ProposeCouncilAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1365,6 +1457,11 @@ export type ElotePoolPluginInstructions = {
     input: SetCollectionPeriodAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSetCollectionPeriodInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  setFxFeeder: (
+    input: SetFxFeederAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSetFxFeederInstructionAsync> &
     SelfPlanAndSendFunctions;
   setPaused: (
     input: SetPausedAsyncInput,
@@ -1514,6 +1611,14 @@ export function elotePoolProgram(
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
             ),
+          postFix: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getPostFixInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
           proposeCouncil: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -1602,6 +1707,14 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getSetCollectionPeriodInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          setFxFeeder: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetFxFeederInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),

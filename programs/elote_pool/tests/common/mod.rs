@@ -1091,6 +1091,26 @@ impl Env {
         elote_pool::terms::terms_hash(&k.pool, line_id, borrower, elote_pool::state::CURRENCY_MXN, &p.terms())
     }
 
+    pub fn set_fx_feeder_ix(&self, k: &PoolKeys, council: &Pubkey, fx_feeder: &Pubkey) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::SetFxFeeder { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
+                .to_account_metas(None),
+            data: elote_pool::instruction::SetFxFeeder { fx_feeder: *fx_feeder }.data(),
+        }
+    }
+
+    pub fn post_fix_ix(&self, k: &PoolKeys, poster: &Pubkey, fix_rate: u64, fix_date: u32) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::PostFix { poster: *poster, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
+                .to_account_metas(None),
+            data: elote_pool::instruction::PostFix { fix_rate, fix_date }.data(),
+        }
+    }
+
     /// `approve_line` naming `expediente_root` and `terms_hash`, signed by `council`.
     pub fn approve_line_ix(&self, k: &PoolKeys, council: &Pubkey, line_id: u64, expediente_root: [u8; 32], terms_hash: [u8; 32]) -> Instruction {
         let (event_authority, program) = event_metas();
