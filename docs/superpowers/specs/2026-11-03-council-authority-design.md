@@ -149,6 +149,22 @@ for this change.
    a community token as pool asset, share mint or fee recipient); the dev checks each against the
    asset and share-mint policy and adds the missing refusals.
 
+7. **Token-to-pool refusals added in PR 4 (dev's review of the ten flows):** R1 `init_pool` refuses
+   `asset_mint == share_mint`; R2 `asset_mint` must be on a closed allow-list per cluster (feature
+   flag; mainnet: USDC, MXNe, MEXe; devnet: their test mints; tests use their own feature); R3
+   `accept_council` refuses council_kind 1 until a verified Realms kind exists (a future kind 2 that
+   requires community voting disabled, with its own spike); R4 `tests/token_flows.rs` pins that
+   council instructions never change the vault balance or the share supply, that the only vault
+   outflows are draw to the borrower and redeem to the holder, and that no instruction reads token
+   accounts outside the pool's. The other flows are impossible by construction or off chain and go
+   into SECURITY as written rules.
+8. **Pagaré hash time:** `drawn_at` in the pagaré hash is that draw's time (the record's
+   `issued_at`), not the line's first-draw time.
+9. **Debtor exit as specified by the dev:** the borrower signs `cancel_pagare` alone when the pagaré
+   is PAID_PENDING_CANCEL and `now > paid_at + cancel_grace_seconds` (floor, provisional 30 days,
+   council setter); the pool PDA burns as owner even under a procuración; `receipt_hash` required;
+   the event carries `by_borrower`; no prior request entry.
+
 ## Settled after the dev's review (coordinator's calls, 2026-11-03)
 
 1. **Permissioned series:** the pilot allows only non-permissioned series (investors have no KYC).
