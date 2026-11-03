@@ -6,9 +6,9 @@ const BPS = 10_000n;
 export const SECONDS_PER_YEAR = 31_536_000n;
 
 /**
- * The largest principal `open_line` accepts at `nav` under `maxLineBps`, rounded down as
- * `Pool::max_line_principal` does. The app checks this before signing; `LineTooLarge` is the
- * program's backstop.
+ * The largest line `approve_line` accepts at `nav` under `maxLineBps`, in USDC, rounded down as
+ * `Pool::max_line_principal` does; `approve_line` converts it to MXN at the FIX in force
+ * (`mxnForUsdc`). The app checks this before signing; `LineTooLarge` is the program's guard.
  */
 export function maxLinePrincipal(nav: bigint, maxLineBps: number): bigint {
   return (nav * BigInt(maxLineBps)) / BPS;

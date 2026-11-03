@@ -48,7 +48,7 @@ fn two_tranches_sum_to_the_commitment_and_a_third_is_refused() {
     assert_eq!(env.token_balance(&k.asset_ata(&borrower.pubkey())), 4 * UNIT);
 
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1);
-    env.expect_err_with_attestor(ix, &borrower, E_WRONG_AMOUNT);
+    env.expect_err(ix, &borrower, &[], E_WRONG_AMOUNT);
     assert_eq!(env.line(&k, line_id).draws, 2);
 }
 
@@ -144,9 +144,9 @@ fn a_tranche_may_not_leave_the_schedule_unpayable() {
     let line_id = open(&mut env, &k, &borrower, &p);
 
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 5);
-    env.expect_err_with_attestor(ix, &borrower, E_INVALID_SCHEDULE);
+    env.expect_err(ix, &borrower, &[], E_INVALID_SCHEDULE);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 11);
-    env.expect_err_with_attestor(ix, &borrower, E_INVALID_SCHEDULE);
+    env.expect_err(ix, &borrower, &[], E_INVALID_SCHEDULE);
     env.draw_amount(&k, line_id, &borrower, 12);
     assert_eq!(env.arrears(&k, line_id).due, 0);
     env.warp(p.first_due_at());
@@ -228,7 +228,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
 
     env.set_paused(&k, true);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
-    env.expect_err_with_attestor(ix, &borrower, E_PAUSED);
+    env.expect_err(ix, &borrower, &[], E_PAUSED);
     env.set_paused(&k, false);
 
     // 5.0 of the 6.0 drawn, 5.0 left in the vault: a 6.0 tranche on a second line is bigger than
@@ -237,7 +237,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     let p2 = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let second = open(&mut env, &k, &borrower, &p2);
     let ix = env.draw_ix_amount(&k, second, &borrower.pubkey(), 6 * UNIT);
-    env.expect_err_with_attestor(ix, &borrower, E_INSUFFICIENT_LIQUIDITY);
+    env.expect_err(ix, &borrower, &[], E_INSUFFICIENT_LIQUIDITY);
     env.deposit(&k, &investor, 10 * UNIT);
     env.draw_amount(&k, second, &borrower, 6 * UNIT);
 
@@ -245,7 +245,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     env.warp(p.first_due_at());
     assert_eq!(env.line(&k, line_id).available(), Some(UNIT));
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1);
-    env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
+    env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
 
     // In collection (three installments missed past the grace of the third): no tranche either,
     // and the window check does not even matter.
@@ -254,7 +254,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &keeper, &[]);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1);
-    env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
+    env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
 }
 
 /// A half-drawn line repaid in full while its window is open stays `Active` and keeps drawing
@@ -314,7 +314,7 @@ fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
     }
     assert_eq!(env.line(&k, many).draws, 64);
     let ix = env.draw_ix_amount(&k, many, &borrower.pubkey(), 1);
-    env.expect_err_with_attestor(ix, &borrower, E_TOO_MANY_DRAWS);
+    env.expect_err(ix, &borrower, &[], E_TOO_MANY_DRAWS);
     assert_eq!(env.line(&k, many).available(), Some(36));
 }
 
@@ -345,7 +345,7 @@ fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
     // No more tranches, even a second later; the pool is not paused and repayment works.
     env.warp(env.now() + 1);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
-    env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
+    env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
     assert!(!env.pool(&k).paused);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 100_000);
     let ev = env.repay(&k, line_id, &borrower, UNIT + 100_000);
@@ -360,7 +360,7 @@ fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
     let meta = env.send(ix, &council, &[]);
     assert_eq!(find_event::<LineDrawsSuspended>(&meta).unwrap().available_forfeited, 4 * UNIT);
     let ix = env.draw_ix_amount(&k, fresh, &borrower.pubkey(), UNIT);
-    env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
+    env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
     assert_eq!(env.line(&k, fresh).status, LineStatus::Approved);
 }
 
@@ -389,7 +389,7 @@ fn cancel_line_clears_an_undrawn_commitment_only() {
 
     // Terminal: no draw, no repayment, no write-off, no second cancel, no suspension.
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
-    env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
+    env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 1);
     env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
     env.warp(p.term_end + 1);
@@ -419,7 +419,7 @@ fn a_draw_derives_the_pagare_hash_and_the_delivery_hash() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
-    let meta = env.send_with_attestor(ix, &borrower);
+    let meta = env.send(ix, &borrower, &[]);
     let t0 = env.now();
     let ev: PagareIssued = find_event(&meta).unwrap();
     let line = env.line(&k, line_id);
@@ -437,6 +437,6 @@ fn a_draw_derives_the_pagare_hash_and_the_delivery_hash() {
     // The same amount a second later is another pagaré.
     env.warp(t0 + 1);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
-    let ev2: PagareIssued = find_event(&env.send_with_attestor(ix, &borrower)).unwrap();
+    let ev2: PagareIssued = find_event(&env.send(ix, &borrower, &[])).unwrap();
     assert_ne!(ev2.pagare_hash, ev.pagare_hash);
 }

@@ -92,13 +92,6 @@ export type Pagare = {
   /** The receipt hash `cancel_pagare` was given; zero until the burn. */
   cancelReceiptHash: ReadonlyUint8Array;
   /**
-   * Deadline of the pending cancellation request, after which the owner may cancel without the
-   * attestor; zero when none.
-   */
-  cancelAfter: bigint;
-  /** The receipt hash of that request. */
-  requestedReceiptHash: ReadonlyUint8Array;
-  /**
    * The procurador of the endoso en procuración in force; the zero key when none. Cleared by
    * `revoke_procuracion` and by the extinction.
    */
@@ -166,13 +159,6 @@ export type PagareArgs = {
   /** The receipt hash `cancel_pagare` was given; zero until the burn. */
   cancelReceiptHash: ReadonlyUint8Array;
   /**
-   * Deadline of the pending cancellation request, after which the owner may cancel without the
-   * attestor; zero when none.
-   */
-  cancelAfter: number | bigint;
-  /** The receipt hash of that request. */
-  requestedReceiptHash: ReadonlyUint8Array;
-  /**
    * The procurador of the endoso en procuración in force; the zero key when none. Cleared by
    * `revoke_procuracion` and by the extinction.
    */
@@ -222,8 +208,6 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["paidAt", getI64Encoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["cancelReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["cancelAfter", getI64Encoder()],
-      ["requestedReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["procurador", getAddressEncoder()],
       ["flags", getU8Encoder()],
       ["logRoot", fixEncoderSize(getBytesEncoder(), 32)],
@@ -258,8 +242,6 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["paidAt", getI64Decoder()],
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["cancelReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["cancelAfter", getI64Decoder()],
-    ["requestedReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["procurador", getAddressDecoder()],
     ["flags", getU8Decoder()],
     ["logRoot", fixDecoderSize(getBytesDecoder(), 32)],
@@ -341,5 +323,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 439;
+  return 399;
 }

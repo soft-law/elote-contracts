@@ -110,7 +110,7 @@ fn real_fix_pool(env: &mut Env, max_outstanding: u64) -> (PoolKeys, Keypair, u64
     let council = env.council.insecure_clone();
     let asset = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset);
-    let mut p = env.init_params(0, BPS, env.attestor.pubkey(), COLLECTION_PERIOD, CANCEL_DELAY);
+    let mut p = env.init_params(0, BPS, COLLECTION_PERIOD);
     p.max_outstanding_principal = max_outstanding;
     let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), p);
     env.send(ix, &council, &[]);

@@ -87,10 +87,10 @@ fn n01_the_entry_counter_is_wide_enough() {
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
 
-/// N-03: the procurador is a third party: neither the attestor (whose signature the procurador's
-/// cancellation also needs) nor the council (the holder) may be named.
+/// N-03: the procurador is a third party: not the council (the holder), a curator, the guardian
+/// or the line's borrower.
 #[test]
-fn n03_the_attestor_and_the_admin_cannot_be_procurador() {
+fn n03_the_council_its_curators_the_guardian_and_the_borrower_cannot_be_procurador() {
     use elote_pool::state::KIND_PROCURACION;
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
@@ -99,17 +99,33 @@ fn n03_the_attestor_and_the_admin_cannot_be_procurador() {
     let line_id = env.open_line_with(&k, &borrower, &p, None).0;
     env.draw_amount(&k, line_id, &borrower, UNIT);
     let council = env.council.insecure_clone();
-    let attestor = env.attestor.insecure_clone();
     let a = council.pubkey();
-    for to in [attestor.pubkey(), a] {
+    let curator = env.curators[0].pubkey();
+    for to in [a, curator, borrower.pubkey()] {
         let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, to, [0x44; 32]);
-        env.expect_err(ix, &council, &[&attestor], E_ENDORSEE_INVALID);
+        env.expect_err(ix, &council, &[], E_ENDORSEE_INVALID);
     }
     assert_eq!(env.pagare(&k, line_id, 0).entry_count, 1, "nothing was appended");
+
+    // A pool with a guardian refuses it too.
+    let guardian = env.funded(1);
+    let asset = env.create_mint(&a, 6);
+    let k = env.pool_keys_for(&asset);
+    let mut params = env.init_params(0, BPS, COLLECTION_PERIOD);
+    params.guardian = guardian.pubkey();
+    let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), params);
+    env.send(ix, &council, &[]);
+    let investor = env.investor(&k, 20 * UNIT);
+    env.deposit(&k, &investor, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let line_id = env.open_line_with(&k, &borrower, &p, None).0;
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, guardian.pubkey(), [0x44; 32]);
+    env.expect_err(ix, &council, &[], E_ENDORSEE_INVALID);
 }
 
 /// N-04: the payer's `receipt_hash` on the PAGADO mark is provisional. The holder's annotation
-/// replaces it while the burn is still owed; the attestor's only appends; after the burn the
+/// replaces it while the burn is still owed; after the burn the
 /// field is frozen with the receipt the cancellation rested on.
 #[test]
 fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
@@ -121,7 +137,6 @@ fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
     let line_id = env.open_line_with(&k, &borrower, &p, None).0;
     env.draw_amount(&k, line_id, &borrower, UNIT);
     let council = env.council.insecure_clone();
-    let attestor = env.attestor.insecure_clone();
     let a = council.pubkey();
 
     // A stranger's payment covers pagaré 0 with a hash of its own.
@@ -135,17 +150,11 @@ fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
     assert_eq!((p0.status, p0.receipt_hash), (PAGARE_PAID_PENDING_CANCEL, [0x66; 32]));
     let payment_entry = p0.entry_count;
 
-    // The attestor's annotation appends only.
-    let ix = env.annotate_payment_ix(&k, line_id, 0, &attestor.pubkey(), payment_entry, [0x77; 32]);
-    env.send(ix, &council, &[&attestor]);
-    let p0 = env.pagare(&k, line_id, 0);
-    assert_eq!((p0.receipt_hash, p0.entry_count), ([0x66; 32], payment_entry + 1));
-
     // The holder's replaces the provisional hash.
     let ix = env.annotate_payment_ix(&k, line_id, 0, &a, payment_entry, RECEIPT_HASH);
     env.send(ix, &council, &[]);
     let p0 = env.pagare(&k, line_id, 0);
-    assert_eq!((p0.receipt_hash, p0.entry_count), (RECEIPT_HASH, payment_entry + 2));
+    assert_eq!((p0.receipt_hash, p0.entry_count), (RECEIPT_HASH, payment_entry + 1));
 
     // After the burn the field is frozen; the annotation still appends.
     env.cancel_pagare(&k, line_id, 0);
@@ -157,62 +166,3 @@ fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
     assert_eq!(p0.last_kind, elote_pool::state::KIND_RECIBO);
 }
 
-/// N-06: the holder replaces a pending cancellation request, so a wrong receipt does not block
-/// the backstop. The replacement takes the new receipt and restarts the wait from now, but never
-/// brings the deadline earlier than the one it replaces, even after the delay was shortened.
-#[test]
-fn n06_the_holder_replaces_a_pending_request_without_shortening_it() {
-    use elote_pool::events::CancellationRequested;
-    use elote_pool::state::{KIND_SOLICITUD_CANCELACION, PAGARE_PAID};
-    let mut env = Env::new();
-    let k = pool_with(&mut env, 20 * UNIT);
-    let borrower = env.borrower(&k);
-    let p = env.line_params(2 * UNIT, 1_000);
-    let line_id = env.open_line_with(&k, &borrower, &p, None).0;
-    env.draw_amount(&k, line_id, &borrower, UNIT);
-    let council = env.council.insecure_clone();
-    let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
-    env.repay(&k, line_id, &borrower, interest + UNIT);
-    let a = council.pubkey();
-    let short = i64::from(CANCEL_DELAY);
-    let long = 3 * short;
-
-    // A request with the wrong receipt, under a long delay.
-    let ix = env.set_cancel_delay_ix(&k, &a, 3 * CANCEL_DELAY);
-    env.send(ix, &council, &[]);
-    let ix = env.request_cancellation_ix(&k, line_id, 0, &a, [0x66; 32]);
-    env.send(ix, &council, &[]);
-    let t1 = env.now();
-    assert_eq!(env.pagare(&k, line_id, 0).cancel_after, t1 + long);
-
-    // Replaced later with the right receipt: the wait restarts from now.
-    env.warp(t1 + 100);
-    let entries = env.pagare(&k, line_id, 0).entry_count;
-    let ix = env.request_cancellation_ix(&k, line_id, 0, &a, RECEIPT_HASH);
-    let meta = env.send(ix, &council, &[]);
-    let t2 = env.now();
-    let p0 = env.pagare(&k, line_id, 0);
-    assert_eq!((p0.cancel_after, p0.requested_receipt_hash), (t2 + long, RECEIPT_HASH));
-    assert_eq!((p0.entry_count, p0.last_kind), (entries + 1, KIND_SOLICITUD_CANCELACION));
-    let ev: CancellationRequested = find_event(&meta).expect("CancellationRequested");
-    assert_eq!((ev.receipt_hash, ev.cancel_after), (RECEIPT_HASH, t2 + long));
-
-    // The delay is shortened; a replacement keeps the later deadline it replaces.
-    let ix = env.set_cancel_delay_ix(&k, &a, CANCEL_DELAY);
-    env.send(ix, &council, &[]);
-    env.warp(t2 + 100);
-    let ix = env.request_cancellation_ix(&k, line_id, 0, &a, RECEIPT_HASH);
-    env.send(ix, &council, &[]);
-    let t3 = env.now();
-    assert!(t3 + short < t2 + long);
-    assert_eq!(env.pagare(&k, line_id, 0).cancel_after, t2 + long, "never shortened");
-
-    // The old receipt no longer cancels; the new one does, after the deadline.
-    env.warp(t2 + long + 1);
-    let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &a, &a, [0x66; 32]);
-    env.expect_err(ix, &council, &[], E_ATTESTOR_REQUIRED);
-    let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &a, &a, RECEIPT_HASH);
-    env.send(ix, &council, &[]);
-    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
-}

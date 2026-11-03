@@ -174,6 +174,8 @@ pub const E_WRONG_ACCOUNT: u32 = ERR_BASE + PoolError::WrongAccount as u32;
 pub const E_SLIPPAGE_EXCEEDED: u32 = ERR_BASE + PoolError::SlippageExceeded as u32;
 pub const E_TERM_ENDED: u32 = ERR_BASE + PoolError::TermEnded as u32;
 pub const E_INVALID_SCHEDULE: u32 = ERR_BASE + PoolError::InvalidSchedule as u32;
+pub const E_CANCEL_GRACE_TOO_SHORT: u32 = ERR_BASE + PoolError::CancelGraceTooShort as u32;
+pub const E_CANCEL_GRACE_NOT_ELAPSED: u32 = ERR_BASE + PoolError::CancelGraceNotElapsed as u32;
 pub const E_MAX_MISSED_TOO_LOW: u32 = ERR_BASE + PoolError::MaxMissedTooLow as u32;
 pub const E_SCHEDULE_ENDS_AFTER_TERM: u32 = ERR_BASE + PoolError::ScheduleEndsAfterTerm as u32;
 pub const E_NOT_SCHEDULED: u32 = ERR_BASE + PoolError::NotScheduled as u32;
@@ -185,7 +187,6 @@ pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + PoolError::LineTooLarge as u32;
 pub const E_INVARIANT_BROKEN: u32 = ERR_BASE + PoolError::InvariantBroken as u32;
 pub const E_ASSET_MINT_NOT_ALLOWED: u32 = ERR_BASE + PoolError::AssetMintNotAllowed as u32;
 pub const E_SHARE_MINT_NOT_ALLOWED: u32 = ERR_BASE + PoolError::ShareMintNotAllowed as u32;
-pub const E_ATTESTOR_REQUIRED: u32 = ERR_BASE + PoolError::AttestorRequired as u32;
 pub const E_AVAILABILITY_ENDED: u32 = ERR_BASE + PoolError::AvailabilityEnded as u32;
 pub const E_TOO_MANY_DRAWS: u32 = ERR_BASE + PoolError::TooManyDraws as u32;
 pub const E_COLLECTION_NOT_ALLOWED: u32 = ERR_BASE + PoolError::CollectionNotAllowed as u32;
@@ -194,8 +195,6 @@ pub const E_SIGNATURE_METHOD_INVALID: u32 = ERR_BASE + PoolError::SignatureMetho
 pub const E_PAGARE_NOT_COVERED: u32 = ERR_BASE + PoolError::PagareNotCovered as u32;
 pub const E_PAGARE_ALREADY_PAID: u32 = ERR_BASE + PoolError::PagareAlreadyPaid as u32;
 pub const E_NOT_HOLDER: u32 = ERR_BASE + PoolError::NotHolder as u32;
-pub const E_ATTESTOR_IS_COUNCIL: u32 = ERR_BASE + PoolError::AttestorIsCouncil as u32;
-pub const E_BORROWER_IS_ATTESTOR: u32 = ERR_BASE + PoolError::BorrowerIsAttestor as u32;
 pub const E_AGREEMENT_HASH_REQUIRED: u32 = ERR_BASE + PoolError::AgreementHashRequired as u32;
 pub const E_EXPEDIENTE_ROOT_REQUIRED: u32 = ERR_BASE + PoolError::ExpedienteRootRequired as u32;
 pub const E_SPONSOR_ROLE_INVALID: u32 = ERR_BASE + PoolError::SponsorRoleInvalid as u32;
@@ -205,7 +204,6 @@ pub const E_ENDOSO_KIND_INVALID: u32 = ERR_BASE + PoolError::EndosoKindInvalid a
 pub const E_ENDORSEE_INVALID: u32 = ERR_BASE + PoolError::EndorseeInvalid as u32;
 pub const E_PROCURACION_STATE: u32 = ERR_BASE + PoolError::ProcuracionState as u32;
 pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + PoolError::AnnotationKindInvalid as u32;
-pub const E_CANCEL_DELAY_TOO_SHORT: u32 = ERR_BASE + PoolError::CancelDelayTooShort as u32;
 pub const E_ENTRY_NOT_FOUND: u32 = ERR_BASE + PoolError::EntryNotFound as u32;
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
@@ -229,7 +227,6 @@ pub const UNIT: u64 = 1_000_000;
 pub const MONTH: i64 = 30 * 24 * 3600;
 /// The collection period every pool of the harness is created with: the 30-day floor.
 pub const COLLECTION_PERIOD: u32 = elote_pool::state::MIN_COLLECTION_PERIOD_SECONDS;
-pub const CANCEL_DELAY: u32 = elote_pool::state::MIN_CANCEL_DELAY_SECONDS;
 pub const ACCELERATION_NOTICE: u32 = elote_pool::state::MIN_ACCELERATION_NOTICE_SECONDS;
 pub const CANCEL_GRACE: u32 = elote_pool::state::MIN_CANCEL_GRACE_SECONDS;
 
@@ -418,9 +415,6 @@ pub struct Env {
     pub curators: Vec<Keypair>,
     /// Pools whose FIX the harness keeps current at `PARITY_FIX` (see `ensure_fix`).
     pub parity_pools: Vec<PoolKeys>,
-    /// The attestor every pool of this env is created with : the agreements
-    /// engine's key, which co-signs openings, draws and cancellations.
-    pub attestor: Keypair,
 }
 
 fn event_metas() -> (Pubkey, Pubkey) {
@@ -465,14 +459,12 @@ impl Env {
         svm.airdrop(&council.pubkey(), 500 * LAMPORTS_PER_SOL).expect("airdrop council");
         let creator = Keypair::new();
         svm.airdrop(&creator.pubkey(), 10 * LAMPORTS_PER_SOL).expect("airdrop creator");
-        let attestor = Keypair::new();
-        svm.airdrop(&attestor.pubkey(), 10 * LAMPORTS_PER_SOL).expect("airdrop attestor");
 
         // A real date, so FIX dates (2000-2199) are valid: 2026-11-03T20:00Z, 14:00 in Mexico City.
         let mut clock = svm.get_sysvar::<anchor_lang::prelude::Clock>();
         clock.unix_timestamp = START_TIME;
         svm.set_sysvar(&clock);
-        Self { svm, council, creator, multisig, council_vault_bump, curators, attestor, parity_pools: Vec::new() }
+        Self { svm, council, creator, multisig, council_vault_bump, curators, parity_pools: Vec::new() }
     }
 
     pub fn funded(&mut self, sol: u64) -> Keypair {
@@ -788,22 +780,15 @@ impl Env {
 
     /// `init_pool` for the pool described by `k`.
     pub fn init_pool_ix_for(&self, k: &PoolKeys, grace_period_seconds: u32, max_line_bps: u16) -> Instruction {
-        self.init_pool_ix_with_attestor(k, grace_period_seconds, max_line_bps, self.attestor.pubkey())
-    }
-
-    /// `init_pool` naming `attestor` instead of the env's.
-    pub fn init_pool_ix_with_attestor(&self, k: &PoolKeys, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey) -> Instruction {
-        self.init_pool_ix_full(k, grace_period_seconds, max_line_bps, attestor, COLLECTION_PERIOD, CANCEL_DELAY)
+        self.init_pool_ix_full(k, grace_period_seconds, max_line_bps, COLLECTION_PERIOD)
     }
 
     /// The `init_pool` parameters the tests use, with the env's council.
-    pub fn init_params(&self, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey, collection_period_seconds: u32, cancel_delay_seconds: u32) -> elote_pool::instructions::pool::InitPoolParams {
+    pub fn init_params(&self, grace_period_seconds: u32, max_line_bps: u16, collection_period_seconds: u32) -> elote_pool::instructions::pool::InitPoolParams {
         elote_pool::instructions::pool::InitPoolParams {
             grace_period_seconds,
             max_line_bps,
-            attestor,
             collection_period_seconds,
-            cancel_delay_seconds,
             guardian: Pubkey::default(),
             max_outstanding_principal: u64::MAX,
             acceleration_notice_seconds: ACCELERATION_NOTICE,
@@ -842,11 +827,9 @@ impl Env {
         k: &PoolKeys,
         grace_period_seconds: u32,
         max_line_bps: u16,
-        attestor: Pubkey,
         collection_period_seconds: u32,
-        cancel_delay_seconds: u32,
     ) -> Instruction {
-        let params = self.init_params(grace_period_seconds, max_line_bps, attestor, collection_period_seconds, cancel_delay_seconds);
+        let params = self.init_params(grace_period_seconds, max_line_bps, collection_period_seconds);
         self.init_pool_ix_params(k, &self.multisig.clone(), params)
     }
 
@@ -871,12 +854,13 @@ impl Env {
         }
     }
 
-    pub fn set_cancel_delay_ix(&self, k: &PoolKeys, council: &Pubkey, seconds: u32) -> Instruction {
+    pub fn set_cancel_grace_ix(&self, k: &PoolKeys, council: &Pubkey, seconds: u32) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SetCancelDelay { council: *council, pool: k.pool, event_authority, program }.to_account_metas(None),
-            data: elote_pool::instruction::SetCancelDelay { cancel_delay_seconds: seconds }.data(),
+            accounts: elote_pool::accounts::SetCancelGrace { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
+                .to_account_metas(None),
+            data: elote_pool::instruction::SetCancelGrace { cancel_grace_seconds: seconds }.data(),
         }
     }
 
@@ -884,26 +868,9 @@ impl Env {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SetCollectionPeriod { council: *council, pool: k.pool, event_authority, program }
+            accounts: elote_pool::accounts::SetCollectionPeriod { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
             data: elote_pool::instruction::SetCollectionPeriod { collection_period_seconds: seconds }.data(),
-        }
-    }
-
-    /// `set_attestor`: the council and the new attestor both sign (condition C14).
-    pub fn set_attestor_ix(&self, k: &PoolKeys, council: &Pubkey, new_attestor: &Pubkey) -> Instruction {
-        let (event_authority, program) = event_metas();
-        Instruction {
-            program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SetAttestor {
-                council: *council,
-                new_attestor: *new_attestor,
-                pool: k.pool,
-                event_authority,
-                program,
-            }
-            .to_account_metas(None),
-            data: elote_pool::instruction::SetAttestor {}.data(),
         }
     }
 
@@ -1318,9 +1285,7 @@ impl Env {
         kp
     }
 
-    /// A tranche of `amount` against `document_hash`, with the borrower paying the pagaré's
-    /// rent; signed by the borrower and the attestor (the attestor is added by `draw` and
-    /// `draw_amount`; `draw_ix` only names it).
+    /// A tranche of `amount`, with the borrower paying the pagaré's rent; signed by the borrower.
     pub fn draw_ix_amount(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey, amount: u64) -> Instruction {
         self.draw_ix_paid_by(k, line_id, borrower, borrower, amount)
     }
@@ -1404,44 +1369,12 @@ impl Env {
         }
     }
 
-    /// `cancel_pagare(draw_index, receipt_hash)`: the holder (the council while the asset is in the
-    /// pool) and the attestor sign; `payer` receives the asset's rent back from the Core program.
-    /// The asset is read from the sidecar, as a client would.
-    #[allow(clippy::too_many_arguments)]
-    pub fn cancel_pagare_ix(
-        &self,
-        k: &PoolKeys,
-        line_id: u64,
-        draw_index: u16,
-        holder: &Pubkey,
-        payer: &Pubkey,
-        receipt_hash: [u8; 32],
-    ) -> Instruction {
+    /// `cancel_pagare(draw_index, receipt_hash)` signed by `holder`: the council, or the line's
+    /// borrower after the cancel grace. `payer` receives the asset's rent back from the Core
+    /// program. The asset is read from the sidecar, as a client would.
+    pub fn cancel_pagare_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, payer: &Pubkey, receipt_hash: [u8; 32]) -> Instruction {
         let asset = self.pagare(k, line_id, draw_index).asset;
-        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection, None, Some(self.attestor.pubkey()))
-    }
-    /// `cancel_pagare` by the holder alone, the backstop: no attestor account.
-    pub fn cancel_pagare_alone_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, payer: &Pubkey, receipt_hash: [u8; 32]) -> Instruction {
-        let asset = self.pagare(k, line_id, draw_index).asset;
-        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection, None, None)
-    }
-    /// `request_cancellation(draw_index, receipt_hash)` by `holder`.
-    pub fn request_cancellation_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, receipt_hash: [u8; 32]) -> Instruction {
-        let (event_authority, program) = event_metas();
-        let line = line_pda(&k.pool, line_id).0;
-        Instruction {
-            program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::RequestCancellation {
-                holder: *holder,
-                pool: k.pool,
-                line,
-                pagare: pagare_pda(&line, draw_index).0,
-                event_authority,
-                program,
-            }
-            .to_account_metas(None),
-            data: elote_pool::instruction::RequestCancellation { draw_index, receipt_hash }.data(),
-        }
+        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection, None)
     }
     /// `cancel_pagare` signed by the procurador of record: `holder` is the procurador and the
     /// program address `["procurador", pagare, procurador]` is passed as the burn's authority.
@@ -1449,7 +1382,7 @@ impl Env {
         let line = line_pda(&k.pool, line_id).0;
         let asset = self.pagare(k, line_id, draw_index).asset;
         let pda = procurador_pda(&pagare_pda(&line, draw_index).0, procurador).0;
-        self.cancel_pagare_ix_full(k, line_id, draw_index, procurador, payer, receipt_hash, asset, k.collection, Some(pda), Some(self.attestor.pubkey()))
+        self.cancel_pagare_ix_full(k, line_id, draw_index, procurador, payer, receipt_hash, asset, k.collection, Some(pda))
     }
 
     /// As `cancel_pagare_ix`, with the asset and the collection given explicitly.
@@ -1465,7 +1398,6 @@ impl Env {
         asset: Pubkey,
         collection: Pubkey,
         procurador_authority: Option<Pubkey>,
-        attestor: Option<Pubkey>,
     ) -> Instruction {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
@@ -1473,7 +1405,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::CancelPagare {
                 holder: *holder,
-                attestor,
+                multisig: self.pool(k).multisig,
                 payer: *payer,
                 pool: k.pool,
                 line,
@@ -1500,7 +1432,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::EndorsePagare {
                 holder: *holder,
-                attestor: self.attestor.pubkey(),
+                multisig: self.pool(k).multisig,
                 payer: *holder,
                 pool: k.pool,
                 line,
@@ -1525,6 +1457,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::RevokeProcuracion {
                 holder: *holder,
+                multisig: self.pool(k).multisig,
                 payer: *holder,
                 pool: k.pool,
                 line,
@@ -1541,7 +1474,7 @@ impl Env {
         }
     }
 
-    /// `court_annotation(draw_index, kind, document_hash)` by `holder`, the pool's attestor as the second signer.
+    /// `court_annotation(draw_index, kind, document_hash)` by `holder`.
     pub fn court_annotation_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, kind: u8, document_hash: [u8; 32]) -> Instruction {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
@@ -1549,7 +1482,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::CourtAnnotation {
                 holder: *holder,
-                attestor: self.attestor.pubkey(),
+                multisig: self.pool(k).multisig,
                 pool: k.pool,
                 line,
                 pagare: pagare_pda(&line, draw_index).0,
@@ -1560,36 +1493,32 @@ impl Env {
             data: elote_pool::instruction::CourtAnnotation { draw_index, kind, document_hash }.data(),
         }
     }
-    /// A court annotation of pagaré `draw_index`, signed by the council and the attestor.
+    /// A court annotation of pagaré `draw_index`, signed by the council.
     pub fn court_annotation(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> TransactionMetadata {
         let council = self.council.insecure_clone();
-        let attestor = self.attestor.insecure_clone();
         let ix = self.court_annotation_ix(k, line_id, draw_index, &council.pubkey(), kind, document_hash);
-        self.send(ix, &council, &[&attestor])
+        self.send(ix, &council, &[])
     }
 
-    /// An endoso en procuración of pagaré `draw_index` to `procurador`, signed by the council and the attestor.
+    /// An endoso en procuración of pagaré `draw_index` to `procurador`, signed by the council.
     pub fn procuracion(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, procurador: &Pubkey, endoso_hash: [u8; 32]) -> TransactionMetadata {
         let council = self.council.insecure_clone();
-        let attestor = self.attestor.insecure_clone();
         let ix = self.endorse_pagare_ix(k, line_id, draw_index, &council.pubkey(), elote_pool::state::KIND_PROCURACION, *procurador, endoso_hash);
-        self.send(ix, &council, &[&attestor])
+        self.send(ix, &council, &[])
     }
 
-    /// Cancels pagaré `draw_index` of a line: the council as holder and payer, the attestor co-signing.
+    /// Cancels pagaré `draw_index` of a line: the council as holder and payer.
     pub fn cancel_pagare(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16) -> TransactionMetadata {
         let council = self.council.insecure_clone();
-        let attestor = self.attestor.insecure_clone();
         let ix = self.cancel_pagare_ix(k, line_id, draw_index, &council.pubkey(), &council.pubkey(), RECEIPT_HASH);
-        self.send(ix, &council, &[&attestor])
+        self.send(ix, &council, &[])
     }
 
-    /// Asserts a cancellation of pagaré `draw_index` by the council and the attestor fails with `code`.
+    /// Asserts a cancellation of pagaré `draw_index` by the council fails with `code`.
     pub fn expect_cancel_err(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, code: u32) {
         let council = self.council.insecure_clone();
-        let attestor = self.attestor.insecure_clone();
         let ix = self.cancel_pagare_ix(k, line_id, draw_index, &council.pubkey(), &council.pubkey(), RECEIPT_HASH);
-        self.expect_err(ix, &council, &[&attestor], code);
+        self.expect_err(ix, &council, &[], code);
     }
 
     /// The sidecar of pagaré `draw_index` of a line.
@@ -1608,32 +1537,18 @@ impl Env {
         self.draw_ix_amount(k, line_id, borrower, line.principal - line.drawn)
     }
 
-    /// Draws everything still available; signed by the borrower and the attestor.
+    /// Draws everything still available; signed by the borrower.
     pub fn draw(&mut self, k: &PoolKeys, line_id: u64, borrower: &Keypair) -> elote_pool::events::LineDrawn {
         let ix = self.draw_ix(k, line_id, &borrower.pubkey());
-        let attestor = self.attestor.insecure_clone();
-        let meta = self.send(ix, borrower, &[&attestor]);
+        let meta = self.send(ix, borrower, &[]);
         find_event(&meta).expect("LineDrawn event")
     }
 
-    /// Draws one tranche of `amount`; signed by the borrower and the attestor.
+    /// Draws one tranche of `amount`; signed by the borrower.
     pub fn draw_amount(&mut self, k: &PoolKeys, line_id: u64, borrower: &Keypair, amount: u64) -> elote_pool::events::LineDrawn {
         let ix = self.draw_ix_amount(k, line_id, &borrower.pubkey(), amount);
-        let attestor = self.attestor.insecure_clone();
-        let meta = self.send(ix, borrower, &[&attestor]);
+        let meta = self.send(ix, borrower, &[]);
         find_event(&meta).expect("LineDrawn event")
-    }
-
-    /// Sends `ix` signed by `payer` and the attestor; for the draw instructions built by hand.
-    pub fn send_with_attestor(&mut self, ix: Instruction, payer: &Keypair) -> TransactionMetadata {
-        let attestor = self.attestor.insecure_clone();
-        self.send(ix, payer, &[&attestor])
-    }
-
-    /// Asserts a draw instruction fails with `code` once the attestor has signed too.
-    pub fn expect_err_with_attestor(&mut self, ix: Instruction, payer: &Keypair, code: u32) {
-        let attestor = self.attestor.insecure_clone();
-        self.expect_err(ix, payer, &[&attestor], code);
     }
 
     /// The sidecars a `repay` of `amount` must pass, `[pagares_paid ..= last_touched]`, computed
@@ -1698,6 +1613,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::AnnotatePayment {
                 annotator: *annotator,
+                multisig: self.pool(k).multisig,
                 pool: k.pool,
                 line,
                 pagare: pagare_pda(&line, draw_index).0,

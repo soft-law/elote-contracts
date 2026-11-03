@@ -62,7 +62,7 @@ pub struct RequestLine<'info> {
 
 /// Stores the terms of line `line_id` (the pool's next id, never reused) as `Requested`, with
 /// their `terms_hash`. The borrower, the payer and the named sponsor sign; refused while paused or
-/// with the council or the attestor as borrower. Moves no money.
+/// with the council as borrower. Moves no money.
 pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &mut ctx.accounts.pool;
@@ -70,7 +70,6 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
     require!(!pool.paused, PoolError::Paused);
     require!(line_id == pool.line_count, PoolError::WrongAccount);
     require!(borrower != pool.council, PoolError::BorrowerIsCouncil);
-    require!(borrower != pool.attestor, PoolError::BorrowerIsAttestor);
     require!(t.principal > 0, PoolError::WrongAmount);
     require!(u64::from(t.rate_bps) <= BPS, PoolError::WrongAmount);
     require!(t.term_end > now, PoolError::TermEnded);
@@ -639,8 +638,6 @@ pub fn draw(
         paid_at: 0,
         receipt_hash: [0; 32],
         cancel_receipt_hash: [0; 32],
-        cancel_after: 0,
-        requested_receipt_hash: [0; 32],
         procurador: Pubkey::default(),
         flags: 0,
         log_root: [0; 32],

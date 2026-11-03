@@ -67,7 +67,7 @@ export function getEndorsePagareDiscriminatorBytes(): ReadonlyUint8Array {
 export type EndorsePagareInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountHolder extends string | AccountMeta<string> = string,
-  TAccountAttestor extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPayer extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
@@ -90,10 +90,9 @@ export type EndorsePagareInstruction<
         ? ReadonlySignerAccount<TAccountHolder> &
             AccountSignerMeta<TAccountHolder>
         : TAccountHolder,
-      TAccountAttestor extends string
-        ? ReadonlySignerAccount<TAccountAttestor> &
-            AccountSignerMeta<TAccountAttestor>
-        : TAccountAttestor,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPayer extends string
         ? WritableSignerAccount<TAccountPayer> &
             AccountSignerMeta<TAccountPayer>
@@ -179,7 +178,7 @@ export function getEndorsePagareInstructionDataCodec(): FixedSizeCodec<
 
 export type EndorsePagareAsyncInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
@@ -196,8 +195,7 @@ export type EndorsePagareAsyncInput<
 > = {
   /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
-  /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification. */
-  attestor: TAccountAttestor;
+  multisig: TAccountMultisig;
   /** Pays the rent the Core plugin may need. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
@@ -217,7 +215,7 @@ export type EndorsePagareAsyncInput<
 
 export async function getEndorsePagareInstructionAsync<
   TAccountHolder extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
@@ -232,7 +230,7 @@ export async function getEndorsePagareInstructionAsync<
 >(
   input: EndorsePagareAsyncInput<
     TAccountHolder,
-    TAccountAttestor,
+    TAccountMultisig,
     TAccountPayer,
     TAccountPool,
     TAccountLine,
@@ -255,8 +253,8 @@ export async function getEndorsePagareInstructionAsync<
       InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPayer,
@@ -314,9 +312,9 @@ export async function getEndorsePagareInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
-    attestor: {
-      value: input.attestor ?? null,
-      isSigner: true,
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
@@ -396,7 +394,7 @@ export async function getEndorsePagareInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("holder", accounts.holder),
-      getAccountMeta("attestor", accounts.attestor),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
@@ -419,8 +417,8 @@ export async function getEndorsePagareInstructionAsync<
       InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPayer,
@@ -467,7 +465,7 @@ export async function getEndorsePagareInstructionAsync<
 
 export type EndorsePagareInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
@@ -484,8 +482,7 @@ export type EndorsePagareInput<
 > = {
   /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
-  /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification. */
-  attestor: TAccountAttestor;
+  multisig: TAccountMultisig;
   /** Pays the rent the Core plugin may need. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
@@ -505,7 +502,7 @@ export type EndorsePagareInput<
 
 export function getEndorsePagareInstruction<
   TAccountHolder extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
@@ -520,7 +517,7 @@ export function getEndorsePagareInstruction<
 >(
   input: EndorsePagareInput<
     TAccountHolder,
-    TAccountAttestor,
+    TAccountMultisig,
     TAccountPayer,
     TAccountPool,
     TAccountLine,
@@ -542,8 +539,8 @@ export function getEndorsePagareInstruction<
     InstructionAccountInputAddress<TAccountHolder>
   >,
   ResolvedInstructionAccountMeta<
-    TAccountAttestor,
-    InstructionAccountInputAddress<TAccountAttestor>
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPayer,
@@ -600,9 +597,9 @@ export function getEndorsePagareInstruction<
   // Original accounts.
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
-    attestor: {
-      value: input.attestor ?? null,
-      isSigner: true,
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
@@ -661,7 +658,7 @@ export function getEndorsePagareInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("holder", accounts.holder),
-      getAccountMeta("attestor", accounts.attestor),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
@@ -684,8 +681,8 @@ export function getEndorsePagareInstruction<
       InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPayer,
@@ -738,8 +735,7 @@ export type ParsedEndorsePagareInstruction<
   accounts: {
     /** The pagaré's holder: the council while the asset is in the pool. */
     holder: TAccountMetas[0];
-    /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification. */
-    attestor: TAccountMetas[1];
+    multisig: TAccountMetas[1];
     /** Pays the rent the Core plugin may need. Any signer. */
     payer: TAccountMetas[2];
     pool: TAccountMetas[3];
@@ -782,7 +778,7 @@ export function parseEndorsePagareInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       holder: getNextAccount(),
-      attestor: getNextAccount(),
+      multisig: getNextAccount(),
       payer: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),

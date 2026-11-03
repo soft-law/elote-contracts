@@ -61,6 +61,7 @@ export function getRevokeProcuracionDiscriminatorBytes(): ReadonlyUint8Array {
 export type RevokeProcuracionInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountHolder extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPayer extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
@@ -83,6 +84,9 @@ export type RevokeProcuracionInstruction<
         ? ReadonlySignerAccount<TAccountHolder> &
             AccountSignerMeta<TAccountHolder>
         : TAccountHolder,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPayer extends string
         ? WritableSignerAccount<TAccountPayer> &
             AccountSignerMeta<TAccountPayer>
@@ -160,6 +164,7 @@ export function getRevokeProcuracionInstructionDataCodec(): FixedSizeCodec<
 
 export type RevokeProcuracionAsyncInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
@@ -176,6 +181,7 @@ export type RevokeProcuracionAsyncInput<
 > = {
   /** The pagaré's holder: the council while the asset is in the pool. The owner alone revokes. */
   holder: TAccountHolder;
+  multisig: TAccountMultisig;
   payer: TAccountPayer;
   pool: TAccountPool;
   line: TAccountLine;
@@ -192,6 +198,7 @@ export type RevokeProcuracionAsyncInput<
 
 export async function getRevokeProcuracionInstructionAsync<
   TAccountHolder extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
@@ -206,6 +213,7 @@ export async function getRevokeProcuracionInstructionAsync<
 >(
   input: RevokeProcuracionAsyncInput<
     TAccountHolder,
+    TAccountMultisig,
     TAccountPayer,
     TAccountPool,
     TAccountLine,
@@ -226,6 +234,10 @@ export async function getRevokeProcuracionInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountHolder,
       InstructionAccountInputAddress<TAccountHolder>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPayer,
@@ -283,6 +295,11 @@ export async function getRevokeProcuracionInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
     line: { value: input.line ?? null, isSigner: false, isWritable: false },
@@ -360,6 +377,7 @@ export async function getRevokeProcuracionInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("holder", accounts.holder),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
@@ -380,6 +398,10 @@ export async function getRevokeProcuracionInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountHolder,
       InstructionAccountInputAddress<TAccountHolder>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPayer,
@@ -426,6 +448,7 @@ export async function getRevokeProcuracionInstructionAsync<
 
 export type RevokeProcuracionInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
@@ -442,6 +465,7 @@ export type RevokeProcuracionInput<
 > = {
   /** The pagaré's holder: the council while the asset is in the pool. The owner alone revokes. */
   holder: TAccountHolder;
+  multisig: TAccountMultisig;
   payer: TAccountPayer;
   pool: TAccountPool;
   line: TAccountLine;
@@ -458,6 +482,7 @@ export type RevokeProcuracionInput<
 
 export function getRevokeProcuracionInstruction<
   TAccountHolder extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
@@ -472,6 +497,7 @@ export function getRevokeProcuracionInstruction<
 >(
   input: RevokeProcuracionInput<
     TAccountHolder,
+    TAccountMultisig,
     TAccountPayer,
     TAccountPool,
     TAccountLine,
@@ -491,6 +517,10 @@ export function getRevokeProcuracionInstruction<
   ResolvedInstructionAccountMeta<
     TAccountHolder,
     InstructionAccountInputAddress<TAccountHolder>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPayer,
@@ -547,6 +577,11 @@ export function getRevokeProcuracionInstruction<
   // Original accounts.
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
     line: { value: input.line ?? null, isSigner: false, isWritable: false },
@@ -603,6 +638,7 @@ export function getRevokeProcuracionInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("holder", accounts.holder),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
@@ -623,6 +659,10 @@ export function getRevokeProcuracionInstruction<
     ResolvedInstructionAccountMeta<
       TAccountHolder,
       InstructionAccountInputAddress<TAccountHolder>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPayer,
@@ -675,16 +715,17 @@ export type ParsedRevokeProcuracionInstruction<
   accounts: {
     /** The pagaré's holder: the council while the asset is in the pool. The owner alone revokes. */
     holder: TAccountMetas[0];
-    payer: TAccountMetas[1];
-    pool: TAccountMetas[2];
-    line: TAccountMetas[3];
-    pagare: TAccountMetas[4];
-    asset: TAccountMetas[5];
-    collection: TAccountMetas[6];
-    mplCoreProgram: TAccountMetas[7];
-    systemProgram: TAccountMetas[8];
-    eventAuthority: TAccountMetas[9];
-    program: TAccountMetas[10];
+    multisig: TAccountMetas[1];
+    payer: TAccountMetas[2];
+    pool: TAccountMetas[3];
+    line: TAccountMetas[4];
+    pagare: TAccountMetas[5];
+    asset: TAccountMetas[6];
+    collection: TAccountMetas[7];
+    mplCoreProgram: TAccountMetas[8];
+    systemProgram: TAccountMetas[9];
+    eventAuthority: TAccountMetas[10];
+    program: TAccountMetas[11];
   };
   data: RevokeProcuracionInstructionData;
 };
@@ -697,12 +738,12 @@ export function parseRevokeProcuracionInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedRevokeProcuracionInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 11) {
+  if (instruction.accounts.length < 12) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 11,
+        expectedAccountMetas: 12,
       },
     );
   }
@@ -716,6 +757,7 @@ export function parseRevokeProcuracionInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       holder: getNextAccount(),
+      multisig: getNextAccount(),
       payer: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),

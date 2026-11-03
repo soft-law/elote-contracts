@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # The scripts end to end on a local validator: the demo (pool, deposits, a line drawn and repaid,
 # a redemption), then request-line.ts, six draws with draw.ts, one payoff with repay.ts (split into
-# parts of at most five pagaré records) and every cancel-pagare.ts branch that does not need the
+# parts of at most four pagaré records) and every cancel-pagare.ts branch that does not need the
 # clock moved forward. A third line covers endorse-pagare.ts (an endoso en procuración, a revocation)
-# and the procurador's cancellation. The backstop's success needs seven days to pass; the Rust suite
-# covers it.
+# and the procurador's cancellation. The borrower's own cancellation needs the 30-day cancel grace to
+# pass; the Rust suite covers it.
 #
 #   scripts/local-e2e.sh            (after `NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet`)
 #
@@ -61,7 +61,7 @@ run demo-pool.ts | tee "$WORK/demo.log"
 POOL="$(sed -n 's/^pool \([1-9A-HJ-NP-Za-km-z]\{32,44\}\)$/\1/p' "$WORK/demo.log" | tail -1)"
 [ -n "$POOL" ] || { echo "error: no pool address in the demo's output" >&2; exit 1; }
 
-echo "== cancel-pagare.ts: the demo line's pagaré 0, with the attestor"
+echo "== cancel-pagare.ts: the demo line's pagaré 0, by the council"
 run cancel-pagare.ts --pool "$POOL" --line-id 0 --draw-index 0 --receipt-hash "$RECEIPT"
 
 echo "== request-line.ts: a guarantor-sponsored bullet line of 600"
@@ -81,15 +81,14 @@ run repay.ts --pool "$POOL" --line-id 1 --all | tee "$WORK/repay.log"
 grep -q 'repay part 2' "$WORK/repay.log" || { echo "error: the payoff was not split" >&2; exit 1; }
 grep -q 'status       Repaid' "$WORK/repay.log" || { echo "error: the line is not repaid" >&2; exit 1; }
 
-echo "== cancel-pagare.ts: pagaré 0 with the attestor; pagaré 1 requested, then refused alone before the deadline"
+echo "== cancel-pagare.ts: pagaré 0 by the council; pagaré 1 refused to the borrower before the cancel grace"
 run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 0 --receipt-hash "$RECEIPT"
-run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 1 --receipt-hash "$RECEIPT" --request
-if run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 1 --receipt-hash "$RECEIPT" --backstop 2>"$WORK/backstop.err"; then
-  echo "error: the backstop cancelled before the deadline" >&2; exit 1
+if run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 1 --receipt-hash "$RECEIPT" --borrower-keypair "$KEYS/borrower.json" 2>"$WORK/grace.err"; then
+  echo "error: the borrower cancelled before the cancel grace" >&2; exit 1
 fi
-grep -q "attestor must sign" "$WORK/backstop.err" || { echo "error: unexpected refusal:" >&2; cat "$WORK/backstop.err" >&2; exit 1; }
-echo "  refused as expected: $(cat "$WORK/backstop.err")"
-echo "== cancel-pagare.ts: pagaré 1, with the attestor despite the pending request"
+grep -q "cancel alone only after the cancel grace" "$WORK/grace.err" || { echo "error: unexpected refusal:" >&2; cat "$WORK/grace.err" >&2; exit 1; }
+echo "  refused as expected: $(cat "$WORK/grace.err")"
+echo "== cancel-pagare.ts: pagaré 1, by the council"
 run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 1 --receipt-hash "$RECEIPT"
 
 echo "== endorse-pagare.ts: a third line, pagaré 0 en procuración, pagaré 1 endorsed and revoked"
@@ -114,7 +113,7 @@ run repay.ts --pool "$POOL" --line-id 2 --amount 15 --payer-keypair "$KEYS/spons
 run repay.ts --pool "$POOL" --line-id 2 --all | tee "$WORK/repay2.log"
 grep -q 'status       Repaid' "$WORK/repay2.log" || { echo "error: the third line is not repaid" >&2; exit 1; }
 
-echo "== cancel-pagare.ts: pagaré 0 by the procurador, pagarés 1 and 2 by the holder with the attestor"
+echo "== cancel-pagare.ts: pagaré 0 by the procurador, pagarés 1 and 2 by the council"
 if run cancel-pagare.ts --pool "$POOL" --line-id 2 --draw-index 1 --receipt-hash "$RECEIPT" --procurador-keypair "$KEYS/procurador.json" 2>"$WORK/revoked.err"; then
   echo "error: the procurador cancelled a pagaré whose procuración was revoked" >&2; exit 1
 fi

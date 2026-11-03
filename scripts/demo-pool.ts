@@ -17,10 +17,8 @@
 // --yes               send without asking when the cluster is not this machine
 //
 // Keys live in .demo-keys/ (generated on first run, ignored by git) unless a path is given in
-// ELOTE_ADMIN_KEYPAIR, ELOTE_ATTESTOR_KEYPAIR, ELOTE_INVESTOR_A_KEYPAIR, ELOTE_INVESTOR_B_KEYPAIR,
-// ELOTE_BORROWER_KEYPAIR or ELOTE_SPONSOR_KEYPAIR. The attestor stands in for the agreements
-// engine's key; request-line.ts, draw.ts and cancel-pagare.ts read it from the same place. Only
-// addresses are printed. ELOTE_RPC overrides the cluster's RPC URL.
+// ELOTE_ADMIN_KEYPAIR, ELOTE_INVESTOR_A_KEYPAIR, ELOTE_INVESTOR_B_KEYPAIR, ELOTE_BORROWER_KEYPAIR or
+// ELOTE_SPONSOR_KEYPAIR. Only addresses are printed. ELOTE_RPC overrides the cluster's RPC URL.
 //
 // Demo on Solana devnet with test assets. Not an offer of securities.
 import { type Address, type Instruction, address, type KeyPairSigner, generateKeyPairSigner, lamports } from "@solana/kit";
@@ -93,16 +91,13 @@ const hash = hash32("agreement-hash", "elote.fun demo credit agreement");
 const send = (label: string, feePayer: KeyPairSigner, instructions: Instruction[]) => sendOrFail(c, label, feePayer, instructions);
 
 const admin = await demoSigner("admin", "ELOTE_ADMIN_KEYPAIR");
-const attestor = await demoSigner("attestor", "ELOTE_ATTESTOR_KEYPAIR");
 const investorA = await demoSigner("investor-a", "ELOTE_INVESTOR_A_KEYPAIR");
 const investorB = await demoSigner("investor-b", "ELOTE_INVESTOR_B_KEYPAIR");
 const borrower = await demoSigner("borrower", "ELOTE_BORROWER_KEYPAIR");
 const sponsor = await demoSigner("sponsor", "ELOTE_SPONSOR_KEYPAIR");
-if (attestor.address === admin.address) fail("the attestor key must differ from the admin key");
 console.log(
   [
     `admin      ${admin.address}`,
-    `attestor   ${attestor.address}`,
     `investor A ${investorA.address}`,
     `investor B ${investorB.address}`,
     `borrower   ${borrower.address}`,
@@ -135,7 +130,7 @@ await airdrop(admin.address, c.name === "devnet" ? 1 : 10);
 await send(
   "SOL for the other wallets' fees",
   admin,
-  [attestor, investorA, investorB, borrower, sponsor].map((w) =>
+  [investorA, investorB, borrower, sponsor].map((w) =>
     getTransferSolInstruction({ source: admin, destination: w.address, amount: lamports(20_000_000n) })
   )
 );
@@ -187,9 +182,7 @@ await send("init_pool", admin, [
     shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
     gracePeriodSeconds: graceSeconds,
     maxLineBps,
-    attestor: attestor.address,
     collectionPeriodSeconds: 30 * 86_400,
-    cancelDelaySeconds: 7 * 86_400,
     guardian: address("11111111111111111111111111111111"),
     maxOutstandingPrincipal: 2n ** 64n - 1n,
     accelerationNoticeSeconds: 7 * 86_400,

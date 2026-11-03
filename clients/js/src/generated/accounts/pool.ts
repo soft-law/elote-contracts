@@ -60,12 +60,6 @@ export type Pool = {
   discriminator: ReadonlyUint8Array;
   /** The vault of the council multisig: signs every council instruction. */
   council: Address;
-  /**
-   * The agreements engine's key: co-signs `draw`, `endorse_pagare` and
-   * `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
-   * `annotate_payment` alone. Never the council; rotated with `set_attestor`.
-   */
-  attestor: Address;
   assetMint: Address;
   /** The share token mint; its mint authority is the pool PDA. */
   shareMint: Address;
@@ -92,12 +86,6 @@ export type Pool = {
    * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
    */
   collectionPeriodSeconds: number;
-  /**
-   * Seconds from a cancellation request before the owner may cancel without the attestor; at
-   * least `MIN_CANCEL_DELAY_SECONDS`. Set with `set_cancel_delay`; a request stores its own
-   * deadline, so a change never moves one.
-   */
-  cancelDelaySeconds: number;
   /**
    * The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
    * (`1..=BPS`). Fixed at `init_pool`.
@@ -166,12 +154,6 @@ export type Pool = {
 export type PoolArgs = {
   /** The vault of the council multisig: signs every council instruction. */
   council: Address | HasAddress;
-  /**
-   * The agreements engine's key: co-signs `draw`, `endorse_pagare` and
-   * `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
-   * `annotate_payment` alone. Never the council; rotated with `set_attestor`.
-   */
-  attestor: Address | HasAddress;
   assetMint: Address | HasAddress;
   /** The share token mint; its mint authority is the pool PDA. */
   shareMint: Address | HasAddress;
@@ -198,12 +180,6 @@ export type PoolArgs = {
    * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
    */
   collectionPeriodSeconds: number;
-  /**
-   * Seconds from a cancellation request before the owner may cancel without the attestor; at
-   * least `MIN_CANCEL_DELAY_SECONDS`. Set with `set_cancel_delay`; a request stores its own
-   * deadline, so a change never moves one.
-   */
-  cancelDelaySeconds: number;
   /**
    * The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
    * (`1..=BPS`). Fixed at `init_pool`.
@@ -275,7 +251,6 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["council", getAddressEncoder()],
-      ["attestor", getAddressEncoder()],
       ["assetMint", getAddressEncoder()],
       ["shareMint", getAddressEncoder()],
       ["vault", getAddressEncoder()],
@@ -287,7 +262,6 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["lineCount", getU64Encoder()],
       ["gracePeriodSeconds", getU32Encoder()],
       ["collectionPeriodSeconds", getU32Encoder()],
-      ["cancelDelaySeconds", getU32Encoder()],
       ["maxLineBps", getU16Encoder()],
       ["assetControls", getU8Encoder()],
       ["permissioned", getBooleanEncoder()],
@@ -321,7 +295,6 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["council", getAddressDecoder()],
-    ["attestor", getAddressDecoder()],
     ["assetMint", getAddressDecoder()],
     ["shareMint", getAddressDecoder()],
     ["vault", getAddressDecoder()],
@@ -333,7 +306,6 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["lineCount", getU64Decoder()],
     ["gracePeriodSeconds", getU32Decoder()],
     ["collectionPeriodSeconds", getU32Decoder()],
-    ["cancelDelaySeconds", getU32Decoder()],
     ["maxLineBps", getU16Decoder()],
     ["assetControls", getU8Decoder()],
     ["permissioned", getBooleanDecoder()],
@@ -427,5 +399,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 563;
+  return 527;
 }

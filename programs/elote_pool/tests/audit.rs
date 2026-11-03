@@ -159,32 +159,6 @@ fn f02_init_pool_refuses_a_collection_with_plugins_or_minted_assets() {
     assert_eq!(env.pool(&k).collection, k.collection);
 }
 
-/// F-05: the two-signature model (an independent engine attests what the council or the borrower
-/// asserts) must not collapse into one key: the attestor cannot be the council, at `init_pool` or at
-/// `set_attestor`, and the borrower cannot be the attestor.
-#[test]
-fn f05_the_attestor_is_neither_the_admin_nor_a_borrower() {
-    let mut env = Env::new();
-    let council = env.council.insecure_clone();
-    let asset_mint = env.create_mint(&council.pubkey(), 6);
-    let k = env.pool_keys_for(&asset_mint);
-    let ix = env.init_pool_ix_with_attestor(&k, 0, BPS, council.pubkey());
-    env.expect_err(ix, &council, &[], E_ATTESTOR_IS_COUNCIL);
-
-    let (k, _) = env.setup_pool();
-    let ix = env.set_attestor_ix(&k, &council.pubkey(), &council.pubkey());
-    env.expect_err(ix, &council, &[], E_ATTESTOR_IS_COUNCIL);
-
-    let investor = env.investor(&k, 10 * UNIT);
-    env.deposit(&k, &investor, 10 * UNIT);
-    let attestor = env.attestor.insecure_clone();
-    env.create_ata(&attestor.pubkey(), &k.asset_mint);
-    let p = env.line_params(UNIT, 1_000);
-    let ix = env.request_line_ix(&k, &council.pubkey(), 0, &attestor.pubkey(), &p, None);
-    env.expect_err(ix, &council, &[&attestor], E_BORROWER_IS_ATTESTOR);
-    assert_eq!(env.pool(&k).line_count, 0);
-}
-
 /// F-03: the write-off of a line in collection used to be available the instant the keeper marked
 /// it, since the grace of the third missed installment implies the grace of the first. The pool
 /// now carries a collection period (at least 30 days, set at `init_pool`, changed by the council),
@@ -198,7 +172,7 @@ fn f03_write_off_waits_for_the_pools_collection_period_from_the_mark() {
     // Below the floor, the pool is not created and the period is not changed.
     let asset_mint = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset_mint);
-    let ix = env.init_pool_ix_full(&k, 0, BPS, env.attestor.pubkey(), COLLECTION_PERIOD - 1, CANCEL_DELAY);
+    let ix = env.init_pool_ix_full(&k, 0, BPS, COLLECTION_PERIOD - 1);
     env.expect_err(ix, &council, &[], E_COLLECTION_PERIOD_TOO_SHORT);
     let (k, meta) = env.setup_pool();
     let ev: elote_pool::events::PoolInitialized = find_event(&meta).expect("PoolInitialized");

@@ -49,8 +49,6 @@ pub const MAX_INSTALLMENTS: u16 = 120;
 pub const MIN_MAX_MISSED: u8 = 3;
 /// The shortest collection period a pool may set: 30 days.
 pub const MIN_COLLECTION_PERIOD_SECONDS: u32 = 30 * 86_400;
-/// The shortest cancellation delay a pool may set: seven days.
-pub const MIN_CANCEL_DELAY_SECONDS: u32 = 7 * 86_400;
 /// The year that annualizes `late_bps`: 365 days.
 pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
 /// `CreditLine::currency`: Mexican pesos (ISO 4217 484). A line's amounts are centavos.
@@ -109,10 +107,6 @@ pub const ASSET_CONTROL_PAUSABLE: u8 = 1 << 1;
 pub struct Pool {
     /// The vault of the council multisig: signs every council instruction.
     pub council: Pubkey,
-    /// The agreements engine's key: co-signs `draw`, `endorse_pagare` and
-    /// `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
-    /// `annotate_payment` alone. Never the council; rotated with `set_attestor`.
-    pub attestor: Pubkey,
     pub asset_mint: Pubkey,
     /// The share token mint; its mint authority is the pool PDA.
     pub share_mint: Pubkey,
@@ -135,10 +129,6 @@ pub struct Pool {
     /// Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
     /// written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
     pub collection_period_seconds: u32,
-    /// Seconds from a cancellation request before the owner may cancel without the attestor; at
-    /// least `MIN_CANCEL_DELAY_SECONDS`. Set with `set_cancel_delay`; a request stores its own
-    /// deadline, so a change never moves one.
-    pub cancel_delay_seconds: u32,
     /// The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
     /// (`1..=BPS`). Fixed at `init_pool`.
     pub max_line_bps: u16,
@@ -347,7 +337,8 @@ pub const PAGARE_FLAG_BURN_DELEGATE: u8 = 1 << 0;
 pub const PAGARE_FLAG_PROCURACION: u8 = 1 << 1;
 
 /// Registry entry kinds (`Pagare::last_kind`, `PagareEntry::kind`).
-// Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso; never reuse them.
+// Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso, and 10 was the
+// holder's cancellation request (the backstop, removed); never reuse them.
 pub const KIND_EMISION: u8 = 0;
 pub const KIND_PROCURACION: u8 = 2;
 pub const KIND_REVOCACION: u8 = 3;
@@ -356,7 +347,6 @@ pub const KIND_ABONO: u8 = 5;
 pub const KIND_ANOTACION_JUDICIAL: u8 = 6;
 pub const KIND_CONSTANCIA_JUDICIAL: u8 = 7;
 pub const KIND_PAGADO: u8 = 9;
-pub const KIND_SOLICITUD_CANCELACION: u8 = 10;
 pub const KIND_RECIBO: u8 = 11;
 
 /// The program's record of one pagaré, beside the Core asset `draw` mints. It holds no folio and
@@ -393,11 +383,6 @@ pub struct Pagare {
     pub receipt_hash: [u8; 32],
     /// The receipt hash `cancel_pagare` was given; zero until the burn.
     pub cancel_receipt_hash: [u8; 32],
-    /// Deadline of the pending cancellation request, after which the owner may cancel without the
-    /// attestor; zero when none.
-    pub cancel_after: i64,
-    /// The receipt hash of that request.
-    pub requested_receipt_hash: [u8; 32],
     /// The procurador of the endoso en procuración in force; the zero key when none. Cleared by
     /// `revoke_procuracion` and by the extinction.
     pub procurador: Pubkey,
@@ -490,7 +475,6 @@ mod tests {
     fn pool(outstanding_principal: u64) -> Pool {
         Pool {
             council: Pubkey::default(),
-            attestor: Pubkey::default(),
             asset_mint: Pubkey::default(),
             share_mint: Pubkey::default(),
             vault: Pubkey::default(),
@@ -502,7 +486,6 @@ mod tests {
             line_count: 0,
             grace_period_seconds: 0,
             collection_period_seconds: 0,
-            cancel_delay_seconds: 0,
             max_line_bps: 0,
             asset_controls: 0,
             permissioned: false,

@@ -62,6 +62,7 @@ export function getAnnotatePaymentDiscriminatorBytes(): ReadonlyUint8Array {
 export type AnnotatePaymentInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountAnnotator extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountPagare extends string | AccountMeta<string> = string,
@@ -77,6 +78,9 @@ export type AnnotatePaymentInstruction<
         ? ReadonlySignerAccount<TAccountAnnotator> &
             AccountSignerMeta<TAccountAnnotator>
         : TAccountAnnotator,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPool extends string
         ? ReadonlyAccount<TAccountPool>
         : TAccountPool,
@@ -142,6 +146,7 @@ export function getAnnotatePaymentInstructionDataCodec(): FixedSizeCodec<
 
 export type AnnotatePaymentAsyncInput<
   TAccountAnnotator extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
@@ -149,8 +154,9 @@ export type AnnotatePaymentAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The holder (the council while the asset is in the pool) or the attestor. */
+  /** The holder: the council while the asset is in the pool. */
   annotator: TAccountAnnotator;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   line: TAccountLine;
   pagare?: TAccountPagare;
@@ -163,6 +169,7 @@ export type AnnotatePaymentAsyncInput<
 
 export async function getAnnotatePaymentInstructionAsync<
   TAccountAnnotator extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput,
@@ -172,6 +179,7 @@ export async function getAnnotatePaymentInstructionAsync<
 >(
   input: AnnotatePaymentAsyncInput<
     TAccountAnnotator,
+    TAccountMultisig,
     TAccountPool,
     TAccountLine,
     TAccountPagare,
@@ -187,6 +195,10 @@ export async function getAnnotatePaymentInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountAnnotator,
       InstructionAccountInputAddress<TAccountAnnotator>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -226,6 +238,11 @@ export async function getAnnotatePaymentInstructionAsync<
     annotator: {
       value: input.annotator ?? null,
       isSigner: true,
+      isWritable: false,
+    },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
@@ -280,6 +297,7 @@ export async function getAnnotatePaymentInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("annotator", accounts.annotator),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("pagare", accounts.pagare),
@@ -295,6 +313,10 @@ export async function getAnnotatePaymentInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountAnnotator,
       InstructionAccountInputAddress<TAccountAnnotator>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -321,6 +343,7 @@ export async function getAnnotatePaymentInstructionAsync<
 
 export type AnnotatePaymentInput<
   TAccountAnnotator extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
@@ -328,8 +351,9 @@ export type AnnotatePaymentInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The holder (the council while the asset is in the pool) or the attestor. */
+  /** The holder: the council while the asset is in the pool. */
   annotator: TAccountAnnotator;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   line: TAccountLine;
   pagare: TAccountPagare;
@@ -342,6 +366,7 @@ export type AnnotatePaymentInput<
 
 export function getAnnotatePaymentInstruction<
   TAccountAnnotator extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput,
@@ -351,6 +376,7 @@ export function getAnnotatePaymentInstruction<
 >(
   input: AnnotatePaymentInput<
     TAccountAnnotator,
+    TAccountMultisig,
     TAccountPool,
     TAccountLine,
     TAccountPagare,
@@ -365,6 +391,10 @@ export function getAnnotatePaymentInstruction<
   ResolvedInstructionAccountMeta<
     TAccountAnnotator,
     InstructionAccountInputAddress<TAccountAnnotator>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -405,6 +435,11 @@ export function getAnnotatePaymentInstruction<
       isSigner: true,
       isWritable: false,
     },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
     line: { value: input.line ?? null, isSigner: false, isWritable: false },
     pagare: { value: input.pagare ?? null, isSigner: false, isWritable: true },
@@ -436,6 +471,7 @@ export function getAnnotatePaymentInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("annotator", accounts.annotator),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("pagare", accounts.pagare),
@@ -451,6 +487,10 @@ export function getAnnotatePaymentInstruction<
     ResolvedInstructionAccountMeta<
       TAccountAnnotator,
       InstructionAccountInputAddress<TAccountAnnotator>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -481,13 +521,14 @@ export type ParsedAnnotatePaymentInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** The holder (the council while the asset is in the pool) or the attestor. */
+    /** The holder: the council while the asset is in the pool. */
     annotator: TAccountMetas[0];
-    pool: TAccountMetas[1];
-    line: TAccountMetas[2];
-    pagare: TAccountMetas[3];
-    eventAuthority: TAccountMetas[4];
-    program: TAccountMetas[5];
+    multisig: TAccountMetas[1];
+    pool: TAccountMetas[2];
+    line: TAccountMetas[3];
+    pagare: TAccountMetas[4];
+    eventAuthority: TAccountMetas[5];
+    program: TAccountMetas[6];
   };
   data: AnnotatePaymentInstructionData;
 };
@@ -500,12 +541,12 @@ export function parseAnnotatePaymentInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedAnnotatePaymentInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+  if (instruction.accounts.length < 7) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 6,
+        expectedAccountMetas: 7,
       },
     );
   }
@@ -519,6 +560,7 @@ export function parseAnnotatePaymentInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       annotator: getNextAccount(),
+      multisig: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       pagare: getNextAccount(),

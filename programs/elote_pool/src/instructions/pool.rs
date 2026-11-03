@@ -8,14 +8,14 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    AttestorSet, CancelDelaySet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, FixPosted, FxFeederSet, Deposited, NavUpdated, PoolInitialized, PoolPaused, Redeemed,
+    CancelGraceSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, FixPosted, FxFeederSet, Deposited, NavUpdated, PoolInitialized, PoolPaused, Redeemed,
 };
 use crate::council;
 use crate::fx;
 use crate::math;
 use crate::state::{self, 
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
-    COUNCIL_GENERIC, COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_DELAY_SECONDS, MIN_CANCEL_GRACE_SECONDS,
+    COUNCIL_GENERIC, COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_GRACE_SECONDS,
     MIN_COLLECTION_PERIOD_SECONDS,
 };
 
@@ -237,11 +237,8 @@ pub struct InitPoolParams {
     pub grace_period_seconds: u32,
     /// `1..=BPS`; fixed for the pool's life.
     pub max_line_bps: u16,
-    pub attestor: Pubkey,
     /// At least `MIN_COLLECTION_PERIOD_SECONDS`.
     pub collection_period_seconds: u32,
-    /// At least `MIN_CANCEL_DELAY_SECONDS`.
-    pub cancel_delay_seconds: u32,
     /// The zero key for none.
     pub guardian: Pubkey,
     /// At least 1.
@@ -259,16 +256,11 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
     require!(p.max_line_bps >= 1 && u64::from(p.max_line_bps) <= BPS, PoolError::WrongAmount);
     require!(p.max_outstanding_principal >= 1, PoolError::WrongAmount);
     require!(p.collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
-    require!(p.cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS, PoolError::CancelDelayTooShort);
     require!(p.acceleration_notice_seconds >= MIN_ACCELERATION_NOTICE_SECONDS, PoolError::AccelerationNoticeTooShort);
     require!(p.cancel_grace_seconds >= MIN_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooShort);
     let multisig = ctx.accounts.multisig.to_account_info();
     let (council, council_vault_bump) = council::canonical_vault(multisig.key);
     council::check(&multisig, &council, council_vault_bump)?;
-    // The zero key could never co-sign: a pool with it would open no line. The council as attestor
-    // would collapse the two-signature model into one key.
-    require!(p.attestor != Pubkey::default(), PoolError::WrongAccount);
-    require!(p.attestor != council, PoolError::AttestorIsCouncil);
     require!(state::asset_listed(&ctx.accounts.asset_mint.key()), PoolError::AssetNotListed);
     require_keys_neq!(ctx.accounts.asset_mint.key(), ctx.accounts.share_mint.key(), PoolError::AssetIsShareMint);
     // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
@@ -279,7 +271,6 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     pool.set_inner(Pool {
         council,
-        attestor: p.attestor,
         asset_mint: ctx.accounts.asset_mint.key(),
         share_mint: ctx.accounts.share_mint.key(),
         vault: ctx.accounts.vault.key(),
@@ -291,7 +282,6 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         line_count: 0,
         grace_period_seconds: p.grace_period_seconds,
         collection_period_seconds: p.collection_period_seconds,
-        cancel_delay_seconds: p.cancel_delay_seconds,
         max_line_bps: p.max_line_bps,
         asset_controls: controls,
         permissioned,
@@ -323,13 +313,11 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         creator: pool.creator,
         multisig: pool.multisig,
         guardian: p.guardian,
-        attestor: p.attestor,
         asset_mint: pool.asset_mint,
         share_mint: pool.share_mint,
         collection: pool.collection,
         grace_period_seconds: p.grace_period_seconds,
         collection_period_seconds: p.collection_period_seconds,
-        cancel_delay_seconds: p.cancel_delay_seconds,
         max_line_bps: p.max_line_bps,
         max_outstanding_principal: p.max_outstanding_principal,
         acceleration_notice_seconds: p.acceleration_notice_seconds,
@@ -345,6 +333,10 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
 pub struct SetCollectionPeriod<'info> {
     pub council: Signer<'info>,
 
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
     #[account(
         mut,
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
@@ -359,6 +351,7 @@ pub struct SetCollectionPeriod<'info> {
 pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_period_seconds: u32) -> Result<()> {
     require!(collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
     let pool = &mut ctx.accounts.pool;
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     pool.collection_period_seconds = collection_period_seconds;
     emit_cpi!(CollectionPeriodSet { pool: pool.key(), collection_period_seconds });
     Ok(())
@@ -617,11 +610,12 @@ pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
 
 #[event_cpi]
 #[derive(Accounts)]
-pub struct SetAttestor<'info> {
+pub struct SetCancelGrace<'info> {
     pub council: Signer<'info>,
 
-    /// The key that becomes the attestor; it signs, proving control of the key.
-    pub new_attestor: Signer<'info>,
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -632,39 +626,14 @@ pub struct SetAttestor<'info> {
     pub pool: Account<'info, Pool>,
 }
 
-/// The council and the new attestor sign; the council cannot be the attestor (`AttestorIsCouncil`). The
-/// attestor moves nothing; withholding its signature blocks draws, endorsements and court
-/// annotations, and delays a cancellation until the backstop applies.
-pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
-    let attestor = ctx.accounts.new_attestor.key();
-    require!(attestor != ctx.accounts.council.key(), PoolError::AttestorIsCouncil);
+/// Council only; refused below `MIN_CANCEL_GRACE_SECONDS`. Applies to every paid pagaré from now
+/// on, so the borrower's exit always waits at least the floor from the payment.
+pub fn set_cancel_grace(ctx: Context<SetCancelGrace>, cancel_grace_seconds: u32) -> Result<()> {
+    require!(cancel_grace_seconds >= MIN_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooShort);
     let pool = &mut ctx.accounts.pool;
-    pool.attestor = attestor;
-    emit_cpi!(AttestorSet { pool: pool.key(), attestor });
-    Ok(())
-}
-
-#[event_cpi]
-#[derive(Accounts)]
-pub struct SetCancelDelay<'info> {
-    pub council: Signer<'info>,
-
-    #[account(
-        mut,
-        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
-        bump = pool.bump,
-        has_one = council @ PoolError::Unauthorized,
-    )]
-    pub pool: Account<'info, Pool>,
-}
-
-/// Council only; refused below `MIN_CANCEL_DELAY_SECONDS`. A request fixes its own deadline
-/// (`Pagare::cancel_after`), so the change applies to requests filed from now on.
-pub fn set_cancel_delay(ctx: Context<SetCancelDelay>, cancel_delay_seconds: u32) -> Result<()> {
-    require!(cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS, PoolError::CancelDelayTooShort);
-    let pool = &mut ctx.accounts.pool;
-    pool.cancel_delay_seconds = cancel_delay_seconds;
-    emit_cpi!(CancelDelaySet { pool: pool.key(), cancel_delay_seconds });
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
+    pool.cancel_grace_seconds = cancel_grace_seconds;
+    emit_cpi!(CancelGraceSet { pool: pool.key(), cancel_grace_seconds });
     Ok(())
 }
 

@@ -56,17 +56,10 @@ pub mod elote_pool {
         instructions::pool::set_collection_period(ctx, collection_period_seconds)
     }
 
-    /// Sets the wait, in seconds, from a cancellation request before the holder may cancel a pagaré
-    /// without the attestor; never below seven days. Council only. A pending request keeps its
-    /// deadline.
-    pub fn set_cancel_delay(ctx: Context<SetCancelDelay>, cancel_delay_seconds: u32) -> Result<()> {
-        instructions::pool::set_cancel_delay(ctx, cancel_delay_seconds)
-    }
-
-    /// Replaces the pool's attestor. The council and the new attestor sign; refused with the council as
-    /// attestor.
-    pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
-        instructions::pool::set_attestor(ctx)
+    /// Sets the wait from a pagaré's payment before its borrower may cancel it alone; never below
+    /// 30 days. Council only.
+    pub fn set_cancel_grace(ctx: Context<SetCancelGrace>, cancel_grace_seconds: u32) -> Result<()> {
+        instructions::pool::set_cancel_grace(ctx, cancel_grace_seconds)
     }
 
     /// Closes the draw window of an `Approved` or `Active` line now, forfeiting the undrawn
@@ -137,18 +130,18 @@ pub mod elote_pool {
 
     /// Extinguishes pagaré `draw_index` once a repayment has marked it paid
     /// (`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry,
-    /// then thaws and burns the asset; the record stays. The owner (the council) or the procurador of
-    /// record signs, with the attestor; without the attestor, only the owner after a request's
-    /// `cancel_after`, with the requested receipt. Never paused.
+    /// then thaws and burns the asset; the record stays. The council (the owner), the procurador of
+    /// record alone, or the line's borrower alone once the cancel grace from the payment has run.
+    /// Never paused.
     pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::cancel_pagare(ctx, draw_index, receipt_hash)
     }
 
     /// Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets
     /// the program address `["procurador", pagare, to]` burn the asset through an owner-managed
-    /// `BurnDelegate`. The council (the holder) and the attestor sign; `kind` must be
-    /// `KIND_PROCURACION`; refused with `to` the zero key, the pool, the council or the attestor, or
-    /// a procuración in force.
+    /// `BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused
+    /// with `to` the zero key, the pool, the council, a curator, the guardian or the borrower, or a
+    /// procuración in force.
     pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::endorse_pagare(ctx, draw_index, kind, to, endoso_hash)
     }
@@ -162,17 +155,9 @@ pub mod elote_pool {
 
     /// Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,
     /// suspension, cancellation) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. The
-    /// holder (the council) and the attestor sign; refused on a cancelled pagaré; moves nothing.
+    /// council signs; refused on a cancelled pagaré; moves nothing.
     pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::court_annotation(ctx, draw_index, kind, document_hash)
-    }
-
-    /// The holder (the council) requests the cancellation of pagaré `draw_index`, marked paid by a
-    /// repayment, against `receipt_hash`; after `cancel_after = max(now + cancel delay, pending
-    /// deadline)` it may cancel without the attestor with that receipt. A new request replaces a
-    /// pending one.
-    pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
-        instructions::pagare::request_cancellation(ctx, draw_index, receipt_hash)
     }
 
     /// Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in
@@ -186,9 +171,8 @@ pub mod elote_pool {
         instructions::lines::repay(ctx, max_usdc, fx_rate, fx_date, receipt_hash)
     }
 
-    /// The council (the holder) or the attestor attaches a receipt to payment entry `entry_count` of
-    /// pagaré `draw_index`, as a `Recibo` entry over `receipt_hash`. The holder's annotation also
-    /// replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`).
+    /// The council (the holder) attaches a receipt to payment entry `entry_count` of pagaré
+    /// `draw_index`, as a `Recibo` entry over `receipt_hash`. The annotation also replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`).
     pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::annotate_payment(ctx, draw_index, entry_count, receipt_hash)
     }

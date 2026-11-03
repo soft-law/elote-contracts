@@ -63,11 +63,9 @@ import {
   getRedeemInstructionAsync,
   getRejectLineInstructionAsync,
   getRepayInstructionAsync,
-  getRequestCancellationInstructionAsync,
   getRequestLineInstructionAsync,
   getRevokeProcuracionInstructionAsync,
-  getSetAttestorInstructionAsync,
-  getSetCancelDelayInstructionAsync,
+  getSetCancelGraceInstructionAsync,
   getSetCollectionPeriodInstructionAsync,
   getSetFxFeederInstructionAsync,
   getSetPausedInstructionAsync,
@@ -90,11 +88,9 @@ import {
   parseRedeemInstruction,
   parseRejectLineInstruction,
   parseRepayInstruction,
-  parseRequestCancellationInstruction,
   parseRequestLineInstruction,
   parseRevokeProcuracionInstruction,
-  parseSetAttestorInstruction,
-  parseSetCancelDelayInstruction,
+  parseSetCancelGraceInstruction,
   parseSetCollectionPeriodInstruction,
   parseSetFxFeederInstruction,
   parseSetPausedInstruction,
@@ -128,11 +124,9 @@ import {
   type ParsedRedeemInstruction,
   type ParsedRejectLineInstruction,
   type ParsedRepayInstruction,
-  type ParsedRequestCancellationInstruction,
   type ParsedRequestLineInstruction,
   type ParsedRevokeProcuracionInstruction,
-  type ParsedSetAttestorInstruction,
-  type ParsedSetCancelDelayInstruction,
+  type ParsedSetCancelGraceInstruction,
   type ParsedSetCollectionPeriodInstruction,
   type ParsedSetFxFeederInstruction,
   type ParsedSetPausedInstruction,
@@ -144,11 +138,9 @@ import {
   type RedeemAsyncInput,
   type RejectLineAsyncInput,
   type RepayAsyncInput,
-  type RequestCancellationAsyncInput,
   type RequestLineAsyncInput,
   type RevokeProcuracionAsyncInput,
-  type SetAttestorAsyncInput,
-  type SetCancelDelayAsyncInput,
+  type SetCancelGraceAsyncInput,
   type SetCollectionPeriodAsyncInput,
   type SetFxFeederAsyncInput,
   type SetPausedAsyncInput,
@@ -220,10 +212,7 @@ export enum ElotePoolEvent {
   AccelerationNoticeSet,
   AccelerationProposed,
   AccelerationWithdrawn,
-  AttestorSet,
-  CancelDelaySet,
   CancelGraceSet,
-  CancellationRequested,
   CollectionPeriodSet,
   CouncilAccepted,
   CouncilProposed,
@@ -300,45 +289,12 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([172, 95, 188, 131, 231, 42, 189, 23]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.AttestorSet;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([146, 233, 222, 189, 194, 124, 225, 90]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.CancelDelaySet;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([218, 221, 95, 147, 75, 72, 252, 88]),
       ),
       0,
     )
   ) {
     return ElotePoolEvent.CancelGraceSet;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([119, 135, 194, 94, 98, 201, 113, 253]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.CancellationRequested;
   }
   if (
     containsBytes(
@@ -725,11 +681,9 @@ export enum ElotePoolInstruction {
   Redeem,
   RejectLine,
   Repay,
-  RequestCancellation,
   RequestLine,
   RevokeProcuracion,
-  SetAttestor,
-  SetCancelDelay,
+  SetCancelGrace,
   SetCollectionPeriod,
   SetFxFeeder,
   SetPaused,
@@ -922,17 +876,6 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([143, 22, 73, 35, 219, 217, 185, 212]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolInstruction.RequestCancellation;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([6, 137, 100, 239, 45, 184, 242, 40]),
       ),
       0,
@@ -955,23 +898,12 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([95, 11, 236, 157, 234, 146, 163, 237]),
+        new Uint8Array([18, 242, 191, 228, 180, 133, 104, 187]),
       ),
       0,
     )
   ) {
-    return ElotePoolInstruction.SetAttestor;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([53, 80, 113, 24, 133, 44, 234, 105]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolInstruction.SetCancelDelay;
+    return ElotePoolInstruction.SetCancelGrace;
   }
   if (
     containsBytes(
@@ -1097,20 +1029,14 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.Repay;
     } & ParsedRepayInstruction<TProgram>)
   | ({
-      instructionType: ElotePoolInstruction.RequestCancellation;
-    } & ParsedRequestCancellationInstruction<TProgram>)
-  | ({
       instructionType: ElotePoolInstruction.RequestLine;
     } & ParsedRequestLineInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.RevokeProcuracion;
     } & ParsedRevokeProcuracionInstruction<TProgram>)
   | ({
-      instructionType: ElotePoolInstruction.SetAttestor;
-    } & ParsedSetAttestorInstruction<TProgram>)
-  | ({
-      instructionType: ElotePoolInstruction.SetCancelDelay;
-    } & ParsedSetCancelDelayInstruction<TProgram>)
+      instructionType: ElotePoolInstruction.SetCancelGrace;
+    } & ParsedSetCancelGraceInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.SetCollectionPeriod;
     } & ParsedSetCollectionPeriodInstruction<TProgram>)
@@ -1247,13 +1173,6 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseRepayInstruction(instruction),
       };
     }
-    case ElotePoolInstruction.RequestCancellation: {
-      assertIsInstructionWithAccounts(instruction);
-      return {
-        instructionType: ElotePoolInstruction.RequestCancellation,
-        ...parseRequestCancellationInstruction(instruction),
-      };
-    }
     case ElotePoolInstruction.RequestLine: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -1268,18 +1187,11 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseRevokeProcuracionInstruction(instruction),
       };
     }
-    case ElotePoolInstruction.SetAttestor: {
+    case ElotePoolInstruction.SetCancelGrace: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: ElotePoolInstruction.SetAttestor,
-        ...parseSetAttestorInstruction(instruction),
-      };
-    }
-    case ElotePoolInstruction.SetCancelDelay: {
-      assertIsInstructionWithAccounts(instruction);
-      return {
-        instructionType: ElotePoolInstruction.SetCancelDelay,
-        ...parseSetCancelDelayInstruction(instruction),
+        instructionType: ElotePoolInstruction.SetCancelGrace,
+        ...parseSetCancelGraceInstruction(instruction),
       };
     }
     case ElotePoolInstruction.SetCollectionPeriod: {
@@ -1428,11 +1340,6 @@ export type ElotePoolPluginInstructions = {
     input: MakeOptional<RepayAsyncInput, "payer">,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRepayInstructionAsync> & SelfPlanAndSendFunctions;
-  requestCancellation: (
-    input: RequestCancellationAsyncInput,
-    config?: { programAddress?: Address | HasAddress },
-  ) => ReturnType<typeof getRequestCancellationInstructionAsync> &
-    SelfPlanAndSendFunctions;
   requestLine: (
     input: MakeOptional<RequestLineAsyncInput, "payer">,
     config?: { programAddress?: Address | HasAddress },
@@ -1443,15 +1350,10 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRevokeProcuracionInstructionAsync> &
     SelfPlanAndSendFunctions;
-  setAttestor: (
-    input: SetAttestorAsyncInput,
+  setCancelGrace: (
+    input: SetCancelGraceAsyncInput,
     config?: { programAddress?: Address | HasAddress },
-  ) => ReturnType<typeof getSetAttestorInstructionAsync> &
-    SelfPlanAndSendFunctions;
-  setCancelDelay: (
-    input: SetCancelDelayAsyncInput,
-    config?: { programAddress?: Address | HasAddress },
-  ) => ReturnType<typeof getSetCancelDelayInstructionAsync> &
+  ) => ReturnType<typeof getSetCancelGraceInstructionAsync> &
     SelfPlanAndSendFunctions;
   setCollectionPeriod: (
     input: SetCollectionPeriodAsyncInput,
@@ -1657,14 +1559,6 @@ export function elotePoolProgram(
                 },
               ),
             ),
-          requestCancellation: (input, instructionConfig) =>
-            addSelfPlanAndSendFunctions(
-              client,
-              getRequestCancellationInstructionAsync(input, {
-                programAddress:
-                  instructionConfig?.programAddress ?? config.programAddress,
-              }),
-            ),
           requestLine: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -1687,18 +1581,10 @@ export function elotePoolProgram(
                 },
               ),
             ),
-          setAttestor: (input, instructionConfig) =>
+          setCancelGrace: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
-              getSetAttestorInstructionAsync(input, {
-                programAddress:
-                  instructionConfig?.programAddress ?? config.programAddress,
-              }),
-            ),
-          setCancelDelay: (input, instructionConfig) =>
-            addSelfPlanAndSendFunctions(
-              client,
-              getSetCancelDelayInstructionAsync(input, {
+              getSetCancelGraceInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),

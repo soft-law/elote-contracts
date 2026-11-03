@@ -45,18 +45,19 @@ import {
 } from "@solana/program-client-core";
 import { ELOTE_POOL_PROGRAM_ADDRESS } from "../programs";
 
-export const SET_CANCEL_DELAY_DISCRIMINATOR: ReadonlyUint8Array =
-  new Uint8Array([53, 80, 113, 24, 133, 44, 234, 105]);
+export const SET_CANCEL_GRACE_DISCRIMINATOR: ReadonlyUint8Array =
+  new Uint8Array([18, 242, 191, 228, 180, 133, 104, 187]);
 
-export function getSetCancelDelayDiscriminatorBytes(): ReadonlyUint8Array {
+export function getSetCancelGraceDiscriminatorBytes(): ReadonlyUint8Array {
   return fixEncoderSize(getBytesEncoder(), 8).encode(
-    SET_CANCEL_DELAY_DISCRIMINATOR,
+    SET_CANCEL_GRACE_DISCRIMINATOR,
   );
 }
 
-export type SetCancelDelayInstruction<
+export type SetCancelGraceInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountCouncil extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
@@ -70,6 +71,9 @@ export type SetCancelDelayInstruction<
         ? ReadonlySignerAccount<TAccountCouncil> &
             AccountSignerMeta<TAccountCouncil>
         : TAccountCouncil,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -83,63 +87,67 @@ export type SetCancelDelayInstruction<
     ]
   >;
 
-export type SetCancelDelayInstructionData = {
+export type SetCancelGraceInstructionData = {
   discriminator: ReadonlyUint8Array;
-  cancelDelaySeconds: number;
+  cancelGraceSeconds: number;
 };
 
-export type SetCancelDelayInstructionDataArgs = { cancelDelaySeconds: number };
+export type SetCancelGraceInstructionDataArgs = { cancelGraceSeconds: number };
 
-export function getSetCancelDelayInstructionDataEncoder(): FixedSizeEncoder<SetCancelDelayInstructionDataArgs> {
+export function getSetCancelGraceInstructionDataEncoder(): FixedSizeEncoder<SetCancelGraceInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["cancelDelaySeconds", getU32Encoder()],
+      ["cancelGraceSeconds", getU32Encoder()],
     ]),
-    (value) => ({ ...value, discriminator: SET_CANCEL_DELAY_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: SET_CANCEL_GRACE_DISCRIMINATOR }),
   );
 }
 
-export function getSetCancelDelayInstructionDataDecoder(): FixedSizeDecoder<SetCancelDelayInstructionData> {
+export function getSetCancelGraceInstructionDataDecoder(): FixedSizeDecoder<SetCancelGraceInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["cancelDelaySeconds", getU32Decoder()],
+    ["cancelGraceSeconds", getU32Decoder()],
   ]);
 }
 
-export function getSetCancelDelayInstructionDataCodec(): FixedSizeCodec<
-  SetCancelDelayInstructionDataArgs,
-  SetCancelDelayInstructionData
+export function getSetCancelGraceInstructionDataCodec(): FixedSizeCodec<
+  SetCancelGraceInstructionDataArgs,
+  SetCancelGraceInstructionData
 > {
   return combineCodec(
-    getSetCancelDelayInstructionDataEncoder(),
-    getSetCancelDelayInstructionDataDecoder(),
+    getSetCancelGraceInstructionDataEncoder(),
+    getSetCancelGraceInstructionDataDecoder(),
   );
 }
 
-export type SetCancelDelayAsyncInput<
+export type SetCancelGraceAsyncInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   council: TAccountCouncil;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  cancelDelaySeconds: SetCancelDelayInstructionDataArgs["cancelDelaySeconds"];
+  cancelGraceSeconds: SetCancelGraceInstructionDataArgs["cancelGraceSeconds"];
 };
 
-export async function getSetCancelDelayInstructionAsync<
+export async function getSetCancelGraceInstructionAsync<
   TAccountCouncil extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: SetCancelDelayAsyncInput<
+  input: SetCancelGraceAsyncInput<
     TAccountCouncil,
+    TAccountMultisig,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -148,11 +156,15 @@ export async function getSetCancelDelayInstructionAsync<
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
 ): Promise<
-  SetCancelDelayInstruction<
+  SetCancelGraceInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -184,6 +196,11 @@ export async function getSetCancelDelayInstructionAsync<
     council: {
       value: input.council ?? null,
       isSigner: true,
+      isWritable: false,
+    },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
@@ -221,19 +238,24 @@ export async function getSetCancelDelayInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("council", accounts.council),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSetCancelDelayInstructionDataEncoder().encode(
-      args as SetCancelDelayInstructionDataArgs,
+    data: getSetCancelGraceInstructionDataEncoder().encode(
+      args as SetCancelGraceInstructionDataArgs,
     ),
     programAddress,
-  } as SetCancelDelayInstruction<
+  } as SetCancelGraceInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -250,29 +272,33 @@ export async function getSetCancelDelayInstructionAsync<
   >);
 }
 
-export type SetCancelDelayInput<
+export type SetCancelGraceInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   council: TAccountCouncil;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  cancelDelaySeconds: SetCancelDelayInstructionDataArgs["cancelDelaySeconds"];
+  cancelGraceSeconds: SetCancelGraceInstructionDataArgs["cancelGraceSeconds"];
 };
 
-export function getSetCancelDelayInstruction<
+export function getSetCancelGraceInstruction<
   TAccountCouncil extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: SetCancelDelayInput<
+  input: SetCancelGraceInput<
     TAccountCouncil,
+    TAccountMultisig,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -280,11 +306,15 @@ export function getSetCancelDelayInstruction<
   config?: {
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
-): SetCancelDelayInstruction<
+): SetCancelGraceInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
     TAccountCouncil,
     InstructionAccountInputAddress<TAccountCouncil>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -317,6 +347,11 @@ export function getSetCancelDelayInstruction<
       isSigner: true,
       isWritable: false,
     },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -346,19 +381,24 @@ export function getSetCancelDelayInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("council", accounts.council),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSetCancelDelayInstructionDataEncoder().encode(
-      args as SetCancelDelayInstructionDataArgs,
+    data: getSetCancelGraceInstructionDataEncoder().encode(
+      args as SetCancelGraceInstructionDataArgs,
     ),
     programAddress,
-  } as SetCancelDelayInstruction<
+  } as SetCancelGraceInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -375,34 +415,35 @@ export function getSetCancelDelayInstruction<
   >);
 }
 
-export type ParsedSetCancelDelayInstruction<
+export type ParsedSetCancelGraceInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
     council: TAccountMetas[0];
-    pool: TAccountMetas[1];
-    eventAuthority: TAccountMetas[2];
-    program: TAccountMetas[3];
+    multisig: TAccountMetas[1];
+    pool: TAccountMetas[2];
+    eventAuthority: TAccountMetas[3];
+    program: TAccountMetas[4];
   };
-  data: SetCancelDelayInstructionData;
+  data: SetCancelGraceInstructionData;
 };
 
-export function parseSetCancelDelayInstruction<
+export function parseSetCancelGraceInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedSetCancelDelayInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 4) {
+): ParsedSetCancelGraceInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 5) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 4,
+        expectedAccountMetas: 5,
       },
     );
   }
@@ -416,10 +457,11 @@ export function parseSetCancelDelayInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       council: getNextAccount(),
+      multisig: getNextAccount(),
       pool: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },
-    data: getSetCancelDelayInstructionDataDecoder().decode(instruction.data),
+    data: getSetCancelGraceInstructionDataDecoder().decode(instruction.data),
   };
 }

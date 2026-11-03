@@ -4,17 +4,18 @@
 //
 //   npx tsx scripts/endorse-pagare.ts --cluster local|devnet --pool <address> --line-id <n>
 //        --draw-index <n> (--procurador <address> [--endoso-hash <64 hex>] | --revoke [--revocation-hash <64 hex>])
-//        [--attestor-keypair <path>] [--yes]
+//        [--yes]
 //
-// --procurador       the endorsee: never the pool, the admin or the attestor (the program refuses them)
+// --procurador       the endorsee: never the pool, the council, a curator, the guardian or the borrower
+//                    (the program refuses them)
 // --endoso-hash      hash of the signed endoso (a placeholder if absent)
-// --revoke           revoke the procuración in force; the admin signs alone
+// --revoke           revoke the procuración in force
 // --revocation-hash  hash of the signed revocation (a placeholder if absent)
-// --attestor-keypair the endoso's co-signer; default ELOTE_ATTESTOR_KEYPAIR or .demo-keys/attestor.json
 // --yes              send without asking when the cluster is not this machine
 //
-// The admin (the holder while the asset is in the pool) comes from ELOTE_ADMIN_KEYPAIR or
-// .demo-keys/admin.json and pays the fees; ELOTE_RPC overrides the cluster's RPC URL.
+// The council (the holder while the asset is in the pool) signs through Squads, so the script runs
+// only with the council tooling (PR 4, commit 10); the admin key (ELOTE_ADMIN_KEYPAIR or
+// .demo-keys/admin.json) stands in for it and pays the fees; ELOTE_RPC overrides the cluster's RPC URL.
 //
 // Demo on Solana devnet with test assets. Not an offer of securities.
 import { address } from "@solana/kit";
@@ -37,7 +38,6 @@ import {
   integer,
   loadSigner,
   required,
-  roleSigner,
   sendOrFail,
 } from "./lib/cli.ts";
 import { loadLine, loadPool } from "./lib/pool.ts";
@@ -47,8 +47,7 @@ const PAGARE_OUTSTANDING = 0; // state::PAGARE_OUTSTANDING
 const PAGARE_FLAG_PROCURACION = 1 << 1; // state::PAGARE_FLAG_PROCURACION
 
 checkFlags([
-  "cluster", "pool", "line-id", "draw-index", "procurador", "endoso-hash", "revoke", "revocation-hash",
-  "attestor-keypair", "yes",
+  "cluster", "pool", "line-id", "draw-index", "procurador", "endoso-hash", "revoke", "revocation-hash", "yes",
 ]);
 const c = cluster();
 const poolAddress = address(required("pool"));
@@ -76,6 +75,7 @@ if (revoke) {
   await sendOrFail(c, `revoke_procuracion of pagaré ${drawIndex} (procurador ${before.procurador})`, admin, [
     await getRevokeProcuracionInstructionAsync({
       holder: admin,
+      multisig: pool.multisig,
       payer: admin,
       pool: poolAddress,
       line,
@@ -90,16 +90,14 @@ if (revoke) {
   if (before.status !== PAGARE_OUTSTANDING) fail(`pagaré ${drawIndex} is already marked paid: endorse before the payment`);
   if (inForce) fail(`pagaré ${drawIndex} already has a procuración in force (${before.procurador}); revoke it first`);
   const procurador = address(required("procurador"));
-  if (procurador === poolAddress || procurador === pool.council || procurador === pool.attestor) {
-    fail("the procurador cannot be the pool, the admin or the attestor");
+  if (procurador === poolAddress || procurador === pool.council || procurador === pool.guardian) {
+    fail("the procurador cannot be the pool, the council or the guardian");
   }
   const endosoHash = hash32("endoso-hash", "elote.fun demo endoso en procuración");
-  const attestor = await roleSigner("attestor");
-  if (pool.attestor !== attestor.address) fail(`the attestor key (${attestor.address}) is not this pool's attestor (${pool.attestor})`);
   await sendOrFail(c, `endorse_pagare ${drawIndex} en procuración to ${procurador}`, admin, [
     await getEndorsePagareInstructionAsync({
       holder: admin,
-      attestor,
+      multisig: pool.multisig,
       payer: admin,
       pool: poolAddress,
       line,

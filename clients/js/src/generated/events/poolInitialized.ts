@@ -52,13 +52,11 @@ export type PoolInitializedEvent = {
   creator: Address;
   multisig: Address;
   guardian: Address;
-  attestor: Address;
   assetMint: Address;
   shareMint: Address;
   collection: Address;
   gracePeriodSeconds: number;
   collectionPeriodSeconds: number;
-  cancelDelaySeconds: number;
   maxLineBps: number;
   maxOutstandingPrincipal: bigint;
   accelerationNoticeSeconds: number;
@@ -73,13 +71,11 @@ export type PoolInitializedEventArgs = {
   creator: Address | HasAddress;
   multisig: Address | HasAddress;
   guardian: Address | HasAddress;
-  attestor: Address | HasAddress;
   assetMint: Address | HasAddress;
   shareMint: Address | HasAddress;
   collection: Address | HasAddress;
   gracePeriodSeconds: number;
   collectionPeriodSeconds: number;
-  cancelDelaySeconds: number;
   maxLineBps: number;
   maxOutstandingPrincipal: number | bigint;
   accelerationNoticeSeconds: number;
@@ -97,13 +93,11 @@ export function getPoolInitializedEventEncoder(): FixedSizeEncoder<PoolInitializ
       ["creator", getAddressEncoder()],
       ["multisig", getAddressEncoder()],
       ["guardian", getAddressEncoder()],
-      ["attestor", getAddressEncoder()],
       ["assetMint", getAddressEncoder()],
       ["shareMint", getAddressEncoder()],
       ["collection", getAddressEncoder()],
       ["gracePeriodSeconds", getU32Encoder()],
       ["collectionPeriodSeconds", getU32Encoder()],
-      ["cancelDelaySeconds", getU32Encoder()],
       ["maxLineBps", getU16Encoder()],
       ["maxOutstandingPrincipal", getU64Encoder()],
       ["accelerationNoticeSeconds", getU32Encoder()],
@@ -124,13 +118,11 @@ export function getPoolInitializedEventDecoder(): FixedSizeDecoder<PoolInitializ
       ["creator", getAddressDecoder()],
       ["multisig", getAddressDecoder()],
       ["guardian", getAddressDecoder()],
-      ["attestor", getAddressDecoder()],
       ["assetMint", getAddressDecoder()],
       ["shareMint", getAddressDecoder()],
       ["collection", getAddressDecoder()],
       ["gracePeriodSeconds", getU32Decoder()],
       ["collectionPeriodSeconds", getU32Decoder()],
-      ["cancelDelaySeconds", getU32Decoder()],
       ["maxLineBps", getU16Decoder()],
       ["maxOutstandingPrincipal", getU64Decoder()],
       ["accelerationNoticeSeconds", getU32Decoder()],

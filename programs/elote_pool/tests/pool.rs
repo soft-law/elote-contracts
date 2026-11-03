@@ -2,12 +2,9 @@
 
 mod common;
 
-use anchor_lang::InstructionData;
 use anchor_spl::token_2022::spl_token_2022;
 use common::*;
-use elote_pool::events::{
-    AttestorSet, NavUpdated, PoolInitialized, PoolPaused,
-};
+use elote_pool::events::{NavUpdated, PoolInitialized, PoolPaused};
 use elote_pool::state::{ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE};
 use solana_instruction::Instruction;
 use solana_pubkey::Pubkey;
@@ -316,11 +313,11 @@ fn init_pool_records_the_grace_period() {
     assert_eq!(pool.grace_period_seconds, grace);
     assert_eq!(u64::from(pool.max_line_bps), u64::from(BPS), "the harness default cap of 10,000 bps");
     assert_eq!((pool.asset_controls, pool.permissioned), (0, false));
-    assert_eq!((pool.cancel_delay_seconds, pool.collection_period_seconds), (CANCEL_DELAY, COLLECTION_PERIOD));
+    assert_eq!((pool.cancel_grace_seconds, pool.collection_period_seconds), (CANCEL_GRACE, COLLECTION_PERIOD));
 
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((ev.pool, ev.grace_period_seconds), (k.pool, grace));
-    assert_eq!((ev.collection_period_seconds, ev.cancel_delay_seconds), (COLLECTION_PERIOD, CANCEL_DELAY));
+    assert_eq!((ev.collection_period_seconds, ev.cancel_grace_seconds), (COLLECTION_PERIOD, CANCEL_GRACE));
 
     // The default pool of the other tests has no grace.
     let (k0, meta0) = env.setup_pool();
@@ -527,18 +524,17 @@ fn init_pool_records_the_asset_issuer_controls_it_accepts() {
     assert_eq!((flags.asset_controls, flags.permissioned, env.pool(&k).asset_controls), (0, false, 0));
 }
 
-/// `init_pool` records the attestor and the collection, announced in `PoolInitialized`.
+/// `init_pool` records the collection, announced in `PoolInitialized`.
 #[test]
-fn init_pool_records_the_attestor_and_the_collection() {
+fn init_pool_records_the_collection() {
     let mut env = Env::new();
     let (k, meta) = env.setup_pool();
     let pool = env.pool(&k);
-    assert_eq!(pool.attestor, env.attestor.pubkey());
     assert_eq!(pool.collection, k.collection);
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
-    assert_eq!((ev.pool, ev.attestor, ev.collection), (k.pool, env.attestor.pubkey(), k.collection));
+    assert_eq!((ev.pool, ev.collection), (k.pool, k.collection));
     assert_eq!((ev.council, ev.asset_mint, ev.share_mint), (env.council.pubkey(), k.asset_mint, k.share_mint));
-    assert!(find_event::<AttestorSet>(&meta).is_none(), "the setters' events are for changes");
+    assert!(find_event::<elote_pool::events::CancelGraceSet>(&meta).is_none(), "the setters' events are for changes");
     // The collection is a real Metaplex Core collection the pool controls, read back through the
     // crate's decoder against the pinned program binary.
     let c = env.collection_state(&k.collection);
@@ -547,13 +543,6 @@ fn init_pool_records_the_attestor_and_the_collection() {
     assert_eq!((c.num_minted, c.current_size), (0, 0));
     assert_eq!(env.account(&k.collection).owner, MPL_CORE_ID);
 
-    // The zero key is not an attestor: nobody could ever co-sign.
-    let council = env.council.insecure_clone();
-    let mint = env.create_mint(&council.pubkey(), 6);
-    let (k2, mut ix) = env.init_pool_plain(&mint);
-    ix.data = elote_pool::instruction::InitPool { params: env.init_params(0, BPS, Pubkey::default(), COLLECTION_PERIOD, CANCEL_DELAY) }.data();
-    env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
-    assert!(env.svm.get_account(&k2.pool).is_none());
 }
 
 /// Decision 24: the collection the pool records must be a Metaplex Core collection whose update
@@ -590,33 +579,6 @@ fn init_pool_rejects_a_collection_the_pool_does_not_control() {
     assert_eq!(env.pool(&k).collection, k.collection);
 }
 
-/// `set_attestor` is the recovery when the agreements engine's key rotates or is lost: council
-/// only, co-signed by the new attestor, which proves control of the new key (condition C14),
-/// announced by `AttestorSet`.
-#[test]
-fn set_attestor_is_admin_only_and_co_signed_by_the_new_attestor() {
-    let mut env = Env::new();
-    let (k, _) = env.setup_pool();
-    let council = env.council.insecure_clone();
-    let new_attestor = env.funded(1);
-
-    let stranger = env.funded(1);
-    let ix = env.set_attestor_ix(&k, &stranger.pubkey(), &new_attestor.pubkey());
-    env.expect_err(ix, &stranger, &[&new_attestor], E_UNAUTHORIZED);
-    // The council alone cannot name a key it does not control.
-    let mut ix = env.set_attestor_ix(&k, &council.pubkey(), &new_attestor.pubkey());
-    let i = ix.accounts.iter().position(|m| m.pubkey == new_attestor.pubkey()).unwrap();
-    ix.accounts[i].is_signer = false;
-    assert!(env.try_send(ix, &council, &[]).is_err());
-    assert_eq!(env.pool(&k).attestor, env.attestor.pubkey(), "unchanged");
-
-    let ix = env.set_attestor_ix(&k, &council.pubkey(), &new_attestor.pubkey());
-    let meta = env.send(ix, &council, &[&new_attestor]);
-    let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
-    assert_eq!((ev.pool, ev.attestor), (k.pool, new_attestor.pubkey()));
-    assert_eq!(env.pool(&k).attestor, new_attestor.pubkey());
-}
-
 /// Series-shelf 2f: `NavUpdated { pool, total_assets, share_supply }` follows every instruction
 /// that moves the NAV or the supply (deposit, redeem, repay, write_off), read back after the
 /// CPIs, so indexers and the shelf page price shares without a simulation.
@@ -633,7 +595,7 @@ fn nav_updated_follows_every_money_instruction() {
     let borrower = env.borrower(&k);
     let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000);
     let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
-    let meta = env.send_with_attestor(ix, &borrower);
+    let meta = env.send(ix, &borrower, &[]);
     assert!(find_event::<NavUpdated>(&meta).is_none(), "a draw moves no value: vault down, outstanding up");
 
     // Principal plus the 0.4 of interest: the NAV rises, the supply does not.
@@ -860,18 +822,11 @@ fn init_pool_rejects_a_mint_whose_decimals_make_the_first_deposit_impossible() {
 /// `PoolInitialized` alone.
 #[test]
 fn every_pool_setter_announces_the_new_value() {
-    use elote_pool::events::{CancelDelaySet, CollectionPeriodSet};
+    use elote_pool::events::{CancelGraceSet, CollectionPeriodSet};
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let council = env.council.insecure_clone();
     let a = council.pubkey();
-
-    let new_attestor = env.funded(1);
-    let ix = env.set_attestor_ix(&k, &a, &new_attestor.pubkey());
-    let meta = env.send(ix, &council, &[&new_attestor]);
-    let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
-    assert_eq!((ev.pool, ev.attestor), (k.pool, new_attestor.pubkey()));
-    assert_eq!(env.pool(&k).attestor, new_attestor.pubkey());
 
     let ix = env.set_collection_period_ix(&k, &a, 2 * COLLECTION_PERIOD);
     let meta = env.send(ix, &council, &[]);
@@ -879,11 +834,13 @@ fn every_pool_setter_announces_the_new_value() {
     assert_eq!((ev.pool, ev.collection_period_seconds), (k.pool, 2 * COLLECTION_PERIOD));
     assert_eq!(env.pool(&k).collection_period_seconds, 2 * COLLECTION_PERIOD);
 
-    let ix = env.set_cancel_delay_ix(&k, &a, 2 * CANCEL_DELAY);
+    let ix = env.set_cancel_grace_ix(&k, &a, CANCEL_GRACE - 1);
+    env.expect_err(ix, &council, &[], ERR_BASE + elote_pool::errors::PoolError::CancelGraceTooShort as u32);
+    let ix = env.set_cancel_grace_ix(&k, &a, 2 * CANCEL_GRACE);
     let meta = env.send(ix, &council, &[]);
-    let ev: CancelDelaySet = find_event(&meta).expect("CancelDelaySet");
-    assert_eq!((ev.pool, ev.cancel_delay_seconds), (k.pool, 2 * CANCEL_DELAY));
-    assert_eq!(env.pool(&k).cancel_delay_seconds, 2 * CANCEL_DELAY);
+    let ev: CancelGraceSet = find_event(&meta).expect("CancelGraceSet");
+    assert_eq!((ev.pool, ev.cancel_grace_seconds), (k.pool, 2 * CANCEL_GRACE));
+    assert_eq!(env.pool(&k).cancel_grace_seconds, 2 * CANCEL_GRACE);
 
     for paused in [true, false] {
         let meta = env.set_paused(&k, paused);

@@ -11,13 +11,11 @@ pub struct PoolInitialized {
     pub creator: Pubkey,
     pub multisig: Pubkey,
     pub guardian: Pubkey,
-    pub attestor: Pubkey,
     pub asset_mint: Pubkey,
     pub share_mint: Pubkey,
     pub collection: Pubkey,
     pub grace_period_seconds: u32,
     pub collection_period_seconds: u32,
-    pub cancel_delay_seconds: u32,
     pub max_line_bps: u16,
     pub max_outstanding_principal: u64,
     pub acceleration_notice_seconds: u32,
@@ -32,21 +30,6 @@ pub struct PoolInitialized {
 pub struct CollectionPeriodSet {
     pub pool: Pubkey,
     pub collection_period_seconds: u32,
-}
-
-/// The pool's cancel delay after `set_cancel_delay`: the wait from a cancellation request before
-/// the holder may cancel alone.
-#[event]
-pub struct CancelDelaySet {
-    pub pool: Pubkey,
-    pub cancel_delay_seconds: u32,
-}
-
-/// The pool's attestor after `set_attestor`.
-#[event]
-pub struct AttestorSet {
-    pub pool: Pubkey,
-    pub attestor: Pubkey,
 }
 
 /// The NAV and the share supply after every instruction that moves either (`deposit`, `redeem`,
@@ -112,7 +95,7 @@ pub struct PagareEntry {
 }
 
 /// Emitted by `cancel_pagare`, before the burn. `holder` is the key that extinguished the pagaré
-/// (the council or the procurador); the sidecar stays as the PAGADO mark.
+/// (the council, the procurador or the borrower); the sidecar stays as the PAGADO mark.
 #[event]
 pub struct PagareCancelled {
     pub pool: Pubkey,
@@ -121,20 +104,8 @@ pub struct PagareCancelled {
     pub asset: Pubkey,
     pub receipt_hash: [u8; 32],
     pub holder: Pubkey,
-    /// The holder cancelled alone after a request's deadline, without the attestor.
-    pub backstop: bool,
-}
-
-/// Emitted by `request_cancellation`, after its `PagareEntry`: the holder may cancel alone with
-/// `receipt_hash` once `cancel_after` has passed.
-#[event]
-pub struct CancellationRequested {
-    pub pool: Pubkey,
-    pub line_id: u64,
-    pub draw_index: u16,
-    pub asset: Pubkey,
-    pub receipt_hash: [u8; 32],
-    pub cancel_after: i64,
+    /// The borrower cancelled alone after the cancel grace.
+    pub by_borrower: bool,
 }
 
 /// `available_forfeited` is the undrawn remainder.

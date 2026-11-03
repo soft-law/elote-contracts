@@ -135,11 +135,8 @@ export type InitPoolInstructionData = {
   gracePeriodSeconds: number;
   /** `1..=BPS`; fixed for the pool's life. */
   maxLineBps: number;
-  attestor: Address;
   /** At least `MIN_COLLECTION_PERIOD_SECONDS`. */
   collectionPeriodSeconds: number;
-  /** At least `MIN_CANCEL_DELAY_SECONDS`. */
-  cancelDelaySeconds: number;
   /** The zero key for none. */
   guardian: Address;
   /** At least 1. */
@@ -155,11 +152,8 @@ export type InitPoolInstructionDataArgs = {
   gracePeriodSeconds: number;
   /** `1..=BPS`; fixed for the pool's life. */
   maxLineBps: number;
-  attestor: Address | HasAddress;
   /** At least `MIN_COLLECTION_PERIOD_SECONDS`. */
   collectionPeriodSeconds: number;
-  /** At least `MIN_CANCEL_DELAY_SECONDS`. */
-  cancelDelaySeconds: number;
   /** The zero key for none. */
   guardian: Address | HasAddress;
   /** At least 1. */
@@ -176,9 +170,7 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["gracePeriodSeconds", getU32Encoder()],
       ["maxLineBps", getU16Encoder()],
-      ["attestor", getAddressEncoder()],
       ["collectionPeriodSeconds", getU32Encoder()],
-      ["cancelDelaySeconds", getU32Encoder()],
       ["guardian", getAddressEncoder()],
       ["maxOutstandingPrincipal", getU64Encoder()],
       ["accelerationNoticeSeconds", getU32Encoder()],
@@ -193,9 +185,7 @@ export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolIn
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["gracePeriodSeconds", getU32Decoder()],
     ["maxLineBps", getU16Decoder()],
-    ["attestor", getAddressDecoder()],
     ["collectionPeriodSeconds", getU32Decoder()],
-    ["cancelDelaySeconds", getU32Decoder()],
     ["guardian", getAddressDecoder()],
     ["maxOutstandingPrincipal", getU64Decoder()],
     ["accelerationNoticeSeconds", getU32Decoder()],
@@ -267,9 +257,7 @@ export type InitPoolAsyncInput<
   program?: TAccountProgram;
   gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
-  attestor: InitPoolInstructionDataArgs["attestor"];
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
-  cancelDelaySeconds: InitPoolInstructionDataArgs["cancelDelaySeconds"];
   guardian: InitPoolInstructionDataArgs["guardian"];
   maxOutstandingPrincipal: InitPoolInstructionDataArgs["maxOutstandingPrincipal"];
   accelerationNoticeSeconds: InitPoolInstructionDataArgs["accelerationNoticeSeconds"];
@@ -630,9 +618,7 @@ export type InitPoolInput<
   program?: TAccountProgram;
   gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
-  attestor: InitPoolInstructionDataArgs["attestor"];
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
-  cancelDelaySeconds: InitPoolInstructionDataArgs["cancelDelaySeconds"];
   guardian: InitPoolInstructionDataArgs["guardian"];
   maxOutstandingPrincipal: InitPoolInstructionDataArgs["maxOutstandingPrincipal"];
   accelerationNoticeSeconds: InitPoolInstructionDataArgs["accelerationNoticeSeconds"];

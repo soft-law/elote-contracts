@@ -75,9 +75,9 @@ fn draw_stays_under_the_ceiling_at_120_installments() {
     let p = env.scheduled_params(100 * UNIT, 1_200, 120, 5_000);
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 40 * UNIT);
-    let first = env.send_with_attestor(ix, &borrower).compute_units_consumed;
+    let first = env.send(ix, &borrower, &[]).compute_units_consumed;
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 60 * UNIT);
-    let second = env.send_with_attestor(ix, &borrower).compute_units_consumed;
+    let second = env.send(ix, &borrower, &[]).compute_units_consumed;
     println!("draw, first tranche at 120 installments: {first} CU");
     println!("draw, second tranche at 120 installments: {second} CU");
     assert!(first < CEILING && second < CEILING, "draw used {first} / {second} CU, ceiling {CEILING}");
@@ -100,6 +100,10 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 100 * UNIT + interest);
+    let ix = env.annotate_payment_ix(&k, line_id, 0, &council.pubkey(), 2, [0x4f; 32]);
+    let annotate = env.send(ix, &council, &[]).compute_units_consumed;
+    println!("annotate_payment at 120 installments: {annotate} CU");
+    assert!(annotate < CEILING);
     let cancel = env.cancel_pagare(&k, line_id, 0).compute_units_consumed;
     println!("cancel_pagare at 120 installments: {cancel} CU");
     assert!(cancel < CEILING, "cancel_pagare used {cancel} CU, ceiling {CEILING}");
@@ -113,26 +117,23 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let interest = env.line(&k, line_id).interest_due;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
-    let attestor = env.attestor.insecure_clone();
     let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &procurador.pubkey(), &council.pubkey(), RECEIPT_HASH);
-    let by_procurador = env.send(ix, &council, &[&procurador, &attestor]).compute_units_consumed;
+    let by_procurador = env.send(ix, &council, &[&procurador]).compute_units_consumed;
     println!("cancel_pagare by the procurador at 120 installments: {by_procurador} CU");
     assert!(by_procurador < CEILING, "cancel by the procurador used {by_procurador} CU, ceiling {CEILING}");
-    // The backstop, on a third line: the request, then the holder alone after the delay.
+    // The borrower's exit, on a third line under a procuración: alone, after the cancel grace.
     let borrower = env.borrower(&k);
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, line_id, &borrower);
+    env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
     let interest = env.line(&k, line_id).interest_due;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
-    let ix = env.request_cancellation_ix(&k, line_id, 0, &council.pubkey(), RECEIPT_HASH);
-    let request = env.send(ix, &council, &[]).compute_units_consumed;
-    println!("request_cancellation at 120 installments: {request} CU");
-    env.warp(env.now() + i64::from(CANCEL_DELAY) + 1);
-    let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &council.pubkey(), &council.pubkey(), RECEIPT_HASH);
-    let alone = env.send(ix, &council, &[]).compute_units_consumed;
-    println!("cancel_pagare by the holder alone at 120 installments: {alone} CU");
-    assert!(request < CEILING && alone < CEILING);
+    env.warp(env.now() + i64::from(CANCEL_GRACE) + 1);
+    let ix = env.cancel_pagare_ix(&k, line_id, 0, &borrower.pubkey(), &borrower.pubkey(), RECEIPT_HASH);
+    let by_borrower = env.send(ix, &borrower, &[]).compute_units_consumed;
+    println!("cancel_pagare by the borrower at 120 installments: {by_borrower} CU");
+    assert!(by_borrower < CEILING);
 }
 
 /// After the mark every remaining installment is due, so a repayment early in a 120-installment

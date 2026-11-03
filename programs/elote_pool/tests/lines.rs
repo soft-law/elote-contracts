@@ -1,4 +1,4 @@
-//! Credit lines approved from the pool: opening with the attestor and an optional
+//! Credit lines approved from the pool: request and approval with an optional
 //! sponsor, draws in tranches, one repayment order, write-off on what was drawn.
 
 mod common;
@@ -232,13 +232,13 @@ fn draw_rejects_insufficient_liquidity_strangers_and_the_pause() {
     assert_eq!(env.token_balance(&k.vault), 3 * UNIT);
 
     let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
-    env.expect_err_with_attestor(ix, &borrower, E_INSUFFICIENT_LIQUIDITY);
+    env.expect_err(ix, &borrower, &[], E_INSUFFICIENT_LIQUIDITY);
     assert_eq!(env.token_balance(&k.vault), 3 * UNIT);
 
     // A smaller tranche fits; the rest waits for a deposit.
     env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
     let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
-    env.expect_err_with_attestor(ix, &borrower, E_INSUFFICIENT_LIQUIDITY);
+    env.expect_err(ix, &borrower, &[], E_INSUFFICIENT_LIQUIDITY);
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &a.pubkey(), UNIT);
     env.deposit(&k, &a, UNIT);
@@ -246,21 +246,21 @@ fn draw_rejects_insufficient_liquidity_strangers_and_the_pause() {
     // Only the borrower draws.
     let other = env.borrower(&k);
     let ix = env.draw_ix(&k, line_id, &other.pubkey());
-    env.expect_err_with_attestor(ix, &other, E_UNAUTHORIZED);
+    env.expect_err(ix, &other, &[], E_UNAUTHORIZED);
 
     // Paused: no draw.
     env.set_paused(&k, true);
     let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
-    env.expect_err_with_attestor(ix, &borrower, E_PAUSED);
+    env.expect_err(ix, &borrower, &[], E_PAUSED);
     env.set_paused(&k, false);
 
     env.draw(&k, line_id, &borrower);
     assert_eq!(env.token_balance(&k.vault), 0);
     // Nothing left to draw: a tranche of zero is refused, and so is one above what is available.
     let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
-    env.expect_err_with_attestor(ix, &borrower, E_WRONG_AMOUNT);
+    env.expect_err(ix, &borrower, &[], E_WRONG_AMOUNT);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1);
-    env.expect_err_with_attestor(ix, &borrower, E_WRONG_AMOUNT);
+    env.expect_err(ix, &borrower, &[], E_WRONG_AMOUNT);
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT, "drawn in two tranches");
     assert_eq!(env.line(&k, line_id).draws, 2);
 }
@@ -398,7 +398,7 @@ fn the_draw_window_of_a_bullet_line_closes_at_the_term_exactly() {
     // At the term the window has closed, whether or not anything was drawn.
     env.warp(p.term_end);
     let ix = env.draw_ix(&k, late, &borrower.pubkey());
-    env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
+    env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
     assert_eq!(env.line(&k, late).status, LineStatus::Approved);
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT);
 }

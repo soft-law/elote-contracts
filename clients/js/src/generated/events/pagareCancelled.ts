@@ -51,8 +51,8 @@ export type PagareCancelledEvent = {
   asset: Address;
   receiptHash: ReadonlyUint8Array;
   holder: Address;
-  /** The holder cancelled alone after a request's deadline, without the attestor. */
-  backstop: boolean;
+  /** The borrower cancelled alone after the cancel grace. */
+  byBorrower: boolean;
 };
 
 export type PagareCancelledEventArgs = {
@@ -62,8 +62,8 @@ export type PagareCancelledEventArgs = {
   asset: Address | HasAddress;
   receiptHash: ReadonlyUint8Array;
   holder: Address | HasAddress;
-  /** The holder cancelled alone after a request's deadline, without the attestor. */
-  backstop: boolean;
+  /** The borrower cancelled alone after the cancel grace. */
+  byBorrower: boolean;
 };
 
 /** Gets the encoder for {@link PagareCancelledEventArgs} event data. */
@@ -76,7 +76,7 @@ export function getPagareCancelledEventEncoder(): FixedSizeEncoder<PagareCancell
       ["asset", getAddressEncoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["holder", getAddressEncoder()],
-      ["backstop", getBooleanEncoder()],
+      ["byBorrower", getBooleanEncoder()],
     ]),
     [getConstantEncoder(PAGARE_CANCELLED_EVENT_DISCRIMINATOR)],
   );
@@ -92,7 +92,7 @@ export function getPagareCancelledEventDecoder(): FixedSizeDecoder<PagareCancell
       ["asset", getAddressDecoder()],
       ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
       ["holder", getAddressDecoder()],
-      ["backstop", getBooleanDecoder()],
+      ["byBorrower", getBooleanDecoder()],
     ]),
     [getConstantDecoder(PAGARE_CANCELLED_EVENT_DISCRIMINATOR)],
   );

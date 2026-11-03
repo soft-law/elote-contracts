@@ -62,7 +62,7 @@ export function getCancelPagareDiscriminatorBytes(): ReadonlyUint8Array {
 export type CancelPagareInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountHolder extends string | AccountMeta<string> = string,
-  TAccountAttestor extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPayer extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
@@ -86,10 +86,9 @@ export type CancelPagareInstruction<
         ? ReadonlySignerAccount<TAccountHolder> &
             AccountSignerMeta<TAccountHolder>
         : TAccountHolder,
-      TAccountAttestor extends string
-        ? ReadonlySignerAccount<TAccountAttestor> &
-            AccountSignerMeta<TAccountAttestor>
-        : TAccountAttestor,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPayer extends string
         ? WritableSignerAccount<TAccountPayer> &
             AccountSignerMeta<TAccountPayer>
@@ -170,7 +169,7 @@ export function getCancelPagareInstructionDataCodec(): FixedSizeCodec<
 
 export type CancelPagareAsyncInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
@@ -188,16 +187,12 @@ export type CancelPagareAsyncInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   /**
-   * The owner (the council while the asset is in the pool) or the procurador of record with a
-   * procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
+   * The council (the owner while the asset is in the pool), the procurador of record with a
+   * procuración in force, or the line's borrower once the cancel grace has run; checked in the
+   * handler (`NotHolder`, `ProcuracionState`, `CancelGraceNotElapsed`).
    */
   holder: TAccountHolder;
-  /**
-   * Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner
-   * cancels alone only after a request's `cancel_after`, with the requested receipt
-   * (`AttestorRequired` otherwise).
-   */
-  attestor?: TAccountAttestor;
+  multisig: TAccountMultisig;
   /** Receives the asset's rent from the Core program. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
@@ -223,7 +218,7 @@ export type CancelPagareAsyncInput<
 
 export async function getCancelPagareInstructionAsync<
   TAccountHolder extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
@@ -239,7 +234,7 @@ export async function getCancelPagareInstructionAsync<
 >(
   input: CancelPagareAsyncInput<
     TAccountHolder,
-    TAccountAttestor,
+    TAccountMultisig,
     TAccountPayer,
     TAccountPool,
     TAccountLine,
@@ -263,8 +258,8 @@ export async function getCancelPagareInstructionAsync<
       InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPayer,
@@ -326,9 +321,9 @@ export async function getCancelPagareInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
-    attestor: {
-      value: input.attestor ?? null,
-      isSigner: true,
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
@@ -413,7 +408,7 @@ export async function getCancelPagareInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("holder", accounts.holder),
-      getAccountMeta("attestor", accounts.attestor),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
@@ -437,8 +432,8 @@ export async function getCancelPagareInstructionAsync<
       InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPayer,
@@ -489,7 +484,7 @@ export async function getCancelPagareInstructionAsync<
 
 export type CancelPagareInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
@@ -507,16 +502,12 @@ export type CancelPagareInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   /**
-   * The owner (the council while the asset is in the pool) or the procurador of record with a
-   * procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
+   * The council (the owner while the asset is in the pool), the procurador of record with a
+   * procuración in force, or the line's borrower once the cancel grace has run; checked in the
+   * handler (`NotHolder`, `ProcuracionState`, `CancelGraceNotElapsed`).
    */
   holder: TAccountHolder;
-  /**
-   * Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner
-   * cancels alone only after a request's `cancel_after`, with the requested receipt
-   * (`AttestorRequired` otherwise).
-   */
-  attestor?: TAccountAttestor;
+  multisig: TAccountMultisig;
   /** Receives the asset's rent from the Core program. Any signer. */
   payer: TAccountPayer;
   pool: TAccountPool;
@@ -542,7 +533,7 @@ export type CancelPagareInput<
 
 export function getCancelPagareInstruction<
   TAccountHolder extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPayer extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
@@ -558,7 +549,7 @@ export function getCancelPagareInstruction<
 >(
   input: CancelPagareInput<
     TAccountHolder,
-    TAccountAttestor,
+    TAccountMultisig,
     TAccountPayer,
     TAccountPool,
     TAccountLine,
@@ -581,8 +572,8 @@ export function getCancelPagareInstruction<
     InstructionAccountInputAddress<TAccountHolder>
   >,
   ResolvedInstructionAccountMeta<
-    TAccountAttestor,
-    InstructionAccountInputAddress<TAccountAttestor>
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPayer,
@@ -643,9 +634,9 @@ export function getCancelPagareInstruction<
   // Original accounts.
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
-    attestor: {
-      value: input.attestor ?? null,
-      isSigner: true,
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
@@ -709,7 +700,7 @@ export function getCancelPagareInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("holder", accounts.holder),
-      getAccountMeta("attestor", accounts.attestor),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("payer", accounts.payer),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
@@ -733,8 +724,8 @@ export function getCancelPagareInstruction<
       InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPayer,
@@ -790,16 +781,12 @@ export type ParsedCancelPagareInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     /**
-     * The owner (the council while the asset is in the pool) or the procurador of record with a
-     * procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
+     * The council (the owner while the asset is in the pool), the procurador of record with a
+     * procuración in force, or the line's borrower once the cancel grace has run; checked in the
+     * handler (`NotHolder`, `ProcuracionState`, `CancelGraceNotElapsed`).
      */
     holder: TAccountMetas[0];
-    /**
-     * Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner
-     * cancels alone only after a request's `cancel_after`, with the requested receipt
-     * (`AttestorRequired` otherwise).
-     */
-    attestor?: TAccountMetas[1] | undefined;
+    multisig: TAccountMetas[1];
     /** Receives the asset's rent from the Core program. Any signer. */
     payer: TAccountMetas[2];
     pool: TAccountMetas[3];
@@ -856,7 +843,7 @@ export function parseCancelPagareInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       holder: getNextAccount(),
-      attestor: getNextOptionalAccount(),
+      multisig: getNextAccount(),
       payer: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),

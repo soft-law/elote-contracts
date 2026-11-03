@@ -7,8 +7,6 @@ pub enum PoolError {
     // Signers.
     #[msg("This signer may not do this")]
     Unauthorized,
-    #[msg("The pool's attestor must sign")]
-    AttestorRequired,
     #[msg("The sponsor named on this line must sign")]
     SponsorRequired,
     #[msg("The pagaré's holder must sign")]
@@ -45,15 +43,11 @@ pub enum PoolError {
     PagareAccountsMismatch,
 
     // Roles that must stay apart.
-    #[msg("The attestor cannot be the council")]
-    AttestorIsCouncil,
     #[msg("The council cannot be the borrower")]
     BorrowerIsCouncil,
     #[msg("A member of the council cannot be the borrower")]
     BorrowerIsCurator,
-    #[msg("The borrower cannot be the attestor")]
-    BorrowerIsAttestor,
-    #[msg("The endorsee is missing, or is the pool, the council or the attestor")]
+    #[msg("The endorsee is missing, or is the pool, the council, a curator, the guardian or the borrower")]
     EndorseeInvalid,
 
     // Amounts and invariants.
@@ -79,8 +73,6 @@ pub enum PoolError {
     // Pool parameters.
     #[msg("The collection period is shorter than the minimum")]
     CollectionPeriodTooShort,
-    #[msg("The cancel delay is below the seven-day floor")]
-    CancelDelayTooShort,
     #[msg("The acceleration notice is below the seven-day floor")]
     AccelerationNoticeTooShort,
     #[msg("The borrower's cancel grace is below the thirty-day floor")]

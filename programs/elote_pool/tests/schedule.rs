@@ -156,7 +156,7 @@ fn the_draw_window_closes_at_the_first_due_date_exactly() {
     // At the first due date the window is closed, whatever is still available.
     env.warp(p.first_due_at());
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
-    env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
+    env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
     let line = env.line(&k, line_id);
     assert_eq!((line.drawn, line.status), (3 * UNIT, LineStatus::Active));
     assert_eq!(env.arrears(&k, line_id).due, 1, "and the first installment is due");

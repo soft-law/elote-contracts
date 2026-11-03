@@ -285,9 +285,8 @@ Over a few seconds the late interest is a few millionths of a tMXN; the integrat
 by months instead.
 
 Wallets are generated into `.demo-keys/` (ignored by git) unless `ELOTE_ADMIN_KEYPAIR`,
-`ELOTE_ATTESTOR_KEYPAIR`, `ELOTE_INVESTOR_A_KEYPAIR`, `ELOTE_INVESTOR_B_KEYPAIR`,
-`ELOTE_BORROWER_KEYPAIR` or `ELOTE_SPONSOR_KEYPAIR` point to keypair files. The attestor stands in
-for the agreements engine's key; the other scripts read it from the same place. Every script prints
+`ELOTE_INVESTOR_A_KEYPAIR`, `ELOTE_INVESTOR_B_KEYPAIR`, `ELOTE_BORROWER_KEYPAIR` or
+`ELOTE_SPONSOR_KEYPAIR` point to keypair files. Every script prints
 the cluster and, unless the RPC is this machine or `--yes` is given, asks before sending. `ELOTE_RPC` overrides the RPC URL. On devnet the
 admin is funded by airdrop (with retries) and pays the other wallets' fees.
 
@@ -327,21 +326,21 @@ pagaré's rent. The pagaré hash is derived on chain from the approved template 
 
 `scripts/repay.ts --pool <address> --line-id <n> --amount <tMXN> | --all` pays on a line (the
 borrower by default, `--payer-keypair` for anyone else; `--receipt-hash`, zero meaning "to
-follow"). A payment that would touch more than five pagaré records is split into several `repay`
+follow"). A payment that would touch more than four pagaré records is split into several `repay`
 calls (`MAX_SIDECARS_PER_REPAY`); a part refused because another payment landed first is rebuilt
 and sent again.
 
 `scripts/endorse-pagare.ts --pool <address> --line-id <n> --draw-index <n> --procurador <address>`
-endorses an outstanding pagaré en procuración (the admin as holder and the attestor sign;
-`--endoso-hash`), and `--revoke` (with `--revocation-hash`) revokes the procuración in force. The
-procurador can never be the pool, the admin or the attestor; endorse before the payment marks the
-pagaré paid.
+endorses an outstanding pagaré en procuración (the council as holder signs, through Squads from PR 4
+commit 10; `--endoso-hash`), and `--revoke` (with `--revocation-hash`) revokes the procuración in
+force. The procurador can never be the pool, the council, a curator, the guardian or the borrower;
+endorse before the payment marks the pagaré paid.
 
 `scripts/cancel-pagare.ts --pool <address> --line-id <n> --draw-index <n> --receipt-hash <64 hex>`
-extinguishes a pagaré a repayment marked paid: by default the admin as holder with the attestor;
-`--request` files the holder's cancellation request; `--backstop` cancels without the attestor
-after that request's deadline (refused before it); `--procurador-keypair` cancels as the
-procurador of record through its program address.
+extinguishes a pagaré a repayment marked paid: by default the council as holder (through Squads);
+`--borrower-keypair` cancels as the line's borrower alone once the pool's cancel grace from the
+payment has run (refused before it); `--procurador-keypair` cancels as the procurador of record
+alone through its program address.
 
 `scripts/key-to-base58.ts <keypair.json>` prints the base58 form of a keypair file's secret bytes,
 the format a wallet's private key import accepts. The output is a secret: use it for devnet demo keys only.

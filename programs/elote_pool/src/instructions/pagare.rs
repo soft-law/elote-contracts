@@ -1,16 +1,17 @@
 //! The pagaré after its issuance (`draw`, in `lines.rs`): cancellation, endorsement in
-//! procuración and its revocation, court annotations, the cancellation request and receipt
-//! annotations. Each appends an entry to the pagaré record's chain; the record is never closed.
+//! procuración and its revocation, court annotations and receipt annotations, all council
+//! instructions except the procurador's and the borrower's cancellations. Each appends an entry to the pagaré record's chain; the record is never closed.
 
 use anchor_lang::prelude::*;
 
+use crate::council;
 use crate::errors::PoolError;
-use crate::events::{CancellationRequested, PagareCancelled};
+use crate::events::PagareCancelled;
 use crate::pool_signer;
 use crate::registry;
 use crate::state::{
     seeds, CreditLine, LineStatus, Pagare, Pool, KIND_ANOTACION_JUDICIAL, KIND_CONSTANCIA_JUDICIAL, KIND_PROCURACION,
-    KIND_RECIBO, KIND_REVOCACION, KIND_SOLICITUD_CANCELACION, KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE,
+    KIND_RECIBO, KIND_REVOCACION, KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE,
     PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING, PAGARE_PAID, PAGARE_PAID_PENDING_CANCEL,
 };
 use crate::events::{PagareEntry, PagareReceiptAnnotated};
@@ -19,14 +20,14 @@ use crate::events::{PagareEntry, PagareReceiptAnnotated};
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct CancelPagare<'info> {
-    /// The owner (the council while the asset is in the pool) or the procurador of record with a
-    /// procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
+    /// The council (the owner while the asset is in the pool), the procurador of record with a
+    /// procuración in force, or the line's borrower once the cancel grace has run; checked in the
+    /// handler (`NotHolder`, `ProcuracionState`, `CancelGraceNotElapsed`).
     pub holder: Signer<'info>,
 
-    /// Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner
-    /// cancels alone only after a request's `cancel_after`, with the requested receipt
-    /// (`AttestorRequired` otherwise).
-    pub attestor: Option<Signer<'info>>,
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
 
     /// Receives the asset's rent from the Core program. Any signer.
     #[account(mut)]
@@ -76,41 +77,38 @@ pub struct CancelPagare<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Extinguishes a paid pagaré. The signer is the owner (the council while the asset is in the pool)
-/// or the procurador of record (`NotHolder`, `ProcuracionState`), who also passes
-/// `procurador_authority` (`WrongAccount`). The attestor co-signs, or the backstop applies: the
-/// owner alone, after the request's `cancel_after`, with the requested receipt (`AttestorRequired`).
-/// Requires the PAGADO mark a repayment wrote, `PAGARE_PAID_PENDING_CANCEL`, whatever the line's
-/// status (`PagareAlreadyPaid`, `PagareNotCovered`), and a non-zero `receipt_hash`
-/// (`DocumentHashRequired`). Writes a `Terminacion` entry, `status = PAGARE_PAID` and
-/// `cancel_receipt_hash` (`paid_at` and `receipt_hash` stay), clears the request and any
-/// procuración, then thaws and burns the asset. Receipt uniqueness is not checked here. Never
-/// paused: it moves no funds.
+/// Extinguishes a paid pagaré. Three signers may: the council, as the owner (with the multisig
+/// check); the procurador of record alone (`NotHolder`, `ProcuracionState`), who also passes
+/// `procurador_authority` (`WrongAccount`); or the line's borrower alone once
+/// `now > paid_at + cancel_grace_seconds` (`CancelGraceNotElapsed`), the debtor's exit that does not
+/// depend on the council. Requires the PAGADO mark a repayment wrote, `PAGARE_PAID_PENDING_CANCEL`,
+/// whatever the line's status (`PagareAlreadyPaid`, `PagareNotCovered`), and a non-zero
+/// `receipt_hash` (`DocumentHashRequired`). Writes a `Terminacion` entry, `status = PAGARE_PAID`
+/// and `cancel_receipt_hash` (`paid_at` and `receipt_hash` stay), clears any procuración, then
+/// thaws and burns the asset; the pool PDA burns as its owner except on the procurador's branch,
+/// also under a procuración. Never paused: it moves no funds.
 pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
     let pagare = &ctx.accounts.pagare;
     let signer = ctx.accounts.holder.key();
     let pagare_key = pagare.key();
-    let by_procurador = signer != pool.council;
-    if by_procurador {
+    let now = Clock::get()?.unix_timestamp;
+    let by_council = signer == pool.council;
+    let by_borrower = !by_council && signer == line.borrower;
+    let by_procurador = !by_council && !by_borrower;
+    if by_council {
+        council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
+    } else if by_procurador {
         require!(signer == pagare.procurador, PoolError::NotHolder);
         require!(pagare.flags & PAGARE_FLAG_PROCURACION != 0, PoolError::ProcuracionState);
     }
     require!(pagare.status != PAGARE_PAID, PoolError::PagareAlreadyPaid);
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     require!(pagare.status == PAGARE_PAID_PENDING_CANCEL, PoolError::PagareNotCovered);
-    let now = Clock::get()?.unix_timestamp;
-    match ctx.accounts.attestor.as_ref() {
-        Some(attestor) => {
-            require_keys_eq!(attestor.key(), pool.attestor, PoolError::AttestorRequired);
-        }
-        None => {
-            require!(
-                !by_procurador && pagare.cancel_after != 0 && now > pagare.cancel_after && receipt_hash == pagare.requested_receipt_hash,
-                PoolError::AttestorRequired
-            );
-        }
+    if by_borrower {
+        let opens = pagare.paid_at.checked_add(i64::from(pool.cancel_grace_seconds)).ok_or(PoolError::Overflow)?;
+        require!(now > opens, PoolError::CancelGraceNotElapsed);
     }
     // Derived and compared before any write.
     let authority_bump = if by_procurador {
@@ -123,14 +121,11 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
     };
 
     let pool_key = pool.key();
-    let from = if by_procurador { signer } else { pool_key };
+    let from = if by_council { pool_key } else { signer };
     let pagare = &mut ctx.accounts.pagare;
     let hash = registry::append(pagare, KIND_TERMINACION, &from, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
     pagare.status = PAGARE_PAID;
     pagare.cancel_receipt_hash = receipt_hash;
-    // Any cancellation clears a pending request.
-    pagare.cancel_after = 0;
-    pagare.requested_receipt_hash = [0; 32];
     // The title's extinction ends a procuración in force; the plugin flag stays as history.
     pagare.flags &= !PAGARE_FLAG_PROCURACION;
     pagare.procurador = Pubkey::default();
@@ -157,7 +152,7 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
         asset: asset_key,
         receipt_hash,
         holder: signer,
-        backstop: ctx.accounts.attestor.is_none(),
+        by_borrower,
     });
 
     // Last, so a Core refusal leaves nothing half done: the pool PDA thaws the asset as the
@@ -198,9 +193,9 @@ pub struct EndorsePagare<'info> {
     #[account(constraint = holder.key() == pool.council @ PoolError::NotHolder)]
     pub holder: Signer<'info>,
 
-    /// Attests the signed endoso behind `endoso_hash` and the endorsee's verification.
-    #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
-    pub attestor: Signer<'info>,
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
 
     /// Pays the rent the Core plugin may need. Any signer.
     #[account(mut)]
@@ -246,7 +241,8 @@ pub struct EndorsePagare<'info> {
 /// power to extinguish the pagaré through an owner-managed `BurnDelegate` whose authority is the
 /// program address `["procurador", pagare, to]`. Nobody holds its key, so the burn can only happen
 /// inside `cancel_pagare`. Refused: `kind != KIND_PROCURACION` (`EndosoKindInvalid`); `to` the zero
-/// key, the pool, the council or the attestor (`EndorseeInvalid`); a zero `endoso_hash`
+/// key, the pool, the council, the guardian, the line's borrower or a member of the council's
+/// multisig (`EndorseeInvalid`); a zero `endoso_hash`
 /// (`DocumentHashRequired`); a `WrittenOff` line (`LineStatus`); a pagaré not outstanding
 /// (`PagareAlreadyPaid`); a procuración in force (`ProcuracionState`). The plugin is added at the
 /// first procuración and approved afterwards (Core refuses a second `AddPluginV1`); a flag
@@ -257,8 +253,15 @@ pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to
     let pool = &ctx.accounts.pool;
     let pool_key = pool.key();
     require!(kind == KIND_PROCURACION, PoolError::EndosoKindInvalid);
+    let multisig = ctx.accounts.multisig.to_account_info();
+    council::check(&multisig, &pool.council, pool.council_vault_bump)?;
     require!(
-        to != Pubkey::default() && to != pool_key && to != pool.attestor && to != pool.council,
+        to != Pubkey::default()
+            && to != pool_key
+            && to != pool.council
+            && to != pool.guardian
+            && to != ctx.accounts.line.borrower
+            && !council::is_member(&multisig, &to)?,
         PoolError::EndorseeInvalid
     );
     require!(endoso_hash != [0u8; 32], PoolError::DocumentHashRequired);
@@ -330,6 +333,10 @@ pub struct RevokeProcuracion<'info> {
     #[account(constraint = holder.key() == pool.council @ PoolError::NotHolder)]
     pub holder: Signer<'info>,
 
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -376,6 +383,8 @@ pub struct RevokeProcuracion<'info> {
 pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entry_hash: [u8; 32]) -> Result<()> {
     use mpl_core::instructions::RevokePluginAuthorityV1CpiBuilder;
     use mpl_core::types::PluginType;
+    let pool = &ctx.accounts.pool;
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     require!(entry_hash != [0u8; 32], PoolError::DocumentHashRequired);
     let pagare = &ctx.accounts.pagare;
     require!(pagare.flags & PAGARE_FLAG_PROCURACION != 0, PoolError::ProcuracionState);
@@ -422,9 +431,9 @@ pub struct CourtAnnotation<'info> {
     #[account(constraint = holder.key() == pool.council @ PoolError::NotHolder)]
     pub holder: Signer<'info>,
 
-    /// Attests the court document behind `document_hash`.
-    #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
-    pub attestor: Signer<'info>,
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
 
     #[account(
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
@@ -449,10 +458,12 @@ pub struct CourtAnnotation<'info> {
 }
 
 /// A court's act on the title, `AnotacionJudicial` or `ConstanciaJudicial` (`AnnotationKindInvalid`),
-/// over the court document's hash; the holder signs and the attestor co-signs. Appends the entry
+/// over the court document's hash; the council signs. Appends the entry
 /// (from and to the pool: there is no counterparty); nothing else moves. Allowed on any line
 /// status and beside a procuración; refused only on a burnt title (`PAGARE_PAID`).
 pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> Result<()> {
+    let pool = &ctx.accounts.pool;
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     require!(kind == KIND_ANOTACION_JUDICIAL || kind == KIND_CONSTANCIA_JUDICIAL, PoolError::AnnotationKindInvalid);
     require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
     let pagare = &mut ctx.accounts.pagare;
@@ -479,87 +490,15 @@ pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8
 #[event_cpi]
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
-pub struct RequestCancellation<'info> {
-    /// The pagaré's holder: the council while the asset is in the pool.
-    #[account(constraint = holder.key() == pool.council @ PoolError::NotHolder)]
-    pub holder: Signer<'info>,
-
-    #[account(
-        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
-        bump = pool.bump,
-    )]
-    pub pool: Box<Account<'info, Pool>>,
-
-    #[account(
-        seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
-        bump = line.bump,
-        has_one = pool @ PoolError::WrongAccount,
-    )]
-    pub line: Box<Account<'info, CreditLine>>,
-
-    #[account(
-        mut,
-        seeds = [seeds::PAGARE, line.key().as_ref(), &draw_index.to_le_bytes()],
-        bump = pagare.bump,
-        has_one = line @ PoolError::WrongAccount,
-    )]
-    pub pagare: Box<Account<'info, Pagare>>,
-}
-
-/// Starts the backstop: the holder records the receipt's hash for a cancellation without the
-/// attestor. Same checks as `cancel_pagare` (`PagareAlreadyPaid`, `DocumentHashRequired`,
-/// `PagareNotCovered`), so no request precedes the payment. A new request replaces a pending one
-/// and never brings its deadline earlier: `cancel_after = max(now + cancel_delay_seconds, pending)`,
-/// fixed here, so a later change of the delay does not move it. Any cancellation clears it.
-pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
-    let pool = &ctx.accounts.pool;
-    let line = &ctx.accounts.line;
-    let pagare = &ctx.accounts.pagare;
-    require!(pagare.status != PAGARE_PAID, PoolError::PagareAlreadyPaid);
-    require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
-    require!(pagare.status == PAGARE_PAID_PENDING_CANCEL, PoolError::PagareNotCovered);
-    let now = Clock::get()?.unix_timestamp;
-    let deadline = now
-        .checked_add(i64::from(pool.cancel_delay_seconds))
-        .ok_or(PoolError::Overflow)?
-        .max(pagare.cancel_after);
-    let pool_key = pool.key();
-    let pagare = &mut ctx.accounts.pagare;
-    let hash = registry::append(pagare, KIND_SOLICITUD_CANCELACION, &pool_key, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
-    pagare.cancel_after = deadline;
-    pagare.requested_receipt_hash = receipt_hash;
-    emit_cpi!(PagareEntry {
-        pool: pool_key,
-        line_id: line.line_id,
-        draw_index,
-        asset: pagare.asset,
-        kind: KIND_SOLICITUD_CANCELACION,
-        from: pool_key,
-        to: pool_key,
-        entry_hash: hash,
-        entry_count: pagare.entry_count,
-        recorded_at: now,
-        stated_at: now,
-    });
-    emit_cpi!(CancellationRequested {
-        pool: pool_key,
-        line_id: line.line_id,
-        draw_index,
-        asset: pagare.asset,
-        receipt_hash,
-        cancel_after: deadline,
-    });
-    Ok(())
-}
-
-#[event_cpi]
-#[derive(Accounts)]
-#[instruction(draw_index: u16)]
 pub struct AnnotatePayment<'info> {
-    /// The holder (the council while the asset is in the pool) or the attestor.
-    #[account(constraint = annotator.key() == pool.council || annotator.key() == pool.attestor @ PoolError::Unauthorized)]
+    /// The holder: the council while the asset is in the pool.
+    #[account(constraint = annotator.key() == pool.council @ PoolError::Unauthorized)]
     pub annotator: Signer<'info>,
 
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
     #[account(
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
@@ -582,14 +521,15 @@ pub struct AnnotatePayment<'info> {
     pub pagare: Box<Account<'info, Pagare>>,
 }
 
-/// The council (holder) or the attestor attaches the real receipt to payment entry `entry_count` of
+/// The council (the holder) attaches the real receipt to payment entry `entry_count` of
 /// the pagaré's chain (`EntryNotFound` if absent) by appending a `Recibo` entry over `receipt_hash`
 /// (`DocumentHashRequired`), from the annotator to the pool. The chain keeps no entry kinds, so the
 /// reference is not checked to be a payment entry; the engine checks it. Allowed on any status, a
-/// burnt title included: a receipt may arrive late. The holder's annotation also replaces the
-/// payer's provisional `Pagare.receipt_hash` while the status is `PAGARE_PAID_PENDING_CANCEL`;
-/// the attestor's never does.
+/// burnt title included: a receipt may arrive late. The annotation also replaces the payer's
+/// provisional `Pagare.receipt_hash` while the status is `PAGARE_PAID_PENDING_CANCEL`.
 pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32]) -> Result<()> {
+    let pool = &ctx.accounts.pool;
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     let pagare = &mut ctx.accounts.pagare;
     require!(entry_count >= 1 && entry_count <= pagare.entry_count, PoolError::EntryNotFound);
@@ -597,7 +537,7 @@ pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_co
     let pool_key = ctx.accounts.pool.key();
     let annotator = ctx.accounts.annotator.key();
     let hash = registry::append(pagare, KIND_RECIBO, &annotator, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
-    if annotator == ctx.accounts.pool.council && pagare.status == PAGARE_PAID_PENDING_CANCEL {
+    if pagare.status == PAGARE_PAID_PENDING_CANCEL {
         pagare.receipt_hash = receipt_hash;
     }
     let line_id = ctx.accounts.line.line_id;

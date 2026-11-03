@@ -71,9 +71,8 @@
     {
       "name": "annotate_payment",
       "docs": [
-        "The council (the holder) or the attestor attaches a receipt to payment entry `entry_count` of",
-        "pagaré `draw_index`, as a `Recibo` entry over `receipt_hash`. The holder's annotation also",
-        "replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`)."
+        "The council (the holder) attaches a receipt to payment entry `entry_count` of pagaré",
+        "`draw_index`, as a `Recibo` entry over `receipt_hash`. The annotation also replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`)."
       ],
       "discriminator": [
         142,
@@ -89,9 +88,12 @@
         {
           "name": "annotator",
           "docs": [
-            "The holder (the council while the asset is in the pool) or the attestor."
+            "The holder: the council while the asset is in the pool."
           ],
           "signer": true
+        },
+        {
+          "name": "multisig"
         },
         {
           "name": "pool",
@@ -390,9 +392,9 @@
       "docs": [
         "Extinguishes pagaré `draw_index` once a repayment has marked it paid",
         "(`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry,",
-        "then thaws and burns the asset; the record stays. The owner (the council) or the procurador of",
-        "record signs, with the attestor; without the attestor, only the owner after a request's",
-        "`cancel_after`, with the requested receipt. Never paused."
+        "then thaws and burns the asset; the record stays. The council (the owner), the procurador of",
+        "record alone, or the line's borrower alone once the cancel grace from the payment has run.",
+        "Never paused."
       ],
       "discriminator": [
         90,
@@ -408,20 +410,14 @@
         {
           "name": "holder",
           "docs": [
-            "The owner (the council while the asset is in the pool) or the procurador of record with a",
-            "procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`)."
+            "The council (the owner while the asset is in the pool), the procurador of record with a",
+            "procuración in force, or the line's borrower once the cancel grace has run; checked in the",
+            "handler (`NotHolder`, `ProcuracionState`, `CancelGraceNotElapsed`)."
           ],
           "signer": true
         },
         {
-          "name": "attestor",
-          "docs": [
-            "Attests the receipt behind `receipt_hash`. Optional for the backstop: left out, the owner",
-            "cancels alone only after a request's `cancel_after`, with the requested receipt",
-            "(`AttestorRequired` otherwise)."
-          ],
-          "signer": true,
-          "optional": true
+          "name": "multisig"
         },
         {
           "name": "payer",
@@ -576,7 +572,7 @@
       "docs": [
         "Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,",
         "suspension, cancellation) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. The",
-        "holder (the council) and the attestor sign; refused on a cancelled pagaré; moves nothing."
+        "council signs; refused on a cancelled pagaré; moves nothing."
       ],
       "discriminator": [
         218,
@@ -597,11 +593,7 @@
           "signer": true
         },
         {
-          "name": "attestor",
-          "docs": [
-            "Attests the court document behind `document_hash`."
-          ],
-          "signer": true
+          "name": "multisig"
         },
         {
           "name": "pool",
@@ -1061,9 +1053,9 @@
       "docs": [
         "Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets",
         "the program address `[\"procurador\", pagare, to]` burn the asset through an owner-managed",
-        "`BurnDelegate`. The council (the holder) and the attestor sign; `kind` must be",
-        "`KIND_PROCURACION`; refused with `to` the zero key, the pool, the council or the attestor, or",
-        "a procuración in force."
+        "`BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused",
+        "with `to` the zero key, the pool, the council, a curator, the guardian or the borrower, or a",
+        "procuración in force."
       ],
       "discriminator": [
         108,
@@ -1084,11 +1076,7 @@
           "signer": true
         },
         {
-          "name": "attestor",
-          "docs": [
-            "Attests the signed endoso behind `endoso_hash` and the endorsee's verification."
-          ],
-          "signer": true
+          "name": "multisig"
         },
         {
           "name": "payer",
@@ -1933,139 +1921,6 @@
       ]
     },
     {
-      "name": "request_cancellation",
-      "docs": [
-        "The holder (the council) requests the cancellation of pagaré `draw_index`, marked paid by a",
-        "repayment, against `receipt_hash`; after `cancel_after = max(now + cancel delay, pending",
-        "deadline)` it may cancel without the attestor with that receipt. A new request replaces a",
-        "pending one."
-      ],
-      "discriminator": [
-        143,
-        22,
-        73,
-        35,
-        219,
-        217,
-        185,
-        212
-      ],
-      "accounts": [
-        {
-          "name": "holder",
-          "docs": [
-            "The pagaré's holder: the council while the asset is in the pool."
-          ],
-          "signer": true
-        },
-        {
-          "name": "pool",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  111,
-                  111,
-                  108
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool.creator",
-                "account": "Pool"
-              },
-              {
-                "kind": "account",
-                "path": "pool.asset_mint",
-                "account": "Pool"
-              }
-            ]
-          },
-          "relations": [
-            "line"
-          ]
-        },
-        {
-          "name": "line",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  105,
-                  110,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool"
-              },
-              {
-                "kind": "account",
-                "path": "line.line_id",
-                "account": "CreditLine"
-              }
-            ]
-          },
-          "relations": [
-            "pagare"
-          ]
-        },
-        {
-          "name": "pagare",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  97,
-                  103,
-                  97,
-                  114,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "line"
-              },
-              {
-                "kind": "arg",
-                "path": "draw_index"
-              }
-            ]
-          }
-        },
-        {
-          "name": "event_authority"
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": [
-        {
-          "name": "draw_index",
-          "type": "u16"
-        },
-        {
-          "name": "receipt_hash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        }
-      ]
-    },
-    {
       "name": "request_line",
       "docs": [
         "The borrower requests line `line_id` (the pool's next) on terms `terms`, in centavos of MXN;",
@@ -2208,6 +2063,9 @@
           "signer": true
         },
         {
+          "name": "multisig"
+        },
+        {
           "name": "payer",
           "writable": true,
           "signer": true
@@ -2336,88 +2194,20 @@
       ]
     },
     {
-      "name": "set_attestor",
+      "name": "set_cancel_grace",
       "docs": [
-        "Replaces the pool's attestor. The council and the new attestor sign; refused with the council as",
-        "attestor."
+        "Sets the wait from a pagaré's payment before its borrower may cancel it alone; never below",
+        "30 days. Council only."
       ],
       "discriminator": [
-        95,
-        11,
-        236,
-        157,
-        234,
-        146,
-        163,
-        237
-      ],
-      "accounts": [
-        {
-          "name": "council",
-          "signer": true,
-          "relations": [
-            "pool"
-          ]
-        },
-        {
-          "name": "new_attestor",
-          "docs": [
-            "The key that becomes the attestor; it signs, proving control of the key."
-          ],
-          "signer": true
-        },
-        {
-          "name": "pool",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  111,
-                  111,
-                  108
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool.creator",
-                "account": "Pool"
-              },
-              {
-                "kind": "account",
-                "path": "pool.asset_mint",
-                "account": "Pool"
-              }
-            ]
-          }
-        },
-        {
-          "name": "event_authority"
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "set_cancel_delay",
-      "docs": [
-        "Sets the wait, in seconds, from a cancellation request before the holder may cancel a pagaré",
-        "without the attestor; never below seven days. Council only. A pending request keeps its",
-        "deadline."
-      ],
-      "discriminator": [
-        53,
-        80,
-        113,
-        24,
+        18,
+        242,
+        191,
+        228,
+        180,
         133,
-        44,
-        234,
-        105
+        104,
+        187
       ],
       "accounts": [
         {
@@ -2426,6 +2216,9 @@
           "relations": [
             "pool"
           ]
+        },
+        {
+          "name": "multisig"
         },
         {
           "name": "pool",
@@ -2463,7 +2256,7 @@
       ],
       "args": [
         {
-          "name": "cancel_delay_seconds",
+          "name": "cancel_grace_seconds",
           "type": "u32"
         }
       ]
@@ -2491,6 +2284,9 @@
           "relations": [
             "pool"
           ]
+        },
+        {
+          "name": "multisig"
         },
         {
           "name": "pool",
@@ -2977,32 +2773,6 @@
       ]
     },
     {
-      "name": "AttestorSet",
-      "discriminator": [
-        172,
-        95,
-        188,
-        131,
-        231,
-        42,
-        189,
-        23
-      ]
-    },
-    {
-      "name": "CancelDelaySet",
-      "discriminator": [
-        146,
-        233,
-        222,
-        189,
-        194,
-        124,
-        225,
-        90
-      ]
-    },
-    {
       "name": "CancelGraceSet",
       "discriminator": [
         218,
@@ -3013,19 +2783,6 @@
         72,
         252,
         88
-      ]
-    },
-    {
-      "name": "CancellationRequested",
-      "discriminator": [
-        119,
-        135,
-        194,
-        94,
-        98,
-        201,
-        113,
-        253
       ]
     },
     {
@@ -3466,341 +3223,321 @@
     },
     {
       "code": 6001,
-      "name": "AttestorRequired",
-      "msg": "The pool's attestor must sign"
-    },
-    {
-      "code": 6002,
       "name": "SponsorRequired",
       "msg": "The sponsor named on this line must sign"
     },
     {
-      "code": 6003,
+      "code": 6002,
       "name": "NotHolder",
       "msg": "The pagaré's holder must sign"
     },
     {
-      "code": 6004,
+      "code": 6003,
       "name": "Paused",
       "msg": "The pool is paused"
     },
     {
-      "code": 6005,
+      "code": 6004,
       "name": "CouncilInvalid",
       "msg": "The council is not the vault of an autonomous Squads v4 multisig with a majority threshold"
     },
     {
-      "code": 6006,
+      "code": 6005,
       "name": "CouncilTooLarge",
       "msg": "The council multisig has more members than the program checks"
     },
     {
-      "code": 6007,
+      "code": 6006,
       "name": "CouncilKindInvalid",
       "msg": "This council kind is not accepted"
     },
     {
-      "code": 6008,
+      "code": 6007,
       "name": "NoPendingCouncil",
       "msg": "No council rotation is pending, or this signer is not the one proposed"
     },
     {
-      "code": 6009,
+      "code": 6008,
       "name": "ProposalExpired",
       "msg": "The council's decision is past its valid_until"
     },
     {
-      "code": 6010,
+      "code": 6009,
       "name": "WrongAccount",
       "msg": "Wrong mint or token account"
     },
     {
-      "code": 6011,
+      "code": 6010,
       "name": "AssetMintNotAllowed",
       "msg": "The asset mint carries a Token-2022 extension the pool does not accept"
     },
     {
-      "code": 6012,
+      "code": 6011,
       "name": "ShareMintNotAllowed",
       "msg": "The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions"
     },
     {
-      "code": 6013,
+      "code": 6012,
       "name": "AssetNotListed",
       "msg": "The asset mint is not on this cluster's allow-list"
     },
     {
-      "code": 6014,
+      "code": 6013,
       "name": "AssetIsShareMint",
       "msg": "The asset mint and the share mint are the same"
     },
     {
-      "code": 6015,
+      "code": 6014,
       "name": "CollectionNotAllowed",
       "msg": "The collection is not a bare Metaplex Core collection whose update authority is the pool"
     },
     {
-      "code": 6016,
+      "code": 6015,
       "name": "PagareAccountsMismatch",
       "msg": "The pagaré records passed are not the ones this payment touches, oldest first"
     },
     {
-      "code": 6017,
-      "name": "AttestorIsCouncil",
-      "msg": "The attestor cannot be the council"
-    },
-    {
-      "code": 6018,
+      "code": 6016,
       "name": "BorrowerIsCouncil",
       "msg": "The council cannot be the borrower"
     },
     {
-      "code": 6019,
+      "code": 6017,
       "name": "BorrowerIsCurator",
       "msg": "A member of the council cannot be the borrower"
     },
     {
-      "code": 6020,
-      "name": "BorrowerIsAttestor",
-      "msg": "The borrower cannot be the attestor"
-    },
-    {
-      "code": 6021,
+      "code": 6018,
       "name": "EndorseeInvalid",
-      "msg": "The endorsee is missing, or is the pool, the council or the attestor"
+      "msg": "The endorsee is missing, or is the pool, the council, a curator, the guardian or the borrower"
     },
     {
-      "code": 6022,
+      "code": 6019,
       "name": "WrongAmount",
       "msg": "Amount is zero or exceeds what is due"
     },
     {
-      "code": 6023,
+      "code": 6020,
       "name": "Overflow",
       "msg": "Arithmetic overflow"
     },
     {
-      "code": 6024,
+      "code": 6021,
       "name": "InvariantBroken",
       "msg": "A pool invariant does not hold after this instruction; the transaction is refused"
     },
     {
-      "code": 6025,
+      "code": 6022,
       "name": "InsufficientLiquidity",
       "msg": "Not enough liquidity in the vault"
     },
     {
-      "code": 6026,
+      "code": 6023,
       "name": "ZeroShares",
       "msg": "The deposit would mint zero shares"
     },
     {
-      "code": 6027,
+      "code": 6024,
       "name": "FirstDepositTooSmall",
       "msg": "First deposit below the minimum"
     },
     {
-      "code": 6028,
+      "code": 6025,
       "name": "SlippageExceeded",
       "msg": "The result is below the minimum the caller accepts"
     },
     {
-      "code": 6029,
+      "code": 6026,
       "name": "LineTooLarge",
       "msg": "The principal exceeds the pool's maximum line, max_line_bps of the NAV"
     },
     {
-      "code": 6030,
+      "code": 6027,
       "name": "OutstandingCapExceeded",
       "msg": "The draw would take the pool's outstanding principal above its cap"
     },
     {
-      "code": 6031,
+      "code": 6028,
       "name": "CollectionPeriodTooShort",
       "msg": "The collection period is shorter than the minimum"
     },
     {
-      "code": 6032,
-      "name": "CancelDelayTooShort",
-      "msg": "The cancel delay is below the seven-day floor"
-    },
-    {
-      "code": 6033,
+      "code": 6029,
       "name": "AccelerationNoticeTooShort",
       "msg": "The acceleration notice is below the seven-day floor"
     },
     {
-      "code": 6034,
+      "code": 6030,
       "name": "CancelGraceTooShort",
       "msg": "The borrower's cancel grace is below the thirty-day floor"
     },
     {
-      "code": 6035,
+      "code": 6031,
       "name": "LineStatus",
       "msg": "The line is not in the required status"
     },
     {
-      "code": 6036,
+      "code": 6032,
       "name": "AgreementHashRequired",
       "msg": "The signed agreement's hash is required"
     },
     {
-      "code": 6037,
+      "code": 6033,
       "name": "ExpedienteRootRequired",
       "msg": "The expediente root is required"
     },
     {
-      "code": 6038,
+      "code": 6034,
       "name": "PagareTemplateHashRequired",
       "msg": "The pagaré template's hash is required"
     },
     {
-      "code": 6039,
+      "code": 6035,
       "name": "ExpedienteMismatch",
       "msg": "The expediente root or the terms hash is not the one the borrower requested"
     },
     {
-      "code": 6040,
+      "code": 6036,
       "name": "RequestExpired",
       "msg": "The request is older than the council's review window"
     },
     {
-      "code": 6041,
+      "code": 6037,
       "name": "SponsorRoleInvalid",
       "msg": "sponsor_role is unknown"
     },
     {
-      "code": 6042,
+      "code": 6038,
       "name": "TermEnded",
       "msg": "The term has ended, or would end before the opening"
     },
     {
-      "code": 6043,
+      "code": 6039,
       "name": "InvalidSchedule",
       "msg": "The installment schedule is not valid"
     },
     {
-      "code": 6044,
+      "code": 6040,
       "name": "MaxMissedTooLow",
       "msg": "max_missed is below the floor: at least one missed installment must come before the collection trigger"
     },
     {
-      "code": 6045,
+      "code": 6041,
       "name": "ScheduleEndsAfterTerm",
       "msg": "The last installment would fall due after the term"
     },
     {
-      "code": 6046,
+      "code": 6042,
       "name": "NotScheduled",
       "msg": "The line has no installment schedule"
     },
     {
-      "code": 6047,
+      "code": 6043,
       "name": "AvailabilityEnded",
       "msg": "The draw window of this line has closed"
     },
     {
-      "code": 6048,
+      "code": 6044,
       "name": "TooManyDraws",
       "msg": "The line has reached its maximum number of draws"
     },
     {
-      "code": 6049,
+      "code": 6045,
       "name": "DrawsNotSuspended",
       "msg": "The line's draws are not suspended"
     },
     {
-      "code": 6050,
+      "code": 6046,
       "name": "AccelerationState",
       "msg": "No acceleration is pending on this line, or one already is"
     },
     {
-      "code": 6051,
+      "code": 6047,
       "name": "AccelerationNotDue",
       "msg": "The acceleration notice has not run"
     },
     {
-      "code": 6052,
+      "code": 6048,
       "name": "LateInterestUnpaid",
       "msg": "The repayment must cover the late interest due"
     },
     {
-      "code": 6053,
+      "code": 6049,
       "name": "NotEnoughMissed",
       "msg": "Fewer installments missed than the line allows before collection"
     },
     {
-      "code": 6054,
+      "code": 6050,
       "name": "TermNotEnded",
       "msg": "The term has not ended"
     },
     {
-      "code": 6055,
+      "code": 6051,
       "name": "WriteOffTooEarly",
       "msg": "A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace"
     },
     {
-      "code": 6056,
+      "code": 6052,
       "name": "FixDateInvalid",
       "msg": "The FIX date is not a valid date, is in the future, or is older than the published one"
     },
     {
-      "code": 6057,
+      "code": 6053,
       "name": "FixJump",
       "msg": "The FIX moves more than the feeder may publish; the council must"
     },
     {
-      "code": 6058,
+      "code": 6054,
       "name": "FixMismatch",
       "msg": "The FIX signed is not the one published now"
     },
     {
-      "code": 6059,
+      "code": 6055,
       "name": "FixStale",
       "msg": "No FIX is published, or it is too old for a draw"
     },
     {
-      "code": 6060,
+      "code": 6056,
       "name": "DocumentHashRequired",
       "msg": "The signed document's hash is required"
     },
     {
-      "code": 6061,
+      "code": 6057,
       "name": "SignatureMethodInvalid",
       "msg": "signature_method is unknown, or lacks its certificate fingerprint"
     },
     {
-      "code": 6062,
+      "code": 6058,
       "name": "PagareNotCovered",
       "msg": "No repayment has marked this pagaré paid"
     },
     {
-      "code": 6063,
+      "code": 6059,
       "name": "PagareAlreadyPaid",
       "msg": "This pagaré is already extinguished"
     },
     {
-      "code": 6064,
+      "code": 6060,
       "name": "CancelGraceNotElapsed",
       "msg": "The borrower may cancel alone only after the cancel grace from the payment"
     },
     {
-      "code": 6065,
+      "code": 6061,
       "name": "EndosoKindInvalid",
       "msg": "This kind of endoso is not one the program records"
     },
     {
-      "code": 6066,
+      "code": 6062,
       "name": "ProcuracionState",
       "msg": "The pagaré has no procuración in force, or already has one"
     },
     {
-      "code": 6067,
+      "code": 6063,
       "name": "AnnotationKindInvalid",
       "msg": "This kind is not a court annotation"
     },
     {
-      "code": 6068,
+      "code": 6064,
       "name": "EntryNotFound",
       "msg": "The referenced registry entry does not exist"
     }
@@ -3866,45 +3603,6 @@
       }
     },
     {
-      "name": "AttestorSet",
-      "docs": [
-        "The pool's attestor after `set_attestor`."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "attestor",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "CancelDelaySet",
-      "docs": [
-        "The pool's cancel delay after `set_cancel_delay`: the wait from a cancellation request before",
-        "the holder may cancel alone."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "cancel_delay_seconds",
-            "type": "u32"
-          }
-        ]
-      }
-    },
-    {
       "name": "CancelGraceSet",
       "type": {
         "kind": "struct",
@@ -3916,47 +3614,6 @@
           {
             "name": "cancel_grace_seconds",
             "type": "u32"
-          }
-        ]
-      }
-    },
-    {
-      "name": "CancellationRequested",
-      "docs": [
-        "Emitted by `request_cancellation`, after its `PagareEntry`: the holder may cancel alone with",
-        "`receipt_hash` once `cancel_after` has passed."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "line_id",
-            "type": "u64"
-          },
-          {
-            "name": "draw_index",
-            "type": "u16"
-          },
-          {
-            "name": "asset",
-            "type": "pubkey"
-          },
-          {
-            "name": "receipt_hash",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "cancel_after",
-            "type": "i64"
           }
         ]
       }
@@ -4507,20 +4164,9 @@
             "type": "u16"
           },
           {
-            "name": "attestor",
-            "type": "pubkey"
-          },
-          {
             "name": "collection_period_seconds",
             "docs": [
               "At least `MIN_COLLECTION_PERIOD_SECONDS`."
-            ],
-            "type": "u32"
-          },
-          {
-            "name": "cancel_delay_seconds",
-            "docs": [
-              "At least `MIN_CANCEL_DELAY_SECONDS`."
             ],
             "type": "u32"
           },
@@ -5302,26 +4948,6 @@
             }
           },
           {
-            "name": "cancel_after",
-            "docs": [
-              "Deadline of the pending cancellation request, after which the owner may cancel without the",
-              "attestor; zero when none."
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "requested_receipt_hash",
-            "docs": [
-              "The receipt hash of that request."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
             "name": "procurador",
             "docs": [
               "The procurador of the endoso en procuración in force; the zero key when none. Cleared by",
@@ -5417,7 +5043,7 @@
       "name": "PagareCancelled",
       "docs": [
         "Emitted by `cancel_pagare`, before the burn. `holder` is the key that extinguished the pagaré",
-        "(the council or the procurador); the sidecar stays as the PAGADO mark."
+        "(the council, the procurador or the borrower); the sidecar stays as the PAGADO mark."
       ],
       "type": {
         "kind": "struct",
@@ -5452,9 +5078,9 @@
             "type": "pubkey"
           },
           {
-            "name": "backstop",
+            "name": "by_borrower",
             "docs": [
-              "The holder cancelled alone after a request's deadline, without the attestor."
+              "The borrower cancelled alone after the cancel grace."
             ],
             "type": "bool"
           }
@@ -5719,15 +5345,6 @@
             "type": "pubkey"
           },
           {
-            "name": "attestor",
-            "docs": [
-              "The agreements engine's key: co-signs `draw`, `endorse_pagare` and",
-              "`court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign",
-              "`annotate_payment` alone. Never the council; rotated with `set_attestor`."
-            ],
-            "type": "pubkey"
-          },
-          {
             "name": "asset_mint",
             "type": "pubkey"
           },
@@ -5797,15 +5414,6 @@
             "docs": [
               "Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be",
               "written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`."
-            ],
-            "type": "u32"
-          },
-          {
-            "name": "cancel_delay_seconds",
-            "docs": [
-              "Seconds from a cancellation request before the owner may cancel without the attestor; at",
-              "least `MIN_CANCEL_DELAY_SECONDS`. Set with `set_cancel_delay`; a request stores its own",
-              "deadline, so a change never moves one."
             ],
             "type": "u32"
           },
@@ -6003,10 +5611,6 @@
             "type": "pubkey"
           },
           {
-            "name": "attestor",
-            "type": "pubkey"
-          },
-          {
             "name": "asset_mint",
             "type": "pubkey"
           },
@@ -6024,10 +5628,6 @@
           },
           {
             "name": "collection_period_seconds",
-            "type": "u32"
-          },
-          {
-            "name": "cancel_delay_seconds",
             "type": "u32"
           },
           {

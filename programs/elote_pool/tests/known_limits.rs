@@ -264,8 +264,8 @@ fn limit_late_interest_is_settled_at_execution_time_so_clients_must_pad() {
 /// and verifies each with one `create_program_address`, so its compute does not depend on the
 /// line's key. The price: a valid bump that is not the canonical one (the highest valid) is
 /// accepted too, and the asset and sidecar then sit at addresses `find_program_address` never
-/// derives. Proving a bump canonical costs the same search that was removed. The attestor
-/// co-signs every draw and derives the canonical bump, and the `PagareIssued` event and the
+/// derives. Proving a bump canonical costs the same search that was removed. The client
+/// derives the canonical bump, and the `PagareIssued` event and the
 /// sidecar carry the asset's address, so indexers never need to derive it; a non-canonical
 /// mint is a client bug, not an attack, and this test pins that it is possible.
 #[test]
@@ -293,7 +293,7 @@ fn limit_draw_accepts_a_valid_non_canonical_pagare_bump() {
     let mut ix = env.draw_ix_full(&k, line_id, &b, &b, UNIT, odd_bump, pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD);
     let i = ix.accounts.iter().position(|m| m.pubkey == canonical).unwrap();
     ix.accounts[i].pubkey = odd;
-    env.send_with_attestor(ix, &borrower);
+    env.send(ix, &borrower, &[]);
     let sidecar = env.pagare(&k, line_id, 0);
     assert_eq!(sidecar.asset, odd, "the sidecar and the event name the asset, wherever it sits");
     assert_eq!(env.asset_state(&odd).base.owner, k.pool);

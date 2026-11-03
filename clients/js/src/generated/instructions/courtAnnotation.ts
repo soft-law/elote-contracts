@@ -62,7 +62,7 @@ export function getCourtAnnotationDiscriminatorBytes(): ReadonlyUint8Array {
 export type CourtAnnotationInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountHolder extends string | AccountMeta<string> = string,
-  TAccountAttestor extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountPagare extends string | AccountMeta<string> = string,
@@ -78,10 +78,9 @@ export type CourtAnnotationInstruction<
         ? ReadonlySignerAccount<TAccountHolder> &
             AccountSignerMeta<TAccountHolder>
         : TAccountHolder,
-      TAccountAttestor extends string
-        ? ReadonlySignerAccount<TAccountAttestor> &
-            AccountSignerMeta<TAccountAttestor>
-        : TAccountAttestor,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPool extends string
         ? ReadonlyAccount<TAccountPool>
         : TAccountPool,
@@ -147,7 +146,7 @@ export function getCourtAnnotationInstructionDataCodec(): FixedSizeCodec<
 
 export type CourtAnnotationAsyncInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
@@ -157,8 +156,7 @@ export type CourtAnnotationAsyncInput<
 > = {
   /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
-  /** Attests the court document behind `document_hash`. */
-  attestor: TAccountAttestor;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   line: TAccountLine;
   pagare?: TAccountPagare;
@@ -171,7 +169,7 @@ export type CourtAnnotationAsyncInput<
 
 export async function getCourtAnnotationInstructionAsync<
   TAccountHolder extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput,
@@ -181,7 +179,7 @@ export async function getCourtAnnotationInstructionAsync<
 >(
   input: CourtAnnotationAsyncInput<
     TAccountHolder,
-    TAccountAttestor,
+    TAccountMultisig,
     TAccountPool,
     TAccountLine,
     TAccountPagare,
@@ -199,8 +197,8 @@ export async function getCourtAnnotationInstructionAsync<
       InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -238,9 +236,9 @@ export async function getCourtAnnotationInstructionAsync<
   // Original accounts.
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
-    attestor: {
-      value: input.attestor ?? null,
-      isSigner: true,
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
@@ -295,7 +293,7 @@ export async function getCourtAnnotationInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("holder", accounts.holder),
-      getAccountMeta("attestor", accounts.attestor),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("pagare", accounts.pagare),
@@ -313,8 +311,8 @@ export async function getCourtAnnotationInstructionAsync<
       InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -341,7 +339,7 @@ export async function getCourtAnnotationInstructionAsync<
 
 export type CourtAnnotationInput<
   TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
@@ -351,8 +349,7 @@ export type CourtAnnotationInput<
 > = {
   /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
-  /** Attests the court document behind `document_hash`. */
-  attestor: TAccountAttestor;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   line: TAccountLine;
   pagare: TAccountPagare;
@@ -365,7 +362,7 @@ export type CourtAnnotationInput<
 
 export function getCourtAnnotationInstruction<
   TAccountHolder extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput,
@@ -375,7 +372,7 @@ export function getCourtAnnotationInstruction<
 >(
   input: CourtAnnotationInput<
     TAccountHolder,
-    TAccountAttestor,
+    TAccountMultisig,
     TAccountPool,
     TAccountLine,
     TAccountPagare,
@@ -392,8 +389,8 @@ export function getCourtAnnotationInstruction<
     InstructionAccountInputAddress<TAccountHolder>
   >,
   ResolvedInstructionAccountMeta<
-    TAccountAttestor,
-    InstructionAccountInputAddress<TAccountAttestor>
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -430,9 +427,9 @@ export function getCourtAnnotationInstruction<
   // Original accounts.
   const originalAccounts = {
     holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
-    attestor: {
-      value: input.attestor ?? null,
-      isSigner: true,
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
@@ -466,7 +463,7 @@ export function getCourtAnnotationInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("holder", accounts.holder),
-      getAccountMeta("attestor", accounts.attestor),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("pagare", accounts.pagare),
@@ -484,8 +481,8 @@ export function getCourtAnnotationInstruction<
       InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -518,8 +515,7 @@ export type ParsedCourtAnnotationInstruction<
   accounts: {
     /** The pagaré's holder: the council while the asset is in the pool. */
     holder: TAccountMetas[0];
-    /** Attests the court document behind `document_hash`. */
-    attestor: TAccountMetas[1];
+    multisig: TAccountMetas[1];
     pool: TAccountMetas[2];
     line: TAccountMetas[3];
     pagare: TAccountMetas[4];
@@ -556,7 +552,7 @@ export function parseCourtAnnotationInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       holder: getNextAccount(),
-      attestor: getNextAccount(),
+      multisig: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       pagare: getNextAccount(),

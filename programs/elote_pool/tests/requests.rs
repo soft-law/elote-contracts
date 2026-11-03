@@ -41,7 +41,7 @@ fn a_request_stores_the_terms_and_the_payer_funds_it() {
     assert_eq!(env.pool(&k).line_count, 1);
 
     let ix = env.draw_ix_amount(&k, 0, &borrower.pubkey(), UNIT);
-    env.expect_err_with_attestor(ix, &borrower, E_LINE_STATUS);
+    env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
 }
 
 #[test]
