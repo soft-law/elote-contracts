@@ -1,6 +1,6 @@
 //! What Metaplex Core (the pinned `release/core@0.15.3` binary, through the
 //! `mpl-core` 0.12.1 crate) lets the parties do with a pagaré asset after its creation. Condition
-//! C9 of the legal brief: after an endoso en propiedad the pool, the admin and the attestor must
+//! C9 of the legal brief: after an endoso en propiedad the pool, the council and the attestor must
 //! hold no power to move, freeze or burn the asset. These tests pin, as Core behaves today, whether
 //! the permanent delegates' authorities can be handed off or extinguished, who can thaw, and whether
 //! the asset's update authority can leave the collection. They drive Core alone, with keypairs
@@ -27,7 +27,6 @@ use mpl_core::types::{
 };
 use mpl_core::{AuthorityType, BaseAuthority};
 use solana_instruction::Instruction;
-use solana_keypair::Keypair;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 

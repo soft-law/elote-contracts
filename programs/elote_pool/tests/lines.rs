@@ -6,7 +6,6 @@ mod common;
 use common::*;
 use elote_pool::events::{LineDrawn, LineOpened, LineWrittenOff};
 use elote_pool::state::{LineStatus, SPONSOR_GUARANTOR, SPONSOR_PROMOTER};
-use solana_keypair::Keypair;
 use solana_signer::Signer;
 
 /// A pool with one investor who deposited `assets`.
@@ -64,8 +63,8 @@ fn open_draw_repay_full_cycle_raises_share_value() {
     assert_eq!((line.drawn, line.draws, line.interest_due), (4 * UNIT, 1, 400_000));
 
     // The borrower earns the interest elsewhere. Late interest, then interest, then principal.
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 400_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 400_000);
 
     let ev = env.repay(&k, 0, &borrower, 2 * UNIT);
     assert_eq!(ev.payer, borrower.pubkey());
@@ -99,21 +98,21 @@ fn the_attestor_must_sign_openings_and_draws() {
     let mut env = Env::new();
     let (k, _) = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let attestor = env.attestor.insecure_clone();
     let stranger = env.funded(1);
     let p = env.line_params(4 * UNIT, 1_000);
 
     // A stranger signs as attestor.
-    let mut ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
+    let mut ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
     let meta = ix.accounts.iter_mut().find(|m| m.pubkey == attestor.pubkey()).unwrap();
     meta.pubkey = stranger.pubkey();
-    env.expect_err(ix, &admin, &[&borrower, &stranger], E_ATTESTOR_REQUIRED);
+    env.expect_err(ix, &council, &[&borrower, &stranger], E_ATTESTOR_REQUIRED);
     // The attestor's account is passed without its signature.
-    let mut ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
+    let mut ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
     let meta = ix.accounts.iter_mut().find(|m| m.pubkey == attestor.pubkey()).unwrap();
     meta.is_signer = false;
-    assert!(env.try_send(ix, &admin, &[&borrower]).is_err());
+    assert!(env.try_send(ix, &council, &[&borrower]).is_err());
     assert_eq!(env.pool(&k).line_count, 0);
 
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
@@ -131,8 +130,8 @@ fn the_attestor_must_sign_openings_and_draws() {
 
     // After a rotation the new key signs and the old one is a stranger.
     let new_attestor = env.funded(1);
-    let ix = env.set_attestor_ix(&k, &admin.pubkey(), &new_attestor.pubkey());
-    env.send(ix, &admin, &[&new_attestor]);
+    let ix = env.set_attestor_ix(&k, &council.pubkey(), &new_attestor.pubkey());
+    env.send(ix, &council, &[&new_attestor]);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
     env.expect_err_with_attestor(ix, &borrower, E_ATTESTOR_REQUIRED);
     let mut ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
@@ -149,28 +148,28 @@ fn sponsor_must_cosign_when_named_and_its_role_is_recorded() {
     let borrower = env.borrower(&k);
     let sponsor = env.funded(1);
     let impostor = env.funded(1);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let attestor = env.attestor.insecure_clone();
     let mut p = env.line_params(4 * UNIT, 1_000);
     p.sponsor = Some(sponsor.pubkey());
     p.sponsor_role = SPONSOR_GUARANTOR;
 
     // Named but absent.
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&borrower, &attestor], E_SPONSOR_REQUIRED);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[&borrower, &attestor], E_SPONSOR_REQUIRED);
     // Someone else signs in the sponsor's place.
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, Some(impostor.pubkey()));
-    env.expect_err(ix, &admin, &[&borrower, &attestor, &impostor], E_SPONSOR_REQUIRED);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, Some(impostor.pubkey()));
+    env.expect_err(ix, &council, &[&borrower, &attestor, &impostor], E_SPONSOR_REQUIRED);
     // The sponsor's account is passed without its signature.
-    let mut ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, Some(sponsor.pubkey()));
+    let mut ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, Some(sponsor.pubkey()));
     let meta = ix.accounts.iter_mut().find(|m| m.pubkey == sponsor.pubkey()).unwrap();
     meta.is_signer = false;
-    assert!(env.try_send(ix, &admin, &[&borrower, &attestor]).is_err());
+    assert!(env.try_send(ix, &council, &[&borrower, &attestor]).is_err());
     // A role byte above `SPONSOR_GUARANTOR` means nothing.
     let mut bad = p;
     bad.sponsor_role = 2;
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &bad, Some(sponsor.pubkey()));
-    env.expect_err(ix, &admin, &[&borrower, &attestor, &sponsor], E_SPONSOR_ROLE_INVALID);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &bad, Some(sponsor.pubkey()));
+    env.expect_err(ix, &council, &[&borrower, &attestor, &sponsor], E_SPONSOR_ROLE_INVALID);
     assert_eq!(env.pool(&k).line_count, 0);
 
     let (line_id, meta) = env.open_line_with(&k, &borrower, &p, Some(&sponsor));
@@ -195,8 +194,8 @@ fn sponsor_pays_interest_on_behalf() {
     let (k, _) = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let sponsor = env.funded(1);
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &sponsor.pubkey(), 400_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &sponsor.pubkey(), 400_000);
     let mut p = env.line_params(4 * UNIT, 1_000);
     p.sponsor = Some(sponsor.pubkey());
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, Some(&sponsor));
@@ -221,8 +220,8 @@ fn repay_clamps_overpayment_and_rejects_wrong_status() {
     let mut env = Env::new();
     let (k, _) = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 2 * UNIT);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 2 * UNIT);
     let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000);
 
     // Not drawn yet.
@@ -269,8 +268,8 @@ fn draw_rejects_insufficient_liquidity_strangers_and_the_pause() {
     env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
     let ix = env.draw_ix(&k, line_id, &borrower.pubkey());
     env.expect_err_with_attestor(ix, &borrower, E_INSUFFICIENT_LIQUIDITY);
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &a.pubkey(), UNIT);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &a.pubkey(), UNIT);
     env.deposit(&k, &a, UNIT);
 
     // Only the borrower draws.
@@ -300,24 +299,24 @@ fn write_off_after_term_lowers_nav_once() {
     let mut env = Env::new();
     let (k, _) = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let p = env.line_params(4 * UNIT, 1_000);
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
 
     // An approved line is not written off.
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_LINE_STATUS);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_LINE_STATUS);
 
     env.draw(&k, line_id, &borrower);
     // 1.0 repaid: 0.4 of interest first, then 0.6 of principal.
     env.repay(&k, line_id, &borrower, UNIT);
     assert_eq!(env.nav(&k), 10_400_000);
 
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_TERM_NOT_ENDED);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_TERM_NOT_ENDED);
     env.warp(p.term_end);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_TERM_NOT_ENDED);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_TERM_NOT_ENDED);
 
     env.warp(p.term_end + 1);
     let ix = env.write_off_ix(&k, line_id, &borrower.pubkey());
@@ -325,8 +324,8 @@ fn write_off_after_term_lowers_nav_once() {
 
     // Pause does not block recognising a loss. The loss is the drawn principal still unpaid.
     env.set_paused(&k, true);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    let meta = env.send(ix, &admin, &[]);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    let meta = env.send(ix, &council, &[]);
     let ev: LineWrittenOff = find_event(&meta).expect("LineWrittenOff");
     assert_eq!((ev.pool, ev.line_id, ev.loss, ev.nav_after), (k.pool, line_id, 3_400_000, 7 * UNIT));
     let pool = env.pool(&k);
@@ -338,8 +337,8 @@ fn write_off_after_term_lowers_nav_once() {
     assert_eq!(line.closed_at, p.term_end + 1);
     env.set_paused(&k, false);
 
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_LINE_STATUS);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_LINE_STATUS);
     assert_eq!(env.nav(&k), 7 * UNIT, "the loss counts once");
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), UNIT);
     env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
@@ -350,49 +349,49 @@ fn open_rejects_bad_params() {
     let mut env = Env::new();
     let (k, _) = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let attestor = env.attestor.insecure_clone();
     let good = env.line_params(4 * UNIT, 1_000);
     let signers: [&Keypair; 2] = [&borrower, &attestor];
 
     let mut p = good;
     p.principal = 0;
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &signers, E_WRONG_AMOUNT);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &signers, E_WRONG_AMOUNT);
 
     let mut p = good;
     p.rate_bps = 10_001;
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &signers, E_WRONG_AMOUNT);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &signers, E_WRONG_AMOUNT);
 
     let mut p = good;
     p.term_end = env.now();
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &signers, E_TERM_ENDED);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &signers, E_TERM_ENDED);
 
     let mut p = good;
     p.agreement_hash = [0; 32];
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &signers, E_AGREEMENT_HASH_REQUIRED);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &signers, E_AGREEMENT_HASH_REQUIRED);
 
     // The expediente root is a commitment the line cannot do without.
     let mut p = good;
     p.expediente_root = [0; 32];
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &signers, E_EXPEDIENTE_ROOT_REQUIRED);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &signers, E_EXPEDIENTE_ROOT_REQUIRED);
 
     // Out of sequence: the next id is 0.
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 1, &borrower.pubkey(), &good, None);
-    env.expect_err(ix, &admin, &signers, E_WRONG_ACCOUNT);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 1, &borrower.pubkey(), &good, None);
+    env.expect_err(ix, &council, &signers, E_WRONG_ACCOUNT);
 
-    // Only the admin approves.
+    // Only the council approves.
     let ix = env.open_line_ix(&k, &borrower.pubkey(), 0, &borrower.pubkey(), &good, None);
     env.expect_err(ix, &borrower, &[&attestor], E_UNAUTHORIZED);
 
     // Paused: no new lines.
     env.set_paused(&k, true);
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &good, None);
-    env.expect_err(ix, &admin, &signers, E_PAUSED);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &good, None);
+    env.expect_err(ix, &council, &signers, E_PAUSED);
     env.set_paused(&k, false);
 
     // The full rate is accepted and the next ids follow in sequence; at 100% a year a line drawn
@@ -438,24 +437,24 @@ fn the_draw_window_of_a_bullet_line_closes_at_the_term_exactly() {
 #[test]
 fn open_line_refuses_a_principal_above_max_line_bps_of_the_nav() {
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let attestor = env.attestor.insecure_clone();
-    let mint = env.create_mint(&admin.pubkey(), 6);
+    let mint = env.create_mint(&council.pubkey(), 6);
     let (k, ix) = env.init_pool_full(&mint, 0, 1_000); // 10% of the NAV per line
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
 
     // NAV 0: nothing can be opened, however small.
     let borrower = env.borrower(&k);
     let p = env.line_params(1, 0);
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&borrower, &attestor], E_LINE_TOO_LARGE);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[&borrower, &attestor], E_LINE_TOO_LARGE);
 
     // NAV 10.0: the cap is exactly 1.0.
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
     let p = env.line_params(UNIT + 1, 0);
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&borrower, &attestor], E_LINE_TOO_LARGE);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[&borrower, &attestor], E_LINE_TOO_LARGE);
     assert_eq!(env.pool(&k).line_count, 0);
     let first = env.open_line(&k, &borrower, UNIT, 0);
     env.draw(&k, first, &borrower);
@@ -464,16 +463,16 @@ fn open_line_refuses_a_principal_above_max_line_bps_of_the_nav() {
     // line of 1.0 opens; 1.0 + 1 does not.
     assert_eq!(env.nav(&k), 10 * UNIT);
     let p = env.line_params(UNIT + 1, 0);
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 1, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&borrower, &attestor], E_LINE_TOO_LARGE);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 1, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[&borrower, &attestor], E_LINE_TOO_LARGE);
     env.open_line(&k, &borrower, UNIT, 0);
 
     // A wrong vault account is refused before the cap is measured.
     let p = env.line_params(UNIT, 0);
-    let mut ix = env.open_line_ix(&k, &admin.pubkey(), 2, &borrower.pubkey(), &p, None);
+    let mut ix = env.open_line_ix(&k, &council.pubkey(), 2, &borrower.pubkey(), &p, None);
     let vault_index = ix.accounts.iter().position(|m| m.pubkey == k.vault).expect("vault meta");
     ix.accounts[vault_index].pubkey = ata(&investor.pubkey(), &k.asset_mint);
-    env.expect_err(ix, &admin, &[&borrower, &attestor], E_WRONG_ACCOUNT);
+    env.expect_err(ix, &council, &[&borrower, &attestor], E_WRONG_ACCOUNT);
 }
 
 /// The first tranche is the only one to flip `Approved -> Active`; later tranches keep

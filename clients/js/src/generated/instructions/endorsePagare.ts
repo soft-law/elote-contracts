@@ -194,7 +194,7 @@ export type EndorsePagareAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. */
+  /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
   /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification. */
   attestor: TAccountAttestor;
@@ -482,7 +482,7 @@ export type EndorsePagareInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. */
+  /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
   /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification. */
   attestor: TAccountAttestor;
@@ -736,7 +736,7 @@ export type ParsedEndorsePagareInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** The pagaré's holder: the admin while the asset is in the pool. */
+    /** The pagaré's holder: the council while the asset is in the pool. */
     holder: TAccountMetas[0];
     /** Attests the signed endoso behind `endoso_hash` and the endorsee's verification. */
     attestor: TAccountMetas[1];

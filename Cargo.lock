@@ -1318,6 +1318,7 @@ dependencies = [
  "solana-pubkey 3.0.0",
  "solana-security-txt",
  "solana-sha256-hasher",
+ "solana-signature",
  "solana-signer",
  "solana-transaction",
  "solana-transaction-error",

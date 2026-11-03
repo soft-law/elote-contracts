@@ -32,16 +32,16 @@ fn compute_units(installments: u16) -> [(&'static str, u64); 3] {
     env.warp(env.now() + i64::from(installments) * p.interval() + 1);
     let late = env.arrears(&k, line_id).late_due;
     assert!(late > 0);
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), late + 1_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), late + 1_000);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), late + 1_000);
     let repay = env.send(ix, &borrower, &[]).compute_units_consumed;
     let ix = env.mark_in_collection_ix(&k, line_id);
     let mark = env.send(ix, &investor, &[]).compute_units_consumed;
     // The write-off waits for the collection period from the mark.
     env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    let write_off = env.send(ix, &admin, &[]).compute_units_consumed;
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    let write_off = env.send(ix, &council, &[]).compute_units_consumed;
     [("repay", repay), ("mark_in_collection", mark), ("write_off", write_off)]
 }
 
@@ -97,8 +97,8 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, line_id, &borrower);
     let interest = env.line(&k, line_id).interest_due;
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 100 * UNIT + interest);
     let cancel = env.cancel_pagare(&k, line_id, 0).compute_units_consumed;
     println!("cancel_pagare at 120 installments: {cancel} CU");
@@ -111,11 +111,11 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let procurador = env.funded(1);
     env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
     let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
     let attestor = env.attestor.insecure_clone();
-    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &procurador.pubkey(), &admin.pubkey(), RECEIPT_HASH);
-    let by_procurador = env.send(ix, &admin, &[&procurador, &attestor]).compute_units_consumed;
+    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &procurador.pubkey(), &council.pubkey(), RECEIPT_HASH);
+    let by_procurador = env.send(ix, &council, &[&procurador, &attestor]).compute_units_consumed;
     println!("cancel_pagare by the procurador at 120 installments: {by_procurador} CU");
     assert!(by_procurador < CEILING, "cancel by the procurador used {by_procurador} CU, ceiling {CEILING}");
     // The backstop, on a third line: the request, then the holder alone after the delay.
@@ -123,14 +123,14 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, line_id, &borrower);
     let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
-    let ix = env.request_cancellation_ix(&k, line_id, 0, &admin.pubkey(), RECEIPT_HASH);
-    let request = env.send(ix, &admin, &[]).compute_units_consumed;
+    let ix = env.request_cancellation_ix(&k, line_id, 0, &council.pubkey(), RECEIPT_HASH);
+    let request = env.send(ix, &council, &[]).compute_units_consumed;
     println!("request_cancellation at 120 installments: {request} CU");
     env.warp(env.now() + i64::from(CANCEL_DELAY) + 1);
-    let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &admin.pubkey(), &admin.pubkey(), RECEIPT_HASH);
-    let alone = env.send(ix, &admin, &[]).compute_units_consumed;
+    let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &council.pubkey(), &council.pubkey(), RECEIPT_HASH);
+    let alone = env.send(ix, &council, &[]).compute_units_consumed;
     println!("cancel_pagare by the holder alone at 120 installments: {alone} CU");
     assert!(request < CEILING && alone < CEILING);
 }
@@ -152,13 +152,13 @@ fn repay_after_the_mark_stays_under_the_ceiling_at_120_installments() {
     let ix = env.mark_in_collection_ix(&k, line_id);
     let mark = env.send(ix, &investor, &[]).compute_units_consumed;
     let late = env.arrears(&k, line_id).late_due;
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), late + 1_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), late + 1_000);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), late + 1_000);
     let repay = env.send(ix, &borrower, &[]).compute_units_consumed;
     env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    let write_off = env.send(ix, &admin, &[]).compute_units_consumed;
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    let write_off = env.send(ix, &council, &[]).compute_units_consumed;
     println!("mark_in_collection at 120 installments, 3 missed: {mark} CU");
     println!("repay after the mark at 120 installments: {repay} CU");
     println!("write_off after the mark at 120 installments: {write_off} CU");
@@ -181,9 +181,9 @@ fn procuracion_stays_under_the_ceiling() {
     let cu = env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH).compute_units_consumed;
     println!("endorse_pagare (procuracion, plugin added) at 120 installments: {cu} CU");
     assert!(cu < CEILING, "procuracion used {cu} CU, ceiling {CEILING}");
-    let admin = env.admin.insecure_clone();
-    let ix = env.revoke_procuracion_ix(&k, line_id, 0, &admin.pubkey(), [0x7e; 32]);
-    let revoke = env.send(ix, &admin, &[]).compute_units_consumed;
+    let council = env.council.insecure_clone();
+    let ix = env.revoke_procuracion_ix(&k, line_id, 0, &council.pubkey(), [0x7e; 32]);
+    let revoke = env.send(ix, &council, &[]).compute_units_consumed;
     println!("revoke_procuracion at 120 installments: {revoke} CU");
     let again = env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH).compute_units_consumed;
     println!("endorse_pagare (procuracion, plugin approved) at 120 installments: {again} CU");
@@ -224,8 +224,8 @@ fn a_payment_covering_five_sidecars_stays_under_the_ceiling() {
     env.warp(t0 + 120 * p.interval() + 1);
     let line = env.line(&k, line_id);
     let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), owed);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed);
     let sidecars = env.payment_sidecars(&k, line_id, owed);
     assert_eq!(sidecars.len(), 5);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), owed);

@@ -1,5 +1,5 @@
 //! elote_pool: a liquidity pool with a share token. Investors deposit the pool asset and receive
-//! shares; the admin approves credit lines from the pool; repaid interest raises the value of
+//! shares; the council approves credit lines from the pool; repaid interest raises the value of
 //! every share and a recognised loss lowers it.
 //!
 //! Share accounting follows ERC-4626: `shares = assets * supply / NAV` on deposit and
@@ -8,6 +8,7 @@
 
 use anchor_lang::prelude::*;
 
+pub mod council;
 pub mod errors;
 pub mod events;
 pub mod instructions;
@@ -38,47 +39,41 @@ security_txt! {
 pub mod elote_pool {
     use super::*;
 
-    /// Creates the pool, its vault and its dead-shares account around `asset_mint`, the admin's
-    /// share mint and the series collection. The admin signs. Fixes the grace period and the line
-    /// cap (`1..=10_000` bps of the NAV) for the pool's life; sets the attestor (not the admin),
-    /// the collection period (at least 30 days) and the cancel delay (at least seven days).
-    pub fn init_pool(
-        ctx: Context<InitPool>,
-        grace_period_seconds: u32,
-        max_line_bps: u16,
-        attestor: Pubkey,
-        collection_period_seconds: u32,
-        cancel_delay_seconds: u32,
-    ) -> Result<()> {
-        instructions::pool::init_pool(ctx, grace_period_seconds, max_line_bps, attestor, collection_period_seconds, cancel_delay_seconds)
+    /// Creates the pool, its vault and its dead-shares account around `asset_mint`, the creator's
+    /// share mint and the series collection. The creator signs and pays; the council is vault 0 of
+    /// `multisig`, an autonomous Squads v4 multisig of at most ten members with a majority
+    /// threshold, and does not sign. Fixes the grace period and the line cap (`1..=10_000` bps of the
+    /// NAV) for the pool's life.
+    pub fn init_pool(ctx: Context<InitPool>, params: InitPoolParams) -> Result<()> {
+        instructions::pool::init_pool(ctx, params)
     }
 
     /// Sets the seconds a line in collection waits, from its mark, before it can be written off.
-    /// Admin only; refused below the 30-day floor.
+    /// Council only; refused below the 30-day floor.
     pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_period_seconds: u32) -> Result<()> {
         instructions::pool::set_collection_period(ctx, collection_period_seconds)
     }
 
     /// Sets the wait, in seconds, from a cancellation request before the holder may cancel a pagaré
-    /// without the attestor; never below seven days. Admin only. A pending request keeps its
+    /// without the attestor; never below seven days. Council only. A pending request keeps its
     /// deadline.
     pub fn set_cancel_delay(ctx: Context<SetCancelDelay>, cancel_delay_seconds: u32) -> Result<()> {
         instructions::pool::set_cancel_delay(ctx, cancel_delay_seconds)
     }
 
-    /// Replaces the pool's attestor. The admin and the new attestor sign; refused with the admin as
+    /// Replaces the pool's attestor. The council and the new attestor sign; refused with the council as
     /// attestor.
     pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
         instructions::pool::set_attestor(ctx)
     }
 
     /// Closes the draw window of an `Approved` or `Active` line now, forfeiting the undrawn
-    /// remainder. Admin only. Repayment is untouched.
+    /// remainder. Council only. Repayment is untouched.
     pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
         instructions::lines::suspend_draws(ctx)
     }
 
-    /// Cancels an `Approved` line nobody drew. Admin only; refused once anything was drawn.
+    /// Cancels an `Approved` line nobody drew. Council only; refused once anything was drawn.
     pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {
         instructions::lines::cancel_line(ctx)
     }
@@ -96,8 +91,8 @@ pub mod elote_pool {
     }
 
     /// Approves line `line_id` (the next): a commitment of `principal` at an annual `rate_bps`,
-    /// repaid at `term_end` or on the `schedule`'s calendar. The admin, the borrower, the attestor
-    /// and the sponsor if named sign; refused while paused, with the admin or the attestor as
+    /// repaid at `term_end` or on the `schedule`'s calendar. The council, the borrower, the attestor
+    /// and the sponsor if named sign; refused while paused, with the council or the attestor as
     /// borrower, or above the line cap. Moves no money.
     #[allow(clippy::too_many_arguments)]
     pub fn open_line(
@@ -145,7 +140,7 @@ pub mod elote_pool {
 
     /// Extinguishes pagaré `draw_index` once a repayment has marked it paid
     /// (`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry,
-    /// then thaws and burns the asset; the record stays. The owner (the admin) or the procurador of
+    /// then thaws and burns the asset; the record stays. The owner (the council) or the procurador of
     /// record signs, with the attestor; without the attestor, only the owner after a request's
     /// `cancel_after`, with the requested receipt. Never paused.
     pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
@@ -154,8 +149,8 @@ pub mod elote_pool {
 
     /// Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets
     /// the program address `["procurador", pagare, to]` burn the asset through an owner-managed
-    /// `BurnDelegate`. The admin (the holder) and the attestor sign; `kind` must be
-    /// `KIND_PROCURACION`; refused with `to` the zero key, the pool, the admin or the attestor, or
+    /// `BurnDelegate`. The council (the holder) and the attestor sign; `kind` must be
+    /// `KIND_PROCURACION`; refused with `to` the zero key, the pool, the council or the attestor, or
     /// a procuración in force.
     pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::endorse_pagare(ctx, draw_index, kind, to, endoso_hash)
@@ -163,19 +158,19 @@ pub mod elote_pool {
 
     /// Revokes the procuración in force on pagaré `draw_index`: appends the revocation entry over
     /// the signed revocation's hash and returns the burn delegate to the owner. The holder (the
-    /// admin) signs.
+    /// council) signs.
     pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entry_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::revoke_procuracion(ctx, draw_index, entry_hash)
     }
 
     /// Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,
     /// suspension, cancellation) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. The
-    /// holder (the admin) and the attestor sign; refused on a cancelled pagaré; moves nothing.
+    /// holder (the council) and the attestor sign; refused on a cancelled pagaré; moves nothing.
     pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> Result<()> {
         instructions::pagare::court_annotation(ctx, draw_index, kind, document_hash)
     }
 
-    /// The holder (the admin) requests the cancellation of pagaré `draw_index`, marked paid by a
+    /// The holder (the council) requests the cancellation of pagaré `draw_index`, marked paid by a
     /// repayment, against `receipt_hash`; after `cancel_after = max(now + cancel delay, pending
     /// deadline)` it may cancel without the attestor with that receipt. A new request replaces a
     /// pending one.
@@ -193,7 +188,7 @@ pub mod elote_pool {
         instructions::lines::repay(ctx, amount, receipt_hash)
     }
 
-    /// The admin (the holder) or the attestor attaches a receipt to payment entry `entry_count` of
+    /// The council (the holder) or the attestor attaches a receipt to payment entry `entry_count` of
     /// pagaré `draw_index`, as a `Recibo` entry over `receipt_hash`. The holder's annotation also
     /// replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`).
     pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32]) -> Result<()> {
@@ -207,14 +202,14 @@ pub mod elote_pool {
         instructions::lines::mark_in_collection(ctx)
     }
 
-    /// Books a line's unpaid principal as a loss. Admin only; an `Active` line after `term_end +
+    /// Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end +
     /// grace`, an `InCollection` line after its collection period from the mark and after its
     /// oldest missed due date or its term, plus grace. Never paused.
     pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
         instructions::lines::write_off(ctx)
     }
 
-    /// Pauses or resumes deposits, redemptions, openings and draws. Admin only. Nothing else is
+    /// Pauses or resumes deposits, redemptions, openings and draws. Council only. Nothing else is
     /// ever paused: repayments, pagaré instructions, collection and write-offs.
     pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
         instructions::pool::set_paused(ctx, paused)

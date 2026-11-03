@@ -56,7 +56,7 @@ export function getSetCancelDelayDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type SetCancelDelayInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountCouncil extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
@@ -66,10 +66,10 @@ export type SetCancelDelayInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountAdmin extends string
-        ? ReadonlySignerAccount<TAccountAdmin> &
-            AccountSignerMeta<TAccountAdmin>
-        : TAccountAdmin,
+      TAccountCouncil extends string
+        ? ReadonlySignerAccount<TAccountCouncil> &
+            AccountSignerMeta<TAccountCouncil>
+        : TAccountCouncil,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -118,13 +118,13 @@ export function getSetCancelDelayInstructionDataCodec(): FixedSizeCodec<
 }
 
 export type SetCancelDelayAsyncInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -132,14 +132,14 @@ export type SetCancelDelayAsyncInput<
 };
 
 export async function getSetCancelDelayInstructionAsync<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: SetCancelDelayAsyncInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -151,8 +151,8 @@ export async function getSetCancelDelayInstructionAsync<
   SetCancelDelayInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -181,7 +181,11 @@ export async function getSetCancelDelayInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -216,7 +220,7 @@ export async function getSetCancelDelayInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -228,8 +232,8 @@ export async function getSetCancelDelayInstructionAsync<
   } as SetCancelDelayInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -247,13 +251,13 @@ export async function getSetCancelDelayInstructionAsync<
 }
 
 export type SetCancelDelayInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -261,14 +265,14 @@ export type SetCancelDelayInput<
 };
 
 export function getSetCancelDelayInstruction<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: SetCancelDelayInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -279,8 +283,8 @@ export function getSetCancelDelayInstruction<
 ): SetCancelDelayInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountAdmin,
-    InstructionAccountInputAddress<TAccountAdmin>
+    TAccountCouncil,
+    InstructionAccountInputAddress<TAccountCouncil>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -308,7 +312,11 @@ export function getSetCancelDelayInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -337,7 +345,7 @@ export function getSetCancelDelayInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -349,8 +357,8 @@ export function getSetCancelDelayInstruction<
   } as SetCancelDelayInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -373,7 +381,7 @@ export type ParsedSetCancelDelayInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    admin: TAccountMetas[0];
+    council: TAccountMetas[0];
     pool: TAccountMetas[1];
     eventAuthority: TAccountMetas[2];
     program: TAccountMetas[3];
@@ -407,7 +415,7 @@ export function parseSetCancelDelayInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      admin: getNextAccount(),
+      council: getNextAccount(),
       pool: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

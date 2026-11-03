@@ -55,7 +55,7 @@ export function getSetAttestorDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type SetAttestorInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountCouncil extends string | AccountMeta<string> = string,
   TAccountNewAttestor extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
@@ -66,10 +66,10 @@ export type SetAttestorInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountAdmin extends string
-        ? ReadonlySignerAccount<TAccountAdmin> &
-            AccountSignerMeta<TAccountAdmin>
-        : TAccountAdmin,
+      TAccountCouncil extends string
+        ? ReadonlySignerAccount<TAccountCouncil> &
+            AccountSignerMeta<TAccountCouncil>
+        : TAccountCouncil,
       TAccountNewAttestor extends string
         ? ReadonlySignerAccount<TAccountNewAttestor> &
             AccountSignerMeta<TAccountNewAttestor>
@@ -115,14 +115,14 @@ export function getSetAttestorInstructionDataCodec(): FixedSizeCodec<
 }
 
 export type SetAttestorAsyncInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountNewAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   /** The key that becomes the attestor; it signs, proving control of the key. */
   newAttestor: TAccountNewAttestor;
   pool: TAccountPool;
@@ -131,7 +131,7 @@ export type SetAttestorAsyncInput<
 };
 
 export async function getSetAttestorInstructionAsync<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountNewAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
@@ -139,7 +139,7 @@ export async function getSetAttestorInstructionAsync<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: SetAttestorAsyncInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountNewAttestor,
     TAccountPool,
     TAccountEventAuthority,
@@ -152,8 +152,8 @@ export async function getSetAttestorInstructionAsync<
   SetAttestorInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountNewAttestor,
@@ -186,7 +186,11 @@ export async function getSetAttestorInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     newAttestor: {
       value: input.newAttestor ?? null,
       isSigner: true,
@@ -223,7 +227,7 @@ export async function getSetAttestorInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("newAttestor", accounts.newAttestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -234,8 +238,8 @@ export async function getSetAttestorInstructionAsync<
   } as SetAttestorInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountNewAttestor,
@@ -257,14 +261,14 @@ export async function getSetAttestorInstructionAsync<
 }
 
 export type SetAttestorInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountNewAttestor extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   /** The key that becomes the attestor; it signs, proving control of the key. */
   newAttestor: TAccountNewAttestor;
   pool: TAccountPool;
@@ -273,7 +277,7 @@ export type SetAttestorInput<
 };
 
 export function getSetAttestorInstruction<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountNewAttestor extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
@@ -281,7 +285,7 @@ export function getSetAttestorInstruction<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: SetAttestorInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountNewAttestor,
     TAccountPool,
     TAccountEventAuthority,
@@ -293,8 +297,8 @@ export function getSetAttestorInstruction<
 ): SetAttestorInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountAdmin,
-    InstructionAccountInputAddress<TAccountAdmin>
+    TAccountCouncil,
+    InstructionAccountInputAddress<TAccountCouncil>
   >,
   ResolvedInstructionAccountMeta<
     TAccountNewAttestor,
@@ -326,7 +330,11 @@ export function getSetAttestorInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     newAttestor: {
       value: input.newAttestor ?? null,
       isSigner: true,
@@ -357,7 +365,7 @@ export function getSetAttestorInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("newAttestor", accounts.newAttestor),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -368,8 +376,8 @@ export function getSetAttestorInstruction<
   } as SetAttestorInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountNewAttestor,
@@ -396,7 +404,7 @@ export type ParsedSetAttestorInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    admin: TAccountMetas[0];
+    council: TAccountMetas[0];
     /** The key that becomes the attestor; it signs, proving control of the key. */
     newAttestor: TAccountMetas[1];
     pool: TAccountMetas[2];
@@ -432,7 +440,7 @@ export function parseSetAttestorInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      admin: getNextAccount(),
+      council: getNextAccount(),
       newAttestor: getNextAccount(),
       pool: getNextAccount(),
       eventAuthority: getNextAccount(),

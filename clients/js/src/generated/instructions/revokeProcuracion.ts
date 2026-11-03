@@ -174,7 +174,7 @@ export type RevokeProcuracionAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. The owner alone revokes. */
+  /** The pagaré's holder: the council while the asset is in the pool. The owner alone revokes. */
   holder: TAccountHolder;
   payer: TAccountPayer;
   pool: TAccountPool;
@@ -440,7 +440,7 @@ export type RevokeProcuracionInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. The owner alone revokes. */
+  /** The pagaré's holder: the council while the asset is in the pool. The owner alone revokes. */
   holder: TAccountHolder;
   payer: TAccountPayer;
   pool: TAccountPool;
@@ -673,7 +673,7 @@ export type ParsedRevokeProcuracionInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** The pagaré's holder: the admin while the asset is in the pool. The owner alone revokes. */
+    /** The pagaré's holder: the council while the asset is in the pool. The owner alone revokes. */
     holder: TAccountMetas[0];
     payer: TAccountMetas[1];
     pool: TAccountMetas[2];

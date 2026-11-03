@@ -149,7 +149,7 @@ export type AnnotatePaymentAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The holder (the admin while the asset is in the pool) or the attestor. */
+  /** The holder (the council while the asset is in the pool) or the attestor. */
   annotator: TAccountAnnotator;
   pool: TAccountPool;
   line: TAccountLine;
@@ -328,7 +328,7 @@ export type AnnotatePaymentInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The holder (the admin while the asset is in the pool) or the attestor. */
+  /** The holder (the council while the asset is in the pool) or the attestor. */
   annotator: TAccountAnnotator;
   pool: TAccountPool;
   line: TAccountLine;
@@ -481,7 +481,7 @@ export type ParsedAnnotatePaymentInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** The holder (the admin while the asset is in the pool) or the attestor. */
+    /** The holder (the council while the asset is in the pool) or the attestor. */
     annotator: TAccountMetas[0];
     pool: TAccountMetas[1];
     line: TAccountMetas[2];

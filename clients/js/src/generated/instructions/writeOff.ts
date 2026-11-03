@@ -53,7 +53,7 @@ export function getWriteOffDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type WriteOffInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountCouncil extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountShareMint extends string | AccountMeta<string> = string,
@@ -66,10 +66,10 @@ export type WriteOffInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountAdmin extends string
-        ? ReadonlySignerAccount<TAccountAdmin> &
-            AccountSignerMeta<TAccountAdmin>
-        : TAccountAdmin,
+      TAccountCouncil extends string
+        ? ReadonlySignerAccount<TAccountCouncil> &
+            AccountSignerMeta<TAccountCouncil>
+        : TAccountCouncil,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -120,7 +120,7 @@ export function getWriteOffInstructionDataCodec(): FixedSizeCodec<
 }
 
 export type WriteOffAsyncInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
@@ -129,7 +129,7 @@ export type WriteOffAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for the share supply (`NavUpdated` and the invariant check). */
@@ -141,7 +141,7 @@ export type WriteOffAsyncInput<
 };
 
 export async function getWriteOffInstructionAsync<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
@@ -151,7 +151,7 @@ export async function getWriteOffInstructionAsync<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: WriteOffAsyncInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountLine,
     TAccountShareMint,
@@ -166,8 +166,8 @@ export async function getWriteOffInstructionAsync<
   WriteOffInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -208,7 +208,11 @@ export async function getWriteOffInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     shareMint: {
@@ -247,7 +251,7 @@ export async function getWriteOffInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("shareMint", accounts.shareMint),
@@ -260,8 +264,8 @@ export async function getWriteOffInstructionAsync<
   } as WriteOffInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -291,7 +295,7 @@ export async function getWriteOffInstructionAsync<
 }
 
 export type WriteOffInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
@@ -300,7 +304,7 @@ export type WriteOffInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for the share supply (`NavUpdated` and the invariant check). */
@@ -312,7 +316,7 @@ export type WriteOffInput<
 };
 
 export function getWriteOffInstruction<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
@@ -322,7 +326,7 @@ export function getWriteOffInstruction<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: WriteOffInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountLine,
     TAccountShareMint,
@@ -336,8 +340,8 @@ export function getWriteOffInstruction<
 ): WriteOffInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountAdmin,
-    InstructionAccountInputAddress<TAccountAdmin>
+    TAccountCouncil,
+    InstructionAccountInputAddress<TAccountCouncil>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -377,7 +381,11 @@ export function getWriteOffInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     shareMint: {
@@ -410,7 +418,7 @@ export function getWriteOffInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("shareMint", accounts.shareMint),
@@ -423,8 +431,8 @@ export function getWriteOffInstruction<
   } as WriteOffInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -459,7 +467,7 @@ export type ParsedWriteOffInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    admin: TAccountMetas[0];
+    council: TAccountMetas[0];
     pool: TAccountMetas[1];
     line: TAccountMetas[2];
     /** Read for the share supply (`NavUpdated` and the invariant check). */
@@ -498,7 +506,7 @@ export function parseWriteOffInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      admin: getNextAccount(),
+      council: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       shareMint: getNextAccount(),

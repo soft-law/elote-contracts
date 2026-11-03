@@ -49,15 +49,15 @@ export const ELOTE_POOL_ERROR__ASSET_IS_SHARE_MINT = 0x177e; // 6014
 export const ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED = 0x177f; // 6015
 /** PagareAccountsMismatch: The pagaré records passed are not the ones this payment touches, oldest first */
 export const ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH = 0x1780; // 6016
-/** AttestorIsAdmin: The attestor cannot be the admin */
-export const ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN = 0x1781; // 6017
-/** BorrowerIsAdmin: The pool admin cannot be the borrower */
-export const ELOTE_POOL_ERROR__BORROWER_IS_ADMIN = 0x1782; // 6018
+/** AttestorIsCouncil: The attestor cannot be the council */
+export const ELOTE_POOL_ERROR__ATTESTOR_IS_COUNCIL = 0x1781; // 6017
+/** BorrowerIsCouncil: The council cannot be the borrower */
+export const ELOTE_POOL_ERROR__BORROWER_IS_COUNCIL = 0x1782; // 6018
 /** BorrowerIsCurator: A member of the council cannot be the borrower */
 export const ELOTE_POOL_ERROR__BORROWER_IS_CURATOR = 0x1783; // 6019
 /** BorrowerIsAttestor: The borrower cannot be the attestor */
 export const ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR = 0x1784; // 6020
-/** EndorseeInvalid: The endorsee is missing, or is the pool, the admin or the attestor */
+/** EndorseeInvalid: The endorsee is missing, or is the pool, the council or the attestor */
 export const ELOTE_POOL_ERROR__ENDORSEE_INVALID = 0x1785; // 6021
 /** WrongAmount: Amount is zero or exceeds what is due */
 export const ELOTE_POOL_ERROR__WRONG_AMOUNT = 0x1786; // 6022
@@ -153,11 +153,11 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ASSET_IS_SHARE_MINT
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__ASSET_NOT_LISTED
-  | typeof ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN
+  | typeof ELOTE_POOL_ERROR__ATTESTOR_IS_COUNCIL
   | typeof ELOTE_POOL_ERROR__ATTESTOR_REQUIRED
   | typeof ELOTE_POOL_ERROR__AVAILABILITY_ENDED
-  | typeof ELOTE_POOL_ERROR__BORROWER_IS_ADMIN
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR
+  | typeof ELOTE_POOL_ERROR__BORROWER_IS_COUNCIL
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_CURATOR
   | typeof ELOTE_POOL_ERROR__CANCEL_DELAY_TOO_SHORT
   | typeof ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED
@@ -221,11 +221,11 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__ASSET_IS_SHARE_MINT]: `The asset mint and the share mint are the same`,
     [ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED]: `The asset mint carries a Token-2022 extension the pool does not accept`,
     [ELOTE_POOL_ERROR__ASSET_NOT_LISTED]: `The asset mint is not on this cluster's allow-list`,
-    [ELOTE_POOL_ERROR__ATTESTOR_IS_ADMIN]: `The attestor cannot be the admin`,
+    [ELOTE_POOL_ERROR__ATTESTOR_IS_COUNCIL]: `The attestor cannot be the council`,
     [ELOTE_POOL_ERROR__ATTESTOR_REQUIRED]: `The pool's attestor must sign`,
     [ELOTE_POOL_ERROR__AVAILABILITY_ENDED]: `The draw window of this line has closed`,
-    [ELOTE_POOL_ERROR__BORROWER_IS_ADMIN]: `The pool admin cannot be the borrower`,
     [ELOTE_POOL_ERROR__BORROWER_IS_ATTESTOR]: `The borrower cannot be the attestor`,
+    [ELOTE_POOL_ERROR__BORROWER_IS_COUNCIL]: `The council cannot be the borrower`,
     [ELOTE_POOL_ERROR__BORROWER_IS_CURATOR]: `A member of the council cannot be the borrower`,
     [ELOTE_POOL_ERROR__CANCEL_DELAY_TOO_SHORT]: `The cancel delay is below the seven-day floor`,
     [ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED]: `The borrower may cancel alone only after the cancel grace from the payment`,
@@ -237,7 +237,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__COUNCIL_TOO_LARGE]: `The council multisig has more members than the program checks`,
     [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed document's hash is required`,
     [ELOTE_POOL_ERROR__DRAWS_NOT_SUSPENDED]: `The line's draws are not suspended`,
-    [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing, or is the pool, the admin or the attestor`,
+    [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing, or is the pool, the council or the attestor`,
     [ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID]: `This kind of endoso is not one the program records`,
     [ELOTE_POOL_ERROR__ENTRY_NOT_FOUND]: `The referenced registry entry does not exist`,
     [ELOTE_POOL_ERROR__EXPEDIENTE_MISMATCH]: `The expediente root or the terms hash is not the one the borrower requested`,

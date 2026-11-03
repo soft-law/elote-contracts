@@ -26,7 +26,7 @@ fn init_pool_creates_share_mint_and_vault() {
     let (k, meta) = env.setup_pool();
 
     let pool = env.pool(&k);
-    assert_eq!(pool.admin, env.admin.pubkey());
+    assert_eq!(pool.council, env.council.pubkey());
     assert_eq!(pool.asset_mint, k.asset_mint);
     assert_eq!(pool.vault, k.vault);
     assert_eq!(pool.share_mint, k.share_mint);
@@ -35,9 +35,9 @@ fn init_pool_creates_share_mint_and_vault() {
     assert_eq!(pool.written_off, 0);
     assert_eq!(pool.line_count, 0);
     assert!(!pool.paused);
-    assert_eq!(pool.bump, pool_pda(&env.admin.pubkey(), &k.asset_mint).1);
+    assert_eq!(pool.bump, pool_pda(&env.council.pubkey(), &k.asset_mint).1);
 
-    // The share mint is supplied by the admin, not created here: Token-2022,
+    // The share mint is supplied by the council, not created here: Token-2022,
     // mint authority = the pool PDA, the asset's decimals, nothing minted yet.
     let (share_mint, extensions) = env.mint_state(&k.share_mint);
     assert_eq!(env.mint_program(&k.share_mint), TOKEN_2022_PROGRAM_ID);
@@ -64,12 +64,12 @@ fn init_pool_creates_share_mint_and_vault() {
     assert_eq!(ev.pool, k.pool);
     assert_eq!(ev.asset_mint, k.asset_mint);
     assert_eq!(ev.share_mint, k.share_mint);
-    assert_eq!(ev.admin, env.admin.pubkey());
+    assert_eq!(ev.council, env.council.pubkey());
 
-    // A second init for the same admin and asset is refused (the pool account already exists).
-    let admin = env.admin.insecure_clone();
+    // A second init for the same council and asset is refused (the pool account already exists).
+    let council = env.council.insecure_clone();
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    assert!(env.try_send(ix, &admin, &[]).is_err());
+    assert!(env.try_send(ix, &council, &[]).is_err());
 }
 
 #[test]
@@ -228,7 +228,7 @@ fn paused_blocks_deposit_and_redeem() {
     let a = env.investor(&k, 3 * UNIT);
     env.deposit(&k, &a, UNIT);
 
-    // Only the admin pauses.
+    // Only the council pauses.
     let ix = env.set_paused_ix(&k, &a.pubkey(), true);
     env.expect_err(ix, &a, &[], E_UNAUTHORIZED);
 
@@ -334,10 +334,10 @@ fn init_pool_records_the_grace_period() {
 #[test]
 fn init_pool_records_the_line_cap_and_bounds_it() {
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
-    let mint = env.create_mint(&admin.pubkey(), 6);
+    let council = env.council.insecure_clone();
+    let mint = env.create_mint(&council.pubkey(), 6);
     let (k, ix) = env.init_pool_full(&mint, 0, 1_000);
-    let meta = env.send(ix, &admin, &[]);
+    let meta = env.send(ix, &council, &[]);
 
     let pool = env.pool(&k);
     assert_eq!(pool.max_line_bps, 1_000);
@@ -346,9 +346,9 @@ fn init_pool_records_the_line_cap_and_bounds_it() {
     assert_eq!((ev.pool, ev.max_line_bps), (k.pool, 1_000));
 
     for bad in [0u16, BPS + 1, u16::MAX] {
-        let mint = env.create_mint(&admin.pubkey(), 6);
+        let mint = env.create_mint(&council.pubkey(), 6);
         let (_, ix) = env.init_pool_full(&mint, 0, bad);
-        env.expect_err(ix, &admin, &[], E_WRONG_AMOUNT);
+        env.expect_err(ix, &council, &[], E_WRONG_AMOUNT);
     }
 }
 
@@ -370,8 +370,8 @@ fn a_pool_on_a_token_2022_asset_runs_the_full_cycle() {
     let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000);
     env.draw(&k, line_id, &borrower);
     assert_eq!(env.token_balance(&k.asset_ata(&borrower.pubkey())), 4 * UNIT);
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 400_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 400_000);
     env.repay(&k, line_id, &borrower, 4 * UNIT + 400_000);
     assert_eq!(env.nav(&k), 10 * UNIT + 400_000);
 
@@ -380,23 +380,23 @@ fn a_pool_on_a_token_2022_asset_runs_the_full_cycle() {
     assert_eq!(env.token_balance(&k.asset_ata(&a.pubkey())), out.assets);
 }
 
-/// A 6-decimal Token-2022 mint (authority = admin) with the given extensions initialised by
+/// A 6-decimal Token-2022 mint (authority = council) with the given extensions initialised by
 /// `ixs(mint)` before `initialize_mint2`.
 fn mint_2022_with(env: &mut Env, exts: &[ExtensionType], ixs: impl FnOnce(&Pubkey) -> Vec<Instruction>) -> Pubkey {
-    let admin = env.admin.pubkey();
-    env.create_mint_in(&TOKEN_2022_PROGRAM_ID, &admin, None, 6, exts, ixs)
+    let council = env.council.pubkey();
+    env.create_mint_in(&TOKEN_2022_PROGRAM_ID, &council, None, 6, exts, ixs)
 }
 
 fn expect_asset_rejected(env: &mut Env, mint: &Pubkey) {
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let (_, ix) = env.init_pool_plain(mint);
-    env.expect_err(ix, &admin, &[], E_ASSET_MINT_NOT_ALLOWED);
+    env.expect_err(ix, &council, &[], E_ASSET_MINT_NOT_ALLOWED);
 }
 
 fn init_accepting(env: &mut Env, mint: &Pubkey) -> (PoolKeys, PoolInitialized) {
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let (k, ix) = env.init_pool_plain(mint);
-    let meta = env.send(ix, &admin, &[]);
+    let meta = env.send(ix, &council, &[]);
     (k, find_event(&meta).expect("PoolInitialized"))
 }
 
@@ -407,20 +407,20 @@ fn init_accepting(env: &mut Env, mint: &Pubkey) -> (PoolKeys, PoolInitialized) {
 fn init_pool_rejects_asset_mints_whose_extensions_take_or_hide_value() {
     let p = TOKEN_2022_PROGRAM_ID;
     let mut env = Env::new();
-    let admin = env.admin.pubkey();
+    let council = env.council.pubkey();
 
     let m = mint_2022_with(&mut env, &[ExtensionType::TransferFeeConfig], |mint| {
-        vec![ext::transfer_fee::instruction::initialize_transfer_fee_config(&p, mint, Some(&admin), Some(&admin), 50, 1_000).unwrap()]
+        vec![ext::transfer_fee::instruction::initialize_transfer_fee_config(&p, mint, Some(&council), Some(&council), 50, 1_000).unwrap()]
     });
     expect_asset_rejected(&mut env, &m);
 
     let m = mint_2022_with(&mut env, &[ExtensionType::PermanentDelegate], |mint| {
-        vec![spl_token_2022::instruction::initialize_permanent_delegate(&p, mint, &admin).unwrap()]
+        vec![spl_token_2022::instruction::initialize_permanent_delegate(&p, mint, &council).unwrap()]
     });
     expect_asset_rejected(&mut env, &m);
 
     let m = mint_2022_with(&mut env, &[ExtensionType::TransferHook], |mint| {
-        vec![ext::transfer_hook::instruction::initialize(&p, mint, Some(admin), Some(Pubkey::new_unique())).unwrap()]
+        vec![ext::transfer_hook::instruction::initialize(&p, mint, Some(council), Some(Pubkey::new_unique())).unwrap()]
     });
     expect_asset_rejected(&mut env, &m);
 
@@ -430,14 +430,14 @@ fn init_pool_rejects_asset_mints_whose_extensions_take_or_hide_value() {
     expect_asset_rejected(&mut env, &m);
 
     let m = mint_2022_with(&mut env, &[ExtensionType::MintCloseAuthority], |mint| {
-        vec![spl_token_2022::instruction::initialize_mint_close_authority(&p, mint, Some(&admin)).unwrap()]
+        vec![spl_token_2022::instruction::initialize_mint_close_authority(&p, mint, Some(&council)).unwrap()]
     });
     expect_asset_rejected(&mut env, &m);
 
     // The three confidential extensions, whatever their flags: a mint that can hold confidential
     // balances makes `vault.amount` unreliable as the NAV's first term.
     let m = mint_2022_with(&mut env, &[ExtensionType::ConfidentialTransferMint], |mint| {
-        vec![ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(admin), true, None).unwrap()]
+        vec![ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(council), true, None).unwrap()]
     });
     expect_asset_rejected(&mut env, &m);
 
@@ -446,12 +446,12 @@ fn init_pool_rejects_asset_mints_whose_extensions_take_or_hide_value() {
         &[ExtensionType::TransferFeeConfig, ExtensionType::ConfidentialTransferMint, ExtensionType::ConfidentialTransferFeeConfig],
         |mint| {
             vec![
-                ext::transfer_fee::instruction::initialize_transfer_fee_config(&p, mint, Some(&admin), Some(&admin), 0, 0).unwrap(),
-                ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(admin), true, None).unwrap(),
+                ext::transfer_fee::instruction::initialize_transfer_fee_config(&p, mint, Some(&council), Some(&council), 0, 0).unwrap(),
+                ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(council), true, None).unwrap(),
                 ext::confidential_transfer_fee::instruction::initialize_confidential_transfer_fee_config(
                     &p,
                     mint,
-                    Some(admin),
+                    Some(council),
                     &Default::default(),
                 )
                 .unwrap(),
@@ -462,7 +462,7 @@ fn init_pool_rejects_asset_mints_whose_extensions_take_or_hide_value() {
 
     let m = mint_2022_with(&mut env, &[ExtensionType::ConfidentialTransferMint, ExtensionType::ConfidentialMintBurn], |mint| {
         vec![
-            ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(admin), true, None).unwrap(),
+            ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(council), true, None).unwrap(),
             ext::confidential_mint_burn::instruction::initialize_mint(&p, mint, &Default::default(), &Default::default()).unwrap(),
         ]
     });
@@ -470,11 +470,11 @@ fn init_pool_rejects_asset_mints_whose_extensions_take_or_hide_value() {
 
     // Frozen by default: every vault would be born frozen. Initialized by default is harmless.
     // (Token-2022 only allows the extension on a mint with a freeze authority.)
-    let m = env.create_mint_in(&p, &admin, Some(&admin), 6, &[ExtensionType::DefaultAccountState], |mint| {
+    let m = env.create_mint_in(&p, &council, Some(&council), 6, &[ExtensionType::DefaultAccountState], |mint| {
         vec![ext::default_account_state::instruction::initialize_default_account_state(&p, mint, &AccountState::Frozen).unwrap()]
     });
     expect_asset_rejected(&mut env, &m);
-    let m = env.create_mint_in(&p, &admin, Some(&admin), 6, &[ExtensionType::DefaultAccountState], |mint| {
+    let m = env.create_mint_in(&p, &council, Some(&council), 6, &[ExtensionType::DefaultAccountState], |mint| {
         vec![ext::default_account_state::instruction::initialize_default_account_state(&p, mint, &AccountState::Initialized).unwrap()]
     });
     let (_, flags) = init_accepting(&mut env, &m);
@@ -488,10 +488,10 @@ fn init_pool_rejects_asset_mints_whose_extensions_take_or_hide_value() {
 fn init_pool_records_the_asset_issuer_controls_it_accepts() {
     let p = TOKEN_2022_PROGRAM_ID;
     let mut env = Env::new();
-    let admin = env.admin.pubkey();
+    let council = env.council.pubkey();
 
     // A classic mint with a freeze authority (MEXe's shape).
-    let m = env.create_mint_in(&TOKEN_PROGRAM_ID, &admin, Some(&admin), 6, &[], |_| vec![]);
+    let m = env.create_mint_in(&TOKEN_PROGRAM_ID, &council, Some(&council), 6, &[], |_| vec![]);
     let (k, flags) = init_accepting(&mut env, &m);
     assert_eq!((flags.pool, flags.asset_controls, flags.permissioned), (k.pool, ASSET_CONTROL_FREEZE, false));
     let pool = env.pool(&k);
@@ -500,7 +500,7 @@ fn init_pool_records_the_asset_issuer_controls_it_accepts() {
 
     // A pausable Token-2022 mint without a freeze authority.
     let m = mint_2022_with(&mut env, &[ExtensionType::Pausable], |mint| {
-        vec![ext::pausable::instruction::initialize(&p, mint, &admin).unwrap()]
+        vec![ext::pausable::instruction::initialize(&p, mint, &council).unwrap()]
     });
     let (k, flags) = init_accepting(&mut env, &m);
     assert_eq!(flags.asset_controls, ASSET_CONTROL_PAUSABLE);
@@ -508,15 +508,15 @@ fn init_pool_records_the_asset_issuer_controls_it_accepts() {
     assert!(!pool.asset_freezable() && pool.asset_pausable());
 
     // Both controls at once.
-    let m = env.create_mint_in(&p, &admin, Some(&admin), 6, &[ExtensionType::Pausable], |mint| {
-        vec![ext::pausable::instruction::initialize(&p, mint, &admin).unwrap()]
+    let m = env.create_mint_in(&p, &council, Some(&council), 6, &[ExtensionType::Pausable], |mint| {
+        vec![ext::pausable::instruction::initialize(&p, mint, &council).unwrap()]
     });
     let (_, flags) = init_accepting(&mut env, &m);
     assert_eq!(flags.asset_controls, ASSET_CONTROL_FREEZE | ASSET_CONTROL_PAUSABLE);
 
     // Interest-bearing is a display rate; neither a control nor a reason to refuse.
     let m = mint_2022_with(&mut env, &[ExtensionType::InterestBearingConfig], |mint| {
-        vec![ext::interest_bearing_mint::instruction::initialize(&p, mint, Some(admin), 500).unwrap()]
+        vec![ext::interest_bearing_mint::instruction::initialize(&p, mint, Some(council), 500).unwrap()]
     });
     let (_, flags) = init_accepting(&mut env, &m);
     assert_eq!(flags.asset_controls, 0);
@@ -537,7 +537,7 @@ fn init_pool_records_the_attestor_and_the_collection() {
     assert_eq!(pool.collection, k.collection);
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((ev.pool, ev.attestor, ev.collection), (k.pool, env.attestor.pubkey(), k.collection));
-    assert_eq!((ev.admin, ev.asset_mint, ev.share_mint), (env.admin.pubkey(), k.asset_mint, k.share_mint));
+    assert_eq!((ev.council, ev.asset_mint, ev.share_mint), (env.council.pubkey(), k.asset_mint, k.share_mint));
     assert!(find_event::<AttestorSet>(&meta).is_none(), "the setters' events are for changes");
     // The collection is a real Metaplex Core collection the pool controls, read back through the
     // crate's decoder against the pinned program binary.
@@ -548,11 +548,11 @@ fn init_pool_records_the_attestor_and_the_collection() {
     assert_eq!(env.account(&k.collection).owner, MPL_CORE_ID);
 
     // The zero key is not an attestor: nobody could ever co-sign.
-    let admin = env.admin.insecure_clone();
-    let mint = env.create_mint(&admin.pubkey(), 6);
+    let council = env.council.insecure_clone();
+    let mint = env.create_mint(&council.pubkey(), 6);
     let (k2, mut ix) = env.init_pool_plain(&mint);
-    ix.data = elote_pool::instruction::InitPool { grace_period_seconds: 0, max_line_bps: BPS, attestor: Pubkey::default(), collection_period_seconds: COLLECTION_PERIOD, cancel_delay_seconds: CANCEL_DELAY }.data();
-    env.expect_err(ix, &admin, &[], E_WRONG_ACCOUNT);
+    ix.data = elote_pool::instruction::InitPool { params: env.init_params(0, BPS, Pubkey::default(), COLLECTION_PERIOD, CANCEL_DELAY) }.data();
+    env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
     assert!(env.svm.get_account(&k2.pool).is_none());
 }
 
@@ -561,57 +561,57 @@ fn init_pool_records_the_attestor_and_the_collection() {
 #[test]
 fn init_pool_rejects_a_collection_the_pool_does_not_control() {
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
-    let mint = env.create_mint(&admin.pubkey(), 6);
+    let council = env.council.insecure_clone();
+    let mint = env.create_mint(&council.pubkey(), 6);
     let (mut k, _) = env.init_pool_plain(&mint);
 
-    // A collection whose update authority is the admin, not the pool.
-    k.collection = env.create_collection(&admin.pubkey());
+    // A collection whose update authority is the council, not the pool.
+    k.collection = env.create_collection(&council.pubkey());
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
     // A Core asset, not a collection.
     k.collection = env.create_core_asset(&k.pool);
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
     // An account the Core program does not own.
     k.collection = k.asset_mint;
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
     // An account that does not exist.
     k.collection = Pubkey::new_unique();
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
     assert!(env.svm.get_account(&k.pool).is_none());
 
     // The right one is accepted.
     k.collection = env.create_collection(&k.pool);
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     assert_eq!(env.pool(&k).collection, k.collection);
 }
 
-/// `set_attestor` is the recovery when the agreements engine's key rotates or is lost: admin
+/// `set_attestor` is the recovery when the agreements engine's key rotates or is lost: council
 /// only, co-signed by the new attestor, which proves control of the new key (condition C14),
 /// announced by `AttestorSet`.
 #[test]
 fn set_attestor_is_admin_only_and_co_signed_by_the_new_attestor() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let new_attestor = env.funded(1);
 
     let stranger = env.funded(1);
     let ix = env.set_attestor_ix(&k, &stranger.pubkey(), &new_attestor.pubkey());
     env.expect_err(ix, &stranger, &[&new_attestor], E_UNAUTHORIZED);
-    // The admin alone cannot name a key it does not control.
-    let mut ix = env.set_attestor_ix(&k, &admin.pubkey(), &new_attestor.pubkey());
+    // The council alone cannot name a key it does not control.
+    let mut ix = env.set_attestor_ix(&k, &council.pubkey(), &new_attestor.pubkey());
     let i = ix.accounts.iter().position(|m| m.pubkey == new_attestor.pubkey()).unwrap();
     ix.accounts[i].is_signer = false;
-    assert!(env.try_send(ix, &admin, &[]).is_err());
+    assert!(env.try_send(ix, &council, &[]).is_err());
     assert_eq!(env.pool(&k).attestor, env.attestor.pubkey(), "unchanged");
 
-    let ix = env.set_attestor_ix(&k, &admin.pubkey(), &new_attestor.pubkey());
-    let meta = env.send(ix, &admin, &[&new_attestor]);
+    let ix = env.set_attestor_ix(&k, &council.pubkey(), &new_attestor.pubkey());
+    let meta = env.send(ix, &council, &[&new_attestor]);
     let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
     assert_eq!((ev.pool, ev.attestor), (k.pool, new_attestor.pubkey()));
     assert_eq!(env.pool(&k).attestor, new_attestor.pubkey());
@@ -637,8 +637,8 @@ fn nav_updated_follows_every_money_instruction() {
     assert!(find_event::<NavUpdated>(&meta).is_none(), "a draw moves no value: vault down, outstanding up");
 
     // Principal plus the 0.4 of interest: the NAV rises, the supply does not.
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 400_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 400_000);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 4 * UNIT + 400_000);
     let meta = env.send(ix, &borrower, &[]);
     let ev: NavUpdated = find_event(&meta).expect("NavUpdated after repay");
@@ -656,8 +656,8 @@ fn nav_updated_follows_every_money_instruction() {
     env.draw(&k, second, &borrower);
     let before = env.nav(&k);
     env.warp(env.line(&k, second).term_end + 1);
-    let ix = env.write_off_ix(&k, second, &admin.pubkey());
-    let meta = env.send(ix, &admin, &[]);
+    let ix = env.write_off_ix(&k, second, &council.pubkey());
+    let meta = env.send(ix, &council, &[]);
     let ev: NavUpdated = find_event(&meta).expect("NavUpdated after write_off");
     assert_eq!((ev.total_assets, ev.share_supply), (before - 2 * UNIT, 9 * UNIT));
     assert_eq!(ev.total_assets, env.nav(&k));
@@ -678,13 +678,13 @@ fn share_candidate(
 }
 
 fn expect_share_rejected(env: &mut Env, asset: &Pubkey, share_mint: &Pubkey) {
-    let admin = env.admin.insecure_clone();
-    let k = PoolKeys::new(&admin.pubkey(), asset, share_mint, TOKEN_PROGRAM_ID, env.mint_program(share_mint));
+    let council = env.council.insecure_clone();
+    let k = PoolKeys::new(&council.pubkey(), asset, share_mint, TOKEN_PROGRAM_ID, env.mint_program(share_mint));
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.expect_err(ix, &admin, &[], E_SHARE_MINT_NOT_ALLOWED);
+    env.expect_err(ix, &council, &[], E_SHARE_MINT_NOT_ALLOWED);
 }
 
-/// Series-shelf 2c: the share mint the admin supplies must be one the pool can own and price.
+/// Series-shelf 2c: the share mint the council supplies must be one the pool can own and price.
 /// Refused: a mint authority other than the pool PDA, a non-zero supply, decimals other than the
 /// asset's, a transfer fee, a transfer hook, a close authority, a permanent delegate (decision
 /// 15), an interest-bearing display rate, any confidential extension, and a frozen default state
@@ -693,19 +693,19 @@ fn expect_share_rejected(env: &mut Env, asset: &Pubkey, share_mint: &Pubkey) {
 fn init_pool_rejects_share_mints_the_pool_cannot_own_or_price() {
     let p = TOKEN_2022_PROGRAM_ID;
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
-    let asset = env.create_mint(&admin.pubkey(), 6);
-    let pool = pool_pda(&admin.pubkey(), &asset).0;
+    let council = env.council.insecure_clone();
+    let asset = env.create_mint(&council.pubkey(), 6);
+    let pool = pool_pda(&council.pubkey(), &asset).0;
 
-    // Mint authority is the admin, not the pool.
-    let m = share_candidate(&mut env, &admin.pubkey(), None, 6, &[], |_| vec![]);
+    // Mint authority is the council, not the pool.
+    let m = share_candidate(&mut env, &council.pubkey(), None, 6, &[], |_| vec![]);
     expect_share_rejected(&mut env, &asset, &m);
 
     // Right authority, but something was minted before the handover.
-    let m = share_candidate(&mut env, &admin.pubkey(), None, 6, &[], |_| vec![]);
+    let m = share_candidate(&mut env, &council.pubkey(), None, 6, &[], |_| vec![]);
     let holder = env.funded(1);
-    env.mint_to(&m, &admin, &holder.pubkey(), 1);
-    env.set_mint_authority(&m, spl_token_2022::instruction::AuthorityType::MintTokens, &admin, Some(&pool));
+    env.mint_to(&m, &council, &holder.pubkey(), 1);
+    env.set_mint_authority(&m, spl_token_2022::instruction::AuthorityType::MintTokens, &council, Some(&pool));
     expect_share_rejected(&mut env, &asset, &m);
 
     // Wrong decimals.
@@ -714,37 +714,37 @@ fn init_pool_rejects_share_mints_the_pool_cannot_own_or_price() {
 
     // Extensions that take or hide value, or mislead wallets about the share price.
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::TransferFeeConfig], |mint| {
-        vec![ext::transfer_fee::instruction::initialize_transfer_fee_config(&p, mint, Some(&admin.pubkey()), Some(&admin.pubkey()), 50, 1_000).unwrap()]
+        vec![ext::transfer_fee::instruction::initialize_transfer_fee_config(&p, mint, Some(&council.pubkey()), Some(&council.pubkey()), 50, 1_000).unwrap()]
     });
     expect_share_rejected(&mut env, &asset, &m);
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::TransferHook], |mint| {
-        vec![ext::transfer_hook::instruction::initialize(&p, mint, Some(admin.pubkey()), Some(Pubkey::new_unique())).unwrap()]
+        vec![ext::transfer_hook::instruction::initialize(&p, mint, Some(council.pubkey()), Some(Pubkey::new_unique())).unwrap()]
     });
     expect_share_rejected(&mut env, &asset, &m);
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::MintCloseAuthority], |mint| {
-        vec![spl_token_2022::instruction::initialize_mint_close_authority(&p, mint, Some(&admin.pubkey())).unwrap()]
+        vec![spl_token_2022::instruction::initialize_mint_close_authority(&p, mint, Some(&council.pubkey())).unwrap()]
     });
     expect_share_rejected(&mut env, &asset, &m);
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::PermanentDelegate], |mint| {
-        vec![spl_token_2022::instruction::initialize_permanent_delegate(&p, mint, &admin.pubkey()).unwrap()]
+        vec![spl_token_2022::instruction::initialize_permanent_delegate(&p, mint, &council.pubkey()).unwrap()]
     });
     expect_share_rejected(&mut env, &asset, &m);
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::InterestBearingConfig], |mint| {
-        vec![ext::interest_bearing_mint::instruction::initialize(&p, mint, Some(admin.pubkey()), 500).unwrap()]
+        vec![ext::interest_bearing_mint::instruction::initialize(&p, mint, Some(council.pubkey()), 500).unwrap()]
     });
     expect_share_rejected(&mut env, &asset, &m);
     // Audit F-05: a display multiplier misleads wallets like a display rate, and a pause of the
     // share mint would stop every deposit and redemption outside `set_paused` and its event.
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::ScaledUiAmount], |mint| {
-        vec![ext::scaled_ui_amount::instruction::initialize(&p, mint, Some(admin.pubkey()), 1.0).unwrap()]
+        vec![ext::scaled_ui_amount::instruction::initialize(&p, mint, Some(council.pubkey()), 1.0).unwrap()]
     });
     expect_share_rejected(&mut env, &asset, &m);
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::Pausable], |mint| {
-        vec![ext::pausable::instruction::initialize(&p, mint, &admin.pubkey()).unwrap()]
+        vec![ext::pausable::instruction::initialize(&p, mint, &council.pubkey()).unwrap()]
     });
     expect_share_rejected(&mut env, &asset, &m);
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::ConfidentialTransferMint], |mint| {
-        vec![ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(admin.pubkey()), true, None).unwrap()]
+        vec![ext::confidential_transfer::instruction::initialize_mint(&p, mint, Some(council.pubkey()), true, None).unwrap()]
     });
     expect_share_rejected(&mut env, &asset, &m);
 
@@ -756,7 +756,7 @@ fn init_pool_rejects_share_mints_the_pool_cannot_own_or_price() {
 
     // And the plain candidate the harness builds is accepted.
     let (k, ix) = env.init_pool_plain(&asset);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     assert_eq!(env.pool(&k).share_mint, k.share_mint);
 }
 
@@ -766,16 +766,16 @@ fn init_pool_rejects_share_mints_the_pool_cannot_own_or_price() {
 fn non_transferable_shares_still_deposit_and_redeem() {
     let p = TOKEN_2022_PROGRAM_ID;
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
-    let asset = env.create_mint(&admin.pubkey(), 6);
-    let pool = pool_pda(&admin.pubkey(), &asset).0;
+    let council = env.council.insecure_clone();
+    let asset = env.create_mint(&council.pubkey(), 6);
+    let pool = pool_pda(&council.pubkey(), &asset).0;
     let m = share_candidate(&mut env, &pool, None, 6, &[ExtensionType::NonTransferable], |mint| {
         vec![spl_token_2022::instruction::initialize_non_transferable_mint(&p, mint).unwrap()]
     });
-    let mut k = PoolKeys::new(&admin.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, p);
+    let mut k = PoolKeys::new(&council.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, p);
     k.collection = env.create_collection(&pool);
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
 
     let a = env.investor(&k, 3 * UNIT);
     let minted = env.deposit(&k, &a, 3 * UNIT).shares;
@@ -824,15 +824,15 @@ fn permissioned_shares_need_a_thaw_before_the_first_deposit() {
     env.deposit(&k, &b, UNIT);
 
     // Path 2: the dead account is thawed in the init_pool transaction, so the pool is born ready.
-    let admin = env.admin.insecure_clone();
-    let asset = env.create_mint(&admin.pubkey(), 6);
-    let pool = pool_pda(&admin.pubkey(), &asset).0;
+    let council = env.council.insecure_clone();
+    let asset = env.create_mint(&council.pubkey(), 6);
+    let pool = pool_pda(&council.pubkey(), &asset).0;
     let m = env.create_share_mint(&pool, 6, Some(&gate.pubkey()), true);
-    let mut k2 = PoolKeys::new(&admin.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
+    let mut k2 = PoolKeys::new(&council.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
     k2.collection = env.create_collection(&pool);
     let init = env.init_pool_ix_for(&k2, 0, BPS);
     let thaw = env.thaw_ix(&m, &k2.dead_shares, &gate.pubkey());
-    env.send_all(&[init, thaw], &admin, &[&gate]);
+    env.send_all(&[init, thaw], &council, &[&gate]);
     assert_eq!(env.token_account(&k2.dead_shares).state, AccountState::Initialized);
     let c = env.investor(&k2, 2 * UNIT);
     env.thaw(&m, &k2.share_ata(&c.pubkey()), &gate);
@@ -845,14 +845,14 @@ fn permissioned_shares_need_a_thaw_before_the_first_deposit() {
 #[test]
 fn init_pool_rejects_a_mint_whose_decimals_make_the_first_deposit_impossible() {
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
-    let mint = env.create_mint(&admin.pubkey(), 20);
+    let council = env.council.insecure_clone();
+    let mint = env.create_mint(&council.pubkey(), 20);
     let (_, ix) = env.init_pool_plain(&mint);
-    env.expect_err(ix, &admin, &[], E_WRONG_ACCOUNT);
+    env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
     // Nineteen decimals is the largest the minimum can express.
-    let mint = env.create_mint(&admin.pubkey(), 19);
+    let mint = env.create_mint(&council.pubkey(), 19);
     let (_, ix) = env.init_pool_plain(&mint);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
 }
 
 /// No change of the pool's state goes unannounced: each setter emits its own event carrying the
@@ -863,24 +863,24 @@ fn every_pool_setter_announces_the_new_value() {
     use elote_pool::events::{CancelDelaySet, CollectionPeriodSet};
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
-    let admin = env.admin.insecure_clone();
-    let a = admin.pubkey();
+    let council = env.council.insecure_clone();
+    let a = council.pubkey();
 
     let new_attestor = env.funded(1);
     let ix = env.set_attestor_ix(&k, &a, &new_attestor.pubkey());
-    let meta = env.send(ix, &admin, &[&new_attestor]);
+    let meta = env.send(ix, &council, &[&new_attestor]);
     let ev: AttestorSet = find_event(&meta).expect("AttestorSet");
     assert_eq!((ev.pool, ev.attestor), (k.pool, new_attestor.pubkey()));
     assert_eq!(env.pool(&k).attestor, new_attestor.pubkey());
 
     let ix = env.set_collection_period_ix(&k, &a, 2 * COLLECTION_PERIOD);
-    let meta = env.send(ix, &admin, &[]);
+    let meta = env.send(ix, &council, &[]);
     let ev: CollectionPeriodSet = find_event(&meta).expect("CollectionPeriodSet");
     assert_eq!((ev.pool, ev.collection_period_seconds), (k.pool, 2 * COLLECTION_PERIOD));
     assert_eq!(env.pool(&k).collection_period_seconds, 2 * COLLECTION_PERIOD);
 
     let ix = env.set_cancel_delay_ix(&k, &a, 2 * CANCEL_DELAY);
-    let meta = env.send(ix, &admin, &[]);
+    let meta = env.send(ix, &council, &[]);
     let ev: CancelDelaySet = find_event(&meta).expect("CancelDelaySet");
     assert_eq!((ev.pool, ev.cancel_delay_seconds), (k.pool, 2 * CANCEL_DELAY));
     assert_eq!(env.pool(&k).cancel_delay_seconds, 2 * CANCEL_DELAY);

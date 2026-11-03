@@ -19,7 +19,7 @@ use crate::events::{PagareEntry, PagareReceiptAnnotated};
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct CancelPagare<'info> {
-    /// The owner (the admin while the asset is in the pool) or the procurador of record with a
+    /// The owner (the council while the asset is in the pool) or the procurador of record with a
     /// procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
     pub holder: Signer<'info>,
 
@@ -33,7 +33,7 @@ pub struct CancelPagare<'info> {
     pub payer: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -76,7 +76,7 @@ pub struct CancelPagare<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Extinguishes a paid pagaré. The signer is the owner (the admin while the asset is in the pool)
+/// Extinguishes a paid pagaré. The signer is the owner (the council while the asset is in the pool)
 /// or the procurador of record (`NotHolder`, `ProcuracionState`), who also passes
 /// `procurador_authority` (`WrongAccount`). The attestor co-signs, or the backstop applies: the
 /// owner alone, after the request's `cancel_after`, with the requested receipt (`AttestorRequired`).
@@ -92,7 +92,7 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
     let pagare = &ctx.accounts.pagare;
     let signer = ctx.accounts.holder.key();
     let pagare_key = pagare.key();
-    let by_procurador = signer != pool.admin;
+    let by_procurador = signer != pool.council;
     if by_procurador {
         require!(signer == pagare.procurador, PoolError::NotHolder);
         require!(pagare.flags & PAGARE_FLAG_PROCURACION != 0, PoolError::ProcuracionState);
@@ -194,8 +194,8 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct EndorsePagare<'info> {
-    /// The pagaré's holder: the admin while the asset is in the pool.
-    #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
+    /// The pagaré's holder: the council while the asset is in the pool.
+    #[account(constraint = holder.key() == pool.council @ PoolError::NotHolder)]
     pub holder: Signer<'info>,
 
     /// Attests the signed endoso behind `endoso_hash` and the endorsee's verification.
@@ -207,7 +207,7 @@ pub struct EndorsePagare<'info> {
     pub payer: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -246,7 +246,7 @@ pub struct EndorsePagare<'info> {
 /// power to extinguish the pagaré through an owner-managed `BurnDelegate` whose authority is the
 /// program address `["procurador", pagare, to]`. Nobody holds its key, so the burn can only happen
 /// inside `cancel_pagare`. Refused: `kind != KIND_PROCURACION` (`EndosoKindInvalid`); `to` the zero
-/// key, the pool, the admin or the attestor (`EndorseeInvalid`); a zero `endoso_hash`
+/// key, the pool, the council or the attestor (`EndorseeInvalid`); a zero `endoso_hash`
 /// (`DocumentHashRequired`); a `WrittenOff` line (`LineStatus`); a pagaré not outstanding
 /// (`PagareAlreadyPaid`); a procuración in force (`ProcuracionState`). The plugin is added at the
 /// first procuración and approved afterwards (Core refuses a second `AddPluginV1`); a flag
@@ -258,7 +258,7 @@ pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to
     let pool_key = pool.key();
     require!(kind == KIND_PROCURACION, PoolError::EndosoKindInvalid);
     require!(
-        to != Pubkey::default() && to != pool_key && to != pool.attestor && to != pool.admin,
+        to != Pubkey::default() && to != pool_key && to != pool.attestor && to != pool.council,
         PoolError::EndorseeInvalid
     );
     require!(endoso_hash != [0u8; 32], PoolError::DocumentHashRequired);
@@ -326,15 +326,15 @@ pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct RevokeProcuracion<'info> {
-    /// The pagaré's holder: the admin while the asset is in the pool. The owner alone revokes.
-    #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
+    /// The pagaré's holder: the council while the asset is in the pool. The owner alone revokes.
+    #[account(constraint = holder.key() == pool.council @ PoolError::NotHolder)]
     pub holder: Signer<'info>,
 
     #[account(mut)]
     pub payer: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -418,8 +418,8 @@ pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entr
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct CourtAnnotation<'info> {
-    /// The pagaré's holder: the admin while the asset is in the pool.
-    #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
+    /// The pagaré's holder: the council while the asset is in the pool.
+    #[account(constraint = holder.key() == pool.council @ PoolError::NotHolder)]
     pub holder: Signer<'info>,
 
     /// Attests the court document behind `document_hash`.
@@ -427,7 +427,7 @@ pub struct CourtAnnotation<'info> {
     pub attestor: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -480,12 +480,12 @@ pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct RequestCancellation<'info> {
-    /// The pagaré's holder: the admin while the asset is in the pool.
-    #[account(constraint = holder.key() == pool.admin @ PoolError::NotHolder)]
+    /// The pagaré's holder: the council while the asset is in the pool.
+    #[account(constraint = holder.key() == pool.council @ PoolError::NotHolder)]
     pub holder: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -556,12 +556,12 @@ pub fn request_cancellation(ctx: Context<RequestCancellation>, draw_index: u16, 
 #[derive(Accounts)]
 #[instruction(draw_index: u16)]
 pub struct AnnotatePayment<'info> {
-    /// The holder (the admin while the asset is in the pool) or the attestor.
-    #[account(constraint = annotator.key() == pool.admin || annotator.key() == pool.attestor @ PoolError::Unauthorized)]
+    /// The holder (the council while the asset is in the pool) or the attestor.
+    #[account(constraint = annotator.key() == pool.council || annotator.key() == pool.attestor @ PoolError::Unauthorized)]
     pub annotator: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -582,7 +582,7 @@ pub struct AnnotatePayment<'info> {
     pub pagare: Account<'info, Pagare>,
 }
 
-/// The admin (holder) or the attestor attaches the real receipt to payment entry `entry_count` of
+/// The council (holder) or the attestor attaches the real receipt to payment entry `entry_count` of
 /// the pagaré's chain (`EntryNotFound` if absent) by appending a `Recibo` entry over `receipt_hash`
 /// (`DocumentHashRequired`), from the annotator to the pool. The chain keeps no entry kinds, so the
 /// reference is not checked to be a payment entry; the engine checks it. Allowed on any status, a
@@ -597,7 +597,7 @@ pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_co
     let pool_key = ctx.accounts.pool.key();
     let annotator = ctx.accounts.annotator.key();
     let hash = registry::append(pagare, KIND_RECIBO, &annotator, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
-    if annotator == ctx.accounts.pool.admin && pagare.status == PAGARE_PAID_PENDING_CANCEL {
+    if annotator == ctx.accounts.pool.council && pagare.status == PAGARE_PAID_PENDING_CANCEL {
         pagare.receipt_hash = receipt_hash;
     }
     let line_id = ctx.accounts.line.line_id;

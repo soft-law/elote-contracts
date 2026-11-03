@@ -3,7 +3,7 @@
 use anchor_lang::prelude::*;
 
 pub mod seeds {
-    /// `[POOL, admin, asset_mint]`
+    /// `[POOL, creator, asset_mint]`
     pub const POOL: &[u8] = b"pool";
     /// `[LINE, pool, line_id (u64 LE)]`
     pub const LINE: &[u8] = b"line";
@@ -79,10 +79,11 @@ pub const ASSET_CONTROL_PAUSABLE: u8 = 1 << 1;
 #[account]
 #[derive(InitSpace)]
 pub struct Pool {
-    pub admin: Pubkey,
+    /// The vault of the council multisig: signs every council instruction.
+    pub council: Pubkey,
     /// The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
     /// `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
-    /// `annotate_payment` alone. Never the admin; rotated with `set_attestor`.
+    /// `annotate_payment` alone. Never the council; rotated with `set_attestor`.
     pub attestor: Pubkey,
     pub asset_mint: Pubkey,
     /// The share token mint; its mint authority is the pool PDA.
@@ -196,7 +197,7 @@ pub enum LineStatus {
     /// collection. Repayments are still accepted; it leaves this state only when repaid in full
     /// or written off.
     InCollection,
-    /// An approved commitment nobody drew, cleared by the admin (`cancel_line`). Terminal; nothing
+    /// An approved commitment nobody drew, cleared by the council (`cancel_line`). Terminal; nothing
     /// was ever owed.
     Cancelled,
 }
@@ -435,7 +436,7 @@ mod tests {
 
     fn pool(outstanding_principal: u64) -> Pool {
         Pool {
-            admin: Pubkey::default(),
+            council: Pubkey::default(),
             attestor: Pubkey::default(),
             asset_mint: Pubkey::default(),
             share_mint: Pubkey::default(),

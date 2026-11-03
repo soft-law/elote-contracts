@@ -38,9 +38,9 @@ fn n01_an_interest_only_payment_appends_no_registry_entry() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = env.open_line_with(&k, &borrower, &p, None).0;
     env.draw_amount(&k, line_id, &borrower, 4 * UNIT);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let stranger = env.funded(1);
-    env.mint_to(&k.asset_mint, &admin, &stranger.pubkey(), 1_000);
+    env.mint_to(&k.asset_mint, &council, &stranger.pubkey(), 1_000);
 
     let before = env.pagare(&k, line_id, 0);
     for _ in 0..5 {
@@ -56,7 +56,7 @@ fn n01_an_interest_only_payment_appends_no_registry_entry() {
     // Interest cleared plus one unit of principal: one Abono.
     let line = env.line(&k, line_id);
     let amount = line.interest_due - line.interest_repaid + 1;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), amount);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), amount);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), amount);
     let meta = env.send(ix, &borrower, &[]);
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
@@ -75,12 +75,12 @@ fn n01_the_entry_counter_is_wide_enough() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = env.open_line_with(&k, &borrower, &p, None).0;
     env.draw_amount(&k, line_id, &borrower, 4 * UNIT);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     set_entry_count(&mut env, &k, line_id, 0, u16::MAX);
 
     let line = env.line(&k, line_id);
     let owed = line.drawn - line.principal_repaid + line.interest_due - line.interest_repaid;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), owed);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), owed);
     env.send(ix, &borrower, &[]);
     assert_eq!(u64::from(env.pagare(&k, line_id, 0).entry_count), u64::from(u16::MAX) + 1);
@@ -88,7 +88,7 @@ fn n01_the_entry_counter_is_wide_enough() {
 }
 
 /// N-03: the procurador is a third party: neither the attestor (whose signature the procurador's
-/// cancellation also needs) nor the admin (the holder) may be named.
+/// cancellation also needs) nor the council (the holder) may be named.
 #[test]
 fn n03_the_attestor_and_the_admin_cannot_be_procurador() {
     use elote_pool::state::KIND_PROCURACION;
@@ -98,12 +98,12 @@ fn n03_the_attestor_and_the_admin_cannot_be_procurador() {
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = env.open_line_with(&k, &borrower, &p, None).0;
     env.draw_amount(&k, line_id, &borrower, UNIT);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let attestor = env.attestor.insecure_clone();
-    let a = admin.pubkey();
+    let a = council.pubkey();
     for to in [attestor.pubkey(), a] {
         let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, to, [0x44; 32]);
-        env.expect_err(ix, &admin, &[&attestor], E_ENDORSEE_INVALID);
+        env.expect_err(ix, &council, &[&attestor], E_ENDORSEE_INVALID);
     }
     assert_eq!(env.pagare(&k, line_id, 0).entry_count, 1, "nothing was appended");
 }
@@ -120,14 +120,14 @@ fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = env.open_line_with(&k, &borrower, &p, None).0;
     env.draw_amount(&k, line_id, &borrower, UNIT);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let attestor = env.attestor.insecure_clone();
-    let a = admin.pubkey();
+    let a = council.pubkey();
 
     // A stranger's payment covers pagaré 0 with a hash of its own.
     let stranger = env.funded(1);
     let amount = env.line(&k, line_id).interest_due + UNIT;
-    env.mint_to(&k.asset_mint, &admin, &stranger.pubkey(), amount);
+    env.mint_to(&k.asset_mint, &council, &stranger.pubkey(), amount);
     let sidecars = env.payment_sidecars(&k, line_id, amount);
     let ix = env.repay_ix_full(&k, line_id, &stranger.pubkey(), amount, [0x66; 32], &sidecars);
     env.send(ix, &stranger, &[]);
@@ -137,20 +137,20 @@ fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
 
     // The attestor's annotation appends only.
     let ix = env.annotate_payment_ix(&k, line_id, 0, &attestor.pubkey(), payment_entry, [0x77; 32]);
-    env.send(ix, &admin, &[&attestor]);
+    env.send(ix, &council, &[&attestor]);
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!((p0.receipt_hash, p0.entry_count), ([0x66; 32], payment_entry + 1));
 
     // The holder's replaces the provisional hash.
     let ix = env.annotate_payment_ix(&k, line_id, 0, &a, payment_entry, RECEIPT_HASH);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!((p0.receipt_hash, p0.entry_count), (RECEIPT_HASH, payment_entry + 2));
 
     // After the burn the field is frozen; the annotation still appends.
     env.cancel_pagare(&k, line_id, 0);
     let ix = env.annotate_payment_ix(&k, line_id, 0, &a, payment_entry, [0x88; 32]);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!(p0.status, PAGARE_PAID);
     assert_eq!(p0.receipt_hash, RECEIPT_HASH);
@@ -170,19 +170,19 @@ fn n06_the_holder_replaces_a_pending_request_without_shortening_it() {
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = env.open_line_with(&k, &borrower, &p, None).0;
     env.draw_amount(&k, line_id, &borrower, UNIT);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, interest + UNIT);
-    let a = admin.pubkey();
+    let a = council.pubkey();
     let short = i64::from(CANCEL_DELAY);
     let long = 3 * short;
 
     // A request with the wrong receipt, under a long delay.
     let ix = env.set_cancel_delay_ix(&k, &a, 3 * CANCEL_DELAY);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     let ix = env.request_cancellation_ix(&k, line_id, 0, &a, [0x66; 32]);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     let t1 = env.now();
     assert_eq!(env.pagare(&k, line_id, 0).cancel_after, t1 + long);
 
@@ -190,7 +190,7 @@ fn n06_the_holder_replaces_a_pending_request_without_shortening_it() {
     env.warp(t1 + 100);
     let entries = env.pagare(&k, line_id, 0).entry_count;
     let ix = env.request_cancellation_ix(&k, line_id, 0, &a, RECEIPT_HASH);
-    let meta = env.send(ix, &admin, &[]);
+    let meta = env.send(ix, &council, &[]);
     let t2 = env.now();
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!((p0.cancel_after, p0.requested_receipt_hash), (t2 + long, RECEIPT_HASH));
@@ -200,10 +200,10 @@ fn n06_the_holder_replaces_a_pending_request_without_shortening_it() {
 
     // The delay is shortened; a replacement keeps the later deadline it replaces.
     let ix = env.set_cancel_delay_ix(&k, &a, CANCEL_DELAY);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     env.warp(t2 + 100);
     let ix = env.request_cancellation_ix(&k, line_id, 0, &a, RECEIPT_HASH);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     let t3 = env.now();
     assert!(t3 + short < t2 + long);
     assert_eq!(env.pagare(&k, line_id, 0).cancel_after, t2 + long, "never shortened");
@@ -211,8 +211,8 @@ fn n06_the_holder_replaces_a_pending_request_without_shortening_it() {
     // The old receipt no longer cancels; the new one does, after the deadline.
     env.warp(t2 + long + 1);
     let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &a, &a, [0x66; 32]);
-    env.expect_err(ix, &admin, &[], E_ATTESTOR_REQUIRED);
+    env.expect_err(ix, &council, &[], E_ATTESTOR_REQUIRED);
     let ix = env.cancel_pagare_alone_ix(&k, line_id, 0, &a, &a, RECEIPT_HASH);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
 }

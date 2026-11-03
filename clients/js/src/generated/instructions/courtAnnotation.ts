@@ -155,7 +155,7 @@ export type CourtAnnotationAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. */
+  /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
   /** Attests the court document behind `document_hash`. */
   attestor: TAccountAttestor;
@@ -349,7 +349,7 @@ export type CourtAnnotationInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. */
+  /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
   /** Attests the court document behind `document_hash`. */
   attestor: TAccountAttestor;
@@ -516,7 +516,7 @@ export type ParsedCourtAnnotationInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** The pagaré's holder: the admin while the asset is in the pool. */
+    /** The pagaré's holder: the council while the asset is in the pool. */
     holder: TAccountMetas[0];
     /** Attests the court document behind `document_hash`. */
     attestor: TAccountMetas[1];

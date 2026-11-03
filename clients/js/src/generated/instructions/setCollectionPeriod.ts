@@ -56,7 +56,7 @@ export function getSetCollectionPeriodDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type SetCollectionPeriodInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountCouncil extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
@@ -66,10 +66,10 @@ export type SetCollectionPeriodInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountAdmin extends string
-        ? ReadonlySignerAccount<TAccountAdmin> &
-            AccountSignerMeta<TAccountAdmin>
-        : TAccountAdmin,
+      TAccountCouncil extends string
+        ? ReadonlySignerAccount<TAccountCouncil> &
+            AccountSignerMeta<TAccountCouncil>
+        : TAccountCouncil,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -123,13 +123,13 @@ export function getSetCollectionPeriodInstructionDataCodec(): FixedSizeCodec<
 }
 
 export type SetCollectionPeriodAsyncInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -137,14 +137,14 @@ export type SetCollectionPeriodAsyncInput<
 };
 
 export async function getSetCollectionPeriodInstructionAsync<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: SetCollectionPeriodAsyncInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -156,8 +156,8 @@ export async function getSetCollectionPeriodInstructionAsync<
   SetCollectionPeriodInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -186,7 +186,11 @@ export async function getSetCollectionPeriodInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -221,7 +225,7 @@ export async function getSetCollectionPeriodInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -233,8 +237,8 @@ export async function getSetCollectionPeriodInstructionAsync<
   } as SetCollectionPeriodInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -252,13 +256,13 @@ export async function getSetCollectionPeriodInstructionAsync<
 }
 
 export type SetCollectionPeriodInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -266,14 +270,14 @@ export type SetCollectionPeriodInput<
 };
 
 export function getSetCollectionPeriodInstruction<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: SetCollectionPeriodInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -284,8 +288,8 @@ export function getSetCollectionPeriodInstruction<
 ): SetCollectionPeriodInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountAdmin,
-    InstructionAccountInputAddress<TAccountAdmin>
+    TAccountCouncil,
+    InstructionAccountInputAddress<TAccountCouncil>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -313,7 +317,11 @@ export function getSetCollectionPeriodInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -342,7 +350,7 @@ export function getSetCollectionPeriodInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -354,8 +362,8 @@ export function getSetCollectionPeriodInstruction<
   } as SetCollectionPeriodInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -378,7 +386,7 @@ export type ParsedSetCollectionPeriodInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    admin: TAccountMetas[0];
+    council: TAccountMetas[0];
     pool: TAccountMetas[1];
     eventAuthority: TAccountMetas[2];
     program: TAccountMetas[3];
@@ -412,7 +420,7 @@ export function parseSetCollectionPeriodInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      admin: getNextAccount(),
+      council: getNextAccount(),
       pool: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

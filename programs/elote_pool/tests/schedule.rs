@@ -8,7 +8,6 @@ use elote_pool::events::{
     LineWrittenOff,
 };
 use elote_pool::state::{LineStatus, Schedule, ScheduleParams};
-use solana_keypair::Keypair;
 use solana_signer::Signer;
 
 /// A pool with `grace` seconds of grace and one investor who deposited `assets`.
@@ -80,7 +79,7 @@ fn open_rejects_invalid_schedules() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let attestor = env.attestor.insecure_clone();
     let good = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let with = |f: &dyn Fn(&mut ScheduleParams)| {
@@ -105,8 +104,8 @@ fn open_rejects_invalid_schedules() {
         ("span overflow", with(&|s| s.interval_seconds = i64::MAX), E_OVERFLOW),
     ];
     for (name, p, code) in cases {
-        let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-        match env.try_send(ix, &admin, &[&borrower, &attestor]) {
+        let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+        match env.try_send(ix, &council, &[&borrower, &attestor]) {
             Ok(_) => panic!("{name}: accepted"),
             Err(e) => assert_eq!(custom_error_code(&e.err), Some(code), "{name}"),
         }
@@ -116,8 +115,8 @@ fn open_rejects_invalid_schedules() {
     let mut p = with(&|s| s.installments = 4);
     p.principal = 3;
     p.rate_bps = 0;
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&borrower, &attestor], E_INVALID_SCHEDULE);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[&borrower, &attestor], E_INVALID_SCHEDULE);
     assert_eq!(env.pool(&k).line_count, 0);
 
     // The edges are accepted: three installments with max_missed == installments, 100% late
@@ -174,8 +173,8 @@ fn drawn(env: &mut Env, k: &PoolKeys, p: &LineParams, extra: u64) -> (Keypair, u
     let line_id = open(env, k, &borrower, p);
     env.draw(k, line_id, &borrower);
     if extra > 0 {
-        let admin = env.admin.insecure_clone();
-        env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), extra);
+        let council = env.council.insecure_clone();
+        env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), extra);
     }
     let drawn_at = env.line(k, line_id).drawn_at;
     (borrower, line_id, drawn_at)
@@ -445,15 +444,15 @@ fn write_off_in_collection_waits_for_the_collection_period_from_the_mark() {
     let mut env = Env::new();
     let grace: u32 = 15 * 24 * 3600;
     let k = pool_with(&mut env, 10 * UNIT, grace);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
     let nav0 = env.nav(&k);
 
     // An active scheduled line before its term is not written off, even with missed installments.
     env.warp(t0 + 3 * p.interval());
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_TERM_NOT_ENDED);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_TERM_NOT_ENDED);
 
     // Collection once the third missed installment's grace has run. The oldest missed installment
     // fell due at t0 + p.interval(), so its grace has run too; the write-off still waits for the
@@ -462,16 +461,16 @@ fn write_off_in_collection_waits_for_the_collection_period_from_the_mark() {
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
     let marked_at = env.now();
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
     env.warp(marked_at + i64::from(COLLECTION_PERIOD));
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
     env.warp(marked_at + i64::from(COLLECTION_PERIOD) + 1);
     let ix = env.write_off_ix(&k, line_id, &b.pubkey());
     env.expect_err(ix, &b, &[], E_UNAUTHORIZED);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    let meta = env.send(ix, &admin, &[]);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    let meta = env.send(ix, &council, &[]);
     let ev: LineWrittenOff = find_event(&meta).expect("LineWrittenOff");
     assert_eq!((ev.line_id, ev.loss, ev.nav_after), (line_id, 6 * UNIT, nav0 - 6 * UNIT));
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
@@ -485,7 +484,7 @@ fn collection_waits_for_the_grace_of_the_third_missed_installment() {
     let mut env = Env::new();
     let grace: u32 = 10 * 24 * 3600;
     let k = pool_with(&mut env, 10 * UNIT, grace);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
 
@@ -504,8 +503,8 @@ fn collection_waits_for_the_grace_of_the_third_missed_installment() {
     // The oldest missed installment (t0 + 2 months) is past its grace; the write-off is allowed
     // once the collection period has run from the mark.
     env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.send(ix, &admin, &[]);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
 }
 
@@ -517,7 +516,7 @@ fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_collection_pe
     let mut env = Env::new();
     let grace: u32 = 10 * 24 * 3600;
     let k = pool_with(&mut env, 10 * UNIT, grace);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
     env.warp(t0 + 3 * p.interval() + i64::from(grace) + 1);
@@ -532,19 +531,19 @@ fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_collection_pe
     env.repay(&k, line_id, &b, 3_180_000 + a.late_due);
     let a = env.arrears(&k, line_id);
     assert_eq!((a.missed, a.first_missed_due), (3, Some(marked_at)));
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
 
     // The grace (10 days) and the collection period (30 days) both run from the mark.
     env.warp(marked_at + i64::from(grace) + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
     env.warp(marked_at + i64::from(COLLECTION_PERIOD));
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
     env.warp(marked_at + i64::from(COLLECTION_PERIOD) + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.send(ix, &admin, &[]);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
 }
 
@@ -553,7 +552,7 @@ fn write_off_after_the_term_waits_for_the_pool_grace() {
     let mut env = Env::new();
     let grace: u32 = 7 * 24 * 3600;
     let k = pool_with(&mut env, 10 * UNIT, grace);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let b = env.borrower(&k);
 
     // A single-maturity line in a pool with grace.
@@ -569,13 +568,13 @@ fn write_off_after_the_term_waits_for_the_pool_grace() {
 
     for (line_id, term_end) in [(v1, p1.term_end), (v2, p2.term_end)] {
         env.warp(term_end + i64::from(grace));
-        let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-        env.expect_err(ix, &admin, &[], E_TERM_NOT_ENDED);
+        let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+        env.expect_err(ix, &council, &[], E_TERM_NOT_ENDED);
         env.warp(term_end + i64::from(grace) + 1);
         let ix = env.write_off_ix(&k, line_id, &b.pubkey());
         env.expect_err(ix, &b, &[], E_UNAUTHORIZED);
-        let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-        env.send(ix, &admin, &[]);
+        let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+        env.send(ix, &council, &[]);
         assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
     }
 }

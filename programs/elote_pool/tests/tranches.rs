@@ -7,7 +7,6 @@ mod common;
 use common::*;
 use elote_pool::events::{LineCancelled, LineDrawsSuspended, PagareIssued};
 use elote_pool::state::LineStatus;
-use solana_keypair::Keypair;
 use solana_signer::Signer;
 
 /// A pool with one investor who deposited `assets` and `grace` seconds of grace.
@@ -72,8 +71,8 @@ fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
     assert_eq!(env.line(&k, line_id).interest_due, 300_000);
 
     // Repaid in full: exactly 4.0 + 0.3, no more is taken.
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), UNIT);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let before = env.token_balance(&k.asset_ata(&borrower.pubkey()));
     let ev = env.repay(&k, line_id, &borrower, 5 * UNIT);
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (300_000, 4 * UNIT, 0));
@@ -186,8 +185,8 @@ fn weekly_quincenal_and_monthly_calendars_run_a_full_cycle() {
         assert_eq!(line.interest_due, expected_interest, "interval {interval}");
         let total = line.drawn + line.interest_due;
         let installment = total / u64::from(n);
-        let admin = env.admin.insecure_clone();
-        env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 2 * UNIT);
+        let council = env.council.insecure_clone();
+        env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 2 * UNIT);
 
         // Three partial payments on the first due date add up to the first installment.
         env.warp(first_due);
@@ -268,8 +267,8 @@ fn full_repayment_of_a_half_drawn_line_leaves_it_open_while_it_can_draw() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 200_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 200_000);
 
     let ev = env.repay(&k, line_id, &borrower, 2_200_000);
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (200_000, 2 * UNIT, 0));
@@ -282,7 +281,7 @@ fn full_repayment_of_a_half_drawn_line_leaves_it_open_while_it_can_draw() {
     // The window closes: the next full repayment closes the line.
     env.warp(p.term_end);
     let interest = env.line(&k, line_id).interest_due - env.line(&k, line_id).interest_repaid;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, UNIT + interest);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
@@ -294,14 +293,14 @@ fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
     env.repay(&k, line_id, &borrower, 700_000); // 0.2 of interest, 0.5 of principal
     env.warp(p.term_end + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    let meta = env.send(ix, &admin, &[]);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    let meta = env.send(ix, &council, &[]);
     let ev: elote_pool::events::LineWrittenOff = find_event(&meta).unwrap();
     assert_eq!(ev.loss, 1_500_000);
     assert_eq!(env.pool(&k).written_off, 1_500_000);
@@ -319,25 +318,25 @@ fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
     assert_eq!(env.line(&k, many).available(), Some(36));
 }
 
-/// The admin closes the draw window early on a KYC or KYB failure or a default event. The
+/// The council closes the draw window early on a KYC or KYB failure or a default event. The
 /// undrawn remainder is forfeited, repayment is untouched, and it is not a pause.
 #[test]
 fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
 
-    // Admin only.
+    // Council only.
     let stranger = env.funded(1);
     let ix = env.suspend_draws_ix(&k, line_id, &stranger.pubkey());
     env.expect_err(ix, &stranger, &[], E_UNAUTHORIZED);
 
-    let ix = env.suspend_draws_ix(&k, line_id, &admin.pubkey());
-    let meta = env.send(ix, &admin, &[]);
+    let ix = env.suspend_draws_ix(&k, line_id, &council.pubkey());
+    let meta = env.send(ix, &council, &[]);
     let ev: LineDrawsSuspended = find_event(&meta).expect("LineDrawsSuspended");
     assert_eq!((ev.pool, ev.line_id, ev.available_forfeited), (k.pool, line_id, 3 * UNIT));
     let line = env.line(&k, line_id);
@@ -348,31 +347,31 @@ fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
     env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
     assert!(!env.pool(&k).paused);
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 100_000);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 100_000);
     let ev = env.repay(&k, line_id, &borrower, UNIT + 100_000);
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (100_000, UNIT, 0));
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 
     // Not on a closed line; fine on an approved one nobody drew yet.
-    let ix = env.suspend_draws_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_LINE_STATUS);
+    let ix = env.suspend_draws_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_LINE_STATUS);
     let fresh = open(&mut env, &k, &borrower, &p);
-    let ix = env.suspend_draws_ix(&k, fresh, &admin.pubkey());
-    let meta = env.send(ix, &admin, &[]);
+    let ix = env.suspend_draws_ix(&k, fresh, &council.pubkey());
+    let meta = env.send(ix, &council, &[]);
     assert_eq!(find_event::<LineDrawsSuspended>(&meta).unwrap().available_forfeited, 4 * UNIT);
     let ix = env.draw_ix_amount(&k, fresh, &borrower.pubkey(), UNIT, DOCUMENT_HASH);
     env.expect_err_with_attestor(ix, &borrower, E_AVAILABILITY_ENDED);
     assert_eq!(env.line(&k, fresh).status, LineStatus::Approved);
 }
 
-/// Decision 25: an approved commitment nobody drew is cleared by the admin. Once anything was
+/// Decision 25: an approved commitment nobody drew is cleared by the council. Once anything was
 /// drawn there is something owed, and the line follows the repayment path instead.
 #[test]
 fn cancel_line_clears_an_undrawn_commitment_only() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
 
@@ -380,8 +379,8 @@ fn cancel_line_clears_an_undrawn_commitment_only() {
     let ix = env.cancel_line_ix(&k, line_id, &stranger.pubkey());
     env.expect_err(ix, &stranger, &[], E_UNAUTHORIZED);
 
-    let ix = env.cancel_line_ix(&k, line_id, &admin.pubkey());
-    let meta = env.send(ix, &admin, &[]);
+    let ix = env.cancel_line_ix(&k, line_id, &council.pubkey());
+    let meta = env.send(ix, &council, &[]);
     let ev: LineCancelled = find_event(&meta).expect("LineCancelled");
     assert_eq!((ev.pool, ev.line_id), (k.pool, line_id));
     let line = env.line(&k, line_id);
@@ -394,19 +393,19 @@ fn cancel_line_clears_an_undrawn_commitment_only() {
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 1);
     env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
     env.warp(p.term_end + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_LINE_STATUS);
-    let ix = env.cancel_line_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_LINE_STATUS);
-    let ix = env.suspend_draws_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_LINE_STATUS);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_LINE_STATUS);
+    let ix = env.cancel_line_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_LINE_STATUS);
+    let ix = env.suspend_draws_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_LINE_STATUS);
 
     // A line with one tranche drawn is not cancellable; after the window closes it still owes.
     let p = env.line_params(4 * UNIT, 1_000);
     let drawn = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, drawn, &borrower, UNIT);
-    let ix = env.cancel_line_ix(&k, drawn, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_LINE_STATUS);
+    let ix = env.cancel_line_ix(&k, drawn, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_LINE_STATUS);
     assert_eq!(env.pool(&k).outstanding_principal, UNIT);
 }
 

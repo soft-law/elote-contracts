@@ -56,11 +56,12 @@ export function getPoolDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type Pool = {
   discriminator: ReadonlyUint8Array;
-  admin: Address;
+  /** The vault of the council multisig: signs every council instruction. */
+  council: Address;
   /**
    * The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
    * `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
-   * `annotate_payment` alone. Never the admin; rotated with `set_attestor`.
+   * `annotate_payment` alone. Never the council; rotated with `set_attestor`.
    */
   attestor: Address;
   assetMint: Address;
@@ -149,11 +150,12 @@ export type Pool = {
 };
 
 export type PoolArgs = {
-  admin: Address | HasAddress;
+  /** The vault of the council multisig: signs every council instruction. */
+  council: Address | HasAddress;
   /**
    * The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
    * `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
-   * `annotate_payment` alone. Never the admin; rotated with `set_attestor`.
+   * `annotate_payment` alone. Never the council; rotated with `set_attestor`.
    */
   attestor: Address | HasAddress;
   assetMint: Address | HasAddress;
@@ -246,7 +248,7 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["admin", getAddressEncoder()],
+      ["council", getAddressEncoder()],
       ["attestor", getAddressEncoder()],
       ["assetMint", getAddressEncoder()],
       ["shareMint", getAddressEncoder()],
@@ -287,7 +289,7 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
 export function getPoolDecoder(): FixedSizeDecoder<Pool> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["admin", getAddressDecoder()],
+    ["council", getAddressDecoder()],
     ["attestor", getAddressDecoder()],
     ["assetMint", getAddressDecoder()],
     ["shareMint", getAddressDecoder()],

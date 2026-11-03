@@ -25,6 +25,8 @@ import {
   getU16Encoder,
   getU32Decoder,
   getU32Encoder,
+  getU64Decoder,
+  getU64Encoder,
   getU8Decoder,
   getU8Encoder,
   type Address,
@@ -46,7 +48,10 @@ export function getPoolInitializedEventDiscriminatorBytes(): ReadonlyUint8Array 
 
 export type PoolInitializedEvent = {
   pool: Address;
-  admin: Address;
+  council: Address;
+  creator: Address;
+  multisig: Address;
+  guardian: Address;
   attestor: Address;
   assetMint: Address;
   shareMint: Address;
@@ -55,13 +60,19 @@ export type PoolInitializedEvent = {
   collectionPeriodSeconds: number;
   cancelDelaySeconds: number;
   maxLineBps: number;
+  maxOutstandingPrincipal: bigint;
+  accelerationNoticeSeconds: number;
+  cancelGraceSeconds: number;
   assetControls: number;
   permissioned: boolean;
 };
 
 export type PoolInitializedEventArgs = {
   pool: Address | HasAddress;
-  admin: Address | HasAddress;
+  council: Address | HasAddress;
+  creator: Address | HasAddress;
+  multisig: Address | HasAddress;
+  guardian: Address | HasAddress;
   attestor: Address | HasAddress;
   assetMint: Address | HasAddress;
   shareMint: Address | HasAddress;
@@ -70,6 +81,9 @@ export type PoolInitializedEventArgs = {
   collectionPeriodSeconds: number;
   cancelDelaySeconds: number;
   maxLineBps: number;
+  maxOutstandingPrincipal: number | bigint;
+  accelerationNoticeSeconds: number;
+  cancelGraceSeconds: number;
   assetControls: number;
   permissioned: boolean;
 };
@@ -79,7 +93,10 @@ export function getPoolInitializedEventEncoder(): FixedSizeEncoder<PoolInitializ
   return getHiddenPrefixEncoder(
     getStructEncoder([
       ["pool", getAddressEncoder()],
-      ["admin", getAddressEncoder()],
+      ["council", getAddressEncoder()],
+      ["creator", getAddressEncoder()],
+      ["multisig", getAddressEncoder()],
+      ["guardian", getAddressEncoder()],
       ["attestor", getAddressEncoder()],
       ["assetMint", getAddressEncoder()],
       ["shareMint", getAddressEncoder()],
@@ -88,6 +105,9 @@ export function getPoolInitializedEventEncoder(): FixedSizeEncoder<PoolInitializ
       ["collectionPeriodSeconds", getU32Encoder()],
       ["cancelDelaySeconds", getU32Encoder()],
       ["maxLineBps", getU16Encoder()],
+      ["maxOutstandingPrincipal", getU64Encoder()],
+      ["accelerationNoticeSeconds", getU32Encoder()],
+      ["cancelGraceSeconds", getU32Encoder()],
       ["assetControls", getU8Encoder()],
       ["permissioned", getBooleanEncoder()],
     ]),
@@ -100,7 +120,10 @@ export function getPoolInitializedEventDecoder(): FixedSizeDecoder<PoolInitializ
   return getHiddenPrefixDecoder(
     getStructDecoder([
       ["pool", getAddressDecoder()],
-      ["admin", getAddressDecoder()],
+      ["council", getAddressDecoder()],
+      ["creator", getAddressDecoder()],
+      ["multisig", getAddressDecoder()],
+      ["guardian", getAddressDecoder()],
       ["attestor", getAddressDecoder()],
       ["assetMint", getAddressDecoder()],
       ["shareMint", getAddressDecoder()],
@@ -109,6 +132,9 @@ export function getPoolInitializedEventDecoder(): FixedSizeDecoder<PoolInitializ
       ["collectionPeriodSeconds", getU32Decoder()],
       ["cancelDelaySeconds", getU32Decoder()],
       ["maxLineBps", getU16Decoder()],
+      ["maxOutstandingPrincipal", getU64Decoder()],
+      ["accelerationNoticeSeconds", getU32Decoder()],
+      ["cancelGraceSeconds", getU32Decoder()],
       ["assetControls", getU8Decoder()],
       ["permissioned", getBooleanDecoder()],
     ]),

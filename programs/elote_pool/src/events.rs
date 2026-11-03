@@ -7,7 +7,10 @@ use anchor_lang::prelude::*;
 #[event]
 pub struct PoolInitialized {
     pub pool: Pubkey,
-    pub admin: Pubkey,
+    pub council: Pubkey,
+    pub creator: Pubkey,
+    pub multisig: Pubkey,
+    pub guardian: Pubkey,
     pub attestor: Pubkey,
     pub asset_mint: Pubkey,
     pub share_mint: Pubkey,
@@ -16,6 +19,9 @@ pub struct PoolInitialized {
     pub collection_period_seconds: u32,
     pub cancel_delay_seconds: u32,
     pub max_line_bps: u16,
+    pub max_outstanding_principal: u64,
+    pub acceleration_notice_seconds: u32,
+    pub cancel_grace_seconds: u32,
     pub asset_controls: u8,
     pub permissioned: bool,
 }
@@ -128,7 +134,7 @@ pub struct PagareEntry {
 }
 
 /// Emitted by `cancel_pagare`, before the burn. `holder` is the key that extinguished the pagaré
-/// (the admin or the procurador); the sidecar stays as the PAGADO mark.
+/// (the council or the procurador); the sidecar stays as the PAGADO mark.
 #[event]
 pub struct PagareCancelled {
     pub pool: Pubkey,

@@ -188,7 +188,7 @@ export type CancelPagareAsyncInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   /**
-   * The owner (the admin while the asset is in the pool) or the procurador of record with a
+   * The owner (the council while the asset is in the pool) or the procurador of record with a
    * procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
    */
   holder: TAccountHolder;
@@ -507,7 +507,7 @@ export type CancelPagareInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   /**
-   * The owner (the admin while the asset is in the pool) or the procurador of record with a
+   * The owner (the council while the asset is in the pool) or the procurador of record with a
    * procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
    */
   holder: TAccountHolder;
@@ -790,7 +790,7 @@ export type ParsedCancelPagareInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     /**
-     * The owner (the admin while the asset is in the pool) or the procurador of record with a
+     * The owner (the council while the asset is in the pool) or the procurador of record with a
      * procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`).
      */
     holder: TAccountMetas[0];

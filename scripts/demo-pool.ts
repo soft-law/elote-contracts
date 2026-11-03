@@ -3,7 +3,7 @@
 // share rises with the collected interest. With --schedule, a second line is repaid in six
 // installments: one is missed and the next repayment collects late interest first.
 //
-//   npx tsx scripts/demo-pool.ts --cluster local|devnet [--agreement-hash <64 hex>] [--sponsor]
+//   npx tsx scripts/demo-pool.ts --cluster local|devnet --multisig <address> [--agreement-hash <64 hex>] [--sponsor]
 //                                [--schedule [--interval-seconds <n>]] [--grace-seconds <n>]
 //
 // --agreement-hash    hash of the signed credit agreement recorded on the line (placeholder if absent)
@@ -26,6 +26,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   type Address,
+  address,
   type Instruction,
   type KeyPairSigner,
   appendTransactionMessageInstructions,
@@ -93,6 +94,14 @@ const withSchedule = process.argv.includes("--schedule");
 const MONTH_SECONDS = 30n * 86_400n;
 const intervalSeconds = BigInt(arg("interval-seconds") ?? (cluster === "local" ? "20" : MONTH_SECONDS.toString()));
 const graceSeconds = Number(arg("grace-seconds") ?? (withSchedule && cluster === "local" ? "5" : "0"));
+// The council: vault 0 of an existing autonomous Squads v4 multisig with a majority threshold. The
+// admin key below cannot sign as it, so the steps after init_pool need the council tooling.
+const multisigArg = arg("multisig");
+if (!multisigArg) {
+  console.error("--multisig <address> is required: the Squads v4 multisig whose vault 0 is the council");
+  process.exit(1);
+}
+const multisig = address(multisigArg);
 if (intervalSeconds <= 0n) throw new Error("--interval-seconds must be positive");
 if (!Number.isInteger(graceSeconds) || graceSeconds < 0 || graceSeconds > 0xffffffff) {
   throw new Error("--grace-seconds must fit in a u32");
@@ -247,7 +256,7 @@ await send("create tMXN (devnet test token, no value)", admin, [
 ]);
 console.log(`  tMXN (devnet test token, no value) address ${assetMint.address}`);
 
-const [pool] = await findPoolPda({ admin: admin.address, assetMint: assetMint.address });
+const [pool] = await findPoolPda({ creator: admin.address, assetMint: assetMint.address });
 
 // The share mint is supplied by the admin: created here with the pool PDA as mint authority and
 // the asset's decimals. The demo uses a classic SPL mint, which the program accepts; a production
@@ -281,7 +290,8 @@ const DEAD_SHARES = 1_000n;
 console.log("\nCreating the pool");
 await send("init_pool", admin, [
   await getInitPoolInstructionAsync({
-    admin,
+    creator: admin,
+    multisig,
     assetMint: assetMint.address,
     pool,
     shareMint,
@@ -295,6 +305,10 @@ await send("init_pool", admin, [
     attestor,
     collectionPeriodSeconds: 30 * 86_400,
     cancelDelaySeconds: 7 * 86_400,
+    guardian: address("11111111111111111111111111111111"),
+    maxOutstandingPrincipal: 2n ** 64n - 1n,
+    accelerationNoticeSeconds: 7 * 86_400,
+    cancelGraceSeconds: 30 * 86_400,
   }),
 ]);
 console.log(
@@ -358,7 +372,7 @@ const [line] = await findLinePda({ pool, lineId: lineCount });
 const termEnd = BigInt(Math.floor(Date.now() / 1000) + 90 * 86_400);
 await send("open_line", admin, [
   await getOpenLineInstructionAsync({
-    admin,
+    council: admin,
     borrower,
     ...(withSponsor ? { sponsor } : {}),
     attestor: attestorSigner, // stands in for the agreements engine's key in the demo
@@ -515,7 +529,7 @@ async function scheduleDemo() {
   const sTermEnd = firstDueAt + BigInt(installments) * intervalSeconds;
   await send("open_line with a schedule", admin, [
     await getOpenLineInstructionAsync({
-      admin,
+      council: admin,
       borrower,
       attestor: attestorSigner,
       pool,

@@ -78,7 +78,7 @@ export function getOpenLineDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type OpenLineInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountCouncil extends string | AccountMeta<string> = string,
   TAccountBorrower extends string | AccountMeta<string> = string,
   TAccountSponsor extends string | AccountMeta<string> = string,
   TAccountAttestor extends string | AccountMeta<string> = string,
@@ -95,10 +95,10 @@ export type OpenLineInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountAdmin extends string
-        ? WritableSignerAccount<TAccountAdmin> &
-            AccountSignerMeta<TAccountAdmin>
-        : TAccountAdmin,
+      TAccountCouncil extends string
+        ? WritableSignerAccount<TAccountCouncil> &
+            AccountSignerMeta<TAccountCouncil>
+        : TAccountCouncil,
       TAccountBorrower extends string
         ? ReadonlySignerAccount<TAccountBorrower> &
             AccountSignerMeta<TAccountBorrower>
@@ -202,7 +202,7 @@ export function getOpenLineInstructionDataCodec(): Codec<
 }
 
 export type OpenLineAsyncInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
   TAccountSponsor extends InstructionSignerInput = InstructionSignerInput,
   TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
@@ -215,7 +215,7 @@ export type OpenLineAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   borrower: TAccountBorrower;
   /** The sponsor named in the arguments; required (and signing) when one is named. */
   sponsor?: TAccountSponsor;
@@ -240,7 +240,7 @@ export type OpenLineAsyncInput<
 };
 
 export async function getOpenLineInstructionAsync<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountBorrower extends InstructionSignerInput,
   TAccountSponsor extends InstructionSignerInput,
   TAccountAttestor extends InstructionSignerInput,
@@ -253,7 +253,7 @@ export async function getOpenLineInstructionAsync<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: OpenLineAsyncInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountBorrower,
     TAccountSponsor,
     TAccountAttestor,
@@ -271,8 +271,8 @@ export async function getOpenLineInstructionAsync<
   OpenLineInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
@@ -325,7 +325,7 @@ export async function getOpenLineInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: true },
+    council: { value: input.council ?? null, isSigner: true, isWritable: true },
     borrower: {
       value: input.borrower ?? null,
       isSigner: true,
@@ -398,7 +398,7 @@ export async function getOpenLineInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("borrower", accounts.borrower),
       getAccountMeta("sponsor", accounts.sponsor),
       getAccountMeta("attestor", accounts.attestor),
@@ -416,8 +416,8 @@ export async function getOpenLineInstructionAsync<
   } as OpenLineInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
@@ -459,7 +459,7 @@ export async function getOpenLineInstructionAsync<
 }
 
 export type OpenLineInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
   TAccountSponsor extends InstructionSignerInput = InstructionSignerInput,
   TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
@@ -472,7 +472,7 @@ export type OpenLineInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   borrower: TAccountBorrower;
   /** The sponsor named in the arguments; required (and signing) when one is named. */
   sponsor?: TAccountSponsor;
@@ -497,7 +497,7 @@ export type OpenLineInput<
 };
 
 export function getOpenLineInstruction<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountBorrower extends InstructionSignerInput,
   TAccountSponsor extends InstructionSignerInput,
   TAccountAttestor extends InstructionSignerInput,
@@ -510,7 +510,7 @@ export function getOpenLineInstruction<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: OpenLineInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountBorrower,
     TAccountSponsor,
     TAccountAttestor,
@@ -527,8 +527,8 @@ export function getOpenLineInstruction<
 ): OpenLineInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountAdmin,
-    InstructionAccountInputAddress<TAccountAdmin>
+    TAccountCouncil,
+    InstructionAccountInputAddress<TAccountCouncil>
   >,
   ResolvedInstructionAccountMeta<
     TAccountBorrower,
@@ -580,7 +580,7 @@ export function getOpenLineInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: true },
+    council: { value: input.council ?? null, isSigner: true, isWritable: true },
     borrower: {
       value: input.borrower ?? null,
       isSigner: true,
@@ -635,7 +635,7 @@ export function getOpenLineInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("borrower", accounts.borrower),
       getAccountMeta("sponsor", accounts.sponsor),
       getAccountMeta("attestor", accounts.attestor),
@@ -653,8 +653,8 @@ export function getOpenLineInstruction<
   } as OpenLineInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
@@ -701,7 +701,7 @@ export type ParsedOpenLineInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    admin: TAccountMetas[0];
+    council: TAccountMetas[0];
     borrower: TAccountMetas[1];
     /** The sponsor named in the arguments; required (and signing) when one is named. */
     sponsor?: TAccountMetas[2] | undefined;
@@ -750,7 +750,7 @@ export function parseOpenLineInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      admin: getNextAccount(),
+      council: getNextAccount(),
       borrower: getNextAccount(),
       sponsor: getNextOptionalAccount(),
       attestor: getNextAccount(),

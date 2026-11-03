@@ -55,7 +55,7 @@ export function getSetPausedDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type SetPausedInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountCouncil extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
@@ -65,10 +65,10 @@ export type SetPausedInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountAdmin extends string
-        ? ReadonlySignerAccount<TAccountAdmin> &
-            AccountSignerMeta<TAccountAdmin>
-        : TAccountAdmin,
+      TAccountCouncil extends string
+        ? ReadonlySignerAccount<TAccountCouncil> &
+            AccountSignerMeta<TAccountCouncil>
+        : TAccountCouncil,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -117,13 +117,13 @@ export function getSetPausedInstructionDataCodec(): FixedSizeCodec<
 }
 
 export type SetPausedAsyncInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -131,14 +131,14 @@ export type SetPausedAsyncInput<
 };
 
 export async function getSetPausedInstructionAsync<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: SetPausedAsyncInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -150,8 +150,8 @@ export async function getSetPausedInstructionAsync<
   SetPausedInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -180,7 +180,11 @@ export async function getSetPausedInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -215,7 +219,7 @@ export async function getSetPausedInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -227,8 +231,8 @@ export async function getSetPausedInstructionAsync<
   } as SetPausedInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -246,13 +250,13 @@ export async function getSetPausedInstructionAsync<
 }
 
 export type SetPausedInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -260,14 +264,14 @@ export type SetPausedInput<
 };
 
 export function getSetPausedInstruction<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: SetPausedInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -278,8 +282,8 @@ export function getSetPausedInstruction<
 ): SetPausedInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountAdmin,
-    InstructionAccountInputAddress<TAccountAdmin>
+    TAccountCouncil,
+    InstructionAccountInputAddress<TAccountCouncil>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -307,7 +311,11 @@ export function getSetPausedInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -336,7 +344,7 @@ export function getSetPausedInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -348,8 +356,8 @@ export function getSetPausedInstruction<
   } as SetPausedInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -372,7 +380,7 @@ export type ParsedSetPausedInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    admin: TAccountMetas[0];
+    council: TAccountMetas[0];
     pool: TAccountMetas[1];
     eventAuthority: TAccountMetas[2];
     program: TAccountMetas[3];
@@ -406,7 +414,7 @@ export function parseSetPausedInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      admin: getNextAccount(),
+      council: getNextAccount(),
       pool: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

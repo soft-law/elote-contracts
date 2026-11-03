@@ -9,7 +9,7 @@
     {
       "name": "annotate_payment",
       "docs": [
-        "The admin (the holder) or the attestor attaches a receipt to payment entry `entry_count` of",
+        "The council (the holder) or the attestor attaches a receipt to payment entry `entry_count` of",
         "pagaré `draw_index`, as a `Recibo` entry over `receipt_hash`. The holder's annotation also",
         "replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`)."
       ],
@@ -27,7 +27,7 @@
         {
           "name": "annotator",
           "docs": [
-            "The holder (the admin while the asset is in the pool) or the attestor."
+            "The holder (the council while the asset is in the pool) or the attestor."
           ],
           "signer": true
         },
@@ -46,7 +46,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -145,7 +145,7 @@
     {
       "name": "cancel_line",
       "docs": [
-        "Cancels an `Approved` line nobody drew. Admin only; refused once anything was drawn."
+        "Cancels an `Approved` line nobody drew. Council only; refused once anything was drawn."
       ],
       "discriminator": [
         190,
@@ -159,7 +159,7 @@
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "council",
           "signer": true,
           "relations": [
             "pool"
@@ -180,7 +180,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -234,7 +234,7 @@
       "docs": [
         "Extinguishes pagaré `draw_index` once a repayment has marked it paid",
         "(`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry,",
-        "then thaws and burns the asset; the record stays. The owner (the admin) or the procurador of",
+        "then thaws and burns the asset; the record stays. The owner (the council) or the procurador of",
         "record signs, with the attestor; without the attestor, only the owner after a request's",
         "`cancel_after`, with the requested receipt. Never paused."
       ],
@@ -252,7 +252,7 @@
         {
           "name": "holder",
           "docs": [
-            "The owner (the admin while the asset is in the pool) or the procurador of record with a",
+            "The owner (the council while the asset is in the pool) or the procurador of record with a",
             "procuración in force; checked in the handler (`NotHolder`, `ProcuracionState`)."
           ],
           "signer": true
@@ -290,7 +290,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -420,7 +420,7 @@
       "docs": [
         "Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,",
         "suspension, cancellation) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. The",
-        "holder (the admin) and the attestor sign; refused on a cancelled pagaré; moves nothing."
+        "holder (the council) and the attestor sign; refused on a cancelled pagaré; moves nothing."
       ],
       "discriminator": [
         218,
@@ -436,7 +436,7 @@
         {
           "name": "holder",
           "docs": [
-            "The pagaré's holder: the admin while the asset is in the pool."
+            "The pagaré's holder: the council while the asset is in the pool."
           ],
           "signer": true
         },
@@ -462,7 +462,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -594,7 +594,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -710,7 +710,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -908,8 +908,8 @@
       "docs": [
         "Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets",
         "the program address `[\"procurador\", pagare, to]` burn the asset through an owner-managed",
-        "`BurnDelegate`. The admin (the holder) and the attestor sign; `kind` must be",
-        "`KIND_PROCURACION`; refused with `to` the zero key, the pool, the admin or the attestor, or",
+        "`BurnDelegate`. The council (the holder) and the attestor sign; `kind` must be",
+        "`KIND_PROCURACION`; refused with `to` the zero key, the pool, the council or the attestor, or",
         "a procuración in force."
       ],
       "discriminator": [
@@ -926,7 +926,7 @@
         {
           "name": "holder",
           "docs": [
-            "The pagaré's holder: the admin while the asset is in the pool."
+            "The pagaré's holder: the council while the asset is in the pool."
           ],
           "signer": true
         },
@@ -960,7 +960,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -1079,10 +1079,11 @@
     {
       "name": "init_pool",
       "docs": [
-        "Creates the pool, its vault and its dead-shares account around `asset_mint`, the admin's",
-        "share mint and the series collection. The admin signs. Fixes the grace period and the line",
-        "cap (`1..=10_000` bps of the NAV) for the pool's life; sets the attestor (not the admin),",
-        "the collection period (at least 30 days) and the cancel delay (at least seven days)."
+        "Creates the pool, its vault and its dead-shares account around `asset_mint`, the creator's",
+        "share mint and the series collection. The creator signs and pays; the council is vault 0 of",
+        "`multisig`, an autonomous Squads v4 multisig of at most ten members with a majority",
+        "threshold, and does not sign. Fixes the grace period and the line cap (`1..=10_000` bps of the",
+        "NAV) for the pool's life."
       ],
       "discriminator": [
         116,
@@ -1096,7 +1097,10 @@
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "creator",
+          "docs": [
+            "Pays for the pool and seeds its address; no other power."
+          ],
           "writable": true,
           "signer": true
         },
@@ -1122,7 +1126,7 @@
               },
               {
                 "kind": "account",
-                "path": "admin"
+                "path": "creator"
               },
               {
                 "kind": "account",
@@ -1134,7 +1138,7 @@
         {
           "name": "share_mint",
           "docs": [
-            "The share mint, created by the admin beforehand and validated here: mint authority = this",
+            "The share mint, created by the creator beforehand and validated here: mint authority = this",
             "pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.",
             "`DefaultAccountState = Frozen` makes the shares permissioned."
           ]
@@ -1193,8 +1197,14 @@
         {
           "name": "collection",
           "docs": [
-            "The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as",
+            "The series' Metaplex Core collection, created by the creator beforehand with the pool PDA as",
             "update authority."
+          ]
+        },
+        {
+          "name": "multisig",
+          "docs": [
+            "The Squads v4 multisig whose vault 0 becomes the council; it does not sign here."
           ]
         },
         {
@@ -1222,24 +1232,12 @@
       ],
       "args": [
         {
-          "name": "grace_period_seconds",
-          "type": "u32"
-        },
-        {
-          "name": "max_line_bps",
-          "type": "u16"
-        },
-        {
-          "name": "attestor",
-          "type": "pubkey"
-        },
-        {
-          "name": "collection_period_seconds",
-          "type": "u32"
-        },
-        {
-          "name": "cancel_delay_seconds",
-          "type": "u32"
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "InitPoolParams"
+            }
+          }
         }
       ]
     },
@@ -1276,7 +1274,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -1329,8 +1327,8 @@
       "name": "open_line",
       "docs": [
         "Approves line `line_id` (the next): a commitment of `principal` at an annual `rate_bps`,",
-        "repaid at `term_end` or on the `schedule`'s calendar. The admin, the borrower, the attestor",
-        "and the sponsor if named sign; refused while paused, with the admin or the attestor as",
+        "repaid at `term_end` or on the `schedule`'s calendar. The council, the borrower, the attestor",
+        "and the sponsor if named sign; refused while paused, with the council or the attestor as",
         "borrower, or above the line cap. Moves no money."
       ],
       "discriminator": [
@@ -1345,7 +1343,7 @@
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "council",
           "writable": true,
           "signer": true,
           "relations": [
@@ -1387,7 +1385,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -1533,7 +1531,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -1640,7 +1638,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -1729,7 +1727,7 @@
     {
       "name": "request_cancellation",
       "docs": [
-        "The holder (the admin) requests the cancellation of pagaré `draw_index`, marked paid by a",
+        "The holder (the council) requests the cancellation of pagaré `draw_index`, marked paid by a",
         "repayment, against `receipt_hash`; after `cancel_after = max(now + cancel delay, pending",
         "deadline)` it may cancel without the attestor with that receipt. A new request replaces a",
         "pending one."
@@ -1748,7 +1746,7 @@
         {
           "name": "holder",
           "docs": [
-            "The pagaré's holder: the admin while the asset is in the pool."
+            "The pagaré's holder: the council while the asset is in the pool."
           ],
           "signer": true
         },
@@ -1767,7 +1765,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -1864,7 +1862,7 @@
       "docs": [
         "Revokes the procuración in force on pagaré `draw_index`: appends the revocation entry over",
         "the signed revocation's hash and returns the burn delegate to the owner. The holder (the",
-        "admin) signs."
+        "council) signs."
       ],
       "discriminator": [
         139,
@@ -1880,7 +1878,7 @@
         {
           "name": "holder",
           "docs": [
-            "The pagaré's holder: the admin while the asset is in the pool. The owner alone revokes."
+            "The pagaré's holder: the council while the asset is in the pool. The owner alone revokes."
           ],
           "signer": true
         },
@@ -1904,7 +1902,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -2015,7 +2013,7 @@
     {
       "name": "set_attestor",
       "docs": [
-        "Replaces the pool's attestor. The admin and the new attestor sign; refused with the admin as",
+        "Replaces the pool's attestor. The council and the new attestor sign; refused with the council as",
         "attestor."
       ],
       "discriminator": [
@@ -2030,7 +2028,7 @@
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "council",
           "signer": true,
           "relations": [
             "pool"
@@ -2059,7 +2057,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -2083,7 +2081,7 @@
       "name": "set_cancel_delay",
       "docs": [
         "Sets the wait, in seconds, from a cancellation request before the holder may cancel a pagaré",
-        "without the attestor; never below seven days. Admin only. A pending request keeps its",
+        "without the attestor; never below seven days. Council only. A pending request keeps its",
         "deadline."
       ],
       "discriminator": [
@@ -2098,7 +2096,7 @@
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "council",
           "signer": true,
           "relations": [
             "pool"
@@ -2120,7 +2118,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -2149,7 +2147,7 @@
       "name": "set_collection_period",
       "docs": [
         "Sets the seconds a line in collection waits, from its mark, before it can be written off.",
-        "Admin only; refused below the 30-day floor."
+        "Council only; refused below the 30-day floor."
       ],
       "discriminator": [
         223,
@@ -2163,7 +2161,7 @@
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "council",
           "signer": true,
           "relations": [
             "pool"
@@ -2185,7 +2183,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -2213,7 +2211,7 @@
     {
       "name": "set_paused",
       "docs": [
-        "Pauses or resumes deposits, redemptions, openings and draws. Admin only. Nothing else is",
+        "Pauses or resumes deposits, redemptions, openings and draws. Council only. Nothing else is",
         "ever paused: repayments, pagaré instructions, collection and write-offs."
       ],
       "discriminator": [
@@ -2228,7 +2226,7 @@
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "council",
           "signer": true,
           "relations": [
             "pool"
@@ -2250,7 +2248,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -2279,7 +2277,7 @@
       "name": "suspend_draws",
       "docs": [
         "Closes the draw window of an `Approved` or `Active` line now, forfeiting the undrawn",
-        "remainder. Admin only. Repayment is untouched."
+        "remainder. Council only. Repayment is untouched."
       ],
       "discriminator": [
         126,
@@ -2293,7 +2291,7 @@
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "council",
           "signer": true,
           "relations": [
             "pool"
@@ -2314,7 +2312,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -2366,7 +2364,7 @@
     {
       "name": "write_off",
       "docs": [
-        "Books a line's unpaid principal as a loss. Admin only; an `Active` line after `term_end +",
+        "Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end +",
         "grace`, an `InCollection` line after its collection period from the mark and after its",
         "oldest missed due date or its term, plus grace. Never paused."
       ],
@@ -2382,7 +2380,7 @@
       ],
       "accounts": [
         {
-          "name": "admin",
+          "name": "council",
           "signer": true,
           "relations": [
             "pool"
@@ -2404,7 +2402,7 @@
               },
               {
                 "kind": "account",
-                "path": "pool.admin",
+                "path": "pool.creator",
                 "account": "Pool"
               },
               {
@@ -3091,13 +3089,13 @@
     },
     {
       "code": 6017,
-      "name": "AttestorIsAdmin",
-      "msg": "The attestor cannot be the admin"
+      "name": "AttestorIsCouncil",
+      "msg": "The attestor cannot be the council"
     },
     {
       "code": 6018,
-      "name": "BorrowerIsAdmin",
-      "msg": "The pool admin cannot be the borrower"
+      "name": "BorrowerIsCouncil",
+      "msg": "The council cannot be the borrower"
     },
     {
       "code": 6019,
@@ -3112,7 +3110,7 @@
     {
       "code": 6021,
       "name": "EndorseeInvalid",
-      "msg": "The endorsee is missing, or is the pool, the admin or the attestor"
+      "msg": "The endorsee is missing, or is the pool, the council or the attestor"
     },
     {
       "code": 6022,
@@ -3877,6 +3875,77 @@
           {
             "name": "guardian",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitPoolParams",
+      "docs": [
+        "The `init_pool` parameters."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "grace_period_seconds",
+            "docs": [
+              "Zero means no grace; fixed for the pool's life."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "max_line_bps",
+            "docs": [
+              "`1..=BPS`; fixed for the pool's life."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "attestor",
+            "type": "pubkey"
+          },
+          {
+            "name": "collection_period_seconds",
+            "docs": [
+              "At least `MIN_COLLECTION_PERIOD_SECONDS`."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "cancel_delay_seconds",
+            "docs": [
+              "At least `MIN_CANCEL_DELAY_SECONDS`."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "guardian",
+            "docs": [
+              "The zero key for none."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "max_outstanding_principal",
+            "docs": [
+              "At least 1."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "acceleration_notice_seconds",
+            "docs": [
+              "At least `MIN_ACCELERATION_NOTICE_SECONDS`."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "cancel_grace_seconds",
+            "docs": [
+              "At least `MIN_CANCEL_GRACE_SECONDS`."
+            ],
+            "type": "u32"
           }
         ]
       }
@@ -4681,7 +4750,7 @@
       "name": "PagareCancelled",
       "docs": [
         "Emitted by `cancel_pagare`, before the burn. `holder` is the key that extinguished the pagaré",
-        "(the admin or the procurador); the sidecar stays as the PAGADO mark."
+        "(the council or the procurador); the sidecar stays as the PAGADO mark."
       ],
       "type": {
         "kind": "struct",
@@ -4967,7 +5036,10 @@
         "kind": "struct",
         "fields": [
           {
-            "name": "admin",
+            "name": "council",
+            "docs": [
+              "The vault of the council multisig: signs every council instruction."
+            ],
             "type": "pubkey"
           },
           {
@@ -4975,7 +5047,7 @@
             "docs": [
               "The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and",
               "`court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign",
-              "`annotate_payment` alone. Never the admin; rotated with `set_attestor`."
+              "`annotate_payment` alone. Never the council; rotated with `set_attestor`."
             ],
             "type": "pubkey"
           },
@@ -5206,7 +5278,19 @@
             "type": "pubkey"
           },
           {
-            "name": "admin",
+            "name": "council",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "multisig",
+            "type": "pubkey"
+          },
+          {
+            "name": "guardian",
             "type": "pubkey"
           },
           {
@@ -5240,6 +5324,18 @@
           {
             "name": "max_line_bps",
             "type": "u16"
+          },
+          {
+            "name": "max_outstanding_principal",
+            "type": "u64"
+          },
+          {
+            "name": "acceleration_notice_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "cancel_grace_seconds",
+            "type": "u32"
           },
           {
             "name": "asset_controls",

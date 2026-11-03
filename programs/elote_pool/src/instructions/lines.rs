@@ -28,7 +28,7 @@ use crate::state::{
 #[instruction(line_id: u64)]
 pub struct OpenLine<'info> {
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub council: Signer<'info>,
 
     pub borrower: Signer<'info>,
 
@@ -41,15 +41,15 @@ pub struct OpenLine<'info> {
 
     #[account(
         mut,
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
-        has_one = admin @ PoolError::Unauthorized,
+        has_one = council @ PoolError::Unauthorized,
     )]
     pub pool: Account<'info, Pool>,
 
     #[account(
         init,
-        payer = admin,
+        payer = council,
         space = 8 + CreditLine::INIT_SPACE,
         seeds = [seeds::LINE, pool.key().as_ref(), &line_id.to_le_bytes()],
         bump,
@@ -63,8 +63,8 @@ pub struct OpenLine<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Opens an `Approved` line, signed by the admin, the borrower, the attestor and the named sponsor
-/// if any; the borrower may be neither the admin nor the attestor. `line_id` must be the pool's next
+/// Opens an `Approved` line, signed by the council, the borrower, the attestor and the named sponsor
+/// if any; the borrower may be neither the council nor the attestor. `line_id` must be the pool's next
 /// id, and `principal` at most `max_line_bps` of the NAV (`LineTooLarge`). Refused while paused.
 #[allow(clippy::too_many_arguments)]
 pub fn open_line(
@@ -83,7 +83,7 @@ pub fn open_line(
     let pool = &mut ctx.accounts.pool;
     require!(!pool.paused, PoolError::Paused);
     require!(line_id == pool.line_count, PoolError::WrongAccount);
-    require!(ctx.accounts.borrower.key() != pool.admin, PoolError::BorrowerIsAdmin);
+    require!(ctx.accounts.borrower.key() != pool.council, PoolError::BorrowerIsCouncil);
     require!(ctx.accounts.borrower.key() != pool.attestor, PoolError::BorrowerIsAttestor);
     require!(principal > 0, PoolError::WrongAmount);
     // The cap is measured against the NAV at this moment, principal lent out included; an empty
@@ -210,7 +210,7 @@ pub struct Draw<'info> {
 
     #[account(
         mut,
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -578,7 +578,7 @@ pub struct Repay<'info> {
 
     #[account(
         mut,
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -821,7 +821,7 @@ fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
 #[derive(Accounts)]
 pub struct MarkInCollection<'info> {
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -885,13 +885,13 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
 #[event_cpi]
 #[derive(Accounts)]
 pub struct WriteOff<'info> {
-    pub admin: Signer<'info>,
+    pub council: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
-        has_one = admin @ PoolError::Unauthorized,
+        has_one = council @ PoolError::Unauthorized,
     )]
     pub pool: Account<'info, Pool>,
 
@@ -912,7 +912,7 @@ pub struct WriteOff<'info> {
     pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 }
 
-/// Recognises the unpaid principal of an overdue line as a loss. Admin only; not blocked by the
+/// Recognises the unpaid principal of an overdue line as a loss. Council only; not blocked by the
 /// pause. Allowed when
 ///
 /// - the line is `Active` and `now > term_end + grace` (else `TermNotEnded`), or
@@ -969,12 +969,12 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
 #[event_cpi]
 #[derive(Accounts)]
 pub struct SuspendDraws<'info> {
-    pub admin: Signer<'info>,
+    pub council: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
-        has_one = admin @ PoolError::Unauthorized,
+        has_one = council @ PoolError::Unauthorized,
     )]
     pub pool: Account<'info, Pool>,
 
@@ -987,7 +987,7 @@ pub struct SuspendDraws<'info> {
     pub line: Account<'info, CreditLine>,
 }
 
-/// Admin only: closes the draw window of an `Approved` or `Active` line now. The undrawn
+/// Council only: closes the draw window of an `Approved` or `Active` line now. The undrawn
 /// remainder is forfeited; repayment, collection and write-off are untouched; the pool is not
 /// paused.
 pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
@@ -1003,12 +1003,12 @@ pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
 #[event_cpi]
 #[derive(Accounts)]
 pub struct CancelLine<'info> {
-    pub admin: Signer<'info>,
+    pub council: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
-        has_one = admin @ PoolError::Unauthorized,
+        has_one = council @ PoolError::Unauthorized,
     )]
     pub pool: Account<'info, Pool>,
 
@@ -1021,7 +1021,7 @@ pub struct CancelLine<'info> {
     pub line: Account<'info, CreditLine>,
 }
 
-/// Admin only: clears an approved commitment nobody drew (`Approved`, `drawn == 0`); once a
+/// Council only: clears an approved commitment nobody drew (`Approved`, `drawn == 0`); once a
 /// tranche exists the line follows repayment, collection or write-off instead. `Cancelled` is
 /// terminal; the line id stays taken.
 pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {

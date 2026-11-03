@@ -42,8 +42,8 @@ fn f01_a_third_party_repayment_does_not_close_a_line_that_can_still_draw() {
     // The borrower keeps drawing against its commitment.
     env.draw_amount(&k, line_id, &borrower, UNIT);
     assert_eq!(env.line(&k, line_id).drawn, UNIT + 1);
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), UNIT);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let interest = env.line(&k, line_id).interest_due;
     env.repay(&k, line_id, &borrower, UNIT + interest);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Active, "paid again, still open");
@@ -59,35 +59,35 @@ fn f01_a_third_party_repayment_does_not_close_a_line_that_can_still_draw() {
 }
 
 /// F-01, the other exit: a line drawn in full closes with its last unit, window open or not, and a
-/// line whose window the admin suspended closes with its last unit too.
+/// line whose window the council suspended closes with its last unit too.
 #[test]
 fn f01_a_full_repayment_closes_a_line_that_cannot_draw_any_more() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
 
     // Fully drawn: nothing left to draw, so the last unit repaid closes it.
     let borrower = env.borrower(&k);
     let p = env.line_params(2 * UNIT, 1_000);
     let (full, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, full, &borrower);
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), UNIT);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let interest = env.line(&k, full).interest_due;
     env.repay(&k, full, &borrower, 2 * UNIT + interest);
     assert_eq!(env.line(&k, full).status, LineStatus::Repaid);
 
-    // Half drawn, then the admin closes the window: the last unit repaid closes it.
+    // Half drawn, then the council closes the window: the last unit repaid closes it.
     let borrower = env.borrower(&k);
     let (half, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw_amount(&k, half, &borrower, UNIT);
     let interest = env.line(&k, half).interest_due;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), UNIT);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     env.repay(&k, half, &borrower, UNIT + interest);
     assert_eq!(env.line(&k, half).status, LineStatus::Active);
-    let ix = env.suspend_draws_ix(&k, half, &admin.pubkey());
-    env.send(ix, &admin, &[]);
+    let ix = env.suspend_draws_ix(&k, half, &council.pubkey());
+    env.send(ix, &council, &[]);
     env.repay(&k, half, &borrower, 1);
     assert_eq!(env.line(&k, half).status, LineStatus::Repaid);
 }
@@ -101,12 +101,12 @@ fn f01_a_full_repayment_closes_a_line_that_cannot_draw_any_more() {
 fn f02_init_pool_refuses_a_collection_with_plugins_or_minted_assets() {
     use mpl_core::types::{PermanentBurnDelegate, PermanentTransferDelegate, Plugin, PluginAuthority, PluginAuthorityPair};
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let stranger = env.funded(1);
     let by_stranger = Some(PluginAuthority::Address { address: stranger.pubkey() });
 
     // A collection with collection-level permanent delegates held by a stranger.
-    let asset_mint = env.create_mint(&admin.pubkey(), 6);
+    let asset_mint = env.create_mint(&council.pubkey(), 6);
     let mut k = env.pool_keys_for(&asset_mint);
     k.collection = env.create_collection_with(
         &k.pool,
@@ -116,7 +116,7 @@ fn f02_init_pool_refuses_a_collection_with_plugins_or_minted_assets() {
         ],
     );
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
 
     // A collection with any plugin at all, even a harmless one.
     k.collection = env.create_collection_with(
@@ -124,12 +124,12 @@ fn f02_init_pool_refuses_a_collection_with_plugins_or_minted_assets() {
         vec![PluginAuthorityPair { plugin: Plugin::ImmutableMetadata(mpl_core::types::ImmutableMetadata {}), authority: Some(PluginAuthority::None) }],
     );
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
 
     // A bare collection that already holds an asset minted by its authority.
     let authority = env.funded(1);
     let minted = env.create_collection(&authority.pubkey());
-    let asset = solana_keypair::Keypair::new();
+    let asset = Keypair::new();
     let ix = mpl_core::instructions::CreateV2Builder::new()
         .asset(asset.pubkey())
         .collection(Some(minted))
@@ -150,62 +150,62 @@ fn f02_init_pool_refuses_a_collection_with_plugins_or_minted_assets() {
     env.send(ix, &authority, &[]);
     k.collection = minted;
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.expect_err(ix, &admin, &[], E_COLLECTION_NOT_ALLOWED);
+    env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
 
     // A bare, empty collection is accepted.
     k.collection = env.create_collection(&k.pool);
     let ix = env.init_pool_ix_for(&k, 0, BPS);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     assert_eq!(env.pool(&k).collection, k.collection);
 }
 
-/// F-05: the two-signature model (an independent engine attests what the admin or the borrower
-/// asserts) must not collapse into one key: the attestor cannot be the admin, at `init_pool` or at
+/// F-05: the two-signature model (an independent engine attests what the council or the borrower
+/// asserts) must not collapse into one key: the attestor cannot be the council, at `init_pool` or at
 /// `set_attestor`, and the borrower cannot be the attestor.
 #[test]
 fn f05_the_attestor_is_neither_the_admin_nor_a_borrower() {
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
-    let asset_mint = env.create_mint(&admin.pubkey(), 6);
+    let council = env.council.insecure_clone();
+    let asset_mint = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset_mint);
-    let ix = env.init_pool_ix_with_attestor(&k, 0, BPS, admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_ATTESTOR_IS_ADMIN);
+    let ix = env.init_pool_ix_with_attestor(&k, 0, BPS, council.pubkey());
+    env.expect_err(ix, &council, &[], E_ATTESTOR_IS_COUNCIL);
 
     let (k, _) = env.setup_pool();
-    let ix = env.set_attestor_ix(&k, &admin.pubkey(), &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_ATTESTOR_IS_ADMIN);
+    let ix = env.set_attestor_ix(&k, &council.pubkey(), &council.pubkey());
+    env.expect_err(ix, &council, &[], E_ATTESTOR_IS_COUNCIL);
 
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
     let attestor = env.attestor.insecure_clone();
     env.create_ata(&attestor.pubkey(), &k.asset_mint);
     let p = env.line_params(UNIT, 1_000);
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &attestor.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&attestor], E_BORROWER_IS_ATTESTOR);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &attestor.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[&attestor], E_BORROWER_IS_ATTESTOR);
     assert_eq!(env.pool(&k).line_count, 0);
 }
 
 /// F-03: the write-off of a line in collection used to be available the instant the keeper marked
 /// it, since the grace of the third missed installment implies the grace of the first. The pool
-/// now carries a collection period (at least 30 days, set at `init_pool`, changed by the admin),
+/// now carries a collection period (at least 30 days, set at `init_pool`, changed by the council),
 /// and `write_off` on a line in collection waits for it from the mark, on top of the gates it had.
 #[test]
 fn f03_write_off_waits_for_the_pools_collection_period_from_the_mark() {
     use elote_pool::events::CollectionPeriodSet;
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
 
     // Below the floor, the pool is not created and the period is not changed.
-    let asset_mint = env.create_mint(&admin.pubkey(), 6);
+    let asset_mint = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset_mint);
     let ix = env.init_pool_ix_full(&k, 0, BPS, env.attestor.pubkey(), COLLECTION_PERIOD - 1, CANCEL_DELAY);
-    env.expect_err(ix, &admin, &[], E_COLLECTION_PERIOD_TOO_SHORT);
+    env.expect_err(ix, &council, &[], E_COLLECTION_PERIOD_TOO_SHORT);
     let (k, meta) = env.setup_pool();
     let ev: elote_pool::events::PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((ev.pool, ev.collection_period_seconds), (k.pool, COLLECTION_PERIOD));
     assert_eq!(env.pool(&k).collection_period_seconds, COLLECTION_PERIOD);
-    let ix = env.set_collection_period_ix(&k, &admin.pubkey(), COLLECTION_PERIOD - 1);
-    env.expect_err(ix, &admin, &[], E_COLLECTION_PERIOD_TOO_SHORT);
+    let ix = env.set_collection_period_ix(&k, &council.pubkey(), COLLECTION_PERIOD - 1);
+    env.expect_err(ix, &council, &[], E_COLLECTION_PERIOD_TOO_SHORT);
     let stranger = env.funded(1);
     let ix = env.set_collection_period_ix(&k, &stranger.pubkey(), 2 * COLLECTION_PERIOD);
     env.expect_err(ix, &stranger, &[], E_UNAUTHORIZED);
@@ -222,22 +222,22 @@ fn f03_write_off_waits_for_the_pools_collection_period_from_the_mark() {
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &borrower, &[]);
     let marked_at = env.now();
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
     env.warp(marked_at + i64::from(COLLECTION_PERIOD));
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
 
-    // The admin lengthens the period: the wait grows with it, for a line already marked too.
-    let ix = env.set_collection_period_ix(&k, &admin.pubkey(), 2 * COLLECTION_PERIOD);
-    let meta = env.send(ix, &admin, &[]);
+    // The council lengthens the period: the wait grows with it, for a line already marked too.
+    let ix = env.set_collection_period_ix(&k, &council.pubkey(), 2 * COLLECTION_PERIOD);
+    let meta = env.send(ix, &council, &[]);
     let ev: CollectionPeriodSet = find_event(&meta).expect("CollectionPeriodSet");
     assert_eq!(ev.collection_period_seconds, 2 * COLLECTION_PERIOD);
     env.warp(marked_at + i64::from(COLLECTION_PERIOD) + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.expect_err(ix, &admin, &[], E_WRITE_OFF_TOO_EARLY);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
     env.warp(marked_at + 2 * i64::from(COLLECTION_PERIOD) + 1);
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.send(ix, &admin, &[]);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
 }

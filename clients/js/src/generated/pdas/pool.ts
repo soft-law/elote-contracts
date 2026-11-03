@@ -16,7 +16,7 @@ import {
 } from "@solana/kit";
 
 export type PoolSeeds = {
-  admin: Address | HasAddress;
+  creator: Address | HasAddress;
   assetMint: Address | HasAddress;
 };
 
@@ -36,7 +36,7 @@ export async function findPoolPda(
     programAddress,
     seeds: [
       getBytesEncoder().encode(new Uint8Array([112, 111, 111, 108])),
-      getAddressEncoder().encode(seeds.admin),
+      getAddressEncoder().encode(seeds.creator),
       getAddressEncoder().encode(seeds.assetMint),
     ],
   });

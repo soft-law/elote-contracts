@@ -10,10 +10,12 @@ use crate::errors::PoolError;
 use crate::events::{
     AttestorSet, CancelDelaySet, CollectionPeriodSet, Deposited, NavUpdated, PoolInitialized, PoolPaused, Redeemed,
 };
+use crate::council;
 use crate::math;
 use crate::state::{
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
-    MIN_CANCEL_DELAY_SECONDS, MIN_COLLECTION_PERIOD_SECONDS,
+    COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_DELAY_SECONDS, MIN_CANCEL_GRACE_SECONDS,
+    MIN_COLLECTION_PERIOD_SECONDS,
 };
 
 /// Signs CPIs as the pool PDA.
@@ -22,7 +24,7 @@ macro_rules! pool_signer {
     ($pool:expr) => {
         &[&[
             $crate::state::seeds::POOL,
-            $pool.admin.as_ref(),
+            $pool.creator.as_ref(),
             $pool.asset_mint.as_ref(),
             &[$pool.bump],
         ]]
@@ -32,22 +34,23 @@ macro_rules! pool_signer {
 #[event_cpi]
 #[derive(Accounts)]
 pub struct InitPool<'info> {
+    /// Pays for the pool and seeds its address; no other power.
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub creator: Signer<'info>,
 
     /// Classic SPL Token or Token-2022; `token_program` must be the mint's own program.
     pub asset_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         init,
-        payer = admin,
+        payer = creator,
         space = 8 + Pool::INIT_SPACE,
-        seeds = [seeds::POOL, admin.key().as_ref(), asset_mint.key().as_ref()],
+        seeds = [seeds::POOL, creator.key().as_ref(), asset_mint.key().as_ref()],
         bump,
     )]
     pub pool: Account<'info, Pool>,
 
-    /// The share mint, created by the admin beforehand and validated here: mint authority = this
+    /// The share mint, created by the creator beforehand and validated here: mint authority = this
     /// pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.
     /// `DefaultAccountState = Frozen` makes the shares permissioned.
     pub share_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -55,7 +58,7 @@ pub struct InitPool<'info> {
     /// A PDA token account, so nobody can pre-create it and block the pool.
     #[account(
         init,
-        payer = admin,
+        payer = creator,
         seeds = [seeds::VAULT, pool.key().as_ref()],
         bump,
         token::mint = asset_mint,
@@ -69,7 +72,7 @@ pub struct InitPool<'info> {
     /// first deposit (in this transaction or a later one).
     #[account(
         init,
-        payer = admin,
+        payer = creator,
         seeds = [seeds::DEAD, pool.key().as_ref()],
         bump,
         token::mint = share_mint,
@@ -78,10 +81,14 @@ pub struct InitPool<'info> {
     )]
     pub dead_shares: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as
+    /// The series' Metaplex Core collection, created by the creator beforehand with the pool PDA as
     /// update authority.
     /// CHECK: owner, key and update authority are checked in `validate_collection`.
     pub collection: UncheckedAccount<'info>,
+
+    /// The Squads v4 multisig whose vault 0 becomes the council; it does not sign here.
+    /// CHECK: read at fixed offsets by `council::check`.
+    pub multisig: UncheckedAccount<'info>,
 
     /// The token program of `asset_mint` (classic SPL Token or Token-2022).
     pub token_program: Interface<'info, TokenInterface>,
@@ -148,7 +155,7 @@ fn asset_controls(asset_mint: &AccountInfo) -> Result<u8> {
 /// - the confidential extensions: a hidden supply breaks the price per share.
 ///
 /// `DefaultAccountState = Frozen` makes the shares permissioned and then requires a freeze
-/// authority, or nothing could ever be thawed; who holds it is the admin's choice and is not
+/// authority, or nothing could ever be thawed; who holds it is the council's choice and is not
 /// recorded. `NonTransferable` is allowed: deposit mints and redeem burns. Returns `permissioned`.
 fn validate_share_mint(ctx: &Context<InitPool>) -> Result<bool> {
     let share_mint = &ctx.accounts.share_mint;
@@ -222,63 +229,103 @@ fn validate_collection(collection: &AccountInfo, pool: &Pubkey) -> Result<()> {
     Ok(())
 }
 
-/// `grace_period_seconds` (zero means no grace) and `max_line_bps` are fixed for the pool's life.
-/// The attestor is rotated with `set_attestor`. `collection_period_seconds` (at least
-/// `MIN_COLLECTION_PERIOD_SECONDS`) and `cancel_delay_seconds` (at least `MIN_CANCEL_DELAY_SECONDS`,
-/// the backstop's wait) are changed by the admin with `set_collection_period` and `set_cancel_delay`.
-pub fn init_pool(
-    ctx: Context<InitPool>,
-    grace_period_seconds: u32,
-    max_line_bps: u16,
-    attestor: Pubkey,
-    collection_period_seconds: u32,
-    cancel_delay_seconds: u32,
-) -> Result<()> {
-    require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);
-    require!(collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
-    require!(cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS, PoolError::CancelDelayTooShort);
-    // The zero key could never co-sign: a pool with it would open no line. The admin as attestor
+/// The `init_pool` parameters.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct InitPoolParams {
+    /// Zero means no grace; fixed for the pool's life.
+    pub grace_period_seconds: u32,
+    /// `1..=BPS`; fixed for the pool's life.
+    pub max_line_bps: u16,
+    pub attestor: Pubkey,
+    /// At least `MIN_COLLECTION_PERIOD_SECONDS`.
+    pub collection_period_seconds: u32,
+    /// At least `MIN_CANCEL_DELAY_SECONDS`.
+    pub cancel_delay_seconds: u32,
+    /// The zero key for none.
+    pub guardian: Pubkey,
+    /// At least 1.
+    pub max_outstanding_principal: u64,
+    /// At least `MIN_ACCELERATION_NOTICE_SECONDS`.
+    pub acceleration_notice_seconds: u32,
+    /// At least `MIN_CANCEL_GRACE_SECONDS`.
+    pub cancel_grace_seconds: u32,
+}
+
+/// The council is vault 0 of `multisig`, checked by `council::check`; it does not sign, since
+/// a valid multisig's vault can sign by construction. The creator pays and seeds the address and
+/// keeps no power.
+pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
+    require!(p.max_line_bps >= 1 && u64::from(p.max_line_bps) <= BPS, PoolError::WrongAmount);
+    require!(p.max_outstanding_principal >= 1, PoolError::WrongAmount);
+    require!(p.collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
+    require!(p.cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS, PoolError::CancelDelayTooShort);
+    require!(p.acceleration_notice_seconds >= MIN_ACCELERATION_NOTICE_SECONDS, PoolError::AccelerationNoticeTooShort);
+    require!(p.cancel_grace_seconds >= MIN_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooShort);
+    let multisig = ctx.accounts.multisig.to_account_info();
+    let (council, council_vault_bump) = council::canonical_vault(multisig.key);
+    council::check(&multisig, &council, council_vault_bump)?;
+    // The zero key could never co-sign: a pool with it would open no line. The council as attestor
     // would collapse the two-signature model into one key.
-    require!(attestor != Pubkey::default(), PoolError::WrongAccount);
-    require!(attestor != ctx.accounts.admin.key(), PoolError::AttestorIsAdmin);
+    require!(p.attestor != Pubkey::default(), PoolError::WrongAccount);
+    require!(p.attestor != council, PoolError::AttestorIsCouncil);
     // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
     require!(min_first_deposit(ctx.accounts.asset_mint.decimals).is_some(), PoolError::WrongAccount);
     let controls = asset_controls(&ctx.accounts.asset_mint.to_account_info())?;
     let permissioned = validate_share_mint(&ctx)?;
     validate_collection(&ctx.accounts.collection.to_account_info(), &ctx.accounts.pool.key())?;
     let pool = &mut ctx.accounts.pool;
-    pool.admin = ctx.accounts.admin.key();
-    pool.asset_mint = ctx.accounts.asset_mint.key();
-    pool.vault = ctx.accounts.vault.key();
-    pool.share_mint = ctx.accounts.share_mint.key();
-    pool.dead_shares = ctx.accounts.dead_shares.key();
-    pool.outstanding_principal = 0;
-    pool.interest_collected = 0;
-    pool.written_off = 0;
-    pool.line_count = 0;
-    pool.paused = false;
-    pool.grace_period_seconds = grace_period_seconds;
-    pool.max_line_bps = max_line_bps;
-    pool.asset_controls = controls;
-    pool.permissioned = permissioned;
-    pool.collection_period_seconds = collection_period_seconds;
-    pool.cancel_delay_seconds = cancel_delay_seconds;
-    pool.bump = ctx.bumps.pool;
-    pool.reserved = [0; 64];
-    pool.attestor = attestor;
-    pool.collection = ctx.accounts.collection.key();
+    pool.set_inner(Pool {
+        council,
+        attestor: p.attestor,
+        asset_mint: ctx.accounts.asset_mint.key(),
+        share_mint: ctx.accounts.share_mint.key(),
+        vault: ctx.accounts.vault.key(),
+        dead_shares: ctx.accounts.dead_shares.key(),
+        collection: ctx.accounts.collection.key(),
+        outstanding_principal: 0,
+        interest_collected: 0,
+        written_off: 0,
+        line_count: 0,
+        grace_period_seconds: p.grace_period_seconds,
+        collection_period_seconds: p.collection_period_seconds,
+        cancel_delay_seconds: p.cancel_delay_seconds,
+        max_line_bps: p.max_line_bps,
+        asset_controls: controls,
+        permissioned,
+        paused: false,
+        bump: ctx.bumps.pool,
+        creator: ctx.accounts.creator.key(),
+        council_kind: COUNCIL_SQUADS,
+        multisig: *multisig.key,
+        council_vault_bump,
+        pending_council: Pubkey::default(),
+        pending_council_kind: 0,
+        guardian: p.guardian,
+        max_outstanding_principal: p.max_outstanding_principal,
+        acceleration_notice_seconds: p.acceleration_notice_seconds,
+        cancel_grace_seconds: p.cancel_grace_seconds,
+        impaired_principal: 0,
+        provision_bps: 0,
+        reserved: [0; 64],
+    });
 
     emit_cpi!(PoolInitialized {
         pool: pool.key(),
-        admin: pool.admin,
-        attestor,
+        council,
+        creator: pool.creator,
+        multisig: pool.multisig,
+        guardian: p.guardian,
+        attestor: p.attestor,
         asset_mint: pool.asset_mint,
         share_mint: pool.share_mint,
         collection: pool.collection,
-        grace_period_seconds,
-        collection_period_seconds,
-        cancel_delay_seconds,
-        max_line_bps,
+        grace_period_seconds: p.grace_period_seconds,
+        collection_period_seconds: p.collection_period_seconds,
+        cancel_delay_seconds: p.cancel_delay_seconds,
+        max_line_bps: p.max_line_bps,
+        max_outstanding_principal: p.max_outstanding_principal,
+        acceleration_notice_seconds: p.acceleration_notice_seconds,
+        cancel_grace_seconds: p.cancel_grace_seconds,
         asset_controls: controls,
         permissioned,
     });
@@ -288,18 +335,18 @@ pub fn init_pool(
 #[event_cpi]
 #[derive(Accounts)]
 pub struct SetCollectionPeriod<'info> {
-    pub admin: Signer<'info>,
+    pub council: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
-        has_one = admin @ PoolError::Unauthorized,
+        has_one = council @ PoolError::Unauthorized,
     )]
     pub pool: Account<'info, Pool>,
 }
 
-/// Admin only; refused below `MIN_COLLECTION_PERIOD_SECONDS`. Applies to every line from its
+/// Council only; refused below `MIN_COLLECTION_PERIOD_SECONDS`. Applies to every line from its
 /// next `write_off` check, marked or not.
 pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_period_seconds: u32) -> Result<()> {
     require!(collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
@@ -315,7 +362,7 @@ pub struct Deposit<'info> {
     pub depositor: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -442,7 +489,7 @@ pub struct Redeem<'info> {
     pub holder: Signer<'info>,
 
     #[account(
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
@@ -540,18 +587,18 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
 #[event_cpi]
 #[derive(Accounts)]
 pub struct SetPaused<'info> {
-    pub admin: Signer<'info>,
+    pub council: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
-        has_one = admin @ PoolError::Unauthorized,
+        has_one = council @ PoolError::Unauthorized,
     )]
     pub pool: Account<'info, Pool>,
 }
 
-/// Admin only. A paused pool refuses deposits, redemptions, openings and draws; repayments,
+/// Council only. A paused pool refuses deposits, redemptions, openings and draws; repayments,
 /// cancellations and write-offs go on.
 pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
@@ -563,26 +610,26 @@ pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
 #[event_cpi]
 #[derive(Accounts)]
 pub struct SetAttestor<'info> {
-    pub admin: Signer<'info>,
+    pub council: Signer<'info>,
 
     /// The key that becomes the attestor; it signs, proving control of the key.
     pub new_attestor: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
-        has_one = admin @ PoolError::Unauthorized,
+        has_one = council @ PoolError::Unauthorized,
     )]
     pub pool: Account<'info, Pool>,
 }
 
-/// The admin and the new attestor sign; the admin cannot be the attestor (`AttestorIsAdmin`). The
+/// The council and the new attestor sign; the council cannot be the attestor (`AttestorIsCouncil`). The
 /// attestor moves nothing; withholding its signature blocks openings, draws, endorsements and court
 /// annotations, and delays a cancellation until the backstop applies.
 pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
     let attestor = ctx.accounts.new_attestor.key();
-    require!(attestor != ctx.accounts.admin.key(), PoolError::AttestorIsAdmin);
+    require!(attestor != ctx.accounts.council.key(), PoolError::AttestorIsCouncil);
     let pool = &mut ctx.accounts.pool;
     pool.attestor = attestor;
     emit_cpi!(AttestorSet { pool: pool.key(), attestor });
@@ -592,18 +639,18 @@ pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
 #[event_cpi]
 #[derive(Accounts)]
 pub struct SetCancelDelay<'info> {
-    pub admin: Signer<'info>,
+    pub council: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [seeds::POOL, pool.admin.as_ref(), pool.asset_mint.as_ref()],
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
-        has_one = admin @ PoolError::Unauthorized,
+        has_one = council @ PoolError::Unauthorized,
     )]
     pub pool: Account<'info, Pool>,
 }
 
-/// Admin only; refused below `MIN_CANCEL_DELAY_SECONDS`. A request fixes its own deadline
+/// Council only; refused below `MIN_CANCEL_DELAY_SECONDS`. A request fixes its own deadline
 /// (`Pagare::cancel_after`), so the change applies to requests filed from now on.
 pub fn set_cancel_delay(ctx: Context<SetCancelDelay>, cancel_delay_seconds: u32) -> Result<()> {
     require!(cancel_delay_seconds >= MIN_CANCEL_DELAY_SECONDS, PoolError::CancelDelayTooShort);

@@ -146,7 +146,7 @@ export type RequestCancellationAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. */
+  /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
   pool: TAccountPool;
   line: TAccountLine;
@@ -320,7 +320,7 @@ export type RequestCancellationInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** The pagaré's holder: the admin while the asset is in the pool. */
+  /** The pagaré's holder: the council while the asset is in the pool. */
   holder: TAccountHolder;
   pool: TAccountPool;
   line: TAccountLine;
@@ -468,7 +468,7 @@ export type ParsedRequestCancellationInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** The pagaré's holder: the admin while the asset is in the pool. */
+    /** The pagaré's holder: the council while the asset is in the pool. */
     holder: TAccountMetas[0];
     pool: TAccountMetas[1];
     line: TAccountMetas[2];

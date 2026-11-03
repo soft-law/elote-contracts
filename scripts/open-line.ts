@@ -258,9 +258,11 @@ async function main() {
   const maybePool = await fetchMaybePool(rpc, poolAddress, { commitment: "confirmed" });
   if (!maybePool.exists) fail(`no elote_pool pool at ${poolAddress} on ${cluster}`);
   const pool = maybePool.data;
-  const [derived] = await findPoolPda({ admin: pool.admin, assetMint: pool.assetMint });
+  const [derived] = await findPoolPda({ creator: pool.creator, assetMint: pool.assetMint });
   if (derived !== poolAddress) fail("the account is not a pool at its expected address");
-  if (pool.admin !== admin.address) fail(`the admin key (${admin.address}) is not this pool's admin (${pool.admin})`);
+  if (pool.council !== admin.address) {
+    fail(`the key (${admin.address}) is not this pool's council (${pool.council}); a Squads council signs through Squads`);
+  }
   if (pool.paused) fail("the pool is paused: openings and draws are blocked until the admin resumes it");
 
   const { value: adminLamports } = await rpc.getBalance(admin.address, { commitment: "confirmed" }).send();
@@ -281,7 +283,7 @@ async function main() {
   // is recorded, and the expediente root is a salted commitment to the credit file (the agreement
   // hash stands in for it).
   const instruction = await getOpenLineInstructionAsync({
-    admin,
+    council: admin,
     borrower,
     ...(sponsor ? { sponsor } : {}),
     attestor: admin,

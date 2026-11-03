@@ -21,6 +21,8 @@ import {
   getU16Encoder,
   getU32Decoder,
   getU32Encoder,
+  getU64Decoder,
+  getU64Encoder,
   getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
@@ -62,13 +64,14 @@ export function getInitPoolDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type InitPoolInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountCreator extends string | AccountMeta<string> = string,
   TAccountAssetMint extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountShareMint extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountDeadShares extends string | AccountMeta<string> = string,
   TAccountCollection extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   TAccountShareTokenProgram extends string | AccountMeta<string> = string,
@@ -82,10 +85,10 @@ export type InitPoolInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountAdmin extends string
-        ? WritableSignerAccount<TAccountAdmin> &
-            AccountSignerMeta<TAccountAdmin>
-        : TAccountAdmin,
+      TAccountCreator extends string
+        ? WritableSignerAccount<TAccountCreator> &
+            AccountSignerMeta<TAccountCreator>
+        : TAccountCreator,
       TAccountAssetMint extends string
         ? ReadonlyAccount<TAccountAssetMint>
         : TAccountAssetMint,
@@ -104,6 +107,9 @@ export type InitPoolInstruction<
       TAccountCollection extends string
         ? ReadonlyAccount<TAccountCollection>
         : TAccountCollection,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
@@ -125,19 +131,43 @@ export type InitPoolInstruction<
 
 export type InitPoolInstructionData = {
   discriminator: ReadonlyUint8Array;
+  /** Zero means no grace; fixed for the pool's life. */
   gracePeriodSeconds: number;
+  /** `1..=BPS`; fixed for the pool's life. */
   maxLineBps: number;
   attestor: Address;
+  /** At least `MIN_COLLECTION_PERIOD_SECONDS`. */
   collectionPeriodSeconds: number;
+  /** At least `MIN_CANCEL_DELAY_SECONDS`. */
   cancelDelaySeconds: number;
+  /** The zero key for none. */
+  guardian: Address;
+  /** At least 1. */
+  maxOutstandingPrincipal: bigint;
+  /** At least `MIN_ACCELERATION_NOTICE_SECONDS`. */
+  accelerationNoticeSeconds: number;
+  /** At least `MIN_CANCEL_GRACE_SECONDS`. */
+  cancelGraceSeconds: number;
 };
 
 export type InitPoolInstructionDataArgs = {
+  /** Zero means no grace; fixed for the pool's life. */
   gracePeriodSeconds: number;
+  /** `1..=BPS`; fixed for the pool's life. */
   maxLineBps: number;
   attestor: Address | HasAddress;
+  /** At least `MIN_COLLECTION_PERIOD_SECONDS`. */
   collectionPeriodSeconds: number;
+  /** At least `MIN_CANCEL_DELAY_SECONDS`. */
   cancelDelaySeconds: number;
+  /** The zero key for none. */
+  guardian: Address | HasAddress;
+  /** At least 1. */
+  maxOutstandingPrincipal: number | bigint;
+  /** At least `MIN_ACCELERATION_NOTICE_SECONDS`. */
+  accelerationNoticeSeconds: number;
+  /** At least `MIN_CANCEL_GRACE_SECONDS`. */
+  cancelGraceSeconds: number;
 };
 
 export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolInstructionDataArgs> {
@@ -149,6 +179,10 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
       ["attestor", getAddressEncoder()],
       ["collectionPeriodSeconds", getU32Encoder()],
       ["cancelDelaySeconds", getU32Encoder()],
+      ["guardian", getAddressEncoder()],
+      ["maxOutstandingPrincipal", getU64Encoder()],
+      ["accelerationNoticeSeconds", getU32Encoder()],
+      ["cancelGraceSeconds", getU32Encoder()],
     ]),
     (value) => ({ ...value, discriminator: INIT_POOL_DISCRIMINATOR }),
   );
@@ -162,6 +196,10 @@ export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolIn
     ["attestor", getAddressDecoder()],
     ["collectionPeriodSeconds", getU32Decoder()],
     ["cancelDelaySeconds", getU32Decoder()],
+    ["guardian", getAddressDecoder()],
+    ["maxOutstandingPrincipal", getU64Decoder()],
+    ["accelerationNoticeSeconds", getU32Decoder()],
+    ["cancelGraceSeconds", getU32Decoder()],
   ]);
 }
 
@@ -176,13 +214,14 @@ export function getInitPoolInstructionDataCodec(): FixedSizeCodec<
 }
 
 export type InitPoolAsyncInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCreator extends InstructionSignerInput = InstructionSignerInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput = InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountShareTokenProgram extends InstructionAccountInput =
@@ -193,12 +232,13 @@ export type InitPoolAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  /** Pays for the pool and seeds its address; no other power. */
+  creator: TAccountCreator;
   /** Classic SPL Token or Token-2022; `token_program` must be the mint's own program. */
   assetMint: TAccountAssetMint;
   pool?: TAccountPool;
   /**
-   * The share mint, created by the admin beforehand and validated here: mint authority = this
+   * The share mint, created by the creator beforehand and validated here: mint authority = this
    * pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.
    * `DefaultAccountState = Frozen` makes the shares permissioned.
    */
@@ -212,10 +252,12 @@ export type InitPoolAsyncInput<
    */
   deadShares?: TAccountDeadShares;
   /**
-   * The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as
+   * The series' Metaplex Core collection, created by the creator beforehand with the pool PDA as
    * update authority.
    */
   collection: TAccountCollection;
+  /** The Squads v4 multisig whose vault 0 becomes the council; it does not sign here. */
+  multisig: TAccountMultisig;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
   tokenProgram?: TAccountTokenProgram;
   /** The token program of `share_mint` (Token-2022 in production, under Token ACL). */
@@ -228,16 +270,21 @@ export type InitPoolAsyncInput<
   attestor: InitPoolInstructionDataArgs["attestor"];
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
   cancelDelaySeconds: InitPoolInstructionDataArgs["cancelDelaySeconds"];
+  guardian: InitPoolInstructionDataArgs["guardian"];
+  maxOutstandingPrincipal: InitPoolInstructionDataArgs["maxOutstandingPrincipal"];
+  accelerationNoticeSeconds: InitPoolInstructionDataArgs["accelerationNoticeSeconds"];
+  cancelGraceSeconds: InitPoolInstructionDataArgs["cancelGraceSeconds"];
 };
 
 export async function getInitPoolInstructionAsync<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCreator extends InstructionSignerInput,
   TAccountAssetMint extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
   TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
@@ -246,13 +293,14 @@ export async function getInitPoolInstructionAsync<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: InitPoolAsyncInput<
-    TAccountAdmin,
+    TAccountCreator,
     TAccountAssetMint,
     TAccountPool,
     TAccountShareMint,
     TAccountVault,
     TAccountDeadShares,
     TAccountCollection,
+    TAccountMultisig,
     TAccountTokenProgram,
     TAccountShareTokenProgram,
     TAccountSystemProgram,
@@ -266,8 +314,8 @@ export async function getInitPoolInstructionAsync<
   InitPoolInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCreator,
+      InstructionAccountInputAddress<TAccountCreator>
     >,
     ResolvedInstructionAccountMeta<
       TAccountAssetMint,
@@ -292,6 +340,10 @@ export async function getInitPoolInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountCollection,
       InstructionAccountInputAddress<TAccountCollection>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountTokenProgram,
@@ -328,7 +380,7 @@ export async function getInitPoolInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: true },
+    creator: { value: input.creator ?? null, isSigner: true, isWritable: true },
     assetMint: {
       value: input.assetMint ?? null,
       isSigner: false,
@@ -348,6 +400,11 @@ export async function getInitPoolInstructionAsync<
     },
     collection: {
       value: input.collection ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    multisig: {
+      value: input.multisig ?? null,
       isSigner: false,
       isWritable: false,
     },
@@ -389,9 +446,9 @@ export async function getInitPoolInstructionAsync<
   if (!accounts.pool.value) {
     accounts.pool.value = await findPoolPda(
       {
-        admin: getAddressFromResolvedInstructionAccount(
-          "admin",
-          accounts.admin.value,
+        creator: getAddressFromResolvedInstructionAccount(
+          "creator",
+          accounts.creator.value,
         ),
         assetMint: getAddressFromResolvedInstructionAccount(
           "assetMint",
@@ -444,13 +501,14 @@ export async function getInitPoolInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("creator", accounts.creator),
       getAccountMeta("assetMint", accounts.assetMint),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("deadShares", accounts.deadShares),
       getAccountMeta("collection", accounts.collection),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
@@ -464,8 +522,8 @@ export async function getInitPoolInstructionAsync<
   } as InitPoolInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCreator,
+      InstructionAccountInputAddress<TAccountCreator>
     >,
     ResolvedInstructionAccountMeta<
       TAccountAssetMint,
@@ -492,6 +550,10 @@ export async function getInitPoolInstructionAsync<
       InstructionAccountInputAddress<TAccountCollection>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountTokenProgram,
       InstructionAccountInputAddress<TAccountTokenProgram>
     >,
@@ -515,13 +577,14 @@ export async function getInitPoolInstructionAsync<
 }
 
 export type InitPoolInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCreator extends InstructionSignerInput = InstructionSignerInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput = InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountShareTokenProgram extends InstructionAccountInput =
@@ -532,12 +595,13 @@ export type InitPoolInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  /** Pays for the pool and seeds its address; no other power. */
+  creator: TAccountCreator;
   /** Classic SPL Token or Token-2022; `token_program` must be the mint's own program. */
   assetMint: TAccountAssetMint;
   pool: TAccountPool;
   /**
-   * The share mint, created by the admin beforehand and validated here: mint authority = this
+   * The share mint, created by the creator beforehand and validated here: mint authority = this
    * pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.
    * `DefaultAccountState = Frozen` makes the shares permissioned.
    */
@@ -551,10 +615,12 @@ export type InitPoolInput<
    */
   deadShares: TAccountDeadShares;
   /**
-   * The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as
+   * The series' Metaplex Core collection, created by the creator beforehand with the pool PDA as
    * update authority.
    */
   collection: TAccountCollection;
+  /** The Squads v4 multisig whose vault 0 becomes the council; it does not sign here. */
+  multisig: TAccountMultisig;
   /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
   tokenProgram?: TAccountTokenProgram;
   /** The token program of `share_mint` (Token-2022 in production, under Token ACL). */
@@ -567,16 +633,21 @@ export type InitPoolInput<
   attestor: InitPoolInstructionDataArgs["attestor"];
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
   cancelDelaySeconds: InitPoolInstructionDataArgs["cancelDelaySeconds"];
+  guardian: InitPoolInstructionDataArgs["guardian"];
+  maxOutstandingPrincipal: InitPoolInstructionDataArgs["maxOutstandingPrincipal"];
+  accelerationNoticeSeconds: InitPoolInstructionDataArgs["accelerationNoticeSeconds"];
+  cancelGraceSeconds: InitPoolInstructionDataArgs["cancelGraceSeconds"];
 };
 
 export function getInitPoolInstruction<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCreator extends InstructionSignerInput,
   TAccountAssetMint extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
   TAccountDeadShares extends InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountTokenProgram extends InstructionAccountInput,
   TAccountShareTokenProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
@@ -585,13 +656,14 @@ export function getInitPoolInstruction<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: InitPoolInput<
-    TAccountAdmin,
+    TAccountCreator,
     TAccountAssetMint,
     TAccountPool,
     TAccountShareMint,
     TAccountVault,
     TAccountDeadShares,
     TAccountCollection,
+    TAccountMultisig,
     TAccountTokenProgram,
     TAccountShareTokenProgram,
     TAccountSystemProgram,
@@ -604,8 +676,8 @@ export function getInitPoolInstruction<
 ): InitPoolInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountAdmin,
-    InstructionAccountInputAddress<TAccountAdmin>
+    TAccountCreator,
+    InstructionAccountInputAddress<TAccountCreator>
   >,
   ResolvedInstructionAccountMeta<
     TAccountAssetMint,
@@ -630,6 +702,10 @@ export function getInitPoolInstruction<
   ResolvedInstructionAccountMeta<
     TAccountCollection,
     InstructionAccountInputAddress<TAccountCollection>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountTokenProgram,
@@ -665,7 +741,7 @@ export function getInitPoolInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: true },
+    creator: { value: input.creator ?? null, isSigner: true, isWritable: true },
     assetMint: {
       value: input.assetMint ?? null,
       isSigner: false,
@@ -685,6 +761,11 @@ export function getInitPoolInstruction<
     },
     collection: {
       value: input.collection ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    multisig: {
+      value: input.multisig ?? null,
       isSigner: false,
       isWritable: false,
     },
@@ -738,13 +819,14 @@ export function getInitPoolInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("creator", accounts.creator),
       getAccountMeta("assetMint", accounts.assetMint),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("shareMint", accounts.shareMint),
       getAccountMeta("vault", accounts.vault),
       getAccountMeta("deadShares", accounts.deadShares),
       getAccountMeta("collection", accounts.collection),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("shareTokenProgram", accounts.shareTokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
@@ -758,8 +840,8 @@ export function getInitPoolInstruction<
   } as InitPoolInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCreator,
+      InstructionAccountInputAddress<TAccountCreator>
     >,
     ResolvedInstructionAccountMeta<
       TAccountAssetMint,
@@ -784,6 +866,10 @@ export function getInitPoolInstruction<
     ResolvedInstructionAccountMeta<
       TAccountCollection,
       InstructionAccountInputAddress<TAccountCollection>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountTokenProgram,
@@ -814,12 +900,13 @@ export type ParsedInitPoolInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    admin: TAccountMetas[0];
+    /** Pays for the pool and seeds its address; no other power. */
+    creator: TAccountMetas[0];
     /** Classic SPL Token or Token-2022; `token_program` must be the mint's own program. */
     assetMint: TAccountMetas[1];
     pool: TAccountMetas[2];
     /**
-     * The share mint, created by the admin beforehand and validated here: mint authority = this
+     * The share mint, created by the creator beforehand and validated here: mint authority = this
      * pool's PDA, supply 0, the asset's decimals, and no extension that takes or hides value.
      * `DefaultAccountState = Frozen` makes the shares permissioned.
      */
@@ -833,17 +920,19 @@ export type ParsedInitPoolInstruction<
      */
     deadShares: TAccountMetas[5];
     /**
-     * The series' Metaplex Core collection, created by the admin beforehand with the pool PDA as
+     * The series' Metaplex Core collection, created by the creator beforehand with the pool PDA as
      * update authority.
      */
     collection: TAccountMetas[6];
+    /** The Squads v4 multisig whose vault 0 becomes the council; it does not sign here. */
+    multisig: TAccountMetas[7];
     /** The token program of `asset_mint` (classic SPL Token or Token-2022). */
-    tokenProgram: TAccountMetas[7];
+    tokenProgram: TAccountMetas[8];
     /** The token program of `share_mint` (Token-2022 in production, under Token ACL). */
-    shareTokenProgram: TAccountMetas[8];
-    systemProgram: TAccountMetas[9];
-    eventAuthority: TAccountMetas[10];
-    program: TAccountMetas[11];
+    shareTokenProgram: TAccountMetas[9];
+    systemProgram: TAccountMetas[10];
+    eventAuthority: TAccountMetas[11];
+    program: TAccountMetas[12];
   };
   data: InitPoolInstructionData;
 };
@@ -856,12 +945,12 @@ export function parseInitPoolInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedInitPoolInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 12) {
+  if (instruction.accounts.length < 13) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 12,
+        expectedAccountMetas: 13,
       },
     );
   }
@@ -874,13 +963,14 @@ export function parseInitPoolInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      admin: getNextAccount(),
+      creator: getNextAccount(),
       assetMint: getNextAccount(),
       pool: getNextAccount(),
       shareMint: getNextAccount(),
       vault: getNextAccount(),
       deadShares: getNextAccount(),
       collection: getNextAccount(),
+      multisig: getNextAccount(),
       tokenProgram: getNextAccount(),
       shareTokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),

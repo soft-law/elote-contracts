@@ -20,12 +20,120 @@ use spl_token_2022::extension::{BaseStateWithExtensions, ExtensionType, StateWit
 use litesvm::types::{FailedTransactionMetadata, TransactionMetadata};
 use litesvm::LiteSVM;
 use solana_instruction::Instruction;
-use solana_keypair::Keypair;
 use solana_pubkey::{pubkey, Pubkey};
+pub use keys::Keypair;
 use solana_signer::Signer;
 use elote_pool::errors::PoolError;
 use solana_transaction::Transaction;
 use solana_transaction_error::TransactionError;
+
+/// Test signers. The council is a Squads vault PDA, which signs only inside Squads' execution, so
+/// the harness runs with signature verification off and lets a `Pda` key "sign" with a random
+/// signature; the program sees only the signer flag of each account, exactly as on chain.
+/// `tests/squads.rs` runs the council through the real Squads binary.
+pub mod keys {
+    use solana_pubkey::Pubkey;
+    use solana_signature::Signature;
+    use solana_signer::{Signer, SignerError};
+
+    pub enum Keypair {
+        Real(solana_keypair::Keypair),
+        Pda(Pubkey),
+    }
+
+    impl Keypair {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self::Real(solana_keypair::Keypair::new())
+        }
+        /// A signer for an address nobody holds a key for (a Squads vault).
+        pub fn pda(key: Pubkey) -> Self {
+            Self::Pda(key)
+        }
+        pub fn insecure_clone(&self) -> Self {
+            match self {
+                Self::Real(k) => Self::Real(k.insecure_clone()),
+                Self::Pda(k) => Self::Pda(*k),
+            }
+        }
+    }
+
+    impl Signer for Keypair {
+        fn try_pubkey(&self) -> Result<Pubkey, SignerError> {
+            match self {
+                Self::Real(k) => k.try_pubkey(),
+                Self::Pda(k) => Ok(*k),
+            }
+        }
+        fn try_sign_message(&self, message: &[u8]) -> Result<Signature, SignerError> {
+            match self {
+                Self::Real(k) => k.try_sign_message(message),
+                Self::Pda(_) => {
+                    let mut b = [0u8; 64];
+                    b[..32].copy_from_slice(Pubkey::new_unique().as_ref());
+                    b[32..].copy_from_slice(Pubkey::new_unique().as_ref());
+                    Ok(Signature::from(b))
+                }
+            }
+        }
+        fn is_interactive(&self) -> bool {
+            false
+        }
+    }
+}
+
+pub const SQUADS_ID: Pubkey = elote_pool::state::SQUADS_PROGRAM_ID;
+
+/// Writes a Squads-owned account; the Squads program itself is not loaded (nothing executes it).
+pub fn put_squads_account(svm: &mut LiteSVM, key: &Pubkey, data: Vec<u8>) {
+    let lamports = svm.minimum_balance_for_rent_exemption(data.len());
+    svm.set_account(*key, solana_account::Account { lamports, data, owner: SQUADS_ID, executable: false, rent_epoch: 0 })
+        .expect("set the multisig account");
+}
+
+/// `["multisig", "multisig", create_key]` under Squads.
+pub fn multisig_pda(create_key: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"multisig", b"multisig", create_key.as_ref()], &SQUADS_ID)
+}
+
+/// Vault 0 of `multisig`.
+pub fn squads_vault_pda(multisig: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"multisig", multisig.as_ref(), b"vault", &[0u8]], &SQUADS_ID)
+}
+
+/// Squads v4 `Permissions` masks.
+pub const PERM_INITIATE: u8 = 1;
+pub const PERM_VOTE: u8 = 2;
+pub const PERM_EXECUTE: u8 = 4;
+pub const PERM_ALL: u8 = 7;
+
+/// The bytes of a Squads v4 `Multisig` account (v4 `af94153`): discriminator, create_key,
+/// config_authority, threshold, time_lock, transaction_index, stale_transaction_index,
+/// rent_collector, bump, members.
+pub fn multisig_data(create_key: &Pubkey, config_authority: &Pubkey, threshold: u16, rent_collector: Option<Pubkey>, members: &[(Pubkey, u8)]) -> Vec<u8> {
+    let disc = <sha2::Sha256 as sha2::Digest>::digest(b"account:Multisig");
+    let mut d = disc[..8].to_vec();
+    d.extend_from_slice(create_key.as_ref());
+    d.extend_from_slice(config_authority.as_ref());
+    d.extend_from_slice(&threshold.to_le_bytes());
+    d.extend_from_slice(&0u32.to_le_bytes());
+    d.extend_from_slice(&0u64.to_le_bytes());
+    d.extend_from_slice(&0u64.to_le_bytes());
+    match rent_collector {
+        None => d.push(0),
+        Some(k) => {
+            d.push(1);
+            d.extend_from_slice(k.as_ref());
+        }
+    }
+    d.push(multisig_pda(create_key).1);
+    d.extend_from_slice(&(members.len() as u32).to_le_bytes());
+    for (k, mask) in members {
+        d.extend_from_slice(k.as_ref());
+        d.push(*mask);
+    }
+    d
+}
 
 /// `elote_pool`'s `declare_id!`.
 pub const PROGRAM_ID: Pubkey = pubkey!("BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM");
@@ -71,7 +179,7 @@ pub const E_NOT_SCHEDULED: u32 = ERR_BASE + PoolError::NotScheduled as u32;
 pub const E_NOT_ENOUGH_MISSED: u32 = ERR_BASE + PoolError::NotEnoughMissed as u32;
 pub const E_LATE_INTEREST_UNPAID: u32 = ERR_BASE + PoolError::LateInterestUnpaid as u32;
 pub const E_WRITE_OFF_TOO_EARLY: u32 = ERR_BASE + PoolError::WriteOffTooEarly as u32;
-pub const E_BORROWER_IS_ADMIN: u32 = ERR_BASE + PoolError::BorrowerIsAdmin as u32;
+pub const E_BORROWER_IS_COUNCIL: u32 = ERR_BASE + PoolError::BorrowerIsCouncil as u32;
 pub const E_LINE_TOO_LARGE: u32 = ERR_BASE + PoolError::LineTooLarge as u32;
 pub const E_INVARIANT_BROKEN: u32 = ERR_BASE + PoolError::InvariantBroken as u32;
 pub const E_ASSET_MINT_NOT_ALLOWED: u32 = ERR_BASE + PoolError::AssetMintNotAllowed as u32;
@@ -85,7 +193,7 @@ pub const E_SIGNATURE_METHOD_INVALID: u32 = ERR_BASE + PoolError::SignatureMetho
 pub const E_PAGARE_NOT_COVERED: u32 = ERR_BASE + PoolError::PagareNotCovered as u32;
 pub const E_PAGARE_ALREADY_PAID: u32 = ERR_BASE + PoolError::PagareAlreadyPaid as u32;
 pub const E_NOT_HOLDER: u32 = ERR_BASE + PoolError::NotHolder as u32;
-pub const E_ATTESTOR_IS_ADMIN: u32 = ERR_BASE + PoolError::AttestorIsAdmin as u32;
+pub const E_ATTESTOR_IS_COUNCIL: u32 = ERR_BASE + PoolError::AttestorIsCouncil as u32;
 pub const E_BORROWER_IS_ATTESTOR: u32 = ERR_BASE + PoolError::BorrowerIsAttestor as u32;
 pub const E_AGREEMENT_HASH_REQUIRED: u32 = ERR_BASE + PoolError::AgreementHashRequired as u32;
 pub const E_EXPEDIENTE_ROOT_REQUIRED: u32 = ERR_BASE + PoolError::ExpedienteRootRequired as u32;
@@ -121,13 +229,15 @@ pub const MONTH: i64 = 30 * 24 * 3600;
 /// The collection period every pool of the harness is created with: the 30-day floor.
 pub const COLLECTION_PERIOD: u32 = elote_pool::state::MIN_COLLECTION_PERIOD_SECONDS;
 pub const CANCEL_DELAY: u32 = elote_pool::state::MIN_CANCEL_DELAY_SECONDS;
+pub const ACCELERATION_NOTICE: u32 = elote_pool::state::MIN_ACCELERATION_NOTICE_SECONDS;
+pub const CANCEL_GRACE: u32 = elote_pool::state::MIN_CANCEL_GRACE_SECONDS;
 
 // -----------------------------------------------------------------------------------------------
 // PDAs: the seed layouts of `state::seeds`.
 // -----------------------------------------------------------------------------------------------
 
-pub fn pool_pda(admin: &Pubkey, asset_mint: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[b"pool", admin.as_ref(), asset_mint.as_ref()], &PROGRAM_ID)
+pub fn pool_pda(council: &Pubkey, asset_mint: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"pool", council.as_ref(), asset_mint.as_ref()], &PROGRAM_ID)
 }
 
 pub fn vault_pda(pool: &Pubkey) -> (Pubkey, u8) {
@@ -152,11 +262,12 @@ pub fn pagare_asset_pda(line: &Pubkey, draw_index: u16) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"pagare_asset", line.as_ref(), &draw_index.to_le_bytes()], &PROGRAM_ID)
 }
 
-/// The addresses of one pool: the PDAs derived from the admin and the asset mint, the
-/// admin-supplied share mint, and the token program of each mint.
+/// The addresses of one pool: the PDAs derived from the council and the asset mint, the
+/// council-supplied share mint, and the token program of each mint.
 #[derive(Clone, Copy, Debug)]
 pub struct PoolKeys {
-    pub admin: Pubkey,
+    /// Paid for `init_pool` and seeds the pool's address.
+    pub creator: Pubkey,
     pub pool: Pubkey,
     pub asset_mint: Pubkey,
     pub share_mint: Pubkey,
@@ -170,10 +281,10 @@ pub struct PoolKeys {
 }
 
 impl PoolKeys {
-    pub fn new(admin: &Pubkey, asset_mint: &Pubkey, share_mint: &Pubkey, asset_program: Pubkey, share_program: Pubkey) -> Self {
-        let pool = pool_pda(admin, asset_mint).0;
+    pub fn new(creator: &Pubkey, asset_mint: &Pubkey, share_mint: &Pubkey, asset_program: Pubkey, share_program: Pubkey) -> Self {
+        let pool = pool_pda(creator, asset_mint).0;
         Self {
-            admin: *admin,
+            creator: *creator,
             pool,
             asset_mint: *asset_mint,
             share_mint: *share_mint,
@@ -261,7 +372,15 @@ pub use elote_pool::state::{PAGARE_OUTSTANDING, PAGARE_PAID};
 
 pub struct Env {
     pub svm: LiteSVM,
-    pub admin: Keypair,
+    /// Vault 0 of `multisig`: the council of every pool this env creates. It also pays for and
+    /// owns the test mints, as any funded key could.
+    pub council: Keypair,
+    /// Pays for `init_pool` and seeds the pool; no other power.
+    pub creator: Keypair,
+    /// A 2-of-3 autonomous Squads multisig of `curators`, written into the SVM.
+    pub multisig: Pubkey,
+    pub council_vault_bump: u8,
+    pub curators: Vec<Keypair>,
     /// The attestor every pool of this env is created with : the agreements
     /// engine's key, which co-signs openings, draws and cancellations.
     pub attestor: Keypair,
@@ -282,9 +401,9 @@ fn workspace_root() -> std::path::PathBuf {
 
 impl Env {
     /// A fresh SVM with the program loaded (SPL Token and ATA are LiteSVM defaults) and a funded
-    /// admin.
+    /// council.
     pub fn new() -> Self {
-        let mut svm = LiteSVM::new();
+        let mut svm = LiteSVM::new().with_sigverify(false);
         assert!(svm.get_account(&TOKEN_PROGRAM_ID).is_some(), "SPL Token not loaded");
         assert!(svm.get_account(&ATA_PROGRAM_ID).is_some(), "ATA program not loaded");
 
@@ -299,12 +418,20 @@ impl Env {
         assert_eq!(hex, MPL_CORE_SHA256, "{MPL_CORE_FIXTURE} is not the {MPL_CORE_RELEASE} binary");
         svm.add_program(MPL_CORE_ID, &core).expect("load mpl_core_program.so");
 
-        let admin = Keypair::new();
-        svm.airdrop(&admin.pubkey(), 500 * LAMPORTS_PER_SOL).expect("airdrop admin");
+        let curators: Vec<Keypair> = (0..3).map(|_| Keypair::new()).collect();
+        let create_key = Pubkey::new_unique();
+        let multisig = multisig_pda(&create_key).0;
+        let members: Vec<(Pubkey, u8)> = curators.iter().map(|c| (c.pubkey(), PERM_ALL)).collect();
+        put_squads_account(&mut svm, &multisig, multisig_data(&create_key, &Pubkey::default(), 2, None, &members));
+        let (vault, council_vault_bump) = squads_vault_pda(&multisig);
+        let council = Keypair::pda(vault);
+        svm.airdrop(&council.pubkey(), 500 * LAMPORTS_PER_SOL).expect("airdrop council");
+        let creator = Keypair::new();
+        svm.airdrop(&creator.pubkey(), 10 * LAMPORTS_PER_SOL).expect("airdrop creator");
         let attestor = Keypair::new();
         svm.airdrop(&attestor.pubkey(), 10 * LAMPORTS_PER_SOL).expect("airdrop attestor");
 
-        Self { svm, admin, attestor }
+        Self { svm, council, creator, multisig, council_vault_bump, curators, attestor }
     }
 
     pub fn funded(&mut self, sol: u64) -> Keypair {
@@ -415,7 +542,7 @@ impl Env {
         let len = ExtensionType::try_calculate_account_len::<spl_token_2022::state::Mint>(extensions).expect("mint size");
         let lamports = self.svm.minimum_balance_for_rent_exemption(len);
         let mut ixs = vec![anchor_lang::solana_program::system_instruction::create_account(
-            &self.admin.pubkey(),
+            &self.council.pubkey(),
             &mint.pubkey(),
             lamports,
             len as u64,
@@ -426,8 +553,8 @@ impl Env {
             spl_token_2022::instruction::initialize_mint2(token_program, &mint.pubkey(), authority, freeze_authority, decimals)
                 .expect("initialize_mint2"),
         );
-        let admin = self.admin.insecure_clone();
-        self.send_all(&ixs, &admin, &[&mint]);
+        let council = self.council.insecure_clone();
+        self.send_all(&ixs, &council, &[&mint]);
         mint.pubkey()
     }
 
@@ -441,12 +568,12 @@ impl Env {
         ata_for(owner, mint, &self.mint_program(mint))
     }
 
-    /// Creates `owner`'s associated token account for `mint`, paid by the admin.
+    /// Creates `owner`'s associated token account for `mint`, paid by the council.
     pub fn create_ata(&mut self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
         let program = self.mint_program(mint);
-        let ix = ata_ix::create_associated_token_account(&self.admin.pubkey(), owner, mint, &program);
-        let admin = self.admin.insecure_clone();
-        self.send(ix, &admin, &[]);
+        let ix = ata_ix::create_associated_token_account(&self.council.pubkey(), owner, mint, &program);
+        let council = self.council.insecure_clone();
+        self.send(ix, &council, &[]);
         ata_for(owner, mint, &program)
     }
 
@@ -458,8 +585,8 @@ impl Env {
             self.create_ata(owner, mint);
         }
         let ix = spl_token_2022::instruction::mint_to(&program, mint, &dest, &authority.pubkey(), &[], amount).expect("mint_to");
-        let admin = self.admin.insecure_clone();
-        self.send(ix, &admin, &[authority]);
+        let council = self.council.insecure_clone();
+        self.send(ix, &council, &[authority]);
         dest
     }
 
@@ -469,8 +596,8 @@ impl Env {
         let decimals = self.mint_decimals(mint);
         let ix = spl_token_2022::instruction::transfer_checked(&program, from, mint, to, &owner.pubkey(), &[], amount, decimals)
             .expect("transfer_checked");
-        let admin = self.admin.insecure_clone();
-        self.send(ix, &admin, &[owner]);
+        let council = self.council.insecure_clone();
+        self.send(ix, &council, &[owner]);
     }
 
     /// The unpacked token account (classic or Token-2022, extensions skipped).
@@ -504,7 +631,7 @@ impl Env {
 
     // -- pool instructions ---------------------------------------------------------------------
 
-    /// The share mint the admin supplies to `init_pool`: Token-2022, mint authority = the pool
+    /// The share mint the council supplies to `init_pool`: Token-2022, mint authority = the pool
     /// PDA, the asset's decimals, freeze authority `gate` (a plain keypair standing in for Token
     /// ACL's `MintConfig`; the program never looks at who it is), and, with `frozen_default`,
     /// the `DefaultAccountState = Frozen` extension that makes the shares permissioned.
@@ -525,7 +652,7 @@ impl Env {
     }
 
     /// Creates a Metaplex Core collection (the series' collection of pagaré assets) with
-    /// `update_authority`, paid by the admin, through the mpl-core crate's builder.
+    /// `update_authority`, paid by the council, through the mpl-core crate's builder.
     pub fn create_collection(&mut self, update_authority: &Pubkey) -> Pubkey {
         self.create_collection_with(update_authority, vec![])
     }
@@ -536,13 +663,13 @@ impl Env {
         let ix = mpl_core::instructions::CreateCollectionV2Builder::new()
             .collection(collection.pubkey())
             .update_authority(Some(*update_authority))
-            .payer(self.admin.pubkey())
+            .payer(self.council.pubkey())
             .name("ELOTE-CR-TEST".to_string())
             .uri(String::new())
             .plugins(plugins)
             .instruction();
-        let admin = self.admin.insecure_clone();
-        self.send(ix, &admin, &[&collection]);
+        let council = self.council.insecure_clone();
+        self.send(ix, &council, &[&collection]);
         collection.pubkey()
     }
 
@@ -551,13 +678,13 @@ impl Env {
         let asset = Keypair::new();
         let ix = mpl_core::instructions::CreateV2Builder::new()
             .asset(asset.pubkey())
-            .payer(self.admin.pubkey())
+            .payer(self.council.pubkey())
             .owner(Some(*owner))
             .name("asset".to_string())
             .uri(String::new())
             .instruction();
-        let admin = self.admin.insecure_clone();
-        self.send(ix, &admin, &[&asset]);
+        let council = self.council.insecure_clone();
+        self.send(ix, &council, &[&asset]);
         asset.pubkey()
     }
 
@@ -570,11 +697,17 @@ impl Env {
     /// Token-2022 share mint and a fresh Core collection (update authority = the pool PDA)
     /// created for it. Does not run `init_pool`.
     pub fn pool_keys_for(&mut self, asset_mint: &Pubkey) -> PoolKeys {
-        let admin = self.admin.pubkey();
-        let pool = pool_pda(&admin, asset_mint).0;
+        let creator = self.council.pubkey();
+        self.pool_keys_by(&creator, asset_mint)
+    }
+
+    /// As `pool_keys_for`, for a pool `creator` pays for and seeds.
+    pub fn pool_keys_by(&mut self, creator: &Pubkey, asset_mint: &Pubkey) -> PoolKeys {
+        let council = *creator;
+        let pool = pool_pda(&council, asset_mint).0;
         let decimals = self.mint_decimals(asset_mint);
         let share_mint = self.create_share_mint(&pool, decimals, None, false);
-        let mut k = PoolKeys::new(&admin, asset_mint, &share_mint, self.mint_program(asset_mint), TOKEN_2022_PROGRAM_ID);
+        let mut k = PoolKeys::new(&council, asset_mint, &share_mint, self.mint_program(asset_mint), TOKEN_2022_PROGRAM_ID);
         k.collection = self.create_collection(&pool);
         k
     }
@@ -589,6 +722,46 @@ impl Env {
         self.init_pool_ix_full(k, grace_period_seconds, max_line_bps, attestor, COLLECTION_PERIOD, CANCEL_DELAY)
     }
 
+    /// The `init_pool` parameters the tests use, with the env's council.
+    pub fn init_params(&self, grace_period_seconds: u32, max_line_bps: u16, attestor: Pubkey, collection_period_seconds: u32, cancel_delay_seconds: u32) -> elote_pool::instructions::pool::InitPoolParams {
+        elote_pool::instructions::pool::InitPoolParams {
+            grace_period_seconds,
+            max_line_bps,
+            attestor,
+            collection_period_seconds,
+            cancel_delay_seconds,
+            guardian: Pubkey::default(),
+            max_outstanding_principal: u64::MAX,
+            acceleration_notice_seconds: ACCELERATION_NOTICE,
+            cancel_grace_seconds: CANCEL_GRACE,
+        }
+    }
+
+    /// `init_pool` for `k` naming `multisig`, with `params`.
+    pub fn init_pool_ix_params(&self, k: &PoolKeys, multisig: &Pubkey, params: elote_pool::instructions::pool::InitPoolParams) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::InitPool {
+                creator: k.creator,
+                asset_mint: k.asset_mint,
+                pool: k.pool,
+                share_mint: k.share_mint,
+                vault: k.vault,
+                dead_shares: k.dead_shares,
+                collection: k.collection,
+                multisig: *multisig,
+                token_program: k.asset_program,
+                share_token_program: k.share_program,
+                system_program: SYSTEM_PROGRAM_ID,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::InitPool { params }.data(),
+        }
+    }
+
     /// `init_pool` with every argument explicit.
     pub fn init_pool_ix_full(
         &self,
@@ -599,54 +772,36 @@ impl Env {
         collection_period_seconds: u32,
         cancel_delay_seconds: u32,
     ) -> Instruction {
-        let (event_authority, program) = event_metas();
-        Instruction {
-            program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::InitPool {
-                admin: k.admin,
-                asset_mint: k.asset_mint,
-                pool: k.pool,
-                share_mint: k.share_mint,
-                vault: k.vault,
-                dead_shares: k.dead_shares,
-                collection: k.collection,
-                token_program: k.asset_program,
-                share_token_program: k.share_program,
-                system_program: SYSTEM_PROGRAM_ID,
-                event_authority,
-                program,
-            }
-            .to_account_metas(None),
-            data: elote_pool::instruction::InitPool { grace_period_seconds, max_line_bps, attestor, collection_period_seconds, cancel_delay_seconds }.data(),
-        }
+        let params = self.init_params(grace_period_seconds, max_line_bps, attestor, collection_period_seconds, cancel_delay_seconds);
+        self.init_pool_ix_params(k, &self.multisig.clone(), params)
     }
 
-    pub fn set_cancel_delay_ix(&self, k: &PoolKeys, admin: &Pubkey, seconds: u32) -> Instruction {
+    pub fn set_cancel_delay_ix(&self, k: &PoolKeys, council: &Pubkey, seconds: u32) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SetCancelDelay { admin: *admin, pool: k.pool, event_authority, program }.to_account_metas(None),
+            accounts: elote_pool::accounts::SetCancelDelay { council: *council, pool: k.pool, event_authority, program }.to_account_metas(None),
             data: elote_pool::instruction::SetCancelDelay { cancel_delay_seconds: seconds }.data(),
         }
     }
 
-    pub fn set_collection_period_ix(&self, k: &PoolKeys, admin: &Pubkey, seconds: u32) -> Instruction {
+    pub fn set_collection_period_ix(&self, k: &PoolKeys, council: &Pubkey, seconds: u32) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SetCollectionPeriod { admin: *admin, pool: k.pool, event_authority, program }
+            accounts: elote_pool::accounts::SetCollectionPeriod { council: *council, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
             data: elote_pool::instruction::SetCollectionPeriod { collection_period_seconds: seconds }.data(),
         }
     }
 
-    /// `set_attestor`: the admin and the new attestor both sign (condition C14).
-    pub fn set_attestor_ix(&self, k: &PoolKeys, admin: &Pubkey, new_attestor: &Pubkey) -> Instruction {
+    /// `set_attestor`: the council and the new attestor both sign (condition C14).
+    pub fn set_attestor_ix(&self, k: &PoolKeys, council: &Pubkey, new_attestor: &Pubkey) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::SetAttestor {
-                admin: *admin,
+                council: *council,
                 new_attestor: *new_attestor,
                 pool: k.pool,
                 event_authority,
@@ -672,7 +827,7 @@ impl Env {
         self.init_pool_full(asset_mint, 0, BPS)
     }
 
-    /// Creates a 6-decimal classic test asset mint (authority = admin) and a pool for it with a
+    /// Creates a 6-decimal classic test asset mint (authority = council) and a pool for it with a
     /// plain Token-2022 share mint.
     pub fn setup_pool(&mut self) -> (PoolKeys, TransactionMetadata) {
         self.setup_pool_with_grace(0)
@@ -680,33 +835,33 @@ impl Env {
 
     /// As `setup_pool`, with a pool grace period of `grace_period_seconds`.
     pub fn setup_pool_with_grace(&mut self, grace_period_seconds: u32) -> (PoolKeys, TransactionMetadata) {
-        let admin = self.admin.insecure_clone();
-        let asset_mint = self.create_mint(&admin.pubkey(), 6);
+        let council = self.council.insecure_clone();
+        let asset_mint = self.create_mint(&council.pubkey(), 6);
         let (k, ix) = self.init_pool_full(&asset_mint, grace_period_seconds, BPS);
-        let meta = self.send(ix, &admin, &[]);
+        let meta = self.send(ix, &council, &[]);
         (k, meta)
     }
 
     /// A pool on a plain Token-2022 asset (6 decimals, no extensions, no grace, no effective cap).
     pub fn setup_pool_2022(&mut self) -> (PoolKeys, TransactionMetadata) {
-        let admin = self.admin.insecure_clone();
-        let asset_mint = self.create_mint_2022(&admin.pubkey(), 6);
+        let council = self.council.insecure_clone();
+        let asset_mint = self.create_mint_2022(&council.pubkey(), 6);
         let (k, ix) = self.init_pool_plain(&asset_mint);
-        let meta = self.send(ix, &admin, &[]);
+        let meta = self.send(ix, &council, &[]);
         (k, meta)
     }
 
     /// A pool on a classic asset whose shares are permissioned: frozen by default, with `gate`
     /// as the share mint's freeze authority. Nothing is thawed here.
     pub fn setup_permissioned_pool(&mut self, gate: &Pubkey) -> (PoolKeys, TransactionMetadata) {
-        let admin = self.admin.insecure_clone();
-        let asset_mint = self.create_mint(&admin.pubkey(), 6);
-        let pool = pool_pda(&admin.pubkey(), &asset_mint).0;
+        let council = self.council.insecure_clone();
+        let asset_mint = self.create_mint(&council.pubkey(), 6);
+        let pool = pool_pda(&council.pubkey(), &asset_mint).0;
         let share_mint = self.create_share_mint(&pool, 6, Some(gate), true);
-        let mut k = PoolKeys::new(&admin.pubkey(), &asset_mint, &share_mint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
+        let mut k = PoolKeys::new(&council.pubkey(), &asset_mint, &share_mint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
         k.collection = self.create_collection(&pool);
         let ix = self.init_pool_ix_for(&k, 0, BPS);
-        let meta = self.send(ix, &admin, &[]);
+        let meta = self.send(ix, &council, &[]);
         (k, meta)
     }
 
@@ -718,8 +873,8 @@ impl Env {
 
     pub fn thaw(&mut self, mint: &Pubkey, account: &Pubkey, gate: &Keypair) {
         let ix = self.thaw_ix(mint, account, &gate.pubkey());
-        let admin = self.admin.insecure_clone();
-        self.send(ix, &admin, &[gate]);
+        let council = self.council.insecure_clone();
+        self.send(ix, &council, &[gate]);
     }
 
     /// Hands `authority_type` of `mint` from `current` to `new` (`None` revokes it for good).
@@ -739,16 +894,16 @@ impl Env {
             &[],
         )
         .expect("set_authority");
-        let admin = self.admin.insecure_clone();
-        self.send(ix, &admin, &[current]);
+        let council = self.council.insecure_clone();
+        self.send(ix, &council, &[current]);
     }
 
     /// A funded wallet holding `assets` of the pool asset, with its share account already created.
     pub fn investor(&mut self, k: &PoolKeys, assets: u64) -> Keypair {
         let kp = self.funded(10);
-        let admin = self.admin.insecure_clone();
+        let council = self.council.insecure_clone();
         if assets > 0 {
-            self.mint_to(&k.asset_mint, &admin, &kp.pubkey(), assets);
+            self.mint_to(&k.asset_mint, &council, &kp.pubkey(), assets);
         } else {
             self.create_ata(&kp.pubkey(), &k.asset_mint);
         }
@@ -838,20 +993,20 @@ impl Env {
         find_event(&meta).expect("Redeemed event")
     }
 
-    pub fn set_paused_ix(&self, k: &PoolKeys, admin: &Pubkey, paused: bool) -> Instruction {
+    pub fn set_paused_ix(&self, k: &PoolKeys, council: &Pubkey, paused: bool) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SetPaused { admin: *admin, pool: k.pool, event_authority, program }
+            accounts: elote_pool::accounts::SetPaused { council: *council, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
             data: elote_pool::instruction::SetPaused { paused }.data(),
         }
     }
 
     pub fn set_paused(&mut self, k: &PoolKeys, paused: bool) -> TransactionMetadata {
-        let admin = self.admin.insecure_clone();
-        let ix = self.set_paused_ix(k, &admin.pubkey(), paused);
-        self.send(ix, &admin, &[])
+        let council = self.council.insecure_clone();
+        let ix = self.set_paused_ix(k, &council.pubkey(), paused);
+        self.send(ix, &council, &[])
     }
 
     // -- pool reads ----------------------------------------------------------------------------
@@ -875,7 +1030,7 @@ impl Env {
     pub fn open_line_ix(
         &self,
         k: &PoolKeys,
-        admin: &Pubkey,
+        council: &Pubkey,
         line_id: u64,
         borrower: &Pubkey,
         p: &LineParams,
@@ -885,7 +1040,7 @@ impl Env {
         Instruction {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::OpenLine {
-                admin: *admin,
+                council: *council,
                 borrower: *borrower,
                 sponsor: sponsor_account,
                 attestor: self.attestor.pubkey(),
@@ -953,7 +1108,7 @@ impl Env {
         }
     }
 
-    /// Opens the next line of the pool, signed by the admin, the borrower, the attestor and (if
+    /// Opens the next line of the pool, signed by the council, the borrower, the attestor and (if
     /// named) the sponsor.
     pub fn open_line_with(
         &mut self,
@@ -962,15 +1117,15 @@ impl Env {
         p: &LineParams,
         sponsor: Option<&Keypair>,
     ) -> (u64, TransactionMetadata) {
-        let admin = self.admin.insecure_clone();
+        let council = self.council.insecure_clone();
         let attestor = self.attestor.insecure_clone();
         let line_id = self.pool(k).line_count;
-        let ix = self.open_line_ix(k, &admin.pubkey(), line_id, &borrower.pubkey(), p, sponsor.map(|s| s.pubkey()));
+        let ix = self.open_line_ix(k, &council.pubkey(), line_id, &borrower.pubkey(), p, sponsor.map(|s| s.pubkey()));
         let mut extra: Vec<&Keypair> = vec![borrower, &attestor];
         if let Some(s) = sponsor {
             extra.push(s);
         }
-        let meta = self.send(ix, &admin, &extra);
+        let meta = self.send(ix, &council, &extra);
         (line_id, meta)
     }
 
@@ -1073,7 +1228,7 @@ impl Env {
         }
     }
 
-    /// `cancel_pagare(draw_index, receipt_hash)`: the holder (the admin while the asset is in the
+    /// `cancel_pagare(draw_index, receipt_hash)`: the holder (the council while the asset is in the
     /// pool) and the attestor sign; `payer` receives the asset's rent back from the Core program.
     /// The asset is read from the sidecar, as a client would.
     #[allow(clippy::too_many_arguments)]
@@ -1160,7 +1315,7 @@ impl Env {
         }
     }
 
-    /// `endorse_pagare(draw_index, kind, to, endoso_hash)` by the admin as holder and payer.
+    /// `endorse_pagare(draw_index, kind, to, endoso_hash)` by the council as holder and payer.
     #[allow(clippy::too_many_arguments)]
     pub fn endorse_pagare_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, kind: u8, to: Pubkey, endoso_hash: [u8; 32]) -> Instruction {
         let (event_authority, program) = event_metas();
@@ -1229,36 +1384,36 @@ impl Env {
             data: elote_pool::instruction::CourtAnnotation { draw_index, kind, document_hash }.data(),
         }
     }
-    /// A court annotation of pagaré `draw_index`, signed by the admin and the attestor.
+    /// A court annotation of pagaré `draw_index`, signed by the council and the attestor.
     pub fn court_annotation(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> TransactionMetadata {
-        let admin = self.admin.insecure_clone();
+        let council = self.council.insecure_clone();
         let attestor = self.attestor.insecure_clone();
-        let ix = self.court_annotation_ix(k, line_id, draw_index, &admin.pubkey(), kind, document_hash);
-        self.send(ix, &admin, &[&attestor])
+        let ix = self.court_annotation_ix(k, line_id, draw_index, &council.pubkey(), kind, document_hash);
+        self.send(ix, &council, &[&attestor])
     }
 
-    /// An endoso en procuración of pagaré `draw_index` to `procurador`, signed by the admin and the attestor.
+    /// An endoso en procuración of pagaré `draw_index` to `procurador`, signed by the council and the attestor.
     pub fn procuracion(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, procurador: &Pubkey, endoso_hash: [u8; 32]) -> TransactionMetadata {
-        let admin = self.admin.insecure_clone();
+        let council = self.council.insecure_clone();
         let attestor = self.attestor.insecure_clone();
-        let ix = self.endorse_pagare_ix(k, line_id, draw_index, &admin.pubkey(), elote_pool::state::KIND_PROCURACION, *procurador, endoso_hash);
-        self.send(ix, &admin, &[&attestor])
+        let ix = self.endorse_pagare_ix(k, line_id, draw_index, &council.pubkey(), elote_pool::state::KIND_PROCURACION, *procurador, endoso_hash);
+        self.send(ix, &council, &[&attestor])
     }
 
-    /// Cancels pagaré `draw_index` of a line: the admin as holder and payer, the attestor co-signing.
+    /// Cancels pagaré `draw_index` of a line: the council as holder and payer, the attestor co-signing.
     pub fn cancel_pagare(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16) -> TransactionMetadata {
-        let admin = self.admin.insecure_clone();
+        let council = self.council.insecure_clone();
         let attestor = self.attestor.insecure_clone();
-        let ix = self.cancel_pagare_ix(k, line_id, draw_index, &admin.pubkey(), &admin.pubkey(), RECEIPT_HASH);
-        self.send(ix, &admin, &[&attestor])
+        let ix = self.cancel_pagare_ix(k, line_id, draw_index, &council.pubkey(), &council.pubkey(), RECEIPT_HASH);
+        self.send(ix, &council, &[&attestor])
     }
 
-    /// Asserts a cancellation of pagaré `draw_index` by the admin and the attestor fails with `code`.
+    /// Asserts a cancellation of pagaré `draw_index` by the council and the attestor fails with `code`.
     pub fn expect_cancel_err(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, code: u32) {
-        let admin = self.admin.insecure_clone();
+        let council = self.council.insecure_clone();
         let attestor = self.attestor.insecure_clone();
-        let ix = self.cancel_pagare_ix(k, line_id, draw_index, &admin.pubkey(), &admin.pubkey(), RECEIPT_HASH);
-        self.expect_err(ix, &admin, &[&attestor], code);
+        let ix = self.cancel_pagare_ix(k, line_id, draw_index, &council.pubkey(), &council.pubkey(), RECEIPT_HASH);
+        self.expect_err(ix, &council, &[&attestor], code);
     }
 
     /// The sidecar of pagaré `draw_index` of a line.
@@ -1379,12 +1534,12 @@ impl Env {
         find_event(&meta).expect("LineRepaid event")
     }
 
-    pub fn write_off_ix(&self, k: &PoolKeys, line_id: u64, admin: &Pubkey) -> Instruction {
+    pub fn write_off_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::WriteOff {
-                admin: *admin,
+                council: *council,
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
                 share_mint: k.share_mint,
@@ -1397,12 +1552,12 @@ impl Env {
         }
     }
 
-    pub fn suspend_draws_ix(&self, k: &PoolKeys, line_id: u64, admin: &Pubkey) -> Instruction {
+    pub fn suspend_draws_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::SuspendDraws {
-                admin: *admin,
+                council: *council,
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
                 event_authority,
@@ -1413,12 +1568,12 @@ impl Env {
         }
     }
 
-    pub fn cancel_line_ix(&self, k: &PoolKeys, line_id: u64, admin: &Pubkey) -> Instruction {
+    pub fn cancel_line_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::CancelLine {
-                admin: *admin,
+                council: *council,
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
                 event_authority,
@@ -1473,17 +1628,17 @@ impl Env {
         let line_id = self.open_line(k, &borrower, principal, rate_bps);
         self.draw(k, line_id, &borrower);
         let interest = self.line(k, line_id).interest_due;
-        let admin = self.admin.insecure_clone();
-        self.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), interest);
+        let council = self.council.insecure_clone();
+        self.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
         self.repay(k, line_id, &borrower, principal + interest);
         interest
     }
 
     /// A direct SPL transfer into the vault from a fresh wallet: value enters without new shares.
     pub fn donate(&mut self, k: &PoolKeys, amount: u64) {
-        let admin = self.admin.insecure_clone();
+        let council = self.council.insecure_clone();
         let donor = self.funded(1);
-        let from = self.mint_to(&k.asset_mint, &admin, &donor.pubkey(), amount);
+        let from = self.mint_to(&k.asset_mint, &council, &donor.pubkey(), amount);
         self.transfer(&k.asset_mint, &from, &k.vault, &donor, amount);
     }
 }

@@ -45,15 +45,15 @@ pub enum PoolError {
     PagareAccountsMismatch,
 
     // Roles that must stay apart.
-    #[msg("The attestor cannot be the admin")]
-    AttestorIsAdmin,
-    #[msg("The pool admin cannot be the borrower")]
-    BorrowerIsAdmin,
+    #[msg("The attestor cannot be the council")]
+    AttestorIsCouncil,
+    #[msg("The council cannot be the borrower")]
+    BorrowerIsCouncil,
     #[msg("A member of the council cannot be the borrower")]
     BorrowerIsCurator,
     #[msg("The borrower cannot be the attestor")]
     BorrowerIsAttestor,
-    #[msg("The endorsee is missing, or is the pool, the admin or the attestor")]
+    #[msg("The endorsee is missing, or is the pool, the council or the attestor")]
     EndorseeInvalid,
 
     // Amounts and invariants.

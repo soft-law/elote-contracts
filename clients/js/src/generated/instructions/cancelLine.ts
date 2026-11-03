@@ -53,7 +53,7 @@ export function getCancelLineDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type CancelLineInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountCouncil extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
@@ -64,10 +64,10 @@ export type CancelLineInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountAdmin extends string
-        ? ReadonlySignerAccount<TAccountAdmin> &
-            AccountSignerMeta<TAccountAdmin>
-        : TAccountAdmin,
+      TAccountCouncil extends string
+        ? ReadonlySignerAccount<TAccountCouncil> &
+            AccountSignerMeta<TAccountCouncil>
+        : TAccountCouncil,
       TAccountPool extends string
         ? ReadonlyAccount<TAccountPool>
         : TAccountPool,
@@ -112,14 +112,14 @@ export function getCancelLineInstructionDataCodec(): FixedSizeCodec<
 }
 
 export type CancelLineAsyncInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   line: TAccountLine;
   eventAuthority?: TAccountEventAuthority;
@@ -127,7 +127,7 @@ export type CancelLineAsyncInput<
 };
 
 export async function getCancelLineInstructionAsync<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
@@ -135,7 +135,7 @@ export async function getCancelLineInstructionAsync<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: CancelLineAsyncInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountLine,
     TAccountEventAuthority,
@@ -148,8 +148,8 @@ export async function getCancelLineInstructionAsync<
   CancelLineInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -182,7 +182,11 @@ export async function getCancelLineInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
@@ -215,7 +219,7 @@ export async function getCancelLineInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -226,8 +230,8 @@ export async function getCancelLineInstructionAsync<
   } as CancelLineInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -249,14 +253,14 @@ export async function getCancelLineInstructionAsync<
 }
 
 export type CancelLineInput<
-  TAccountAdmin extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  admin: TAccountAdmin;
+  council: TAccountCouncil;
   pool: TAccountPool;
   line: TAccountLine;
   eventAuthority: TAccountEventAuthority;
@@ -264,7 +268,7 @@ export type CancelLineInput<
 };
 
 export function getCancelLineInstruction<
-  TAccountAdmin extends InstructionSignerInput,
+  TAccountCouncil extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
@@ -272,7 +276,7 @@ export function getCancelLineInstruction<
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
   input: CancelLineInput<
-    TAccountAdmin,
+    TAccountCouncil,
     TAccountPool,
     TAccountLine,
     TAccountEventAuthority,
@@ -284,8 +288,8 @@ export function getCancelLineInstruction<
 ): CancelLineInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountAdmin,
-    InstructionAccountInputAddress<TAccountAdmin>
+    TAccountCouncil,
+    InstructionAccountInputAddress<TAccountCouncil>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -317,7 +321,11 @@ export function getCancelLineInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    admin: { value: input.admin ?? null, isSigner: true, isWritable: false },
+    council: {
+      value: input.council ?? null,
+      isSigner: true,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
@@ -344,7 +352,7 @@ export function getCancelLineInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("admin", accounts.admin),
+      getAccountMeta("council", accounts.council),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
@@ -355,8 +363,8 @@ export function getCancelLineInstruction<
   } as CancelLineInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountAdmin,
-      InstructionAccountInputAddress<TAccountAdmin>
+      TAccountCouncil,
+      InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -383,7 +391,7 @@ export type ParsedCancelLineInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    admin: TAccountMetas[0];
+    council: TAccountMetas[0];
     pool: TAccountMetas[1];
     line: TAccountMetas[2];
     eventAuthority: TAccountMetas[3];
@@ -418,7 +426,7 @@ export function parseCancelLineInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      admin: getNextAccount(),
+      council: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       eventAuthority: getNextAccount(),

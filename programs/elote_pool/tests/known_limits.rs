@@ -15,22 +15,22 @@ use elote_pool::state::LineStatus;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 
-/// Inverted 2026-10-31. The admin can no longer name itself as the borrower: the
+/// Inverted 2026-10-31. The council can no longer name itself as the borrower: the
 /// one-key path "open a line to self, draw the vault" is closed. Everything else about the
-/// admin's lending power (any other borrower, no allowlist) still holds; see the trust table.
+/// council's lending power (any other borrower, no allowlist) still holds; see the trust table.
 #[test]
 fn admin_cannot_be_the_borrower_of_its_own_line() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
-    let admin = env.admin.insecure_clone();
-    env.create_ata(&admin.pubkey(), &k.asset_mint);
+    let council = env.council.insecure_clone();
+    env.create_ata(&council.pubkey(), &k.asset_mint);
 
     let p = env.line_params(UNIT, 0);
     let attestor = env.attestor.insecure_clone();
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &admin.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&attestor], E_BORROWER_IS_ADMIN);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &council.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[&attestor], E_BORROWER_IS_COUNCIL);
     assert_eq!(env.pool(&k).line_count, 0);
     assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
 }
@@ -42,18 +42,18 @@ fn admin_cannot_be_the_borrower_of_its_own_line() {
 #[test]
 fn a_line_for_the_whole_vault_is_refused_under_the_concentration_cap() {
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
-    let mint = env.create_mint(&admin.pubkey(), 6);
+    let council = env.council.insecure_clone();
+    let mint = env.create_mint(&council.pubkey(), 6);
     let (k, ix) = env.init_pool_full(&mint, 0, 1_000);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
 
     let borrower = env.borrower(&k);
     let p = env.line_params(10 * UNIT, 0);
     let attestor = env.attestor.insecure_clone();
-    let ix = env.open_line_ix(&k, &admin.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &admin, &[&borrower, &attestor], E_LINE_TOO_LARGE);
+    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[&borrower, &attestor], E_LINE_TOO_LARGE);
     assert_eq!(env.pool(&k).line_count, 0);
     assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
 }
@@ -69,8 +69,8 @@ fn limit_deposit_just_before_a_repayment_shares_the_interest() {
     let borrower = env.borrower(&k);
     let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000); // 0.4 of interest
     env.draw(&k, line_id, &borrower);
-    let admin = env.admin.insecure_clone();
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 400_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 400_000);
 
     // The late investor enters at the pre-interest NAV of 10.0...
     let late = env.investor(&k, 10 * UNIT);
@@ -112,9 +112,9 @@ fn limit_redeem_between_collection_and_write_off_exits_at_par() {
     // The collection period runs from the mark; the NAV does not move while it runs.
     env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
     assert_eq!(env.nav(&k), 20 * UNIT - quick_shares);
-    let admin = env.admin.insecure_clone();
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.send(ix, &admin, &[]);
+    let council = env.council.insecure_clone();
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
     let out = env.redeem(&k, &patient, patient_shares);
     assert!(out.assets < 5 * UNIT, "the whole 6.0 loss lands on the holder who stayed: {}", out.assets);
 }
@@ -154,9 +154,9 @@ fn limit_total_write_off_leaves_a_pool_that_cannot_take_deposits() {
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, line_id, &borrower);
     env.warp(p.term_end + 1);
-    let admin = env.admin.insecure_clone();
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.send(ix, &admin, &[]);
+    let council = env.council.insecure_clone();
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
     assert_eq!((env.nav(&k), env.supply(&k)), (0, 2 * UNIT));
 
     let newcomer = env.investor(&k, UNIT);
@@ -191,9 +191,9 @@ fn limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installm
     assert_eq!(env.arrears(&k, line_id).missed, 2);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.expect_err(ix, &investor, &[], E_NOT_ENOUGH_MISSED);
-    let admin = env.admin.insecure_clone();
-    let ix = env.write_off_ix(&k, line_id, &admin.pubkey());
-    env.send(ix, &admin, &[]);
+    let council = env.council.insecure_clone();
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
 }
 
@@ -203,15 +203,15 @@ fn limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installm
 #[test]
 fn first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor() {
     let mut env = Env::new();
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
 
     // Nine decimals: the minimum is 10^9 base units, one whole unit.
-    let mint = env.create_mint(&admin.pubkey(), 9);
+    let mint = env.create_mint(&council.pubkey(), 9);
     let (k, ix) = env.init_pool_plain(&mint);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     assert_eq!(env.mint_decimals(&k.share_mint), 9);
     let investor = env.funded(10);
-    env.mint_to(&mint, &admin, &investor.pubkey(), 2_000_000_000);
+    env.mint_to(&mint, &council, &investor.pubkey(), 2_000_000_000);
     env.create_ata(&investor.pubkey(), &k.share_mint);
     let ix = env.deposit_ix(&k, &investor.pubkey(), 999_999_999); // 0.999999999
     env.expect_err(ix, &investor, &[], E_FIRST_DEPOSIT_TOO_SMALL);
@@ -219,11 +219,11 @@ fn first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor() {
 
     // Two decimals: 1.0 would be 100 base units, below the dead shares; the floor of
     // 1,000 x DEAD_SHARES = 1_000_000 base units (10,000.00) applies instead.
-    let mint = env.create_mint(&admin.pubkey(), 2);
+    let mint = env.create_mint(&council.pubkey(), 2);
     let (k, ix) = env.init_pool_plain(&mint);
-    env.send(ix, &admin, &[]);
+    env.send(ix, &council, &[]);
     let investor = env.funded(10);
-    env.mint_to(&mint, &admin, &investor.pubkey(), 1_000_000);
+    env.mint_to(&mint, &council, &investor.pubkey(), 1_000_000);
     env.create_ata(&investor.pubkey(), &k.share_mint);
     let ix = env.deposit_ix(&k, &investor.pubkey(), 999_999);
     env.expect_err(ix, &investor, &[], E_FIRST_DEPOSIT_TOO_SMALL);
@@ -308,7 +308,7 @@ fn limit_draw_accepts_a_valid_non_canonical_pagare_bump() {
 #[test]
 fn limit_a_repay_touching_more_than_five_pagare_records_must_be_split() {
     const CEILING: u64 = 100_000;
-    fn eight_draws(env: &mut Env) -> (PoolKeys, solana_keypair::Keypair, u64) {
+    fn eight_draws(env: &mut Env) -> (PoolKeys, Keypair, u64) {
         let (k, _) = env.setup_pool_with_grace(0);
         let investor = env.investor(&k, 200 * UNIT);
         env.deposit(&k, &investor, 200 * UNIT);
@@ -322,8 +322,8 @@ fn limit_a_repay_touching_more_than_five_pagare_records_must_be_split() {
         env.warp(t0 + 120 * p.interval() + 1);
         let line = env.line(&k, line_id);
         let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
-        let admin = env.admin.insecure_clone();
-        env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), owed);
+        let council = env.council.insecure_clone();
+        env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed);
         (k, borrower, line_id)
     }
 
@@ -373,13 +373,13 @@ fn limit_a_payment_landing_first_makes_an_in_flight_repay_retry() {
     for _ in 0..3 {
         env.draw_amount(&k, line_id, &borrower, UNIT);
     }
-    let admin = env.admin.insecure_clone();
+    let council = env.council.insecure_clone();
     let amount = env.line(&k, line_id).interest_due + UNIT - 1;
-    env.mint_to(&k.asset_mint, &admin, &borrower.pubkey(), 10 * UNIT);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 10 * UNIT);
     let in_flight = env.repay_ix(&k, line_id, &borrower.pubkey(), amount);
 
     let stranger = env.funded(1);
-    env.mint_to(&k.asset_mint, &admin, &stranger.pubkey(), 10);
+    env.mint_to(&k.asset_mint, &council, &stranger.pubkey(), 10);
     env.repay(&k, line_id, &stranger, 1);
     env.expect_err(in_flight, &borrower, &[], E_PAGARE_ACCOUNTS_MISMATCH);
 
