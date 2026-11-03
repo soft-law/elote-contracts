@@ -28,9 +28,8 @@ fn admin_cannot_be_the_borrower_of_its_own_line() {
     env.create_ata(&council.pubkey(), &k.asset_mint);
 
     let p = env.line_params(UNIT, 0);
-    let attestor = env.attestor.insecure_clone();
-    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &council.pubkey(), &p, None);
-    env.expect_err(ix, &council, &[&attestor], E_BORROWER_IS_COUNCIL);
+    let ix = env.request_line_ix(&k, &council.pubkey(), 0, &council.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[], E_BORROWER_IS_COUNCIL);
     assert_eq!(env.pool(&k).line_count, 0);
     assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
 }
@@ -51,10 +50,11 @@ fn a_line_for_the_whole_vault_is_refused_under_the_concentration_cap() {
 
     let borrower = env.borrower(&k);
     let p = env.line_params(10 * UNIT, 0);
-    let attestor = env.attestor.insecure_clone();
-    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &council, &[&borrower, &attestor], E_LINE_TOO_LARGE);
-    assert_eq!(env.pool(&k).line_count, 0);
+    let (line_id, _) = env.request_line_with(&k, &borrower, &p, None);
+    let hash = env.terms_hash(&k, line_id, &borrower.pubkey(), &p);
+    let ix = env.approve_line_ix(&k, &council.pubkey(), line_id, p.expediente_root, hash);
+    env.expect_err(ix, &council, &[], E_LINE_TOO_LARGE);
+    assert_eq!(env.line(&k, line_id).status, elote_pool::state::LineStatus::Requested, "the cap is checked at the approval");
     assert_eq!(env.token_balance(&k.vault), 10 * UNIT, "the vault is untouched");
 }
 

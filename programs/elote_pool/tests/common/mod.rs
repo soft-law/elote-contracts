@@ -174,6 +174,7 @@ pub const E_WRONG_ACCOUNT: u32 = ERR_BASE + PoolError::WrongAccount as u32;
 pub const E_SLIPPAGE_EXCEEDED: u32 = ERR_BASE + PoolError::SlippageExceeded as u32;
 pub const E_TERM_ENDED: u32 = ERR_BASE + PoolError::TermEnded as u32;
 pub const E_INVALID_SCHEDULE: u32 = ERR_BASE + PoolError::InvalidSchedule as u32;
+pub const E_MAX_MISSED_TOO_LOW: u32 = ERR_BASE + PoolError::MaxMissedTooLow as u32;
 pub const E_SCHEDULE_ENDS_AFTER_TERM: u32 = ERR_BASE + PoolError::ScheduleEndsAfterTerm as u32;
 pub const E_NOT_SCHEDULED: u32 = ERR_BASE + PoolError::NotScheduled as u32;
 pub const E_NOT_ENOUGH_MISSED: u32 = ERR_BASE + PoolError::NotEnoughMissed as u32;
@@ -334,9 +335,25 @@ pub struct LineParams {
     pub sponsor_role: u8,
     pub schedule: Option<elote_pool::state::ScheduleParams>,
     pub expediente_root: [u8; 32],
+    pub pagare_template_hash: [u8; 32],
 }
 
 impl LineParams {
+    /// The terms `request_line` receives.
+    pub fn terms(&self) -> elote_pool::terms::LineTerms {
+        elote_pool::terms::LineTerms {
+            principal: self.principal,
+            rate_bps: self.rate_bps,
+            term_end: self.term_end,
+            agreement_hash: self.agreement_hash,
+            sponsor: self.sponsor,
+            sponsor_role: self.sponsor_role,
+            schedule: self.schedule,
+            expediente_root: self.expediente_root,
+            pagare_template_hash: self.pagare_template_hash,
+        }
+    }
+
     /// The installment interval of a scheduled line (panics on a bullet line).
     pub fn interval(&self) -> i64 {
         self.schedule.expect("scheduled line").interval_seconds
@@ -353,6 +370,8 @@ pub const YEAR: i64 = elote_pool::state::SECONDS_PER_YEAR as i64;
 
 /// The fixed expediente root the tests open lines with.
 pub const EXPEDIENTE_ROOT: [u8; 32] = [0xe7; 32];
+/// The fixed pagaré template hash the tests request lines with.
+pub const PAGARE_TEMPLATE_HASH: [u8; 32] = [0x7e; 32];
 /// The fixed pagaré hash the tests draw with.
 pub const DOCUMENT_HASH: [u8; 32] = [0xd0; 32];
 /// The fingerprint of the PSC certificate behind the default test signature (method 1, PSC + wallet).
@@ -1047,45 +1066,105 @@ impl Env {
 
     // -- credit line instructions --------------------------------------------------------------
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn open_line_ix(
-        &self,
-        k: &PoolKeys,
-        council: &Pubkey,
-        line_id: u64,
-        borrower: &Pubkey,
-        p: &LineParams,
-        sponsor_account: Option<Pubkey>,
-    ) -> Instruction {
+    /// `request_line` for line `line_id`, funded by `payer`.
+    pub fn request_line_ix(&self, k: &PoolKeys, payer: &Pubkey, line_id: u64, borrower: &Pubkey, p: &LineParams, sponsor_account: Option<Pubkey>) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::OpenLine {
-                council: *council,
+            accounts: elote_pool::accounts::RequestLine {
                 borrower: *borrower,
+                payer: *payer,
                 sponsor: sponsor_account,
-                attestor: self.attestor.pubkey(),
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
-                vault: k.vault,
                 system_program: SYSTEM_PROGRAM_ID,
                 event_authority,
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::OpenLine {
-                line_id,
-                principal: p.principal,
-                rate_bps: p.rate_bps,
-                term_end: p.term_end,
-                agreement_hash: p.agreement_hash,
-                sponsor: p.sponsor,
-                sponsor_role: p.sponsor_role,
-                schedule: p.schedule,
-                expediente_root: p.expediente_root,
-            }
-            .data(),
+            data: elote_pool::instruction::RequestLine { line_id, terms: p.terms() }.data(),
         }
+    }
+
+    /// The terms hash of line `line_id` requested by `borrower` on `p`, as the curators compute it.
+    pub fn terms_hash(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey, p: &LineParams) -> [u8; 32] {
+        elote_pool::terms::terms_hash(&k.pool, line_id, borrower, elote_pool::state::CURRENCY_MXN, &p.terms())
+    }
+
+    /// `approve_line` naming `expediente_root` and `terms_hash`, signed by `council`.
+    pub fn approve_line_ix(&self, k: &PoolKeys, council: &Pubkey, line_id: u64, expediente_root: [u8; 32], terms_hash: [u8; 32]) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::ApproveLine {
+                council: *council,
+                multisig: self.pool(k).multisig,
+                pool: k.pool,
+                line: line_pda(&k.pool, line_id).0,
+                vault: k.vault,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::ApproveLine { expediente_root, terms_hash }.data(),
+        }
+    }
+
+    pub fn reject_line_ix(&self, k: &PoolKeys, council: &Pubkey, line_id: u64, payer: &Pubkey) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::RejectLine {
+                council: *council,
+                multisig: self.pool(k).multisig,
+                pool: k.pool,
+                line: line_pda(&k.pool, line_id).0,
+                payer: *payer,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::RejectLine {}.data(),
+        }
+    }
+
+    pub fn withdraw_request_ix(&self, k: &PoolKeys, borrower: &Pubkey, line_id: u64, payer: &Pubkey) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::WithdrawRequest {
+                borrower: *borrower,
+                line: line_pda(&k.pool, line_id).0,
+                payer: *payer,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::WithdrawRequest {}.data(),
+        }
+    }
+
+    /// Requests the next line of the pool for `borrower` (the council's vault pays, as Elote's
+    /// backend would), signed by the borrower and the named sponsor. Returns the id and the
+    /// request's transaction.
+    pub fn request_line_with(&mut self, k: &PoolKeys, borrower: &Keypair, p: &LineParams, sponsor: Option<&Keypair>) -> (u64, TransactionMetadata) {
+        let payer = self.council.insecure_clone();
+        let line_id = self.pool(k).line_count;
+        let ix = self.request_line_ix(k, &payer.pubkey(), line_id, &borrower.pubkey(), p, sponsor.map(|s| s.pubkey()));
+        let mut extra: Vec<&Keypair> = vec![borrower];
+        if let Some(s) = sponsor {
+            extra.push(s);
+        }
+        let meta = self.send(ix, &payer, &extra);
+        (line_id, meta)
+    }
+
+    /// The council approves line `line_id` as requested on `p`.
+    pub fn approve_line(&mut self, k: &PoolKeys, line_id: u64, borrower: &Pubkey, p: &LineParams) -> TransactionMetadata {
+        let council = self.council.insecure_clone();
+        let hash = self.terms_hash(k, line_id, borrower, p);
+        let ix = self.approve_line_ix(k, &council.pubkey(), line_id, p.expediente_root, hash);
+        self.send(ix, &council, &[])
     }
 
     /// Default terms of a bullet line: `principal` at an annual `rate_bps` for exactly one year
@@ -1101,6 +1180,7 @@ impl Env {
             sponsor_role: elote_pool::state::SPONSOR_PROMOTER,
             schedule: None,
             expediente_root: EXPEDIENTE_ROOT,
+            pagare_template_hash: PAGARE_TEMPLATE_HASH,
         }
     }
 
@@ -1126,11 +1206,12 @@ impl Env {
                 max_missed: 3,
             }),
             expediente_root: EXPEDIENTE_ROOT,
+            pagare_template_hash: PAGARE_TEMPLATE_HASH,
         }
     }
 
-    /// Opens the next line of the pool, signed by the council, the borrower, the attestor and (if
-    /// named) the sponsor.
+    /// Requests the next line of the pool and has the council approve it. Returns the id and the
+    /// request's transaction.
     pub fn open_line_with(
         &mut self,
         k: &PoolKeys,
@@ -1138,15 +1219,8 @@ impl Env {
         p: &LineParams,
         sponsor: Option<&Keypair>,
     ) -> (u64, TransactionMetadata) {
-        let council = self.council.insecure_clone();
-        let attestor = self.attestor.insecure_clone();
-        let line_id = self.pool(k).line_count;
-        let ix = self.open_line_ix(k, &council.pubkey(), line_id, &borrower.pubkey(), p, sponsor.map(|s| s.pubkey()));
-        let mut extra: Vec<&Keypair> = vec![borrower, &attestor];
-        if let Some(s) = sponsor {
-            extra.push(s);
-        }
-        let meta = self.send(ix, &council, &extra);
+        let (line_id, meta) = self.request_line_with(k, borrower, p, sponsor);
+        self.approve_line(k, line_id, &borrower.pubkey(), p);
         (line_id, meta)
     }
 

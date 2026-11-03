@@ -53,6 +53,8 @@ pub const MIN_COLLECTION_PERIOD_SECONDS: u32 = 30 * 86_400;
 pub const MIN_CANCEL_DELAY_SECONDS: u32 = 7 * 86_400;
 /// The year that annualizes `late_bps`: 365 days.
 pub const SECONDS_PER_YEAR: u64 = 365 * 86_400;
+/// `CreditLine::currency`: Mexican pesos (ISO 4217 484). A line's amounts are centavos.
+pub const CURRENCY_MXN: u16 = 484;
 /// The Squads v4 program whose multisig vaults may be a pool's council.
 pub const SQUADS_PROGRAM_ID: Pubkey = pubkey!("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf");
 /// `Pool::council_kind`: the vault (index 0) of an autonomous Squads v4 multisig with a majority
@@ -107,7 +109,7 @@ pub const ASSET_CONTROL_PAUSABLE: u8 = 1 << 1;
 pub struct Pool {
     /// The vault of the council multisig: signs every council instruction.
     pub council: Pubkey,
-    /// The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
+    /// The agreements engine's key: co-signs `draw`, `endorse_pagare` and
     /// `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
     /// `annotate_payment` alone. Never the council; rotated with `set_attestor`.
     pub attestor: Pubkey,
@@ -137,7 +139,7 @@ pub struct Pool {
     /// least `MIN_CANCEL_DELAY_SECONDS`. Set with `set_cancel_delay`; a request stores its own
     /// deadline, so a change never moves one.
     pub cancel_delay_seconds: u32,
-    /// The largest line `open_line` accepts, as a share of the NAV at the opening, in basis points
+    /// The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
     /// (`1..=BPS`). Fixed at `init_pool`.
     pub max_line_bps: u16,
     /// `ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without
@@ -234,7 +236,7 @@ pub struct CreditLine {
     pub pool: Pubkey,
     pub line_id: u64,
     pub borrower: Pubkey,
-    /// Co-signed `open_line`; `None` when the line has no sponsor.
+    /// Co-signed `request_line`; `None` when the line has no sponsor.
     pub sponsor: Option<Pubkey>,
     /// `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named.
     pub sponsor_role: u8,
@@ -279,7 +281,6 @@ pub struct CreditLine {
     pub late_collected: u64,
     /// Late interest is settled up to this instant; zero until a repayment collects some.
     pub late_paid_until: i64,
-    pub opened_at: i64,
     /// Time of the first draw; informational (the calendar is `first_due_at`).
     pub drawn_at: i64,
     pub closed_at: i64,
@@ -287,6 +288,8 @@ pub struct CreditLine {
     /// installment is due, and `write_off` waits `Pool::collection_period_seconds` from it.
     pub accelerated_at: i64,
     pub bump: u8,
+    /// ISO 4217 code of every amount of the line: `CURRENCY_MXN`.
+    pub currency: u16,
     pub requested_at: i64,
     pub approved_at: i64,
     /// `sha256` of the stored terms in the fixed encoding; the council's approval names it.
@@ -396,7 +399,7 @@ pub struct Pagare {
     pub reserved: [u8; 32],
 }
 
-/// Installment terms requested by `open_line`; fixed for the life of the line.
+/// Installment terms requested by `request_line`; fixed for the life of the line.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ScheduleParams {
     /// The first due date (unix seconds), from the signed contract; must be after the opening.

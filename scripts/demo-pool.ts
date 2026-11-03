@@ -19,7 +19,7 @@
 // Keys live in .demo-keys/ (generated on first run, ignored by git) unless a path is given in
 // ELOTE_ADMIN_KEYPAIR, ELOTE_ATTESTOR_KEYPAIR, ELOTE_INVESTOR_A_KEYPAIR, ELOTE_INVESTOR_B_KEYPAIR,
 // ELOTE_BORROWER_KEYPAIR or ELOTE_SPONSOR_KEYPAIR. The attestor stands in for the agreements
-// engine's key; open-line.ts, draw.ts and cancel-pagare.ts read it from the same place. Only
+// engine's key; request-line.ts, draw.ts and cancel-pagare.ts read it from the same place. Only
 // addresses are printed. ELOTE_RPC overrides the cluster's RPC URL.
 //
 // Demo on Solana devnet with test assets. Not an offer of securities.
@@ -47,7 +47,7 @@ import {
   getDepositInstructionAsync,
   getDrawInstructionAsync,
   getInitPoolInstructionAsync,
-  getOpenLineInstructionAsync,
+  getRequestLineInstructionAsync,
   getRedeemInstructionAsync,
   lineArrears,
   lineSchedule,
@@ -255,15 +255,15 @@ console.log(`\nCredit line: 6,000 ${ASSET} at 12%${withSponsor ? ", co-signed by
 const { lineCount } = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
 const [line] = await findLinePda({ pool, lineId: lineCount });
 const termEnd = BigInt(Math.floor(Date.now() / 1000) + 90 * 86_400);
-await send("open_line", admin, [
-  await getOpenLineInstructionAsync({
-    council: admin,
+// The council approves the request through Squads (PR 4 commit 10); until then the demo stops
+// being runnable here.
+await send("request_line", admin, [
+  await getRequestLineInstructionAsync({
     borrower,
+    payer: admin,
     ...(withSponsor ? { sponsor } : {}),
-    attestor,
     pool,
     line,
-    vault,
     lineId: lineCount,
     principal: 6_000n * UNIT,
     rateBps: 1_200,
@@ -273,6 +273,7 @@ await send("open_line", admin, [
     sponsorRole: 0,
     schedule: null,
     expedienteRoot: hash, // a placeholder for the salted root of the credit file
+    pagareTemplateHash: hash,
   }),
 ]);
 const borrowerAsset = await ataOf(borrower.address, assetMint.address);
@@ -355,14 +356,12 @@ async function scheduleDemo() {
   // window open until then.
   const firstDueAt = (await chainNow(c)) + intervalSeconds;
   const sTermEnd = firstDueAt + BigInt(installments) * intervalSeconds;
-  await send("open_line with a schedule", admin, [
-    await getOpenLineInstructionAsync({
-      council: admin,
+  await send("request_line with a schedule", admin, [
+    await getRequestLineInstructionAsync({
       borrower,
-      attestor,
+      payer: admin,
       pool,
       line: sLine,
-      vault,
       lineId: id,
       principal,
       rateBps: 1_200,
@@ -372,6 +371,7 @@ async function scheduleDemo() {
       sponsorRole: 0,
       schedule: { firstDueAt, intervalSeconds, installments, lateBps: 10_000, maxMissed: 3 },
       expedienteRoot: hash,
+      pagareTemplateHash: hash,
     }),
   ]);
   await send(`draw: 600 ${ASSET} to the borrower, pagaré 0 minted`, borrower, [await drawIx(sLine, 0, principal)]);

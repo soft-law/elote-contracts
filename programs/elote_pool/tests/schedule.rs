@@ -4,7 +4,7 @@ mod common;
 
 use common::*;
 use elote_pool::events::{
-    LateInterestCollected, LineInCollection, LineOpened, LineRepaid,
+    LateInterestCollected, LineInCollection, LineRequested, LineRepaid,
     LineWrittenOff,
 };
 use elote_pool::state::{LineStatus, Schedule, ScheduleParams};
@@ -32,11 +32,11 @@ fn open_scheduled_line_records_the_schedule() {
     // a year late interest. Nothing is owed at the opening (interest is fixed per tranche).
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let (line_id, meta) = env.open_line_with(&k, &borrower, &p, None);
-    let ev: LineOpened = find_event(&meta).expect("LineOpened");
+    let ev: LineRequested = find_event(&meta).expect("LineRequested");
     assert_eq!((ev.line_id, ev.principal), (line_id, 6 * UNIT));
     assert_eq!(
-        (ev.line_id, ev.first_due_at, ev.availability_end, ev.expediente_root),
-        (line_id, p.first_due_at(), p.first_due_at(), EXPEDIENTE_ROOT)
+        (ev.line_id, ev.first_due_at, ev.expediente_root),
+        (line_id, p.first_due_at(), EXPEDIENTE_ROOT)
     );
     assert_eq!((ev.sponsor, ev.sponsor_role), (None, 0));
     assert_eq!(
@@ -65,7 +65,7 @@ fn open_scheduled_line_records_the_schedule() {
     // until the term.
     let p1 = env.line_params(UNIT, 1_000);
     let (v1, meta) = env.open_line_with(&k, &borrower, &p1, None);
-    let ev: LineOpened = find_event(&meta).expect("LineOpened");
+    let ev: LineRequested = find_event(&meta).expect("LineRequested");
     assert_eq!((ev.installments, ev.interval_seconds), (0, 0));
     let line = env.line(&k, v1);
     assert_eq!((line.installments, line.interval_seconds, line.late_bps, line.max_missed), (0, 0, 0, 0));
@@ -80,7 +80,6 @@ fn open_rejects_invalid_schedules() {
     let k = pool_with(&mut env, 10 * UNIT, 0);
     let borrower = env.borrower(&k);
     let council = env.council.insecure_clone();
-    let attestor = env.attestor.insecure_clone();
     let good = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let with = |f: &dyn Fn(&mut ScheduleParams)| {
         let mut p = good;
@@ -96,16 +95,16 @@ fn open_rejects_invalid_schedules() {
         ("zero interval", with(&|s| s.interval_seconds = 0), E_INVALID_SCHEDULE),
         ("negative interval", with(&|s| s.interval_seconds = -good.interval()), E_INVALID_SCHEDULE),
         ("late rate above 100%", with(&|s| s.late_bps = 10_001), E_INVALID_SCHEDULE),
-        ("zero max missed", with(&|s| s.max_missed = 0), E_INVALID_SCHEDULE),
-        ("max missed below the three-month policy", with(&|s| s.max_missed = 2), E_INVALID_SCHEDULE),
+        ("zero max missed", with(&|s| s.max_missed = 0), E_MAX_MISSED_TOO_LOW),
+        ("max missed below the three-month policy", with(&|s| s.max_missed = 2), E_MAX_MISSED_TOO_LOW),
         ("max missed above installments", with(&|s| s.max_missed = 7), E_INVALID_SCHEDULE),
         ("one second past the term", with(&|s| s.interval_seconds = good.interval() + 1), E_SCHEDULE_ENDS_AFTER_TERM),
         ("first due date not after the opening", with(&|s| s.first_due_at = good.first_due_at() - good.interval()), E_INVALID_SCHEDULE),
         ("span overflow", with(&|s| s.interval_seconds = i64::MAX), E_OVERFLOW),
     ];
     for (name, p, code) in cases {
-        let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
-        match env.try_send(ix, &council, &[&borrower, &attestor]) {
+        let ix = env.request_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+        match env.try_send(ix, &council, &[&borrower]) {
             Ok(_) => panic!("{name}: accepted"),
             Err(e) => assert_eq!(custom_error_code(&e.err), Some(code), "{name}"),
         }
@@ -115,8 +114,8 @@ fn open_rejects_invalid_schedules() {
     let mut p = with(&|s| s.installments = 4);
     p.principal = 3;
     p.rate_bps = 0;
-    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
-    env.expect_err(ix, &council, &[&borrower, &attestor], E_INVALID_SCHEDULE);
+    let ix = env.request_line_ix(&k, &council.pubkey(), 0, &borrower.pubkey(), &p, None);
+    env.expect_err(ix, &council, &[&borrower], E_INVALID_SCHEDULE);
     assert_eq!(env.pool(&k).line_count, 0);
 
     // The edges are accepted: three installments with max_missed == installments, 100% late

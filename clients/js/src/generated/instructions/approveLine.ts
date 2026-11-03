@@ -10,23 +10,11 @@ import {
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
-  getAddressDecoder,
-  getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
-  getI64Decoder,
-  getI64Encoder,
-  getOptionDecoder,
-  getOptionEncoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
-  getU16Decoder,
-  getU16Encoder,
-  getU64Decoder,
-  getU64Encoder,
-  getU8Decoder,
-  getU8Encoder,
   getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
@@ -34,59 +22,44 @@ import {
   type AccountMeta,
   type AccountSignerMeta,
   type Address,
-  type Codec,
-  type Decoder,
-  type Encoder,
-  type HasAddress,
+  type FixedSizeCodec,
+  type FixedSizeDecoder,
+  type FixedSizeEncoder,
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
-  type Option,
-  type OptionOrNullable,
   type ReadonlyAccount,
   type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type WritableAccount,
-  type WritableSignerAccount,
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
-  getAddressFromResolvedInstructionAccount,
-  getNonNullResolvedInstructionInput,
   type InstructionAccountInput,
   type InstructionAccountInputAddress,
   type InstructionSignerInput,
   type ResolvedInstructionAccount,
   type ResolvedInstructionAccountMeta,
 } from "@solana/program-client-core";
-import { findLinePda } from "../pdas";
 import { ELOTE_POOL_PROGRAM_ADDRESS } from "../programs";
-import {
-  getScheduleParamsDecoder,
-  getScheduleParamsEncoder,
-  type ScheduleParams,
-  type ScheduleParamsArgs,
-} from "../types";
 
-export const OPEN_LINE_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
-  99, 104, 130, 198, 128, 34, 27, 208,
+export const APPROVE_LINE_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
+  59, 82, 243, 179, 167, 11, 49, 109,
 ]);
 
-export function getOpenLineDiscriminatorBytes(): ReadonlyUint8Array {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(OPEN_LINE_DISCRIMINATOR);
+export function getApproveLineDiscriminatorBytes(): ReadonlyUint8Array {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(
+    APPROVE_LINE_DISCRIMINATOR,
+  );
 }
 
-export type OpenLineInstruction<
+export type ApproveLineInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountCouncil extends string | AccountMeta<string> = string,
-  TAccountBorrower extends string | AccountMeta<string> = string,
-  TAccountSponsor extends string | AccountMeta<string> = string,
-  TAccountAttestor extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
-  TAccountSystemProgram extends string | AccountMeta<string> =
-    "11111111111111111111111111111111",
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
     "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
@@ -96,23 +69,14 @@ export type OpenLineInstruction<
   InstructionWithAccounts<
     [
       TAccountCouncil extends string
-        ? WritableSignerAccount<TAccountCouncil> &
+        ? ReadonlySignerAccount<TAccountCouncil> &
             AccountSignerMeta<TAccountCouncil>
         : TAccountCouncil,
-      TAccountBorrower extends string
-        ? ReadonlySignerAccount<TAccountBorrower> &
-            AccountSignerMeta<TAccountBorrower>
-        : TAccountBorrower,
-      TAccountSponsor extends string
-        ? ReadonlySignerAccount<TAccountSponsor> &
-            AccountSignerMeta<TAccountSponsor>
-        : TAccountSponsor,
-      TAccountAttestor extends string
-        ? ReadonlySignerAccount<TAccountAttestor> &
-            AccountSignerMeta<TAccountAttestor>
-        : TAccountAttestor,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPool extends string
-        ? WritableAccount<TAccountPool>
+        ? ReadonlyAccount<TAccountPool>
         : TAccountPool,
       TAccountLine extends string
         ? WritableAccount<TAccountLine>
@@ -120,9 +84,6 @@ export type OpenLineInstruction<
       TAccountVault extends string
         ? ReadonlyAccount<TAccountVault>
         : TAccountVault,
-      TAccountSystemProgram extends string
-        ? ReadonlyAccount<TAccountSystemProgram>
-        : TAccountSystemProgram,
       TAccountEventAuthority extends string
         ? ReadonlyAccount<TAccountEventAuthority>
         : TAccountEventAuthority,
@@ -133,134 +94,84 @@ export type OpenLineInstruction<
     ]
   >;
 
-export type OpenLineInstructionData = {
+export type ApproveLineInstructionData = {
   discriminator: ReadonlyUint8Array;
-  lineId: bigint;
-  principal: bigint;
-  rateBps: number;
-  termEnd: bigint;
-  agreementHash: ReadonlyUint8Array;
-  sponsor: Option<Address>;
-  sponsorRole: number;
-  schedule: Option<ScheduleParams>;
   expedienteRoot: ReadonlyUint8Array;
+  termsHash: ReadonlyUint8Array;
 };
 
-export type OpenLineInstructionDataArgs = {
-  lineId: number | bigint;
-  principal: number | bigint;
-  rateBps: number;
-  termEnd: number | bigint;
-  agreementHash: ReadonlyUint8Array;
-  sponsor: OptionOrNullable<Address | HasAddress>;
-  sponsorRole: number;
-  schedule: OptionOrNullable<ScheduleParamsArgs>;
+export type ApproveLineInstructionDataArgs = {
   expedienteRoot: ReadonlyUint8Array;
+  termsHash: ReadonlyUint8Array;
 };
 
-export function getOpenLineInstructionDataEncoder(): Encoder<OpenLineInstructionDataArgs> {
+export function getApproveLineInstructionDataEncoder(): FixedSizeEncoder<ApproveLineInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["lineId", getU64Encoder()],
-      ["principal", getU64Encoder()],
-      ["rateBps", getU16Encoder()],
-      ["termEnd", getI64Encoder()],
-      ["agreementHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["sponsor", getOptionEncoder(getAddressEncoder())],
-      ["sponsorRole", getU8Encoder()],
-      ["schedule", getOptionEncoder(getScheduleParamsEncoder())],
       ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
+      ["termsHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
-    (value) => ({ ...value, discriminator: OPEN_LINE_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: APPROVE_LINE_DISCRIMINATOR }),
   );
 }
 
-export function getOpenLineInstructionDataDecoder(): Decoder<OpenLineInstructionData> {
+export function getApproveLineInstructionDataDecoder(): FixedSizeDecoder<ApproveLineInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["lineId", getU64Decoder()],
-    ["principal", getU64Decoder()],
-    ["rateBps", getU16Decoder()],
-    ["termEnd", getI64Decoder()],
-    ["agreementHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["sponsor", getOptionDecoder(getAddressDecoder())],
-    ["sponsorRole", getU8Decoder()],
-    ["schedule", getOptionDecoder(getScheduleParamsDecoder())],
     ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
+    ["termsHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
 
-export function getOpenLineInstructionDataCodec(): Codec<
-  OpenLineInstructionDataArgs,
-  OpenLineInstructionData
+export function getApproveLineInstructionDataCodec(): FixedSizeCodec<
+  ApproveLineInstructionDataArgs,
+  ApproveLineInstructionData
 > {
   return combineCodec(
-    getOpenLineInstructionDataEncoder(),
-    getOpenLineInstructionDataDecoder(),
+    getApproveLineInstructionDataEncoder(),
+    getApproveLineInstructionDataDecoder(),
   );
 }
 
-export type OpenLineAsyncInput<
+export type ApproveLineAsyncInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
-  TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
-  TAccountSponsor extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
-  TAccountSystemProgram extends InstructionAccountInput =
-    InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   council: TAccountCouncil;
-  borrower: TAccountBorrower;
-  /** The sponsor named in the arguments; required (and signing) when one is named. */
-  sponsor?: TAccountSponsor;
-  /** Attests that the signed agreement behind `agreement_hash` exists and matches the arguments. */
-  attestor: TAccountAttestor;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
-  line?: TAccountLine;
+  line: TAccountLine;
   /** Read for the NAV the concentration cap is measured against. */
   vault: TAccountVault;
-  systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  lineId: OpenLineInstructionDataArgs["lineId"];
-  principal: OpenLineInstructionDataArgs["principal"];
-  rateBps: OpenLineInstructionDataArgs["rateBps"];
-  termEnd: OpenLineInstructionDataArgs["termEnd"];
-  agreementHash: OpenLineInstructionDataArgs["agreementHash"];
-  sponsorArg: OpenLineInstructionDataArgs["sponsor"];
-  sponsorRole: OpenLineInstructionDataArgs["sponsorRole"];
-  schedule: OpenLineInstructionDataArgs["schedule"];
-  expedienteRoot: OpenLineInstructionDataArgs["expedienteRoot"];
+  expedienteRoot: ApproveLineInstructionDataArgs["expedienteRoot"];
+  termsHash: ApproveLineInstructionDataArgs["termsHash"];
 };
 
-export async function getOpenLineInstructionAsync<
+export async function getApproveLineInstructionAsync<
   TAccountCouncil extends InstructionSignerInput,
-  TAccountBorrower extends InstructionSignerInput,
-  TAccountSponsor extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
-  TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: OpenLineAsyncInput<
+  input: ApproveLineAsyncInput<
     TAccountCouncil,
-    TAccountBorrower,
-    TAccountSponsor,
-    TAccountAttestor,
+    TAccountMultisig,
     TAccountPool,
     TAccountLine,
     TAccountVault,
-    TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -268,23 +179,15 @@ export async function getOpenLineInstructionAsync<
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
 ): Promise<
-  OpenLineInstruction<
+  ApproveLineInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountBorrower,
-      InstructionAccountInputAddress<TAccountBorrower>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountSponsor,
-      InstructionAccountInputAddress<TAccountSponsor>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -297,10 +200,6 @@ export async function getOpenLineInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountVault,
       InstructionAccountInputAddress<TAccountVault>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountSystemProgram,
-      InstructionAccountInputAddress<TAccountSystemProgram>
     >,
     ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
@@ -325,30 +224,19 @@ export async function getOpenLineInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    council: { value: input.council ?? null, isSigner: true, isWritable: true },
-    borrower: {
-      value: input.borrower ?? null,
+    council: {
+      value: input.council ?? null,
       isSigner: true,
       isWritable: false,
     },
-    sponsor: {
-      value: input.sponsor ?? null,
-      isSigner: true,
-      isWritable: false,
-    },
-    attestor: {
-      value: input.attestor ?? null,
-      isSigner: true,
-      isWritable: false,
-    },
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
-    line: { value: input.line ?? null, isSigner: false, isWritable: true },
-    vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
-    systemProgram: {
-      value: input.systemProgram ?? null,
+    multisig: {
+      value: input.multisig ?? null,
       isSigner: false,
       isWritable: false,
     },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -366,25 +254,9 @@ export async function getOpenLineInstructionAsync<
   >;
 
   // Original args.
-  const args = { ...input, sponsor: input.sponsorArg };
+  const args = { ...input };
 
   // Resolve default values.
-  if (!accounts.line.value) {
-    accounts.line.value = await findLinePda(
-      {
-        pool: getAddressFromResolvedInstructionAccount(
-          "pool",
-          accounts.pool.value,
-        ),
-        lineId: getNonNullResolvedInstructionInput("lineId", args.lineId),
-      },
-      { programAddress },
-    );
-  }
-  if (!accounts.systemProgram.value) {
-    accounts.systemProgram.value =
-      "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
-  }
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
       programAddress,
@@ -399,37 +271,26 @@ export async function getOpenLineInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("council", accounts.council),
-      getAccountMeta("borrower", accounts.borrower),
-      getAccountMeta("sponsor", accounts.sponsor),
-      getAccountMeta("attestor", accounts.attestor),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("vault", accounts.vault),
-      getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getOpenLineInstructionDataEncoder().encode(
-      args as OpenLineInstructionDataArgs,
+    data: getApproveLineInstructionDataEncoder().encode(
+      args as ApproveLineInstructionDataArgs,
     ),
     programAddress,
-  } as OpenLineInstruction<
+  } as ApproveLineInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountBorrower,
-      InstructionAccountInputAddress<TAccountBorrower>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountSponsor,
-      InstructionAccountInputAddress<TAccountSponsor>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -444,10 +305,6 @@ export async function getOpenLineInstructionAsync<
       InstructionAccountInputAddress<TAccountVault>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountSystemProgram,
-      InstructionAccountInputAddress<TAccountSystemProgram>
-    >,
-    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -458,89 +315,59 @@ export async function getOpenLineInstructionAsync<
   >);
 }
 
-export type OpenLineInput<
+export type ApproveLineInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
-  TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
-  TAccountSponsor extends InstructionSignerInput = InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountVault extends InstructionAccountInput = InstructionAccountInput,
-  TAccountSystemProgram extends InstructionAccountInput =
-    InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   council: TAccountCouncil;
-  borrower: TAccountBorrower;
-  /** The sponsor named in the arguments; required (and signing) when one is named. */
-  sponsor?: TAccountSponsor;
-  /** Attests that the signed agreement behind `agreement_hash` exists and matches the arguments. */
-  attestor: TAccountAttestor;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for the NAV the concentration cap is measured against. */
   vault: TAccountVault;
-  systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  lineId: OpenLineInstructionDataArgs["lineId"];
-  principal: OpenLineInstructionDataArgs["principal"];
-  rateBps: OpenLineInstructionDataArgs["rateBps"];
-  termEnd: OpenLineInstructionDataArgs["termEnd"];
-  agreementHash: OpenLineInstructionDataArgs["agreementHash"];
-  sponsorArg: OpenLineInstructionDataArgs["sponsor"];
-  sponsorRole: OpenLineInstructionDataArgs["sponsorRole"];
-  schedule: OpenLineInstructionDataArgs["schedule"];
-  expedienteRoot: OpenLineInstructionDataArgs["expedienteRoot"];
+  expedienteRoot: ApproveLineInstructionDataArgs["expedienteRoot"];
+  termsHash: ApproveLineInstructionDataArgs["termsHash"];
 };
 
-export function getOpenLineInstruction<
+export function getApproveLineInstruction<
   TAccountCouncil extends InstructionSignerInput,
-  TAccountBorrower extends InstructionSignerInput,
-  TAccountSponsor extends InstructionSignerInput,
-  TAccountAttestor extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountVault extends InstructionAccountInput,
-  TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: OpenLineInput<
+  input: ApproveLineInput<
     TAccountCouncil,
-    TAccountBorrower,
-    TAccountSponsor,
-    TAccountAttestor,
+    TAccountMultisig,
     TAccountPool,
     TAccountLine,
     TAccountVault,
-    TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
   >,
   config?: {
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
-): OpenLineInstruction<
+): ApproveLineInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
     TAccountCouncil,
     InstructionAccountInputAddress<TAccountCouncil>
   >,
   ResolvedInstructionAccountMeta<
-    TAccountBorrower,
-    InstructionAccountInputAddress<TAccountBorrower>
-  >,
-  ResolvedInstructionAccountMeta<
-    TAccountSponsor,
-    InstructionAccountInputAddress<TAccountSponsor>
-  >,
-  ResolvedInstructionAccountMeta<
-    TAccountAttestor,
-    InstructionAccountInputAddress<TAccountAttestor>
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -553,10 +380,6 @@ export function getOpenLineInstruction<
   ResolvedInstructionAccountMeta<
     TAccountVault,
     InstructionAccountInputAddress<TAccountVault>
-  >,
-  ResolvedInstructionAccountMeta<
-    TAccountSystemProgram,
-    InstructionAccountInputAddress<TAccountSystemProgram>
   >,
   ResolvedInstructionAccountMeta<
     TAccountEventAuthority,
@@ -580,30 +403,19 @@ export function getOpenLineInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    council: { value: input.council ?? null, isSigner: true, isWritable: true },
-    borrower: {
-      value: input.borrower ?? null,
+    council: {
+      value: input.council ?? null,
       isSigner: true,
       isWritable: false,
     },
-    sponsor: {
-      value: input.sponsor ?? null,
-      isSigner: true,
-      isWritable: false,
-    },
-    attestor: {
-      value: input.attestor ?? null,
-      isSigner: true,
-      isWritable: false,
-    },
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
-    line: { value: input.line ?? null, isSigner: false, isWritable: true },
-    vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
-    systemProgram: {
-      value: input.systemProgram ?? null,
+    multisig: {
+      value: input.multisig ?? null,
       isSigner: false,
       isWritable: false,
     },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -621,13 +433,9 @@ export function getOpenLineInstruction<
   >;
 
   // Original args.
-  const args = { ...input, sponsor: input.sponsorArg };
+  const args = { ...input };
 
   // Resolve default values.
-  if (!accounts.systemProgram.value) {
-    accounts.systemProgram.value =
-      "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
-  }
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
     accounts.program.isWritable = false;
@@ -636,37 +444,26 @@ export function getOpenLineInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("council", accounts.council),
-      getAccountMeta("borrower", accounts.borrower),
-      getAccountMeta("sponsor", accounts.sponsor),
-      getAccountMeta("attestor", accounts.attestor),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("vault", accounts.vault),
-      getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getOpenLineInstructionDataEncoder().encode(
-      args as OpenLineInstructionDataArgs,
+    data: getApproveLineInstructionDataEncoder().encode(
+      args as ApproveLineInstructionDataArgs,
     ),
     programAddress,
-  } as OpenLineInstruction<
+  } as ApproveLineInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountBorrower,
-      InstructionAccountInputAddress<TAccountBorrower>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountSponsor,
-      InstructionAccountInputAddress<TAccountSponsor>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountAttestor,
-      InstructionAccountInputAddress<TAccountAttestor>
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -681,10 +478,6 @@ export function getOpenLineInstruction<
       InstructionAccountInputAddress<TAccountVault>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountSystemProgram,
-      InstructionAccountInputAddress<TAccountSystemProgram>
-    >,
-    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -695,43 +488,38 @@ export function getOpenLineInstruction<
   >);
 }
 
-export type ParsedOpenLineInstruction<
+export type ParsedApproveLineInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
     council: TAccountMetas[0];
-    borrower: TAccountMetas[1];
-    /** The sponsor named in the arguments; required (and signing) when one is named. */
-    sponsor?: TAccountMetas[2] | undefined;
-    /** Attests that the signed agreement behind `agreement_hash` exists and matches the arguments. */
-    attestor: TAccountMetas[3];
-    pool: TAccountMetas[4];
-    line: TAccountMetas[5];
+    multisig: TAccountMetas[1];
+    pool: TAccountMetas[2];
+    line: TAccountMetas[3];
     /** Read for the NAV the concentration cap is measured against. */
-    vault: TAccountMetas[6];
-    systemProgram: TAccountMetas[7];
-    eventAuthority: TAccountMetas[8];
-    program: TAccountMetas[9];
+    vault: TAccountMetas[4];
+    eventAuthority: TAccountMetas[5];
+    program: TAccountMetas[6];
   };
-  data: OpenLineInstructionData;
+  data: ApproveLineInstructionData;
 };
 
-export function parseOpenLineInstruction<
+export function parseApproveLineInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedOpenLineInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 10) {
+): ParsedApproveLineInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 7) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 10,
+        expectedAccountMetas: 7,
       },
     );
   }
@@ -741,26 +529,17 @@ export function parseOpenLineInstruction<
     accountIndex += 1;
     return accountMeta;
   };
-  const getNextOptionalAccount = () => {
-    const accountMeta = getNextAccount();
-    return accountMeta.address === ELOTE_POOL_PROGRAM_ADDRESS
-      ? undefined
-      : accountMeta;
-  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       council: getNextAccount(),
-      borrower: getNextAccount(),
-      sponsor: getNextOptionalAccount(),
-      attestor: getNextAccount(),
+      multisig: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       vault: getNextAccount(),
-      systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },
-    data: getOpenLineInstructionDataDecoder().decode(instruction.data),
+    data: getApproveLineInstructionDataDecoder().decode(instruction.data),
   };
 }

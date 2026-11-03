@@ -49,6 +49,7 @@ import {
 import {
   getAcceptCouncilInstructionAsync,
   getAnnotatePaymentInstructionAsync,
+  getApproveLineInstructionAsync,
   getCancelLineInstructionAsync,
   getCancelPagareInstructionAsync,
   getCourtAnnotationInstructionAsync,
@@ -57,20 +58,23 @@ import {
   getEndorsePagareInstructionAsync,
   getInitPoolInstructionAsync,
   getMarkInCollectionInstructionAsync,
-  getOpenLineInstructionAsync,
   getProposeCouncilInstructionAsync,
   getRedeemInstructionAsync,
+  getRejectLineInstructionAsync,
   getRepayInstructionAsync,
   getRequestCancellationInstructionAsync,
+  getRequestLineInstructionAsync,
   getRevokeProcuracionInstructionAsync,
   getSetAttestorInstructionAsync,
   getSetCancelDelayInstructionAsync,
   getSetCollectionPeriodInstructionAsync,
   getSetPausedInstructionAsync,
   getSuspendDrawsInstructionAsync,
+  getWithdrawRequestInstructionAsync,
   getWriteOffInstructionAsync,
   parseAcceptCouncilInstruction,
   parseAnnotatePaymentInstruction,
+  parseApproveLineInstruction,
   parseCancelLineInstruction,
   parseCancelPagareInstruction,
   parseCourtAnnotationInstruction,
@@ -79,20 +83,23 @@ import {
   parseEndorsePagareInstruction,
   parseInitPoolInstruction,
   parseMarkInCollectionInstruction,
-  parseOpenLineInstruction,
   parseProposeCouncilInstruction,
   parseRedeemInstruction,
+  parseRejectLineInstruction,
   parseRepayInstruction,
   parseRequestCancellationInstruction,
+  parseRequestLineInstruction,
   parseRevokeProcuracionInstruction,
   parseSetAttestorInstruction,
   parseSetCancelDelayInstruction,
   parseSetCollectionPeriodInstruction,
   parseSetPausedInstruction,
   parseSuspendDrawsInstruction,
+  parseWithdrawRequestInstruction,
   parseWriteOffInstruction,
   type AcceptCouncilAsyncInput,
   type AnnotatePaymentAsyncInput,
+  type ApproveLineAsyncInput,
   type CancelLineAsyncInput,
   type CancelPagareAsyncInput,
   type CourtAnnotationAsyncInput,
@@ -101,9 +108,9 @@ import {
   type EndorsePagareAsyncInput,
   type InitPoolAsyncInput,
   type MarkInCollectionAsyncInput,
-  type OpenLineAsyncInput,
   type ParsedAcceptCouncilInstruction,
   type ParsedAnnotatePaymentInstruction,
+  type ParsedApproveLineInstruction,
   type ParsedCancelLineInstruction,
   type ParsedCancelPagareInstruction,
   type ParsedCourtAnnotationInstruction,
@@ -112,28 +119,33 @@ import {
   type ParsedEndorsePagareInstruction,
   type ParsedInitPoolInstruction,
   type ParsedMarkInCollectionInstruction,
-  type ParsedOpenLineInstruction,
   type ParsedProposeCouncilInstruction,
   type ParsedRedeemInstruction,
+  type ParsedRejectLineInstruction,
   type ParsedRepayInstruction,
   type ParsedRequestCancellationInstruction,
+  type ParsedRequestLineInstruction,
   type ParsedRevokeProcuracionInstruction,
   type ParsedSetAttestorInstruction,
   type ParsedSetCancelDelayInstruction,
   type ParsedSetCollectionPeriodInstruction,
   type ParsedSetPausedInstruction,
   type ParsedSuspendDrawsInstruction,
+  type ParsedWithdrawRequestInstruction,
   type ParsedWriteOffInstruction,
   type ProposeCouncilAsyncInput,
   type RedeemAsyncInput,
+  type RejectLineAsyncInput,
   type RepayAsyncInput,
   type RequestCancellationAsyncInput,
+  type RequestLineAsyncInput,
   type RevokeProcuracionAsyncInput,
   type SetAttestorAsyncInput,
   type SetCancelDelayAsyncInput,
   type SetCollectionPeriodAsyncInput,
   type SetPausedAsyncInput,
   type SuspendDrawsAsyncInput,
+  type WithdrawRequestAsyncInput,
   type WriteOffAsyncInput,
 } from "../instructions";
 import {
@@ -217,7 +229,6 @@ export enum ElotePoolEvent {
   LineDrawsResumed,
   LineDrawsSuspended,
   LineInCollection,
-  LineOpened,
   LineRejected,
   LineRepaid,
   LineRequested,
@@ -465,17 +476,6 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([200, 206, 237, 128, 16, 167, 83, 72]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.LineOpened;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([34, 61, 26, 124, 60, 121, 154, 84]),
       ),
       0,
@@ -667,6 +667,7 @@ export function identifyElotePoolEvent(
 export enum ElotePoolInstruction {
   AcceptCouncil,
   AnnotatePayment,
+  ApproveLine,
   CancelLine,
   CancelPagare,
   CourtAnnotation,
@@ -675,17 +676,19 @@ export enum ElotePoolInstruction {
   EndorsePagare,
   InitPool,
   MarkInCollection,
-  OpenLine,
   ProposeCouncil,
   Redeem,
+  RejectLine,
   Repay,
   RequestCancellation,
+  RequestLine,
   RevokeProcuracion,
   SetAttestor,
   SetCancelDelay,
   SetCollectionPeriod,
   SetPaused,
   SuspendDraws,
+  WithdrawRequest,
   WriteOff,
 }
 
@@ -714,6 +717,17 @@ export function identifyElotePoolInstruction(
     )
   ) {
     return ElotePoolInstruction.AnnotatePayment;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([59, 82, 243, 179, 167, 11, 49, 109]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.ApproveLine;
   }
   if (
     containsBytes(
@@ -807,17 +821,6 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([99, 104, 130, 198, 128, 34, 27, 208]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolInstruction.OpenLine;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([214, 92, 134, 7, 211, 167, 158, 38]),
       ),
       0,
@@ -840,6 +843,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([64, 42, 46, 30, 143, 243, 36, 118]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.RejectLine;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([234, 103, 67, 82, 208, 234, 219, 166]),
       ),
       0,
@@ -857,6 +871,17 @@ export function identifyElotePoolInstruction(
     )
   ) {
     return ElotePoolInstruction.RequestCancellation;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([6, 137, 100, 239, 45, 184, 242, 40]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.RequestLine;
   }
   if (
     containsBytes(
@@ -928,6 +953,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([5, 77, 120, 32, 2, 143, 214, 16]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.WithdrawRequest;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([42, 219, 118, 129, 76, 117, 45, 177]),
       ),
       0,
@@ -950,6 +986,9 @@ export type ParsedElotePoolInstruction<
   | ({
       instructionType: ElotePoolInstruction.AnnotatePayment;
     } & ParsedAnnotatePaymentInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.ApproveLine;
+    } & ParsedApproveLineInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.CancelLine;
     } & ParsedCancelLineInstruction<TProgram>)
@@ -975,20 +1014,23 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.MarkInCollection;
     } & ParsedMarkInCollectionInstruction<TProgram>)
   | ({
-      instructionType: ElotePoolInstruction.OpenLine;
-    } & ParsedOpenLineInstruction<TProgram>)
-  | ({
       instructionType: ElotePoolInstruction.ProposeCouncil;
     } & ParsedProposeCouncilInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.Redeem;
     } & ParsedRedeemInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.RejectLine;
+    } & ParsedRejectLineInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.Repay;
     } & ParsedRepayInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.RequestCancellation;
     } & ParsedRequestCancellationInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.RequestLine;
+    } & ParsedRequestLineInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.RevokeProcuracion;
     } & ParsedRevokeProcuracionInstruction<TProgram>)
@@ -1007,6 +1049,9 @@ export type ParsedElotePoolInstruction<
   | ({
       instructionType: ElotePoolInstruction.SuspendDraws;
     } & ParsedSuspendDrawsInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.WithdrawRequest;
+    } & ParsedWithdrawRequestInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.WriteOff;
     } & ParsedWriteOffInstruction<TProgram>);
@@ -1028,6 +1073,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.AnnotatePayment,
         ...parseAnnotatePaymentInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.ApproveLine: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.ApproveLine,
+        ...parseApproveLineInstruction(instruction),
       };
     }
     case ElotePoolInstruction.CancelLine: {
@@ -1086,13 +1138,6 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseMarkInCollectionInstruction(instruction),
       };
     }
-    case ElotePoolInstruction.OpenLine: {
-      assertIsInstructionWithAccounts(instruction);
-      return {
-        instructionType: ElotePoolInstruction.OpenLine,
-        ...parseOpenLineInstruction(instruction),
-      };
-    }
     case ElotePoolInstruction.ProposeCouncil: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -1107,6 +1152,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseRedeemInstruction(instruction),
       };
     }
+    case ElotePoolInstruction.RejectLine: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.RejectLine,
+        ...parseRejectLineInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.Repay: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -1119,6 +1171,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.RequestCancellation,
         ...parseRequestCancellationInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.RequestLine: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.RequestLine,
+        ...parseRequestLineInstruction(instruction),
       };
     }
     case ElotePoolInstruction.RevokeProcuracion: {
@@ -1161,6 +1220,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.SuspendDraws,
         ...parseSuspendDrawsInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.WithdrawRequest: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.WithdrawRequest,
+        ...parseWithdrawRequestInstruction(instruction),
       };
     }
     case ElotePoolInstruction.WriteOff: {
@@ -1209,6 +1275,11 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getAnnotatePaymentInstructionAsync> &
     SelfPlanAndSendFunctions;
+  approveLine: (
+    input: ApproveLineAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getApproveLineInstructionAsync> &
+    SelfPlanAndSendFunctions;
   cancelLine: (
     input: CancelLineAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1247,11 +1318,6 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getMarkInCollectionInstructionAsync> &
     SelfPlanAndSendFunctions;
-  openLine: (
-    input: OpenLineAsyncInput,
-    config?: { programAddress?: Address | HasAddress },
-  ) => ReturnType<typeof getOpenLineInstructionAsync> &
-    SelfPlanAndSendFunctions;
   proposeCouncil: (
     input: ProposeCouncilAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1261,6 +1327,11 @@ export type ElotePoolPluginInstructions = {
     input: RedeemAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRedeemInstructionAsync> & SelfPlanAndSendFunctions;
+  rejectLine: (
+    input: MakeOptional<RejectLineAsyncInput, "payer">,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getRejectLineInstructionAsync> &
+    SelfPlanAndSendFunctions;
   repay: (
     input: MakeOptional<RepayAsyncInput, "payer">,
     config?: { programAddress?: Address | HasAddress },
@@ -1269,6 +1340,11 @@ export type ElotePoolPluginInstructions = {
     input: RequestCancellationAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRequestCancellationInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  requestLine: (
+    input: MakeOptional<RequestLineAsyncInput, "payer">,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getRequestLineInstructionAsync> &
     SelfPlanAndSendFunctions;
   revokeProcuracion: (
     input: MakeOptional<RevokeProcuracionAsyncInput, "payer">,
@@ -1299,6 +1375,11 @@ export type ElotePoolPluginInstructions = {
     input: SuspendDrawsAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSuspendDrawsInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  withdrawRequest: (
+    input: MakeOptional<WithdrawRequestAsyncInput, "payer">,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getWithdrawRequestInstructionAsync> &
     SelfPlanAndSendFunctions;
   writeOff: (
     input: WriteOffAsyncInput,
@@ -1348,6 +1429,14 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getAnnotatePaymentInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          approveLine: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getApproveLineInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
@@ -1425,14 +1514,6 @@ export function elotePoolProgram(
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
             ),
-          openLine: (input, instructionConfig) =>
-            addSelfPlanAndSendFunctions(
-              client,
-              getOpenLineInstructionAsync(input, {
-                programAddress:
-                  instructionConfig?.programAddress ?? config.programAddress,
-              }),
-            ),
           proposeCouncil: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -1448,6 +1529,17 @@ export function elotePoolProgram(
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
+            ),
+          rejectLine: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getRejectLineInstructionAsync(
+                { ...input, payer: input.payer ?? client.payer.address },
+                {
+                  programAddress:
+                    instructionConfig?.programAddress ?? config.programAddress,
+                },
+              ),
             ),
           repay: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
@@ -1467,6 +1559,17 @@ export function elotePoolProgram(
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
+            ),
+          requestLine: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getRequestLineInstructionAsync(
+                { ...input, payer: input.payer ?? client.payer },
+                {
+                  programAddress:
+                    instructionConfig?.programAddress ?? config.programAddress,
+                },
+              ),
             ),
           revokeProcuracion: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
@@ -1518,6 +1621,17 @@ export function elotePoolProgram(
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
+            ),
+          withdrawRequest: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getWithdrawRequestInstructionAsync(
+                { ...input, payer: input.payer ?? client.payer.address },
+                {
+                  programAddress:
+                    instructionConfig?.programAddress ?? config.programAddress,
+                },
+              ),
             ),
           writeOff: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(

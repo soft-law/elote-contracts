@@ -105,6 +105,8 @@ pub enum PoolError {
     TermEnded,
     #[msg("The installment schedule is not valid")]
     InvalidSchedule,
+    #[msg("max_missed is below the floor: at least one missed installment must come before the collection trigger")]
+    MaxMissedTooLow,
     #[msg("The last installment would fall due after the term")]
     ScheduleEndsAfterTerm,
     #[msg("The line has no installment schedule")]

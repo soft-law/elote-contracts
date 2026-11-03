@@ -1,13 +1,15 @@
-// Opens one credit line on an existing pool for a borrower whose key is held locally (for example
-// a demo key later imported into a wallet to rehearse the borrower's draw and repayments in the
-// app). open_line is signed by the pool admin, the borrower and the pool's attestor in the same
-// transaction (and by the sponsor when one is named); it moves no funds.
+// Requests one credit line on an existing pool for a borrower whose key is held locally (for
+// example a demo key later imported into a wallet to rehearse the borrower's draw and repayments in
+// the app). request_line is signed by the borrower and a payer that funds the account (Elote's
+// backend in the product; the demo admin key here), and by the sponsor when one is named; it moves
+// no funds. The line stays Requested until the council approves it through Squads with the terms
+// hash printed here (approve-line.ts, PR 4 commit 10).
 //
-//   npx tsx scripts/open-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path>
+//   npx tsx scripts/request-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path>
 //        --principal <tMXN> [--rate-bps <n>] [--term-days <n>]
 //        [--installments <n> --interval-days <n> [--late-rate-bps <n>] [--max-missed <n>]]
 //        [--sponsor-keypair <path> [--sponsor-role promoter|guarantor]]
-//        [--agreement-hash <64 hex>] [--expediente-root <64 hex>] [--attestor-keypair <path>] [--yes]
+//        [--agreement-hash <64 hex>] [--expediente-root <64 hex>] [--pagare-template-hash <64 hex>] [--yes]
 //
 // --principal        amount in tMXN, up to 6 decimals (500, 1250.5)
 // --rate-bps         annual interest, charged per tranche at the draw (default 1200)
@@ -20,11 +22,10 @@
 // --sponsor-role     promoter (no payment obligation, the default) or guarantor (full liability)
 // --agreement-hash   hash of the signed credit agreement (a placeholder if absent)
 // --expediente-root  salted merkle root of the credit file (a placeholder if absent)
-// --attestor-keypair the pool's attestor (default ELOTE_ATTESTOR_KEYPAIR or .demo-keys/attestor.json,
-//                    the key demo-pool.ts creates); it stands in for the agreements engine
+// --pagare-template-hash  hash of the approved pagaré text (a placeholder if absent)
 // --yes              send without asking when the cluster is not this machine
 //
-// The admin key comes from ELOTE_ADMIN_KEYPAIR or .demo-keys/admin.json; ELOTE_RPC overrides the
+// The payer key (the demo admin) comes from ELOTE_ADMIN_KEYPAIR or .demo-keys/admin.json; ELOTE_RPC overrides the
 // cluster's RPC URL. Keys are never printed, only addresses.
 //
 // Demo on Solana devnet with test assets. Not an offer of securities.
@@ -34,7 +35,7 @@ import {
   LineStatus,
   fetchCreditLine,
   findLinePda,
-  getOpenLineInstructionAsync,
+  getRequestLineInstructionAsync,
   lineSchedule,
   maxLinePrincipal,
 } from "../clients/js/src/index.ts";
@@ -54,7 +55,6 @@ import {
   loadSigner,
   parseAmount,
   required,
-  roleSigner,
   sendOrFail,
 } from "./lib/cli.ts";
 import { loadPool } from "./lib/pool.ts";
@@ -66,7 +66,7 @@ const SPONSOR_ROLES = { promoter: 0, guarantor: 1 } as const; // state::SPONSOR_
 checkFlags([
   "cluster", "pool", "borrower-keypair", "principal", "rate-bps", "term-days", "installments", "interval-days",
   "late-rate-bps", "max-missed", "sponsor-keypair", "sponsor-role", "agreement-hash", "expediente-root",
-  "attestor-keypair", "yes",
+  "pagare-template-hash", "yes",
 ]);
 const c = cluster();
 const poolAddress = address(required("pool"));
@@ -107,39 +107,35 @@ if (schedule && schedule.firstDueAt + BigInt(installments! - 1) * schedule.inter
   fail("the last installment would fall due after the term: raise --term-days or lower --installments or --interval-days");
 }
 
-await confirmCluster(c, "open_line");
+await confirmCluster(c, "request_line");
 const agreementHash = hash32("agreement-hash", "elote.fun demo credit agreement");
 const expedienteRoot = hash32("expediente-root", "elote.fun demo credit file");
+const pagareTemplateHash = hash32("pagare-template-hash", "elote.fun demo pagare template");
 const admin = await loadSigner("admin", process.env.ELOTE_ADMIN_KEYPAIR ?? ".demo-keys/admin.json");
 const borrower = await loadSigner("borrower", borrowerFile);
-const attestor = await roleSigner("attestor");
 const sponsor = sponsorFile ? await loadSigner("sponsor", sponsorFile) : null;
 
 const pool = await loadPool(c, poolAddress);
-if (pool.council !== admin.address) fail(`the key (${admin.address}) is not this pool's council (${pool.council}); a Squads council signs through Squads`);
-if (pool.attestor !== attestor.address) fail(`the attestor key (${attestor.address}) is not this pool's attestor (${pool.attestor})`);
-if (pool.paused) fail("the pool is paused: openings and draws are blocked until the admin resumes it");
+if (pool.paused) fail("the pool is paused: requests and draws are blocked until the council resumes it");
 const { value: adminLamports } = await c.rpc.getBalance(admin.address, { commitment: "confirmed" }).send();
-if (adminLamports < 10_000_000n) fail("the admin needs at least 0.01 SOL for the line account's rent and the fee");
+if (adminLamports < 10_000_000n) fail("the payer needs at least 0.01 SOL for the line account's rent and the fee");
 
 const lineId = pool.lineCount;
 const [line] = await findLinePda({ pool: poolAddress, lineId });
 const vault = await fetchToken(c.rpc, pool.vault, { commitment: "confirmed" });
-// The concentration cap, checked before signing; LineTooLarge on chain is the backstop.
+// The concentration cap, checked now as a courtesy; approve_line measures it at the approval.
 const cap = maxLinePrincipal(vault.data.amount + pool.outstandingPrincipal, pool.maxLineBps);
 if (principal > cap) {
   fail(`the principal (${fmt(principal)}) exceeds this pool's largest line: ${pool.maxLineBps} bps of the NAV, ${fmt(cap)} right now`);
 }
 
-const signature = await sendOrFail(c, "open_line", admin, [
-  await getOpenLineInstructionAsync({
-    council: admin,
+const signature = await sendOrFail(c, "request_line", admin, [
+  await getRequestLineInstructionAsync({
     borrower,
+    payer: admin,
     ...(sponsor ? { sponsor } : {}),
-    attestor,
     pool: poolAddress,
     line,
-    vault: pool.vault,
     lineId,
     principal,
     rateBps,
@@ -149,6 +145,7 @@ const signature = await sendOrFail(c, "open_line", admin, [
     sponsorRole: sponsor ? sponsorRole : 0,
     schedule,
     expedienteRoot,
+    pagareTemplateHash,
   }),
 ]);
 
@@ -166,7 +163,7 @@ console.log(
     `principal    ${fmt(opened.principal)} tMXN`,
     `rate         ${opened.rateBps} bps a year, charged per tranche at the draw`,
     `term         ${termDays} days, ends ${new Date(Number(opened.termEnd) * 1000).toISOString()}`,
-    `draws until  ${new Date(Number(opened.availabilityEnd) * 1000).toISOString()}`,
+    `terms hash   ${Buffer.from(opened.termsHash).toString("hex")} (the council approves this value)`,
     s
       ? `schedule     ${s.installments} installments every ${s.intervalSeconds / DAY} days from ${new Date(Number(opened.firstDueAt) * 1000).toISOString()}, late interest ${s.lateBps} bps a year, collection after ${s.maxMissed} missed`
       : `schedule     none (bullet)`,

@@ -26,7 +26,6 @@ export * from "./lineDrawn";
 export * from "./lineDrawsResumed";
 export * from "./lineDrawsSuspended";
 export * from "./lineInCollection";
-export * from "./lineOpened";
 export * from "./lineRejected";
 export * from "./lineRepaid";
 export * from "./lineRequested";

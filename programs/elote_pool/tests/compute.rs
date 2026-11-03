@@ -234,3 +234,20 @@ fn a_payment_covering_five_sidecars_stays_under_the_ceiling() {
     assert_eq!(env.line(&k, line_id).pagares_paid, 5);
     assert!(cu + 5_000 <= CEILING, "the five-sidecar repay used {cu} CU, ceiling {CEILING} less a 5 000 CU margin");
 }
+
+#[test]
+fn request_and_approve_stay_under_the_ceiling() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let investor = env.investor(&k, 10 * UNIT);
+    env.deposit(&k, &investor, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let mut p = env.scheduled_params(4 * UNIT, 1_200, 120, 5_000);
+    p.sponsor = None;
+    let (id, request) = env.request_line_with(&k, &borrower, &p, None);
+    let approve = env.approve_line(&k, id, &borrower.pubkey(), &p);
+    let (request, approve) = (request.compute_units_consumed, approve.compute_units_consumed);
+    println!("request_line at 120 installments: {request} CU");
+    println!("approve_line (with the multisig check): {approve} CU");
+    assert!(request < CEILING && approve < CEILING);
+}

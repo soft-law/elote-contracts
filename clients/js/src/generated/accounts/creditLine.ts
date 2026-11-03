@@ -69,7 +69,7 @@ export type CreditLine = {
   pool: Address;
   lineId: bigint;
   borrower: Address;
-  /** Co-signed `open_line`; `None` when the line has no sponsor. */
+  /** Co-signed `request_line`; `None` when the line has no sponsor. */
   sponsor: Option<Address>;
   /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
   sponsorRole: number;
@@ -126,7 +126,6 @@ export type CreditLine = {
   lateCollected: bigint;
   /** Late interest is settled up to this instant; zero until a repayment collects some. */
   latePaidUntil: bigint;
-  openedAt: bigint;
   /** Time of the first draw; informational (the calendar is `first_due_at`). */
   drawnAt: bigint;
   closedAt: bigint;
@@ -136,6 +135,8 @@ export type CreditLine = {
    */
   acceleratedAt: bigint;
   bump: number;
+  /** ISO 4217 code of every amount of the line: `CURRENCY_MXN`. */
+  currency: number;
   requestedAt: bigint;
   approvedAt: bigint;
   /** `sha256` of the stored terms in the fixed encoding; the council's approval names it. */
@@ -164,7 +165,7 @@ export type CreditLineArgs = {
   pool: Address | HasAddress;
   lineId: number | bigint;
   borrower: Address | HasAddress;
-  /** Co-signed `open_line`; `None` when the line has no sponsor. */
+  /** Co-signed `request_line`; `None` when the line has no sponsor. */
   sponsor: OptionOrNullable<Address | HasAddress>;
   /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
   sponsorRole: number;
@@ -221,7 +222,6 @@ export type CreditLineArgs = {
   lateCollected: number | bigint;
   /** Late interest is settled up to this instant; zero until a repayment collects some. */
   latePaidUntil: number | bigint;
-  openedAt: number | bigint;
   /** Time of the first draw; informational (the calendar is `first_due_at`). */
   drawnAt: number | bigint;
   closedAt: number | bigint;
@@ -231,6 +231,8 @@ export type CreditLineArgs = {
    */
   acceleratedAt: number | bigint;
   bump: number;
+  /** ISO 4217 code of every amount of the line: `CURRENCY_MXN`. */
+  currency: number;
   requestedAt: number | bigint;
   approvedAt: number | bigint;
   /** `sha256` of the stored terms in the fixed encoding; the council's approval names it. */
@@ -285,11 +287,11 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
       ["maxMissed", getU8Encoder()],
       ["lateCollected", getU64Encoder()],
       ["latePaidUntil", getI64Encoder()],
-      ["openedAt", getI64Encoder()],
       ["drawnAt", getI64Encoder()],
       ["closedAt", getI64Encoder()],
       ["acceleratedAt", getI64Encoder()],
       ["bump", getU8Encoder()],
+      ["currency", getU16Encoder()],
       ["requestedAt", getI64Encoder()],
       ["approvedAt", getI64Encoder()],
       ["termsHash", fixEncoderSize(getBytesEncoder(), 32)],
@@ -333,11 +335,11 @@ export function getCreditLineDecoder(): Decoder<CreditLine> {
     ["maxMissed", getU8Decoder()],
     ["lateCollected", getU64Decoder()],
     ["latePaidUntil", getI64Decoder()],
-    ["openedAt", getI64Decoder()],
     ["drawnAt", getI64Decoder()],
     ["closedAt", getI64Decoder()],
     ["acceleratedAt", getI64Decoder()],
     ["bump", getU8Decoder()],
+    ["currency", getU16Decoder()],
     ["requestedAt", getI64Decoder()],
     ["approvedAt", getI64Decoder()],
     ["termsHash", fixDecoderSize(getBytesDecoder(), 32)],

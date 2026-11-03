@@ -1,8 +1,9 @@
-//! Credit lines approved from the pool: open, draw, repay, collection and write off.
+//! Credit lines approved from the pool: request and approval, draw, repay, collection and write off.
 //!
-//! A line moves `Approved -> Active -> Repaid | WrittenOff`, or `Approved -> Cancelled` if nothing
+//! A line moves `Requested -> Approved -> Active -> Repaid | WrittenOff` (a rejected or withdrawn
+//! request closes), or `Approved -> Cancelled` if nothing
 //! was drawn; a scheduled line can also move `Active -> InCollection -> Repaid | WrittenOff`. The
-//! pause blocks only openings and draws. Repayments go to late interest, then interest,
+//! pause blocks requests and draws. Repayments go to late interest, then interest,
 //! then principal. Collected interest raises the NAV; a written-off principal lowers it once.
 
 use anchor_lang::prelude::*;
@@ -10,37 +11,211 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 
 use crate::errors::PoolError;
 use crate::events::{
-    LateInterestCollected, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection, LineOpened,
-    LineRepaid, LineWrittenOff, NavUpdated, PagareEntry, PagareIssued,
+    LateInterestCollected, LineApproved, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection,
+    LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
     PagarePayment, PaymentEntry,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
+use crate::council;
 use crate::pool_signer;
 use crate::registry;
+use crate::terms::{self, LineTerms};
 use crate::state::{
     seeds, CreditLine, LineStatus, Pagare, Pool, ScheduleParams, BPS, KIND_ABONO, KIND_EMISION, KIND_PAGADO,
-    MAX_DRAWS, MAX_INSTALLMENTS, MIN_MAX_MISSED, PAGARE_OUTSTANDING, PAGARE_PAID_PENDING_CANCEL,
+    CURRENCY_MXN, MAX_DRAWS, MAX_INSTALLMENTS, MIN_MAX_MISSED, REQUEST_TTL_SECONDS, PAGARE_OUTSTANDING, PAGARE_PAID_PENDING_CANCEL,
     SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
 };
 
 #[event_cpi]
 #[derive(Accounts)]
 #[instruction(line_id: u64)]
-pub struct OpenLine<'info> {
-    #[account(mut)]
-    pub council: Signer<'info>,
-
+pub struct RequestLine<'info> {
     pub borrower: Signer<'info>,
 
-    /// The sponsor named in the arguments; required (and signing) when one is named.
-    pub sponsor: Option<Signer<'info>>,
+    /// Funds the request and receives the rent back on withdraw or reject; never the borrower's
+    /// concern.
+    #[account(mut)]
+    pub payer: Signer<'info>,
 
-    /// Attests that the signed agreement behind `agreement_hash` exists and matches the arguments.
-    #[account(constraint = attestor.key() == pool.attestor @ PoolError::AttestorRequired)]
-    pub attestor: Signer<'info>,
+    /// The sponsor named in the terms; required (and signing) when one is named.
+    pub sponsor: Option<Signer<'info>>,
 
     #[account(
         mut,
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+    )]
+    pub pool: Account<'info, Pool>,
+
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + CreditLine::INIT_SPACE,
+        seeds = [seeds::LINE, pool.key().as_ref(), &line_id.to_le_bytes()],
+        bump,
+    )]
+    pub line: Account<'info, CreditLine>,
+
+    pub system_program: Program<'info, System>,
+}
+
+/// Stores the terms of line `line_id` (the pool's next id, never reused) as `Requested`, with
+/// their `terms_hash`. The borrower, the payer and the named sponsor sign; refused while paused or
+/// with the council or the attestor as borrower. Moves no money.
+pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let pool = &mut ctx.accounts.pool;
+    let borrower = ctx.accounts.borrower.key();
+    require!(!pool.paused, PoolError::Paused);
+    require!(line_id == pool.line_count, PoolError::WrongAccount);
+    require!(borrower != pool.council, PoolError::BorrowerIsCouncil);
+    require!(borrower != pool.attestor, PoolError::BorrowerIsAttestor);
+    require!(t.principal > 0, PoolError::WrongAmount);
+    require!(u64::from(t.rate_bps) <= BPS, PoolError::WrongAmount);
+    require!(t.term_end > now, PoolError::TermEnded);
+    require!(t.agreement_hash != [0u8; 32], PoolError::AgreementHashRequired);
+    require!(t.expediente_root != [0u8; 32], PoolError::ExpedienteRootRequired);
+    require!(t.pagare_template_hash != [0u8; 32], PoolError::PagareTemplateHashRequired);
+    require!(t.sponsor_role <= SPONSOR_GUARANTOR, PoolError::SponsorRoleInvalid);
+    if let Some(named) = t.sponsor {
+        let signed = ctx.accounts.sponsor.as_ref().is_some_and(|s| s.key() == named);
+        require!(signed, PoolError::SponsorRequired);
+    }
+    if let Some(s) = t.schedule {
+        validate_schedule(&s, t.principal, t.rate_bps, now, t.term_end)?;
+    }
+    let terms_hash = terms::terms_hash(&pool.key(), line_id, &borrower, CURRENCY_MXN, &t);
+    let s = t.schedule.unwrap_or(ScheduleParams { first_due_at: 0, interval_seconds: 0, installments: 0, late_bps: 0, max_missed: 0 });
+
+    let line = &mut ctx.accounts.line;
+    line.set_inner(CreditLine {
+        pool: pool.key(),
+        line_id,
+        borrower,
+        sponsor: t.sponsor,
+        sponsor_role: t.sponsor_role,
+        agreement_hash: t.agreement_hash,
+        expediente_root: t.expediente_root,
+        status: LineStatus::Requested,
+        principal: t.principal,
+        rate_bps: t.rate_bps,
+        term_end: t.term_end,
+        availability_end: 0,
+        drawn: 0,
+        draws: 0,
+        interest_due: 0,
+        principal_repaid: 0,
+        interest_repaid: 0,
+        pagares_paid: 0,
+        first_due_at: s.first_due_at,
+        interval_seconds: s.interval_seconds,
+        installments: s.installments,
+        late_bps: s.late_bps,
+        max_missed: s.max_missed,
+        late_collected: 0,
+        late_paid_until: 0,
+        drawn_at: 0,
+        closed_at: 0,
+        accelerated_at: 0,
+        bump: ctx.bumps.line,
+        currency: CURRENCY_MXN,
+        requested_at: now,
+        approved_at: 0,
+        terms_hash,
+        pagare_template_hash: t.pagare_template_hash,
+        payer: ctx.accounts.payer.key(),
+        draw_time_weight: 0,
+        availability_end_saved: 0,
+        acceleration_due_at: 0,
+        reserved: [0; 64],
+    });
+    pool.line_count = pool.line_count.checked_add(1).ok_or(PoolError::Overflow)?;
+
+    emit_cpi!(LineRequested {
+        pool: pool.key(),
+        line_id,
+        borrower,
+        payer: line.payer,
+        sponsor: t.sponsor,
+        sponsor_role: t.sponsor_role,
+        agreement_hash: t.agreement_hash,
+        expediente_root: t.expediente_root,
+        pagare_template_hash: t.pagare_template_hash,
+        terms_hash,
+        currency: CURRENCY_MXN,
+        principal: t.principal,
+        rate_bps: t.rate_bps,
+        term_end: t.term_end,
+        first_due_at: s.first_due_at,
+        interval_seconds: s.interval_seconds,
+        installments: s.installments,
+        late_bps: s.late_bps,
+        max_missed: s.max_missed,
+    });
+    Ok(())
+}
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct ApproveLine<'info> {
+    pub council: Signer<'info>,
+
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+        has_one = council @ PoolError::Unauthorized,
+    )]
+    pub pool: Account<'info, Pool>,
+
+    #[account(mut, has_one = pool @ PoolError::WrongAccount)]
+    pub line: Account<'info, CreditLine>,
+
+    /// Read for the NAV the concentration cap is measured against.
+    #[account(address = pool.vault @ PoolError::WrongAccount)]
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
+}
+
+/// The council approves exactly the requested expediente and terms (`ExpedienteMismatch`), within
+/// `REQUEST_TTL_SECONDS` of the request (`RequestExpired`), with the borrower not a member of the
+/// council's multisig (`BorrowerIsCurator`) and the principal at most `max_line_bps` of the NAV now
+/// (`LineTooLarge`). Opens the draw window: to the first due date, or to the term on a bullet line.
+pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_hash: [u8; 32]) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let pool = &ctx.accounts.pool;
+    let multisig = ctx.accounts.multisig.to_account_info();
+    council::check(&multisig, &pool.council, pool.council_vault_bump)?;
+    let line = &mut ctx.accounts.line;
+    require!(line.status == LineStatus::Requested, PoolError::LineStatus);
+    let expires = line.requested_at.checked_add(REQUEST_TTL_SECONDS).ok_or(PoolError::Overflow)?;
+    require!(now <= expires, PoolError::RequestExpired);
+    require!(expediente_root == line.expediente_root && terms_hash == line.terms_hash, PoolError::ExpedienteMismatch);
+    require!(!council::is_member(&multisig, &line.borrower)?, PoolError::BorrowerIsCurator);
+    let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
+    let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
+    require!(line.principal <= cap, PoolError::LineTooLarge);
+    let availability_end = if line.installments > 0 { line.first_due_at } else { line.term_end };
+    require!(availability_end > now, PoolError::TermEnded);
+    line.status = LineStatus::Approved;
+    line.approved_at = now;
+    line.availability_end = availability_end;
+    emit_cpi!(LineApproved { pool: pool.key(), line_id: line.line_id, expediente_root, terms_hash, availability_end });
+    Ok(())
+}
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct RejectLine<'info> {
+    pub council: Signer<'info>,
+
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
+    #[account(
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
         has_one = council @ PoolError::Unauthorized,
@@ -48,129 +223,58 @@ pub struct OpenLine<'info> {
     pub pool: Account<'info, Pool>,
 
     #[account(
-        init,
-        payer = council,
-        space = 8 + CreditLine::INIT_SPACE,
-        seeds = [seeds::LINE, pool.key().as_ref(), &line_id.to_le_bytes()],
-        bump,
+        mut,
+        has_one = pool @ PoolError::WrongAccount,
+        has_one = payer @ PoolError::WrongAccount,
+        constraint = line.status == LineStatus::Requested @ PoolError::LineStatus,
+        close = payer,
     )]
     pub line: Account<'info, CreditLine>,
 
-    /// Read for the NAV the concentration cap is measured against.
-    #[account(address = pool.vault @ PoolError::WrongAccount)]
-    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    pub system_program: Program<'info, System>,
+    /// CHECK: receives the rent; must be the line's `payer`.
+    #[account(mut)]
+    pub payer: UncheckedAccount<'info>,
 }
 
-/// Opens an `Approved` line, signed by the council, the borrower, the attestor and the named sponsor
-/// if any; the borrower may be neither the council nor the attestor. `line_id` must be the pool's next
-/// id, and `principal` at most `max_line_bps` of the NAV (`LineTooLarge`). Refused while paused.
-#[allow(clippy::too_many_arguments)]
-pub fn open_line(
-    ctx: Context<OpenLine>,
-    line_id: u64,
-    principal: u64,
-    rate_bps: u16,
-    term_end: i64,
-    agreement_hash: [u8; 32],
-    sponsor: Option<Pubkey>,
-    sponsor_role: u8,
-    schedule: Option<ScheduleParams>,
-    expediente_root: [u8; 32],
-) -> Result<()> {
-    let now = Clock::get()?.unix_timestamp;
-    let pool = &mut ctx.accounts.pool;
-    require!(!pool.paused, PoolError::Paused);
-    require!(line_id == pool.line_count, PoolError::WrongAccount);
-    require!(ctx.accounts.borrower.key() != pool.council, PoolError::BorrowerIsCouncil);
-    require!(ctx.accounts.borrower.key() != pool.attestor, PoolError::BorrowerIsAttestor);
-    require!(principal > 0, PoolError::WrongAmount);
-    // The cap is measured against the NAV at this moment, principal lent out included; an empty
-    // pool opens no line.
-    let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
-    let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
-    require!(principal <= cap, PoolError::LineTooLarge);
-    require!(u64::from(rate_bps) <= BPS, PoolError::WrongAmount);
-    require!(term_end > now, PoolError::TermEnded);
-    require!(agreement_hash != [0u8; 32], PoolError::AgreementHashRequired);
-    require!(expediente_root != [0u8; 32], PoolError::ExpedienteRootRequired);
-    require!(sponsor_role <= SPONSOR_GUARANTOR, PoolError::SponsorRoleInvalid);
-    if let Some(named) = sponsor {
-        let signed = ctx.accounts.sponsor.as_ref().is_some_and(|s| s.key() == named);
-        require!(signed, PoolError::SponsorRequired);
-    }
-    // The draw window closes at the first due date on a scheduled line, at the term on a bullet
-    // line.
-    let (first_due_at, availability_end) = match schedule {
-        Some(s) => {
-            validate_schedule(&s, principal, rate_bps, now, term_end)?;
-            (s.first_due_at, s.first_due_at)
-        }
-        None => (0, term_end),
-    };
+/// The council rejects a `Requested` line; the account closes and its rent returns to the payer.
+/// The id is not reused.
+pub fn reject_line(ctx: Context<RejectLine>) -> Result<()> {
+    let pool = &ctx.accounts.pool;
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
+    emit_cpi!(LineRejected { pool: pool.key(), line_id: ctx.accounts.line.line_id });
+    Ok(())
+}
 
-    let line = &mut ctx.accounts.line;
-    line.pool = pool.key();
-    line.line_id = line_id;
-    line.borrower = ctx.accounts.borrower.key();
-    line.sponsor = sponsor;
-    line.agreement_hash = agreement_hash;
-    line.principal = principal;
-    line.rate_bps = rate_bps;
-    line.interest_due = 0;
-    line.term_end = term_end;
-    line.principal_repaid = 0;
-    line.interest_repaid = 0;
-    line.status = LineStatus::Approved;
-    line.opened_at = now;
-    line.drawn_at = 0;
-    line.closed_at = 0;
-    let (interval_seconds, installments, late_bps, max_missed) =
-        schedule.map_or((0, 0, 0, 0), |s| (s.interval_seconds, s.installments, s.late_bps, s.max_missed));
-    line.interval_seconds = interval_seconds;
-    line.installments = installments;
-    line.late_bps = late_bps;
-    line.max_missed = max_missed;
-    line.late_collected = 0;
-    line.late_paid_until = 0;
-    line.pagares_paid = 0;
-    line.bump = ctx.bumps.line;
-    line.reserved = [0; 64];
-    line.drawn = 0;
-    line.draws = 0;
-    line.availability_end = availability_end;
-    line.first_due_at = first_due_at;
-    line.sponsor_role = sponsor_role;
-    line.expediente_root = expediente_root;
-    line.accelerated_at = 0;
+#[event_cpi]
+#[derive(Accounts)]
+pub struct WithdrawRequest<'info> {
+    pub borrower: Signer<'info>,
 
-    pool.line_count = pool.line_count.checked_add(1).ok_or(PoolError::Overflow)?;
+    #[account(
+        mut,
+        has_one = borrower @ PoolError::Unauthorized,
+        has_one = payer @ PoolError::WrongAccount,
+        constraint = line.status == LineStatus::Requested @ PoolError::LineStatus,
+        close = payer,
+    )]
+    pub line: Account<'info, CreditLine>,
 
-    emit_cpi!(LineOpened {
-        pool: pool.key(),
-        line_id,
-        borrower: line.borrower,
-        sponsor,
-        sponsor_role,
-        agreement_hash,
-        expediente_root,
-        principal,
-        rate_bps,
-        term_end,
-        availability_end,
-        first_due_at,
-        interval_seconds,
-        installments,
-        late_bps,
-        max_missed,
-    });
+    /// CHECK: receives the rent; must be the line's `payer`.
+    #[account(mut)]
+    pub payer: UncheckedAccount<'info>,
+}
+
+/// The borrower withdraws a `Requested` line, expired or not; the account closes and its rent
+/// returns to the payer. The id is not reused.
+pub fn withdraw_request(ctx: Context<WithdrawRequest>) -> Result<()> {
+    let line = &ctx.accounts.line;
+    emit_cpi!(RequestWithdrawn { pool: line.pool, line_id: line.line_id });
     Ok(())
 }
 
 /// Checks the schedule against the line's terms: at least one and at most `MAX_INSTALLMENTS`
 /// installments, a positive interval, `late_bps <= BPS`, `MIN_MAX_MISSED <= max_missed <=
-/// installments`, a first due date after the opening, the last due date
+/// installments`, a first due date after the request, the last due date
 /// (`first_due_at + (installments - 1) * interval`) no later than `term_end`, and at least one
 /// unit per installment if the whole commitment were drawn now (`draw` re-checks on what is
 /// actually drawn). The dates are fixed by the contract and not re-checked at the draw.
@@ -178,7 +282,8 @@ fn validate_schedule(s: &ScheduleParams, principal: u64, rate_bps: u16, now: i64
     require!(s.installments >= 1 && s.installments <= MAX_INSTALLMENTS, PoolError::InvalidSchedule);
     require!(s.interval_seconds > 0, PoolError::InvalidSchedule);
     require!(u64::from(s.late_bps) <= BPS, PoolError::InvalidSchedule);
-    require!(s.max_missed >= MIN_MAX_MISSED && u16::from(s.max_missed) <= s.installments, PoolError::InvalidSchedule);
+    require!(s.max_missed >= MIN_MAX_MISSED, PoolError::MaxMissedTooLow);
+    require!(u16::from(s.max_missed) <= s.installments, PoolError::InvalidSchedule);
     require!(s.first_due_at > now, PoolError::InvalidSchedule);
     let last_due = last_due_of(s)?;
     require!(last_due <= term_end, PoolError::ScheduleEndsAfterTerm);

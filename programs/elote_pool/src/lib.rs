@@ -15,9 +15,10 @@ pub mod instructions;
 pub mod math;
 pub mod registry;
 pub mod state;
+pub mod terms;
 
 use instructions::*;
-use state::ScheduleParams;
+use terms::LineTerms;
 
 declare_id!("BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM");
 
@@ -90,35 +91,27 @@ pub mod elote_pool {
         instructions::pool::redeem(ctx, shares, min_assets_out)
     }
 
-    /// Approves line `line_id` (the next): a commitment of `principal` at an annual `rate_bps`,
-    /// repaid at `term_end` or on the `schedule`'s calendar. The council, the borrower, the attestor
-    /// and the sponsor if named sign; refused while paused, with the council or the attestor as
-    /// borrower, or above the line cap. Moves no money.
-    #[allow(clippy::too_many_arguments)]
-    pub fn open_line(
-        ctx: Context<OpenLine>,
-        line_id: u64,
-        principal: u64,
-        rate_bps: u16,
-        term_end: i64,
-        agreement_hash: [u8; 32],
-        sponsor: Option<Pubkey>,
-        sponsor_role: u8,
-        schedule: Option<ScheduleParams>,
-        expediente_root: [u8; 32],
-    ) -> Result<()> {
-        instructions::lines::open_line(
-            ctx,
-            line_id,
-            principal,
-            rate_bps,
-            term_end,
-            agreement_hash,
-            sponsor,
-            sponsor_role,
-            schedule,
-            expediente_root,
-        )
+    /// The borrower requests line `line_id` (the pool's next) on terms `terms`, in centavos of MXN;
+    /// a separate payer funds the account and the named sponsor co-signs. Stored as `Requested` with
+    /// the terms hash; refused while paused. Moves no money.
+    pub fn request_line(ctx: Context<RequestLine>, line_id: u64, terms: LineTerms) -> Result<()> {
+        instructions::lines::request_line(ctx, line_id, terms)
+    }
+
+    /// The council approves a requested line, naming its expediente root and terms hash, within 15
+    /// days of the request and within the line cap; a curator cannot be the borrower.
+    pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_hash: [u8; 32]) -> Result<()> {
+        instructions::lines::approve_line(ctx, expediente_root, terms_hash)
+    }
+
+    /// The council rejects a requested line; the rent returns to the payer.
+    pub fn reject_line(ctx: Context<RejectLine>) -> Result<()> {
+        instructions::lines::reject_line(ctx)
+    }
+
+    /// The borrower withdraws a requested line, expired or not; the rent returns to the payer.
+    pub fn withdraw_request(ctx: Context<WithdrawRequest>) -> Result<()> {
+        instructions::lines::withdraw_request(ctx)
     }
 
     /// Pays a tranche of `amount` to the borrower against the signed pagaré `document_hash` and
@@ -209,7 +202,7 @@ pub mod elote_pool {
         instructions::lines::write_off(ctx)
     }
 
-    /// Pauses or resumes deposits, redemptions, openings and draws. Council only. Nothing else is
+    /// Pauses or resumes deposits, redemptions, requests and draws. Council only. Nothing else is
     /// ever paused: repayments, pagaré instructions, collection and write-offs.
     /// Names the next council: `kind` 0 (a Squads vault) or 1 (a generic signer, not yet
     /// accepted). Council only; the zero key withdraws the proposal.

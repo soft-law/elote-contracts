@@ -78,29 +78,6 @@ pub struct Redeemed {
     pub supply_after: u64,
 }
 
-/// Every term `open_line` recorded. On a bullet line `installments`, `interval_seconds`,
-/// `late_bps`, `max_missed` and `first_due_at` are zero; `sponsor_role` is meaningful only when
-/// `sponsor` is named.
-#[event]
-pub struct LineOpened {
-    pub pool: Pubkey,
-    pub line_id: u64,
-    pub borrower: Pubkey,
-    pub sponsor: Option<Pubkey>,
-    pub sponsor_role: u8,
-    pub agreement_hash: [u8; 32],
-    pub expediente_root: [u8; 32],
-    pub principal: u64,
-    pub rate_bps: u16,
-    pub term_end: i64,
-    pub availability_end: i64,
-    pub first_due_at: i64,
-    pub interval_seconds: i64,
-    pub installments: u16,
-    pub late_bps: u16,
-    pub max_missed: u8,
-}
-
 /// Emitted by `draw` after `LineDrawn`: the pagaré issued as the Metaplex Core asset `asset`,
 /// owned by `holder` (the pool PDA) and frozen. `due_at` is the line's last due date at issuance.
 #[event]
@@ -285,6 +262,7 @@ pub struct LineRequested {
     pub expediente_root: [u8; 32],
     pub pagare_template_hash: [u8; 32],
     pub terms_hash: [u8; 32],
+    pub currency: u16,
     pub principal: u64,
     pub rate_bps: u16,
     pub term_end: i64,

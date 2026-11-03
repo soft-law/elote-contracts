@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The scripts end to end on a local validator: the demo (pool, deposits, a line drawn and repaid,
-# a redemption), then open-line.ts, six draws with draw.ts, one payoff with repay.ts (split into
+# a redemption), then request-line.ts, six draws with draw.ts, one payoff with repay.ts (split into
 # parts of at most five pagaré records) and every cancel-pagare.ts branch that does not need the
 # clock moved forward. A third line covers endorse-pagare.ts (an endoso en procuración, a revocation)
 # and the procurador's cancellation. The backstop's success needs seven days to pass; the Rust suite
@@ -64,8 +64,8 @@ POOL="$(sed -n 's/^pool \([1-9A-HJ-NP-Za-km-z]\{32,44\}\)$/\1/p' "$WORK/demo.log
 echo "== cancel-pagare.ts: the demo line's pagaré 0, with the attestor"
 run cancel-pagare.ts --pool "$POOL" --line-id 0 --draw-index 0 --receipt-hash "$RECEIPT"
 
-echo "== open-line.ts: a guarantor-sponsored bullet line of 600"
-run open-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --principal 600 \
+echo "== request-line.ts: a guarantor-sponsored bullet line of 600"
+run request-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --principal 600 \
   --sponsor-keypair "$KEYS/sponsor.json" --sponsor-role guarantor --expediente-root "$HASH" --agreement-hash "$HASH"
 
 echo "== draw.ts: six tranches of 100"
@@ -95,7 +95,7 @@ run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 1 --receipt-hash "$
 echo "== endorse-pagare.ts: a third line, pagaré 0 en procuración, pagaré 1 endorsed and revoked"
 solana-keygen new --no-bip39-passphrase --silent -o "$KEYS/procurador.json" >/dev/null
 PROCURADOR="$(solana-keygen pubkey "$KEYS/procurador.json")"
-run open-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --principal 300 --agreement-hash "$HASH"
+run request-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --principal 300 --agreement-hash "$HASH"
 for i in 0 1 2; do
   run draw.ts --pool "$POOL" --line-id 2 --borrower-keypair "$KEYS/borrower.json" --amount 100 --document-hash "$HASH"
 done

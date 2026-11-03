@@ -180,7 +180,7 @@ fn f05_the_attestor_is_neither_the_admin_nor_a_borrower() {
     let attestor = env.attestor.insecure_clone();
     env.create_ata(&attestor.pubkey(), &k.asset_mint);
     let p = env.line_params(UNIT, 1_000);
-    let ix = env.open_line_ix(&k, &council.pubkey(), 0, &attestor.pubkey(), &p, None);
+    let ix = env.request_line_ix(&k, &council.pubkey(), 0, &attestor.pubkey(), &p, None);
     env.expect_err(ix, &council, &[&attestor], E_BORROWER_IS_ATTESTOR);
     assert_eq!(env.pool(&k).line_count, 0);
 }

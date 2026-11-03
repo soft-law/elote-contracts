@@ -59,7 +59,7 @@ export type Pool = {
   /** The vault of the council multisig: signs every council instruction. */
   council: Address;
   /**
-   * The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
+   * The agreements engine's key: co-signs `draw`, `endorse_pagare` and
    * `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
    * `annotate_payment` alone. Never the council; rotated with `set_attestor`.
    */
@@ -97,7 +97,7 @@ export type Pool = {
    */
   cancelDelaySeconds: number;
   /**
-   * The largest line `open_line` accepts, as a share of the NAV at the opening, in basis points
+   * The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
    * (`1..=BPS`). Fixed at `init_pool`.
    */
   maxLineBps: number;
@@ -153,7 +153,7 @@ export type PoolArgs = {
   /** The vault of the council multisig: signs every council instruction. */
   council: Address | HasAddress;
   /**
-   * The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and
+   * The agreements engine's key: co-signs `draw`, `endorse_pagare` and
    * `court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign
    * `annotate_payment` alone. Never the council; rotated with `set_attestor`.
    */
@@ -191,7 +191,7 @@ export type PoolArgs = {
    */
   cancelDelaySeconds: number;
   /**
-   * The largest line `open_line` accepts, as a share of the NAV at the opening, in basis points
+   * The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
    * (`1..=BPS`). Fixed at `init_pool`.
    */
   maxLineBps: number;

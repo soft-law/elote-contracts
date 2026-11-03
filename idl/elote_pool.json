@@ -205,6 +205,100 @@
       ]
     },
     {
+      "name": "approve_line",
+      "docs": [
+        "The council approves a requested line, naming its expediente root and terms hash, within 15",
+        "days of the request and within the line cap; a curator cannot be the borrower."
+      ],
+      "discriminator": [
+        59,
+        82,
+        243,
+        179,
+        167,
+        11,
+        49,
+        109
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Read for the NAV the concentration cap is measured against."
+          ]
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "expediente_root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "terms_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "cancel_line",
       "docs": [
         "Cancels an `Approved` line nobody drew. Council only; refused once anything was drawn."
@@ -1386,181 +1480,9 @@
       "args": []
     },
     {
-      "name": "open_line",
-      "docs": [
-        "Approves line `line_id` (the next): a commitment of `principal` at an annual `rate_bps`,",
-        "repaid at `term_end` or on the `schedule`'s calendar. The council, the borrower, the attestor",
-        "and the sponsor if named sign; refused while paused, with the council or the attestor as",
-        "borrower, or above the line cap. Moves no money."
-      ],
-      "discriminator": [
-        99,
-        104,
-        130,
-        198,
-        128,
-        34,
-        27,
-        208
-      ],
-      "accounts": [
-        {
-          "name": "council",
-          "writable": true,
-          "signer": true,
-          "relations": [
-            "pool"
-          ]
-        },
-        {
-          "name": "borrower",
-          "signer": true
-        },
-        {
-          "name": "sponsor",
-          "docs": [
-            "The sponsor named in the arguments; required (and signing) when one is named."
-          ],
-          "signer": true,
-          "optional": true
-        },
-        {
-          "name": "attestor",
-          "docs": [
-            "Attests that the signed agreement behind `agreement_hash` exists and matches the arguments."
-          ],
-          "signer": true
-        },
-        {
-          "name": "pool",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  111,
-                  111,
-                  108
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool.creator",
-                "account": "Pool"
-              },
-              {
-                "kind": "account",
-                "path": "pool.asset_mint",
-                "account": "Pool"
-              }
-            ]
-          }
-        },
-        {
-          "name": "line",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  105,
-                  110,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool"
-              },
-              {
-                "kind": "arg",
-                "path": "line_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault",
-          "docs": [
-            "Read for the NAV the concentration cap is measured against."
-          ]
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "event_authority"
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": [
-        {
-          "name": "line_id",
-          "type": "u64"
-        },
-        {
-          "name": "principal",
-          "type": "u64"
-        },
-        {
-          "name": "rate_bps",
-          "type": "u16"
-        },
-        {
-          "name": "term_end",
-          "type": "i64"
-        },
-        {
-          "name": "agreement_hash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "sponsor",
-          "type": {
-            "option": "pubkey"
-          }
-        },
-        {
-          "name": "sponsor_role",
-          "type": "u8"
-        },
-        {
-          "name": "schedule",
-          "type": {
-            "option": {
-              "defined": {
-                "name": "ScheduleParams"
-              }
-            }
-          }
-        },
-        {
-          "name": "expediente_root",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        }
-      ]
-    },
-    {
       "name": "propose_council",
       "docs": [
-        "Pauses or resumes deposits, redemptions, openings and draws. Council only. Nothing else is",
+        "Pauses or resumes deposits, redemptions, requests and draws. Council only. Nothing else is",
         "ever paused: repayments, pagaré instructions, collection and write-offs.",
         "Names the next council: `kind` 0 (a Squads vault) or 1 (a generic signer, not yet",
         "accepted). Council only; the zero key withdraws the proposal."
@@ -1726,6 +1648,81 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "reject_line",
+      "docs": [
+        "The council rejects a requested line; the rent returns to the payer."
+      ],
+      "discriminator": [
+        64,
+        42,
+        46,
+        30,
+        143,
+        243,
+        36,
+        118
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
     },
     {
       "name": "repay",
@@ -1986,6 +1983,123 @@
               "u8",
               32
             ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "request_line",
+      "docs": [
+        "The borrower requests line `line_id` (the pool's next) on terms `terms`, in centavos of MXN;",
+        "a separate payer funds the account and the named sponsor co-signs. Stored as `Requested` with",
+        "the terms hash; refused while paused. Moves no money."
+      ],
+      "discriminator": [
+        6,
+        137,
+        100,
+        239,
+        45,
+        184,
+        242,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "borrower",
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Funds the request and receives the rent back on withdraw or reject; never the borrower's",
+            "concern."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "sponsor",
+          "docs": [
+            "The sponsor named in the terms; required (and signing) when one is named."
+          ],
+          "signer": true,
+          "optional": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "arg",
+                "path": "line_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "line_id",
+          "type": "u64"
+        },
+        {
+          "name": "terms",
+          "type": {
+            "defined": {
+              "name": "LineTerms"
+            }
           }
         }
       ]
@@ -2491,6 +2605,49 @@
       "args": []
     },
     {
+      "name": "withdraw_request",
+      "docs": [
+        "The borrower withdraws a requested line, expired or not; the rent returns to the payer."
+      ],
+      "discriminator": [
+        5,
+        77,
+        120,
+        32,
+        2,
+        143,
+        214,
+        16
+      ],
+      "accounts": [
+        {
+          "name": "borrower",
+          "signer": true,
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "write_off",
       "docs": [
         "Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end +",
@@ -2893,19 +3050,6 @@
         207,
         3,
         75
-      ]
-    },
-    {
-      "name": "LineOpened",
-      "discriminator": [
-        200,
-        206,
-        237,
-        128,
-        16,
-        167,
-        83,
-        72
       ]
     },
     {
@@ -3353,101 +3497,106 @@
     },
     {
       "code": 6044,
+      "name": "MaxMissedTooLow",
+      "msg": "max_missed is below the floor: at least one missed installment must come before the collection trigger"
+    },
+    {
+      "code": 6045,
       "name": "ScheduleEndsAfterTerm",
       "msg": "The last installment would fall due after the term"
     },
     {
-      "code": 6045,
+      "code": 6046,
       "name": "NotScheduled",
       "msg": "The line has no installment schedule"
     },
     {
-      "code": 6046,
+      "code": 6047,
       "name": "AvailabilityEnded",
       "msg": "The draw window of this line has closed"
     },
     {
-      "code": 6047,
+      "code": 6048,
       "name": "TooManyDraws",
       "msg": "The line has reached its maximum number of draws"
     },
     {
-      "code": 6048,
+      "code": 6049,
       "name": "DrawsNotSuspended",
       "msg": "The line's draws are not suspended"
     },
     {
-      "code": 6049,
+      "code": 6050,
       "name": "AccelerationState",
       "msg": "No acceleration is pending on this line, or one already is"
     },
     {
-      "code": 6050,
+      "code": 6051,
       "name": "AccelerationNotDue",
       "msg": "The acceleration notice has not run"
     },
     {
-      "code": 6051,
+      "code": 6052,
       "name": "LateInterestUnpaid",
       "msg": "The repayment must cover the late interest due"
     },
     {
-      "code": 6052,
+      "code": 6053,
       "name": "NotEnoughMissed",
       "msg": "Fewer installments missed than the line allows before collection"
     },
     {
-      "code": 6053,
+      "code": 6054,
       "name": "TermNotEnded",
       "msg": "The term has not ended"
     },
     {
-      "code": 6054,
+      "code": 6055,
       "name": "WriteOffTooEarly",
       "msg": "A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace"
     },
     {
-      "code": 6055,
+      "code": 6056,
       "name": "DocumentHashRequired",
       "msg": "The signed document's hash is required"
     },
     {
-      "code": 6056,
+      "code": 6057,
       "name": "SignatureMethodInvalid",
       "msg": "signature_method is unknown, or lacks its certificate fingerprint"
     },
     {
-      "code": 6057,
+      "code": 6058,
       "name": "PagareNotCovered",
       "msg": "No repayment has marked this pagaré paid"
     },
     {
-      "code": 6058,
+      "code": 6059,
       "name": "PagareAlreadyPaid",
       "msg": "This pagaré is already extinguished"
     },
     {
-      "code": 6059,
+      "code": 6060,
       "name": "CancelGraceNotElapsed",
       "msg": "The borrower may cancel alone only after the cancel grace from the payment"
     },
     {
-      "code": 6060,
+      "code": 6061,
       "name": "EndosoKindInvalid",
       "msg": "This kind of endoso is not one the program records"
     },
     {
-      "code": 6061,
+      "code": 6062,
       "name": "ProcuracionState",
       "msg": "The pagaré has no procuración in force, or already has one"
     },
     {
-      "code": 6062,
+      "code": 6063,
       "name": "AnnotationKindInvalid",
       "msg": "This kind is not a court annotation"
     },
     {
-      "code": 6063,
+      "code": 6064,
       "name": "EntryNotFound",
       "msg": "The referenced registry entry does not exist"
     }
@@ -3695,7 +3844,7 @@
           {
             "name": "sponsor",
             "docs": [
-              "Co-signed `open_line`; `None` when the line has no sponsor."
+              "Co-signed `request_line`; `None` when the line has no sponsor."
             ],
             "type": {
               "option": "pubkey"
@@ -3854,10 +4003,6 @@
             "type": "i64"
           },
           {
-            "name": "opened_at",
-            "type": "i64"
-          },
-          {
             "name": "drawn_at",
             "docs": [
               "Time of the first draw; informational (the calendar is `first_due_at`)."
@@ -3879,6 +4024,13 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "currency",
+            "docs": [
+              "ISO 4217 code of every amount of the line: `CURRENCY_MXN`."
+            ],
+            "type": "u16"
           },
           {
             "name": "requested_at",
@@ -4316,95 +4468,6 @@
       }
     },
     {
-      "name": "LineOpened",
-      "docs": [
-        "Every term `open_line` recorded. On a bullet line `installments`, `interval_seconds`,",
-        "`late_bps`, `max_missed` and `first_due_at` are zero; `sponsor_role` is meaningful only when",
-        "`sponsor` is named."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "line_id",
-            "type": "u64"
-          },
-          {
-            "name": "borrower",
-            "type": "pubkey"
-          },
-          {
-            "name": "sponsor",
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "sponsor_role",
-            "type": "u8"
-          },
-          {
-            "name": "agreement_hash",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "expediente_root",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "principal",
-            "type": "u64"
-          },
-          {
-            "name": "rate_bps",
-            "type": "u16"
-          },
-          {
-            "name": "term_end",
-            "type": "i64"
-          },
-          {
-            "name": "availability_end",
-            "type": "i64"
-          },
-          {
-            "name": "first_due_at",
-            "type": "i64"
-          },
-          {
-            "name": "interval_seconds",
-            "type": "i64"
-          },
-          {
-            "name": "installments",
-            "type": "u16"
-          },
-          {
-            "name": "late_bps",
-            "type": "u16"
-          },
-          {
-            "name": "max_missed",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "LineRejected",
       "type": {
         "kind": "struct",
@@ -4528,6 +4591,10 @@
             }
           },
           {
+            "name": "currency",
+            "type": "u16"
+          },
+          {
             "name": "principal",
             "type": "u64"
           },
@@ -4587,6 +4654,79 @@
           },
           {
             "name": "Cancelled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LineTerms",
+      "docs": [
+        "The terms of a line as `request_line` receives them."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "principal",
+            "docs": [
+              "In centavos of `CURRENCY_MXN`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "rate_bps",
+            "type": "u16"
+          },
+          {
+            "name": "term_end",
+            "type": "i64"
+          },
+          {
+            "name": "agreement_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "sponsor",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "sponsor_role",
+            "type": "u8"
+          },
+          {
+            "name": "schedule",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "ScheduleParams"
+                }
+              }
+            }
+          },
+          {
+            "name": "expediente_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "pagare_template_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -5174,7 +5314,7 @@
           {
             "name": "attestor",
             "docs": [
-              "The agreements engine's key: co-signs `open_line`, `draw`, `endorse_pagare` and",
+              "The agreements engine's key: co-signs `draw`, `endorse_pagare` and",
               "`court_annotation`, optionally `cancel_pagare` (else the backstop), and may sign",
               "`annotate_payment` alone. Never the council; rotated with `set_attestor`."
             ],
@@ -5265,7 +5405,7 @@
           {
             "name": "max_line_bps",
             "docs": [
-              "The largest line `open_line` accepts, as a share of the NAV at the opening, in basis points",
+              "The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points",
               "(`1..=BPS`). Fixed at `init_pool`."
             ],
             "type": "u16"
@@ -5556,7 +5696,7 @@
     {
       "name": "ScheduleParams",
       "docs": [
-        "Installment terms requested by `open_line`; fixed for the life of the line."
+        "Installment terms requested by `request_line`; fixed for the life of the line."
       ],
       "type": {
         "kind": "struct",

@@ -61,6 +61,7 @@ export type LineRequestedEvent = {
   expedienteRoot: ReadonlyUint8Array;
   pagareTemplateHash: ReadonlyUint8Array;
   termsHash: ReadonlyUint8Array;
+  currency: number;
   principal: bigint;
   rateBps: number;
   termEnd: bigint;
@@ -82,6 +83,7 @@ export type LineRequestedEventArgs = {
   expedienteRoot: ReadonlyUint8Array;
   pagareTemplateHash: ReadonlyUint8Array;
   termsHash: ReadonlyUint8Array;
+  currency: number;
   principal: number | bigint;
   rateBps: number;
   termEnd: number | bigint;
@@ -106,6 +108,7 @@ export function getLineRequestedEventEncoder(): Encoder<LineRequestedEventArgs> 
       ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
       ["pagareTemplateHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["termsHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["currency", getU16Encoder()],
       ["principal", getU64Encoder()],
       ["rateBps", getU16Encoder()],
       ["termEnd", getI64Encoder()],
@@ -133,6 +136,7 @@ export function getLineRequestedEventDecoder(): Decoder<LineRequestedEvent> {
       ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
       ["pagareTemplateHash", fixDecoderSize(getBytesDecoder(), 32)],
       ["termsHash", fixDecoderSize(getBytesDecoder(), 32)],
+      ["currency", getU16Decoder()],
       ["principal", getU64Decoder()],
       ["rateBps", getU16Decoder()],
       ["termEnd", getI64Decoder()],

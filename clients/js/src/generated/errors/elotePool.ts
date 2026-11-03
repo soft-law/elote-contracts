@@ -103,46 +103,48 @@ export const ELOTE_POOL_ERROR__SPONSOR_ROLE_INVALID = 0x1799; // 6041
 export const ELOTE_POOL_ERROR__TERM_ENDED = 0x179a; // 6042
 /** InvalidSchedule: The installment schedule is not valid */
 export const ELOTE_POOL_ERROR__INVALID_SCHEDULE = 0x179b; // 6043
+/** MaxMissedTooLow: max_missed is below the floor: at least one missed installment must come before the collection trigger */
+export const ELOTE_POOL_ERROR__MAX_MISSED_TOO_LOW = 0x179c; // 6044
 /** ScheduleEndsAfterTerm: The last installment would fall due after the term */
-export const ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM = 0x179c; // 6044
+export const ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM = 0x179d; // 6045
 /** NotScheduled: The line has no installment schedule */
-export const ELOTE_POOL_ERROR__NOT_SCHEDULED = 0x179d; // 6045
+export const ELOTE_POOL_ERROR__NOT_SCHEDULED = 0x179e; // 6046
 /** AvailabilityEnded: The draw window of this line has closed */
-export const ELOTE_POOL_ERROR__AVAILABILITY_ENDED = 0x179e; // 6046
+export const ELOTE_POOL_ERROR__AVAILABILITY_ENDED = 0x179f; // 6047
 /** TooManyDraws: The line has reached its maximum number of draws */
-export const ELOTE_POOL_ERROR__TOO_MANY_DRAWS = 0x179f; // 6047
+export const ELOTE_POOL_ERROR__TOO_MANY_DRAWS = 0x17a0; // 6048
 /** DrawsNotSuspended: The line's draws are not suspended */
-export const ELOTE_POOL_ERROR__DRAWS_NOT_SUSPENDED = 0x17a0; // 6048
+export const ELOTE_POOL_ERROR__DRAWS_NOT_SUSPENDED = 0x17a1; // 6049
 /** AccelerationState: No acceleration is pending on this line, or one already is */
-export const ELOTE_POOL_ERROR__ACCELERATION_STATE = 0x17a1; // 6049
+export const ELOTE_POOL_ERROR__ACCELERATION_STATE = 0x17a2; // 6050
 /** AccelerationNotDue: The acceleration notice has not run */
-export const ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE = 0x17a2; // 6050
+export const ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE = 0x17a3; // 6051
 /** LateInterestUnpaid: The repayment must cover the late interest due */
-export const ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID = 0x17a3; // 6051
+export const ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID = 0x17a4; // 6052
 /** NotEnoughMissed: Fewer installments missed than the line allows before collection */
-export const ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED = 0x17a4; // 6052
+export const ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED = 0x17a5; // 6053
 /** TermNotEnded: The term has not ended */
-export const ELOTE_POOL_ERROR__TERM_NOT_ENDED = 0x17a5; // 6053
+export const ELOTE_POOL_ERROR__TERM_NOT_ENDED = 0x17a6; // 6054
 /** WriteOffTooEarly: A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace */
-export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x17a6; // 6054
+export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x17a7; // 6055
 /** DocumentHashRequired: The signed document's hash is required */
-export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x17a7; // 6055
+export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x17a8; // 6056
 /** SignatureMethodInvalid: signature_method is unknown, or lacks its certificate fingerprint */
-export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x17a8; // 6056
+export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x17a9; // 6057
 /** PagareNotCovered: No repayment has marked this pagaré paid */
-export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x17a9; // 6057
+export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x17aa; // 6058
 /** PagareAlreadyPaid: This pagaré is already extinguished */
-export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x17aa; // 6058
+export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x17ab; // 6059
 /** CancelGraceNotElapsed: The borrower may cancel alone only after the cancel grace from the payment */
-export const ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED = 0x17ab; // 6059
+export const ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED = 0x17ac; // 6060
 /** EndosoKindInvalid: This kind of endoso is not one the program records */
-export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x17ac; // 6060
+export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x17ad; // 6061
 /** ProcuracionState: The pagaré has no procuración in force, or already has one */
-export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x17ad; // 6061
+export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x17ae; // 6062
 /** AnnotationKindInvalid: This kind is not a court annotation */
-export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x17ae; // 6062
+export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x17af; // 6063
 /** EntryNotFound: The referenced registry entry does not exist */
-export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x17af; // 6063
+export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x17b0; // 6064
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -181,6 +183,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID
   | typeof ELOTE_POOL_ERROR__LINE_STATUS
   | typeof ELOTE_POOL_ERROR__LINE_TOO_LARGE
+  | typeof ELOTE_POOL_ERROR__MAX_MISSED_TOO_LOW
   | typeof ELOTE_POOL_ERROR__NO_PENDING_COUNCIL
   | typeof ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED
   | typeof ELOTE_POOL_ERROR__NOT_HOLDER
@@ -249,6 +252,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID]: `The repayment must cover the late interest due`,
     [ELOTE_POOL_ERROR__LINE_STATUS]: `The line is not in the required status`,
     [ELOTE_POOL_ERROR__LINE_TOO_LARGE]: `The principal exceeds the pool's maximum line, max_line_bps of the NAV`,
+    [ELOTE_POOL_ERROR__MAX_MISSED_TOO_LOW]: `max_missed is below the floor: at least one missed installment must come before the collection trigger`,
     [ELOTE_POOL_ERROR__NO_PENDING_COUNCIL]: `No council rotation is pending, or this signer is not the one proposed`,
     [ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED]: `Fewer installments missed than the line allows before collection`,
     [ELOTE_POOL_ERROR__NOT_HOLDER]: `The pagaré's holder must sign`,

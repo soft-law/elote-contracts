@@ -21,7 +21,7 @@ import {
   type FixedSizeEncoder,
 } from "@solana/kit";
 
-/** Installment terms requested by `open_line`; fixed for the life of the line. */
+/** Installment terms requested by `request_line`; fixed for the life of the line. */
 export type ScheduleParams = {
   /** The first due date (unix seconds), from the signed contract; must be after the opening. */
   firstDueAt: bigint;

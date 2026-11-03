@@ -306,18 +306,18 @@ solana-test-validator --reset \
 ledger and all keys in a temporary directory removed on exit; it refuses any RPC that is not this
 machine. Build first (`NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet`).
 
-`scripts/open-line.ts` opens one approved line on an existing pool for a borrower whose keypair file
+`scripts/request-line.ts` requests one line on an existing pool for a borrower whose keypair file
 is held locally, so the borrower's draw and repayments can be rehearsed in the app:
-`npx tsx scripts/open-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path> --principal <tMXN>`,
+`npx tsx scripts/request-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path> --principal <tMXN>`,
 with `--rate-bps` (1200), `--term-days` (90), `--sponsor-keypair` with `--sponsor-role promoter|guarantor`
-(promoter by default), `--agreement-hash` and `--expediente-root` (placeholders if absent), and
-`--attestor-keypair` (`.demo-keys/attestor.json` by default). `--installments <n> --interval-days <n>` open a scheduled line, with
+(promoter by default), and `--agreement-hash`, `--expediente-root` and `--pagare-template-hash`
+(placeholders if absent). `--installments <n> --interval-days <n>` request a scheduled line, with
 `--late-rate-bps` (10000) and `--max-missed` (3, the program's minimum, so at least three
 installments); the script puts the first due date one interval from now, standing in for the
-contract's calendar, so `--term-days` must be at least installments times interval. The admin
-(`ELOTE_ADMIN_KEYPAIR` or `.demo-keys/admin.json`), the borrower and the pool's attestor sign the
-same transaction. The script checks the pool's admin and pause state, then prints the line id and
-address, the terms, the signature and an explorer link; program errors are shown by code and name.
+contract's calendar, so `--term-days` must be at least installments times interval. The borrower and
+a payer (`ELOTE_ADMIN_KEYPAIR` or `.demo-keys/admin.json`, standing in for Elote's backend) sign; the
+script prints the line id, the terms, the terms hash the council approves, the signature and an
+explorer link. The council's approval goes through Squads (PR 4, commit 10).
 
 `scripts/draw.ts --pool <address> --line-id <n> --borrower-keypair <path> --amount <tMXN>` draws one
 tranche and mints its pagaré, with `--document-hash`, `--signature-method wallet|psc|efirma` and

@@ -600,7 +600,7 @@ pub struct SetPaused<'info> {
     pub pool: Account<'info, Pool>,
 }
 
-/// Council only. A paused pool refuses deposits, redemptions, openings and draws; repayments,
+/// Council only. A paused pool refuses deposits, redemptions, requests and draws; repayments,
 /// cancellations and write-offs go on.
 pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
@@ -627,7 +627,7 @@ pub struct SetAttestor<'info> {
 }
 
 /// The council and the new attestor sign; the council cannot be the attestor (`AttestorIsCouncil`). The
-/// attestor moves nothing; withholding its signature blocks openings, draws, endorsements and court
+/// attestor moves nothing; withholding its signature blocks draws, endorsements and court
 /// annotations, and delays a cancellation until the backstop applies.
 pub fn set_attestor(ctx: Context<SetAttestor>) -> Result<()> {
     let attestor = ctx.accounts.new_attestor.key();
