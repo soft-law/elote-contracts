@@ -125,6 +125,36 @@ for this change.
   0.0035 SOL for a 375-byte line), so the borrower deposits nothing; withdraw, reject and expiry
   return the rent to that payer. Nothing about it is shown to the borrower.
 
+## Settled after the dev's review (coordinator's calls, 2026-11-03)
+
+1. **Permissioned series:** the pilot allows only non-permissioned series (investors have no KYC).
+   For production, the share mint's freeze authority stays with Token ACL (decision 15) and
+   `init_pool` requires its MintConfig authority to be the council. This replaces the earlier
+   "freeze authority = pool PDA" line, which would have left no one able to thaw an investor.
+2. **Resuming draws:** new council instruction `resume_draws`. `suspend_draws` and
+   `propose_acceleration` keep the original `availability_end` in a field; `resume_draws` restores
+   it (never later than the original). Withdrawing an acceleration proposal does not resume by
+   itself.
+3. **Guardian (pause):** any member of the multisig can pause alone (read from the Squads account
+   when council_kind = 0), plus an optional guardian key stored and rotated by the council. Under a
+   DAO (council_kind = 1) only the stored guardian remains. Only the council resumes.
+4. **Bullet-line acceleration math:** new field on the line, the sum of amount times draw time
+   (u128), updated at each draw; accrued interest at the mark = rate per year times (drawn times
+   mark minus that sum). Vectors regenerated with the new case. Scheduled lines: decision 28 with
+   the installments due at the mark; if none is due, only the interest already paid is kept.
+5. **Pool limits:** both, council-gated: `set_max_line_bps` (per-line cap as a share of NAV) and a
+   new pool-wide cap on outstanding principal in asset units, with its setter. Initial figures at
+   `init_pool`; Mario's "100k" is pending his unit confirmation.
+6. **CU rule:** one rule, 100,000 CU per transaction including the Squads execution, pinned in
+   `tests/squads.rs`. Supersedes the two other readings in this document.
+7. **Pause scope:** pause blocks draws, deposits, new requests and redeem (as in v1); repay always
+   stays open, so a borrower can always pay. This replaces "repay and redeem stay open".
+8. **Accepted as the dev proposed:** a pool may name an existing multisig without its signature
+   (harmless: only the council exercises the powers; documented); a curator added after an approval
+   does not invalidate lines already approved; rejected or withdrawn line ids are never reused;
+   `requested_at` added to CreditLine; under Squads the executing member is the rent payer; `draw`
+   stops taking `document_hash` (computed on chain).
+
 ## CU spike results (2026-11-03, real Squads v4 binary in LiteSVM, throwaway)
 
 - Squads overhead: about 20.6k fixed, plus about 0.9k per account in the message, plus about 60 CU
