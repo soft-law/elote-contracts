@@ -1796,8 +1796,9 @@
     {
       "name": "repay",
       "docs": [
-        "Anyone pays up to `amount` on an `Active` or `InCollection` line: late interest (which",
-        "`amount` must cover), then interest, then principal, never more than is due. The remaining",
+        "Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in",
+        "force (`fx_rate`, `fx_date`, whatever its age): late interest (which the credit must cover),",
+        "then interest, then principal, never more than is due; the USDC taken is rounded up. The remaining",
         "accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first;",
         "each one covered is marked paid with the payer's provisional `receipt_hash`. The line",
         "becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a",
@@ -1909,8 +1910,16 @@
       ],
       "args": [
         {
-          "name": "amount",
+          "name": "max_usdc",
           "type": "u64"
+        },
+        {
+          "name": "fx_rate",
+          "type": "u64"
+        },
+        {
+          "name": "fx_date",
+          "type": "u32"
         },
         {
           "name": "receipt_hash",
@@ -4813,6 +4822,11 @@
     },
     {
       "name": "LineRepaid",
+      "docs": [
+        "A repayment: `principal_part` and `interest_part` in centavos of MXN, `usdc_received` the USDC",
+        "taken at `fx_rate`, `remaining` the MXN still due. Emitted after `FxRealized`, with the same",
+        "`receipt_hash`."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -4827,6 +4841,23 @@
           {
             "name": "payer",
             "type": "pubkey"
+          },
+          {
+            "name": "receipt_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "usdc_received",
+            "type": "u64"
+          },
+          {
+            "name": "fx_rate",
+            "type": "u64"
           },
           {
             "name": "principal_part",
@@ -5061,6 +5092,9 @@
     },
     {
       "name": "LineWrittenOff",
+      "docs": [
+        "The principal left in MXN (`loss`) and its cost in USDC (`loss_usdc`), which leaves the NAV."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -5074,6 +5108,10 @@
           },
           {
             "name": "loss",
+            "type": "u64"
+          },
+          {
+            "name": "loss_usdc",
             "type": "u64"
           },
           {

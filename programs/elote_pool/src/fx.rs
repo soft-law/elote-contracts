@@ -60,6 +60,22 @@ pub fn mxn_for_usdc(usdc: u64, fix_rate: u64) -> Option<u64> {
     (u128::from(usdc).checked_mul(u128::from(fix_rate))? / MXN_USDC).try_into().ok()
 }
 
+/// USDC base units that pay `mxn` centavos at `fix_rate`, rounded up: what a repayment takes, so the
+/// pool never credits more MXN than it received.
+pub fn usdc_ceil_for_mxn(mxn: u64, fix_rate: u64) -> Option<u64> {
+    let fix = u128::from(fix_rate).max(1);
+    u128::from(mxn).checked_mul(MXN_USDC)?.div_ceil(fix).try_into().ok()
+}
+
+/// The cost of `applied` centavos of a pagaré of `amount_mxn` that delivered `usdc_delivered`,
+/// rounded down; the whole pagaré costs exactly `usdc_delivered`.
+pub fn cost_of(usdc_delivered: u64, amount_mxn: u64, applied: u64) -> Option<u64> {
+    if amount_mxn == 0 {
+        return Some(0);
+    }
+    (u128::from(usdc_delivered).checked_mul(u128::from(applied.min(amount_mxn)))? / u128::from(amount_mxn)).try_into().ok()
+}
+
 /// Whether `new` is within `MAX_FIX_JUMP_BPS` of `old`.
 pub fn within_band(old: u64, new: u64) -> bool {
     let diff = u128::from(old.abs_diff(new));
@@ -100,6 +116,16 @@ mod tests {
         let usdc = usdc_for_mxn(123_456, 177_777).unwrap();
         assert!(mxn_for_usdc(usdc, 177_777).unwrap() <= 123_456);
         assert_eq!(usdc_for_mxn(u64::MAX, 1), None);
+    }
+
+    #[test]
+    fn a_repayment_takes_usdc_rounded_up_and_costs_add_up_to_the_delivery() {
+        assert_eq!(usdc_ceil_for_mxn(183_740, 183_740), Some(100_000_000));
+        assert_eq!(usdc_ceil_for_mxn(1, 183_740), Some(545), "one centavo costs 544.24 base units, rounded up");
+        let delivered = usdc_for_mxn(5_000_000, 183_740).unwrap();
+        let half = cost_of(delivered, 5_000_000, 2_500_000).unwrap();
+        assert_eq!(half + (cost_of(delivered, 5_000_000, 5_000_000).unwrap() - half), delivered);
+        assert_eq!(cost_of(delivered, 5_000_000, 9_999_999), Some(delivered), "capped at the pagaré");
     }
 
     #[test]

@@ -1642,6 +1642,8 @@ impl Env {
     /// last draw or the line never drew.
     pub fn payment_sidecars(&self, k: &PoolKeys, line_id: u64, amount: u64) -> Vec<Pubkey> {
         let line = self.line(k, line_id);
+        // `amount` is USDC; the line counts MXN at the FIX in force.
+        let amount = elote_pool::fx::mxn_for_usdc(amount, self.pool(k).fix_rate).unwrap_or(0);
         let cursor = line.pagares_paid;
         if cursor >= line.draws {
             return vec![];
@@ -1683,7 +1685,10 @@ impl Env {
         }
         .to_account_metas(None);
         accounts.extend(sidecars.iter().map(|s| anchor_lang::solana_program::instruction::AccountMeta::new(*s, false)));
-        Instruction { program_id: PROGRAM_ID, accounts, data: elote_pool::instruction::Repay { amount, receipt_hash }.data() }
+        Instruction { program_id: PROGRAM_ID, accounts, data: {
+            let pool = self.pool(k);
+            elote_pool::instruction::Repay { max_usdc: amount, fx_rate: pool.fix_rate, fx_date: pool.fix_date, receipt_hash }.data()
+        } }
     }
     /// `annotate_payment(draw_index, entry_count, receipt_hash)` by `annotator`.
     pub fn annotate_payment_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, annotator: &Pubkey, entry_count: u32, receipt_hash: [u8; 32]) -> Instruction {
@@ -1851,4 +1856,15 @@ where
         return Some(E::deserialize(&mut &data[16..]).expect("event borsh"));
     }
     None
+}
+
+/// The discriminators of every event `meta` emitted, in order.
+pub fn event_order(meta: &TransactionMetadata) -> Vec<Vec<u8>> {
+    meta.inner_instructions
+        .iter()
+        .flatten()
+        .map(|inner| &inner.instruction.data)
+        .filter(|d| d.len() >= 16 && &d[..8] == anchor_lang::event::EVENT_IX_TAG_LE)
+        .map(|d| d[8..16].to_vec())
+        .collect()
 }

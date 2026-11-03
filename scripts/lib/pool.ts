@@ -14,7 +14,10 @@ import {
   findPagarePda,
   findPoolPda,
   getRepayInstructionAsync,
+  fetchPool,
   lineArrears,
+  mxnForUsdc,
+  usdcCeilForMxn,
   lineSchedule,
   repayPrincipalCap,
   repaySidecars,
@@ -65,11 +68,14 @@ export async function repayInParts(
   const payerAsset = await ataOf(payer.address, poolData.assetMint);
   const balance = async () => (await fetchToken(c.rpc, payerAsset, { commitment: "confirmed" })).data.amount;
   const start = await balance();
+  // `amount` and `left` are USDC; the line counts MXN at the FIX in force, read for each part.
   let left = args.amount;
   for (let part = 1; left > 0n; part++) {
     let sent = false;
     for (let attempt = 1; !sent; attempt++) {
       const l = (await fetchCreditLine(c.rpc, line, { commitment: "confirmed" })).data;
+      const fix = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
+      const leftMxn = mxnForUsdc(left, fix.fixRate);
       if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) return start - (await balance());
       const s = lineSchedule(l);
       // Late interest grows by the second until the part lands: quote it 30 s ahead. The program
@@ -82,9 +88,9 @@ export async function repayInParts(
       const cap = drawnThrough.length
         ? repayPrincipalCap({ pagaresPaid: l.pagaresPaid, drawnThrough, principalRepaid: l.principalRepaid, maxRecords: MAX_SIDECARS_PER_REPAY })
         : principalLeft;
-      const afterInterest = left > late + interestLeft ? left - late - interestLeft : 0n;
+      const afterInterest = leftMxn > late + interestLeft ? leftMxn - late - interestLeft : 0n;
       const principal = [afterInterest, principalLeft, cap].reduce((a, b) => (a < b ? a : b));
-      const interest = left > late ? (left - late < interestLeft ? left - late : interestLeft) : 0n;
+      const interest = leftMxn > late ? (leftMxn - late < interestLeft ? leftMxn - late : interestLeft) : 0n;
       const piece = late + interest + principal;
       if (piece === 0n) return start - (await balance());
       const records = await repaySidecars({ line, pagaresPaid: l.pagaresPaid, drawnThrough, principalAfter: l.principalRepaid + principal });
@@ -101,7 +107,9 @@ export async function repayInParts(
               vault: poolData.vault,
               payerAssetAccount: payerAsset,
               tokenProgram: TOKEN_PROGRAM_ADDRESS,
-              amount: piece,
+              maxUsdc: usdcCeilForMxn(piece, fix.fixRate),
+              fxRate: fix.fixRate,
+              fxDate: fix.fixDate,
               receiptHash,
             }),
             records

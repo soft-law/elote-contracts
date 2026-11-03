@@ -169,11 +169,17 @@ pub struct LineDrawn {
     pub outstanding_after: u64,
 }
 
+/// A repayment: `principal_part` and `interest_part` in centavos of MXN, `usdc_received` the USDC
+/// taken at `fx_rate`, `remaining` the MXN still due. Emitted after `FxRealized`, with the same
+/// `receipt_hash`.
 #[event]
 pub struct LineRepaid {
     pub pool: Pubkey,
     pub line_id: u64,
     pub payer: Pubkey,
+    pub receipt_hash: [u8; 32],
+    pub usdc_received: u64,
+    pub fx_rate: u64,
     pub principal_part: u64,
     pub interest_part: u64,
     pub remaining: u64,
@@ -202,11 +208,13 @@ pub struct LineInCollection {
     pub interest_forgiven: u64,
 }
 
+/// The principal left in MXN (`loss`) and its cost in USDC (`loss_usdc`), which leaves the NAV.
 #[event]
 pub struct LineWrittenOff {
     pub pool: Pubkey,
     pub line_id: u64,
     pub loss: u64,
+    pub loss_usdc: u64,
     pub nav_after: u64,
 }
 

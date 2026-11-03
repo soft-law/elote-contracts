@@ -42,6 +42,7 @@ export type LineWrittenOffEvent = {
   pool: Address;
   lineId: bigint;
   loss: bigint;
+  lossUsdc: bigint;
   navAfter: bigint;
 };
 
@@ -49,6 +50,7 @@ export type LineWrittenOffEventArgs = {
   pool: Address | HasAddress;
   lineId: number | bigint;
   loss: number | bigint;
+  lossUsdc: number | bigint;
   navAfter: number | bigint;
 };
 
@@ -59,6 +61,7 @@ export function getLineWrittenOffEventEncoder(): FixedSizeEncoder<LineWrittenOff
       ["pool", getAddressEncoder()],
       ["lineId", getU64Encoder()],
       ["loss", getU64Encoder()],
+      ["lossUsdc", getU64Encoder()],
       ["navAfter", getU64Encoder()],
     ]),
     [getConstantEncoder(LINE_WRITTEN_OFF_EVENT_DISCRIMINATOR)],
@@ -72,6 +75,7 @@ export function getLineWrittenOffEventDecoder(): FixedSizeDecoder<LineWrittenOff
       ["pool", getAddressDecoder()],
       ["lineId", getU64Decoder()],
       ["loss", getU64Decoder()],
+      ["lossUsdc", getU64Decoder()],
       ["navAfter", getU64Decoder()],
     ]),
     [getConstantDecoder(LINE_WRITTEN_OFF_EVENT_DISCRIMINATOR)],

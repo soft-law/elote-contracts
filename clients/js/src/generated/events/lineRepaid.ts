@@ -9,9 +9,11 @@
 import {
   combineCodec,
   containsBytes,
+  fixDecoderSize,
   fixEncoderSize,
   getAddressDecoder,
   getAddressEncoder,
+  getBytesDecoder,
   getBytesEncoder,
   getConstantDecoder,
   getConstantEncoder,
@@ -42,6 +44,9 @@ export type LineRepaidEvent = {
   pool: Address;
   lineId: bigint;
   payer: Address;
+  receiptHash: ReadonlyUint8Array;
+  usdcReceived: bigint;
+  fxRate: bigint;
   principalPart: bigint;
   interestPart: bigint;
   remaining: bigint;
@@ -52,6 +57,9 @@ export type LineRepaidEventArgs = {
   pool: Address | HasAddress;
   lineId: number | bigint;
   payer: Address | HasAddress;
+  receiptHash: ReadonlyUint8Array;
+  usdcReceived: number | bigint;
+  fxRate: number | bigint;
   principalPart: number | bigint;
   interestPart: number | bigint;
   remaining: number | bigint;
@@ -65,6 +73,9 @@ export function getLineRepaidEventEncoder(): FixedSizeEncoder<LineRepaidEventArg
       ["pool", getAddressEncoder()],
       ["lineId", getU64Encoder()],
       ["payer", getAddressEncoder()],
+      ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["usdcReceived", getU64Encoder()],
+      ["fxRate", getU64Encoder()],
       ["principalPart", getU64Encoder()],
       ["interestPart", getU64Encoder()],
       ["remaining", getU64Encoder()],
@@ -81,6 +92,9 @@ export function getLineRepaidEventDecoder(): FixedSizeDecoder<LineRepaidEvent> {
       ["pool", getAddressDecoder()],
       ["lineId", getU64Decoder()],
       ["payer", getAddressDecoder()],
+      ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
+      ["usdcReceived", getU64Decoder()],
+      ["fxRate", getU64Decoder()],
       ["principalPart", getU64Decoder()],
       ["interestPart", getU64Decoder()],
       ["remaining", getU64Decoder()],

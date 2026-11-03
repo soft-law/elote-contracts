@@ -32,7 +32,7 @@ test("repayPrincipalCap keeps a repay within maxRecords pagaré records", () => 
   assert.equal(repayPrincipalCap({ pagaresPaid: 2, drawnThrough, principalRepaid: 250n, maxRecords: 5 }), 350n);
   // Fewer pagarés left than the limit: the cap is all that is left.
   assert.equal(repayPrincipalCap({ pagaresPaid: 4, drawnThrough, principalRepaid: 400n, maxRecords: 5 }), 300n);
-  assert.equal(MAX_SIDECARS_PER_REPAY, 5);
+  assert.equal(MAX_SIDECARS_PER_REPAY, 4);
 });
 
 test("findPagarePda derives the sidecar address of a draw", async () => {

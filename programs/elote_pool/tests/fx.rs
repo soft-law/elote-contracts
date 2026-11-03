@@ -119,7 +119,7 @@ fn real_fix_pool(env: &mut Env, max_outstanding: u64) -> (PoolKeys, Keypair, u64
     let investor = env.investor(&k, 5_000 * UNIT);
     env.deposit(&k, &investor, 5_000 * UNIT);
     let borrower = env.borrower(&k);
-    let terms = env.line_params(5_000_000, 1_200); // MXN 50,000.00
+    let terms = env.line_params(5_000_000, 0); // MXN 50,000.00 at no interest
     let (id, _) = env.request_line_with(&k, &borrower, &terms, None);
     env.release_fix(&k);
     env.approve_line(&k, id, &borrower.pubkey(), &terms);
@@ -208,4 +208,109 @@ fn the_line_cap_is_measured_in_mxn_at_the_fix() {
             env.expect_err(ix, &council, &[], E_LINE_TOO_LARGE);
         }
     }
+}
+
+/// A fully drawn MXN 50,000 line at no interest, drawn at 18.3740.
+fn drawn_line(env: &mut Env) -> (PoolKeys, Keypair, u64, u64) {
+    let (k, borrower, id) = real_fix_pool(env, u64::MAX);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 5_000_000);
+    env.send(ix, &borrower, &[]);
+    let delivered = env.pagare(&k, id, 0).usdc_delivered;
+    (k, borrower, id, delivered)
+}
+
+fn post(env: &mut Env, k: &PoolKeys, fix_rate: u64) {
+    let council = env.council.insecure_clone();
+    let ix = env.post_fix_ix(k, &council.pubkey(), fix_rate, env.today());
+    env.send(ix, &council, &[]);
+}
+
+#[test]
+fn a_repayment_in_usdc_is_credited_in_mxn_at_the_fix_of_the_day_and_realizes_the_difference() {
+    use elote_pool::events::{FxRealized, LineRepaid, NavUpdated, PagarePayment};
+    use anchor_lang::Discriminator;
+    let mut env = Env::new();
+    let (k, borrower, id, delivered) = drawn_line(&mut env);
+    let nav_before = env.nav(&k);
+    // The peso falls to 20.0000: MXN 50,000 is now 2,500 USDC.
+    env.warp(env.now() + DAY);
+    post(&mut env, &k, 200_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 3_000 * UNIT);
+    let before = env.token_balance(&k.asset_ata(&borrower.pubkey()));
+    let ix = env.repay_ix(&k, id, &borrower.pubkey(), 3_000 * UNIT);
+    let meta = env.send(ix, &borrower, &[]);
+    assert_eq!(before - env.token_balance(&k.asset_ata(&borrower.pubkey())), 2_500 * UNIT, "only what MXN 50,000 costs today");
+
+    let line = env.line(&k, id);
+    assert_eq!((line.status, line.principal_repaid, line.usdc_cost_repaid), (elote_pool::state::LineStatus::Repaid, 5_000_000, delivered));
+    assert_eq!(env.pagare(&k, id, 0).status, elote_pool::state::PAGARE_PAID_PENDING_CANCEL, "the PAGADO mark at the exact MXN amount");
+    let fx: FxRealized = find_event(&meta).expect("FxRealized");
+    let repaid: LineRepaid = find_event(&meta).expect("LineRepaid");
+    let loss = delivered as i64 - (2_500 * UNIT) as i64;
+    assert_eq!((fx.line_id, fx.cost, fx.received, fx.delta), (id, delivered, 2_500 * UNIT, -loss));
+    assert_eq!((fx.receipt_hash, repaid.receipt_hash, repaid.usdc_received, repaid.fx_rate), (RECEIPT_HASH, RECEIPT_HASH, 2_500 * UNIT, 200_000));
+    assert_eq!((fx.nav_after, repaid.nav_after), (nav_before - loss as u64, nav_before - loss as u64));
+    let pool = env.pool(&k);
+    assert_eq!((pool.outstanding_principal, pool.fx_realized), (0, -loss));
+    assert_eq!(env.nav(&k), nav_before - loss as u64, "the investors carry the peso's fall");
+
+    // One order, for the app to group one payment: PagarePayment, FxRealized, LineRepaid, NavUpdated.
+    let order: Vec<Vec<u8>> = event_order(&meta)
+        .into_iter()
+        .filter(|d| [PagarePayment::DISCRIMINATOR, FxRealized::DISCRIMINATOR, LineRepaid::DISCRIMINATOR, NavUpdated::DISCRIMINATOR].contains(&d.as_slice()))
+        .collect();
+    assert_eq!(order, vec![PagarePayment::DISCRIMINATOR.to_vec(), FxRealized::DISCRIMINATOR.to_vec(), LineRepaid::DISCRIMINATOR.to_vec(), NavUpdated::DISCRIMINATOR.to_vec()]);
+}
+
+#[test]
+fn a_stronger_peso_is_a_gain_and_partial_payments_cost_exactly_the_delivery() {
+    let mut env = Env::new();
+    let (k, borrower, id, delivered) = drawn_line(&mut env);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 4_000 * UNIT);
+    let mut received = 0;
+    for fix in [170_000u64, 171_000] {
+        env.warp(env.now() + DAY);
+        post(&mut env, &k, fix);
+        let pay = elote_pool::fx::usdc_ceil_for_mxn(2_500_000, fix).unwrap();
+        let before = env.token_balance(&k.asset_ata(&borrower.pubkey()));
+        let ix = env.repay_ix(&k, id, &borrower.pubkey(), pay);
+        env.send(ix, &borrower, &[]);
+        received += before - env.token_balance(&k.asset_ata(&borrower.pubkey()));
+    }
+    let line = env.line(&k, id);
+    assert_eq!((line.principal_repaid, line.usdc_cost_repaid), (5_000_000, delivered), "the two halves cost the whole delivery");
+    assert_eq!(env.pool(&k).fx_realized, received as i64 - delivered as i64);
+    assert!(env.pool(&k).fx_realized > 0);
+}
+
+#[test]
+fn a_repayment_is_never_refused_for_an_old_fix_but_must_name_the_one_in_force() {
+    let mut env = Env::new();
+    let (k, borrower, id, _) = drawn_line(&mut env);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
+    env.warp(env.now() + 30 * DAY);
+    let ix = env.repay_ix(&k, id, &borrower.pubkey(), UNIT);
+    env.send(ix, &borrower, &[]);
+    let stale = env.repay_ix(&k, id, &borrower.pubkey(), UNIT / 2);
+    post(&mut env, &k, 190_000);
+    env.expect_err(stale, &borrower, &[], code(PoolError::FixMismatch));
+}
+
+#[test]
+fn a_write_off_removes_the_lines_cost_in_usdc() {
+    use elote_pool::events::LineWrittenOff;
+    let mut env = Env::new();
+    let (k, borrower, id, delivered) = drawn_line(&mut env);
+    let term_end = env.line(&k, id).term_end;
+    let nav_before = env.nav(&k);
+    env.warp(term_end + 1);
+    let _ = borrower;
+    let council = env.council.insecure_clone();
+    let ix = env.write_off_ix(&k, id, &council.pubkey());
+    let ev: LineWrittenOff = find_event(&env.send(ix, &council, &[])).expect("LineWrittenOff");
+    assert_eq!((ev.loss, ev.loss_usdc, ev.nav_after), (5_000_000, delivered, nav_before - delivered));
+    assert_eq!(env.pool(&k).outstanding_principal, 0);
 }

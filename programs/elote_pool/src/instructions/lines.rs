@@ -12,7 +12,7 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 use crate::errors::PoolError;
 use crate::events::{
     LateInterestCollected, LineApproved, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection,
-    LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
+    FxRealized, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
     PagarePayment, PaymentEntry,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
@@ -780,12 +780,19 @@ pub struct Repay<'info> {
 /// entry only if the payment applied principal to it. `receipt_hash` is the payer's, unverified and
 /// provisional until the holder annotates the real one (`annotate_payment`); zero means "receipt to
 /// follow".
-pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash: [u8; 32]) -> Result<()> {
+///
+/// The credit is `fx::mxn_for_usdc(max_usdc, fix)`; the USDC taken pays exactly the MXN applied,
+/// rounded up. The pool's outstanding falls by the cost of the principal repaid at each pagaré's
+/// own FIX; the difference with the USDC that paid it is `FxRealized`.
+pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u64, fx_date: u32, receipt_hash: [u8; 32]) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
     let schedule = line.schedule();
     require!(matches!(line.status, LineStatus::Active | LineStatus::InCollection), PoolError::LineStatus);
+    // The FIX in force, whatever its age: a payment is never refused for an old FIX.
+    require!(pool.fix_rate != 0 && fx_rate == pool.fix_rate && fx_date == pool.fix_date, PoolError::FixMismatch);
+    let amount = fx::mxn_for_usdc(max_usdc, fx_rate).ok_or(PoolError::Overflow)?;
 
     let principal_left = line.drawn.checked_sub(line.principal_repaid).ok_or(PoolError::Overflow)?;
     let interest_left = line.interest_due.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
@@ -813,6 +820,12 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
         .ok_or(PoolError::Overflow)?;
     let principal_before = line.principal_repaid;
     let principal_after = principal_before.checked_add(principal_part).ok_or(PoolError::Overflow)?;
+    // The USDC taken, rounded up, and the part of it that paid principal; what the late and
+    // ordinary interest took is rounded down, so principal carries the rounding.
+    let usdc_in = fx::usdc_ceil_for_mxn(transfer, fx_rate).ok_or(PoolError::Overflow)?;
+    let charges = late_part.checked_add(interest_part).ok_or(PoolError::Overflow)?;
+    let usdc_charges = fx::usdc_for_mxn(charges, fx_rate).ok_or(PoolError::Overflow)?;
+    let usdc_principal = usdc_in.checked_sub(usdc_charges).ok_or(PoolError::Overflow)?;
 
     // The records, exactly `[pagares_paid ..= last_touched]`, are verified before any write.
     let line_key = line.key();
@@ -842,8 +855,21 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
         require!(if covered { !last || idx.saturating_add(1) == draws } else { last }, PoolError::PagareAccountsMismatch);
         touched.push(sidecar);
     }
+    // The cost of the principal repaid, pagaré by pagaré at the FIX each was drawn at.
+    let mut cost = 0u64;
+    for sidecar in &touched {
+        let start = sidecar.drawn_through.checked_sub(sidecar.amount_mxn).ok_or(PoolError::Overflow)?;
+        let before = principal_before.saturating_sub(start);
+        let after = principal_after.saturating_sub(start);
+        let c = fx::cost_of(sidecar.usdc_delivered, sidecar.amount_mxn, after)
+            .zip(fx::cost_of(sidecar.usdc_delivered, sidecar.amount_mxn, before))
+            .and_then(|(a, b)| a.checked_sub(b))
+            .ok_or(PoolError::Overflow)?;
+        cost = cost.checked_add(c).ok_or(PoolError::Overflow)?;
+    }
+    let fx_delta = i64::try_from(usdc_principal).ok().zip(i64::try_from(cost).ok()).map(|(r, c)| r - c).ok_or(PoolError::Overflow)?;
 
-    if transfer > 0 {
+    if usdc_in > 0 {
         token::transfer_checked(
             CpiContext::new(
                 ctx.accounts.token_program.key(),
@@ -854,21 +880,21 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
                     authority: ctx.accounts.payer.to_account_info(),
                 },
             ),
-            transfer,
+            usdc_in,
             ctx.accounts.asset_mint.decimals,
         )?;
     }
 
     let pool = &mut ctx.accounts.pool;
-    pool.outstanding_principal = pool
-        .outstanding_principal
-        .checked_sub(principal_part)
-        .ok_or(PoolError::Overflow)?;
-    pool.interest_collected = pool.interest_collected.checked_add(interest_part).ok_or(PoolError::Overflow)?;
+    pool.outstanding_principal = pool.outstanding_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
+    let usdc_interest = fx::usdc_for_mxn(interest_part, fx_rate).ok_or(PoolError::Overflow)?;
+    pool.interest_collected = pool.interest_collected.checked_add(usdc_interest).ok_or(PoolError::Overflow)?;
+    pool.fx_realized = pool.fx_realized.checked_add(fx_delta).ok_or(PoolError::Overflow)?;
 
     let line = &mut ctx.accounts.line;
     line.principal_repaid = line.principal_repaid.checked_add(principal_part).ok_or(PoolError::Overflow)?;
     line.interest_repaid = line.interest_repaid.checked_add(interest_part).ok_or(PoolError::Overflow)?;
+    line.usdc_cost_repaid = line.usdc_cost_repaid.checked_add(cost).ok_or(PoolError::Overflow)?;
     // The watermark moves only when something was collected: an accrual that rounds down to zero
     // keeps running instead of being erased by every payment.
     if late_part > 0 {
@@ -933,10 +959,24 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, amount: u64, receipt_hash
     if late_part > 0 {
         emit_cpi!(LateInterestCollected { pool: pool.key(), line_id: line.line_id, amount: late_part });
     }
+    if principal_part > 0 {
+        emit_cpi!(FxRealized {
+            pool: pool.key(),
+            line_id: line.line_id,
+            receipt_hash,
+            cost,
+            received: usdc_principal,
+            delta: fx_delta,
+            nav_after,
+        });
+    }
     emit_cpi!(LineRepaid {
         pool: pool.key(),
         line_id: line.line_id,
         payer: ctx.accounts.payer.key(),
+        receipt_hash,
+        usdc_received: usdc_in,
+        fx_rate,
         principal_part,
         interest_part,
         remaining: remaining_after,
@@ -1097,9 +1137,10 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
     let line = &mut ctx.accounts.line;
 
     let loss = line.drawn.checked_sub(line.principal_repaid).ok_or(PoolError::Overflow)?;
+    let loss_usdc = line.usdc_drawn.checked_sub(line.usdc_cost_repaid).ok_or(PoolError::Overflow)?;
     let pool = &mut ctx.accounts.pool;
-    pool.outstanding_principal = pool.outstanding_principal.checked_sub(loss).ok_or(PoolError::Overflow)?;
-    pool.written_off = pool.written_off.checked_add(loss).ok_or(PoolError::Overflow)?;
+    pool.outstanding_principal = pool.outstanding_principal.checked_sub(loss_usdc).ok_or(PoolError::Overflow)?;
+    pool.written_off = pool.written_off.checked_add(loss_usdc).ok_or(PoolError::Overflow)?;
     line.status = LineStatus::WrittenOff;
     line.closed_at = now;
 
@@ -1110,6 +1151,7 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
         pool: pool.key(),
         line_id: line.line_id,
         loss,
+        loss_usdc,
         nav_after,
     });
     emit_cpi!(NavUpdated { pool: pool.key(), total_assets: nav_after, share_supply });

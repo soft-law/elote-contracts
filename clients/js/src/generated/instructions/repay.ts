@@ -15,6 +15,8 @@ import {
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
+  getU32Decoder,
+  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
   getUtf8Encoder,
@@ -109,12 +111,16 @@ export type RepayInstruction<
 
 export type RepayInstructionData = {
   discriminator: ReadonlyUint8Array;
-  amount: bigint;
+  maxUsdc: bigint;
+  fxRate: bigint;
+  fxDate: number;
   receiptHash: ReadonlyUint8Array;
 };
 
 export type RepayInstructionDataArgs = {
-  amount: number | bigint;
+  maxUsdc: number | bigint;
+  fxRate: number | bigint;
+  fxDate: number;
   receiptHash: ReadonlyUint8Array;
 };
 
@@ -122,7 +128,9 @@ export function getRepayInstructionDataEncoder(): FixedSizeEncoder<RepayInstruct
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["amount", getU64Encoder()],
+      ["maxUsdc", getU64Encoder()],
+      ["fxRate", getU64Encoder()],
+      ["fxDate", getU32Encoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: REPAY_DISCRIMINATOR }),
@@ -132,7 +140,9 @@ export function getRepayInstructionDataEncoder(): FixedSizeEncoder<RepayInstruct
 export function getRepayInstructionDataDecoder(): FixedSizeDecoder<RepayInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["amount", getU64Decoder()],
+    ["maxUsdc", getU64Decoder()],
+    ["fxRate", getU64Decoder()],
+    ["fxDate", getU32Decoder()],
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
@@ -175,7 +185,9 @@ export type RepayAsyncInput<
   tokenProgram?: TAccountTokenProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  amount: RepayInstructionDataArgs["amount"];
+  maxUsdc: RepayInstructionDataArgs["maxUsdc"];
+  fxRate: RepayInstructionDataArgs["fxRate"];
+  fxDate: RepayInstructionDataArgs["fxDate"];
   receiptHash: RepayInstructionDataArgs["receiptHash"];
 };
 
@@ -414,7 +426,9 @@ export type RepayInput<
   tokenProgram?: TAccountTokenProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  amount: RepayInstructionDataArgs["amount"];
+  maxUsdc: RepayInstructionDataArgs["maxUsdc"];
+  fxRate: RepayInstructionDataArgs["fxRate"];
+  fxDate: RepayInstructionDataArgs["fxDate"];
   receiptHash: RepayInstructionDataArgs["receiptHash"];
 };
 
