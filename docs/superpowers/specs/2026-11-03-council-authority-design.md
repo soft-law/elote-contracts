@@ -274,7 +274,7 @@ consejo"; no double signature), example figures.
 ## Answered by Mario (2026-11-03)
 
 1. Investors without KYC for testing (devnet); production decided later.
-2. First council: two curators, Gabriel and Mario, threshold 2 of 2. More curators join by council
+2. First council: three members, Gabriel plus two Mario keys, threshold 2 of 3 (decision 33; first answer was 2 of 2). More curators join by council
    proposal (a Squads config transaction voted by the council). The majority guard accepts 2 of 2
    (floor(2/2)+1 = 2). Liveness risk noted: with 2 of 2, one lost key stops the council until a
    member is replaced, which itself needs both; adding a third curator removes that risk.
