@@ -7,6 +7,68 @@
   },
   "instructions": [
     {
+      "name": "accept_council",
+      "docs": [
+        "The proposed council signs and takes over, after the same multisig check as `init_pool`."
+      ],
+      "discriminator": [
+        63,
+        181,
+        129,
+        114,
+        49,
+        194,
+        209,
+        246
+      ],
+      "accounts": [
+        {
+          "name": "new_council",
+          "docs": [
+            "The proposed authority: vault 0 of `multisig`, signing through Squads."
+          ],
+          "signer": true
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "annotate_payment",
       "docs": [
         "The council (the holder) or the attestor attaches a receipt to payment entry `entry_count` of",
@@ -1496,6 +1558,77 @@
       ]
     },
     {
+      "name": "propose_council",
+      "docs": [
+        "Pauses or resumes deposits, redemptions, openings and draws. Council only. Nothing else is",
+        "ever paused: repayments, pagaré instructions, collection and write-offs.",
+        "Names the next council: `kind` 0 (a Squads vault) or 1 (a generic signer, not yet",
+        "accepted). Council only; the zero key withdraws the proposal."
+      ],
+      "discriminator": [
+        214,
+        92,
+        134,
+        7,
+        211,
+        167,
+        158,
+        38
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "new_council",
+          "type": "pubkey"
+        },
+        {
+          "name": "kind",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "redeem",
       "docs": [
         "The holder burns `shares` for assets at the current NAV, at least `min_assets_out`, up to",
@@ -2210,10 +2343,6 @@
     },
     {
       "name": "set_paused",
-      "docs": [
-        "Pauses or resumes deposits, redemptions, openings and draws. Council only. Nothing else is",
-        "ever paused: repayments, pagaré instructions, collection and write-offs."
-      ],
       "discriminator": [
         91,
         60,

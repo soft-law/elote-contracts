@@ -776,6 +776,27 @@ impl Env {
         self.init_pool_ix_params(k, &self.multisig.clone(), params)
     }
 
+    /// `propose_council`: the council names `new_council` of `kind`.
+    pub fn propose_council_ix(&self, k: &PoolKeys, council: &Pubkey, new_council: &Pubkey, kind: u8) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::ProposeCouncil { council: *council, pool: k.pool, event_authority, program }.to_account_metas(None),
+            data: elote_pool::instruction::ProposeCouncil { new_council: *new_council, kind }.data(),
+        }
+    }
+
+    /// `accept_council`: the proposed key signs, naming its multisig.
+    pub fn accept_council_ix(&self, k: &PoolKeys, new_council: &Pubkey, multisig: &Pubkey) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::AcceptCouncil { new_council: *new_council, multisig: *multisig, pool: k.pool, event_authority, program }
+                .to_account_metas(None),
+            data: elote_pool::instruction::AcceptCouncil {}.data(),
+        }
+    }
+
     pub fn set_cancel_delay_ix(&self, k: &PoolKeys, council: &Pubkey, seconds: u32) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {

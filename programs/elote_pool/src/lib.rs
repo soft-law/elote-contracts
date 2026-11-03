@@ -211,6 +211,17 @@ pub mod elote_pool {
 
     /// Pauses or resumes deposits, redemptions, openings and draws. Council only. Nothing else is
     /// ever paused: repayments, pagaré instructions, collection and write-offs.
+    /// Names the next council: `kind` 0 (a Squads vault) or 1 (a generic signer, not yet
+    /// accepted). Council only; the zero key withdraws the proposal.
+    pub fn propose_council(ctx: Context<ProposeCouncil>, new_council: Pubkey, kind: u8) -> Result<()> {
+        instructions::pool::propose_council(ctx, new_council, kind)
+    }
+
+    /// The proposed council signs and takes over, after the same multisig check as `init_pool`.
+    pub fn accept_council(ctx: Context<AcceptCouncil>) -> Result<()> {
+        instructions::pool::accept_council(ctx)
+    }
+
     pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
         instructions::pool::set_paused(ctx, paused)
     }

@@ -8,13 +8,13 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    AttestorSet, CancelDelaySet, CollectionPeriodSet, Deposited, NavUpdated, PoolInitialized, PoolPaused, Redeemed,
+    AttestorSet, CancelDelaySet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, NavUpdated, PoolInitialized, PoolPaused, Redeemed,
 };
 use crate::council;
 use crate::math;
 use crate::state::{
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
-    COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_DELAY_SECONDS, MIN_CANCEL_GRACE_SECONDS,
+    COUNCIL_GENERIC, COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_DELAY_SECONDS, MIN_CANCEL_GRACE_SECONDS,
     MIN_COLLECTION_PERIOD_SECONDS,
 };
 
@@ -657,5 +657,73 @@ pub fn set_cancel_delay(ctx: Context<SetCancelDelay>, cancel_delay_seconds: u32)
     let pool = &mut ctx.accounts.pool;
     pool.cancel_delay_seconds = cancel_delay_seconds;
     emit_cpi!(CancelDelaySet { pool: pool.key(), cancel_delay_seconds });
+    Ok(())
+}
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct ProposeCouncil<'info> {
+    pub council: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+        has_one = council @ PoolError::Unauthorized,
+    )]
+    pub pool: Account<'info, Pool>,
+}
+
+/// Council only. Names the authority that becomes the council once it signs `accept_council`;
+/// `kind` is `COUNCIL_SQUADS` or `COUNCIL_GENERIC` (`CouncilKindInvalid` otherwise). The zero key
+/// withdraws a pending proposal. A new proposal replaces the pending one.
+pub fn propose_council(ctx: Context<ProposeCouncil>, new_council: Pubkey, kind: u8) -> Result<()> {
+    require!(kind == COUNCIL_SQUADS || kind == COUNCIL_GENERIC, PoolError::CouncilKindInvalid);
+    let pool = &mut ctx.accounts.pool;
+    pool.pending_council = new_council;
+    pool.pending_council_kind = kind;
+    emit_cpi!(CouncilProposed { pool: pool.key(), council: new_council, kind });
+    Ok(())
+}
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct AcceptCouncil<'info> {
+    /// The proposed authority: vault 0 of `multisig`, signing through Squads.
+    pub new_council: Signer<'info>,
+
+    /// CHECK: read at fixed offsets by `council::check`.
+    pub multisig: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+    )]
+    pub pool: Account<'info, Pool>,
+}
+
+/// The proposed authority signs (`NoPendingCouncil` otherwise) and becomes the council. Only
+/// `COUNCIL_SQUADS` is accepted (`CouncilKindInvalid`), and only after the same check as
+/// `init_pool` on `multisig`, so the pool never rotates to an address that cannot sign or to a
+/// multisig without a majority threshold.
+pub fn accept_council(ctx: Context<AcceptCouncil>) -> Result<()> {
+    let new_council = ctx.accounts.new_council.key();
+    let pool = &ctx.accounts.pool;
+    require!(pool.pending_council != Pubkey::default() && pool.pending_council == new_council, PoolError::NoPendingCouncil);
+    require!(pool.pending_council_kind == COUNCIL_SQUADS, PoolError::CouncilKindInvalid);
+    let multisig = ctx.accounts.multisig.to_account_info();
+    let (vault, vault_bump) = council::canonical_vault(multisig.key);
+    require_keys_eq!(vault, new_council, PoolError::CouncilInvalid);
+    council::check(&multisig, &vault, vault_bump)?;
+    let pool = &mut ctx.accounts.pool;
+    let old = pool.council;
+    pool.council = new_council;
+    pool.council_kind = COUNCIL_SQUADS;
+    pool.multisig = *multisig.key;
+    pool.council_vault_bump = vault_bump;
+    pool.pending_council = Pubkey::default();
+    pool.pending_council_kind = 0;
+    emit_cpi!(CouncilAccepted { pool: pool.key(), old, new: new_council, kind: COUNCIL_SQUADS });
     Ok(())
 }

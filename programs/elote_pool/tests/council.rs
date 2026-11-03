@@ -173,3 +173,88 @@ fn a_council_instruction_needs_the_vaults_signature() {
     let creator = env.creator.insecure_clone();
     env.expect_err(ix, &creator, &[], E_ACCOUNT_NOT_SIGNER);
 }
+
+/// A second 2-of-3 multisig and its vault, the council a rotation moves to.
+fn second_council(env: &mut Env) -> (Pubkey, Keypair) {
+    let (multisig, _) = multisig_with(env, 2, &[PERM_ALL; 3], Pubkey::default(), None);
+    let vault = squads_vault_pda(&multisig).0;
+    env.svm.airdrop(&vault, LAMPORTS_PER_SOL).unwrap();
+    (multisig, Keypair::pda(vault))
+}
+
+#[test]
+fn the_council_rotates_in_two_steps_to_a_verified_multisig() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let old = env.council.insecure_clone();
+    let (multisig, new) = second_council(&mut env);
+
+    let ix = env.accept_council_ix(&k, &new.pubkey(), &multisig);
+    env.expect_err(ix, &new, &[], ERR_BASE + PoolError::NoPendingCouncil as u32);
+
+    let ix = env.propose_council_ix(&k, &new.pubkey(), &new.pubkey(), COUNCIL_SQUADS);
+    env.expect_err(ix, &new, &[], E_UNAUTHORIZED);
+    let ix = env.propose_council_ix(&k, &old.pubkey(), &new.pubkey(), COUNCIL_SQUADS);
+    env.send(ix, &old, &[]);
+    let pool = env.pool(&k);
+    assert_eq!((pool.pending_council, pool.pending_council_kind, pool.council), (new.pubkey(), COUNCIL_SQUADS, old.pubkey()));
+
+    // Only the proposed key accepts, with its own multisig.
+    let stranger = Keypair::new();
+    let ix = env.accept_council_ix(&k, &stranger.pubkey(), &multisig);
+    let payer = env.creator.insecure_clone();
+    env.expect_err(ix, &payer, &[&stranger], ERR_BASE + PoolError::NoPendingCouncil as u32);
+    let ix = env.accept_council_ix(&k, &new.pubkey(), &env.multisig.clone());
+    env.expect_err(ix, &new, &[], E_COUNCIL_INVALID);
+
+    let ix = env.accept_council_ix(&k, &new.pubkey(), &multisig);
+    env.send(ix, &new, &[]);
+    let pool = env.pool(&k);
+    assert_eq!((pool.council, pool.multisig, pool.council_kind), (new.pubkey(), multisig, COUNCIL_SQUADS));
+    assert_eq!(pool.council_vault_bump, squads_vault_pda(&multisig).1);
+    assert_eq!(pool.pending_council, Pubkey::default());
+
+    let ix = env.set_paused_ix(&k, &old.pubkey(), true);
+    env.expect_err(ix, &old, &[], E_UNAUTHORIZED);
+    let ix = env.set_paused_ix(&k, &new.pubkey(), true);
+    env.send(ix, &new, &[]);
+}
+
+#[test]
+fn accept_council_refuses_a_weak_multisig_and_the_generic_kind() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let old = env.council.insecure_clone();
+
+    let (weak, _) = multisig_with(&mut env, 1, &[PERM_ALL; 3], Pubkey::default(), None);
+    let weak_vault = Keypair::pda(squads_vault_pda(&weak).0);
+    env.svm.airdrop(&weak_vault.pubkey(), LAMPORTS_PER_SOL).unwrap();
+    let ix = env.propose_council_ix(&k, &old.pubkey(), &weak_vault.pubkey(), COUNCIL_SQUADS);
+    env.send(ix, &old, &[]);
+    let ix = env.accept_council_ix(&k, &weak_vault.pubkey(), &weak);
+    env.expect_err(ix, &weak_vault, &[], E_COUNCIL_INVALID);
+
+    let generic = env.funded(1);
+    let ix = env.propose_council_ix(&k, &old.pubkey(), &generic.pubkey(), COUNCIL_GENERIC);
+    env.send(ix, &old, &[]);
+    let ix = env.accept_council_ix(&k, &generic.pubkey(), &weak);
+    env.expect_err(ix, &generic, &[], ERR_BASE + PoolError::CouncilKindInvalid as u32);
+
+    let ix = env.propose_council_ix(&k, &old.pubkey(), &generic.pubkey(), 2);
+    env.expect_err(ix, &old, &[], ERR_BASE + PoolError::CouncilKindInvalid as u32);
+}
+
+#[test]
+fn proposing_the_zero_key_withdraws_a_rotation() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let old = env.council.insecure_clone();
+    let (multisig, new) = second_council(&mut env);
+    let ix = env.propose_council_ix(&k, &old.pubkey(), &new.pubkey(), COUNCIL_SQUADS);
+    env.send(ix, &old, &[]);
+    let ix = env.propose_council_ix(&k, &old.pubkey(), &Pubkey::default(), COUNCIL_SQUADS);
+    env.send(ix, &old, &[]);
+    assert_eq!(env.pool(&k).pending_council, Pubkey::default());
+    let ix = env.accept_council_ix(&k, &new.pubkey(), &multisig);
+    env.expect_err(ix, &new, &[], ERR_BASE + PoolError::NoPendingCouncil as u32);
+}

@@ -6,6 +6,7 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./acceptCouncil";
 export * from "./annotatePayment";
 export * from "./cancelLine";
 export * from "./cancelPagare";
@@ -16,6 +17,7 @@ export * from "./endorsePagare";
 export * from "./initPool";
 export * from "./markInCollection";
 export * from "./openLine";
+export * from "./proposeCouncil";
 export * from "./redeem";
 export * from "./repay";
 export * from "./requestCancellation";
