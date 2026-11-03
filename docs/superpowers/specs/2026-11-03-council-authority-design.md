@@ -121,6 +121,17 @@ for this change.
   draws, deposits and new requests; repay and redeem stay open; the council rotates the guardian)
   are left to the builder and noted in ARCHITECTURE.
 
+## CU spike results (2026-11-03, real Squads v4 binary in LiteSVM, throwaway)
+
+- Squads overhead: about 20.6k fixed, plus about 0.9k per account in the message, plus about 60 CU
+  per member.
+- Full multisig check on every council instruction: 2.1-2.6k. Kept on every council instruction.
+- Heaviest case, the council's `cancel_pagare` via Squads plus the check: about 83-86k for 3-10
+  members, under the ceiling with about 14k margin (about 1k less once the attestor is gone).
+  `endorse_pagare` about 68-77k, `approve_line` about 50-54k. `draw` leaves Squads and gets cheaper.
+- CPI depth Squads, pool, Core, system works in practice.
+- Council size capped at 10 members (the check refuses more), so the cost stays bounded.
+
 ## Goals
 
 - A line cannot be drawn without the council's approval of exactly the expediente the borrower
