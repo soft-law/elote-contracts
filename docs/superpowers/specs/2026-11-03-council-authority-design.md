@@ -151,7 +151,7 @@ for this change.
 
 7. **Token-to-pool refusals added in PR 4 (dev's review of the ten flows):** R1 `init_pool` refuses
    `asset_mint == share_mint`; R2 `asset_mint` must be on a closed allow-list per cluster (feature
-   flag; mainnet: USDC, MXNe, MEXe; devnet: their test mints; tests use their own feature); R3
+   flag; mainnet: USDC and MEXe (MXNe dropped after research V-activo-del-pool: no SPEI ramp, single-key mint and freeze); devnet: their test mints; tests use their own feature); R3
    `accept_council` refuses council_kind 1 until a verified Realms kind exists (a future kind 2 that
    requires community voting disabled, with its own spike); R4 `tests/token_flows.rs` pins that
    council instructions never change the vault balance or the share supply, that the only vault
