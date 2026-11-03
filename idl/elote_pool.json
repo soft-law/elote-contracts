@@ -7,6 +7,97 @@
   },
   "instructions": [
     {
+      "name": "accelerate_line",
+      "docs": [
+        "Fires a pending acceleration once its notice has run: the line moves to collection, as with",
+        "`mark_in_collection`, without missed installments. Council only."
+      ],
+      "discriminator": [
+        4,
+        33,
+        73,
+        107,
+        99,
+        35,
+        167,
+        29
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "accept_council",
       "docs": [
         "The proposed council signs and takes over, after the same multisig check as `init_pool`."
@@ -322,6 +413,9 @@
           "relations": [
             "pool"
           ]
+        },
+        {
+          "name": "multisig"
         },
         {
           "name": "pool",
@@ -1465,6 +1559,69 @@
       "args": []
     },
     {
+      "name": "pause",
+      "docs": [
+        "Pauses deposits, redemptions, requests and draws. Any member of the council'\"'\"'s multisig alone,",
+        "the guardian or the council; repayments and everything else go on."
+      ],
+      "discriminator": [
+        211,
+        22,
+        221,
+        251,
+        74,
+        121,
+        193,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "docs": [
+            "A member of the council's multisig, the stored guardian, or the council itself."
+          ],
+          "signer": true
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "post_fix",
       "docs": [
         "Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was",
@@ -1537,10 +1694,99 @@
       ]
     },
     {
+      "name": "propose_acceleration",
+      "docs": [
+        "Proposes to collect a drawn line early: draws are suspended at once and `accelerate_line`",
+        "may fire after the pool'\"'\"'s notice. Council only."
+      ],
+      "discriminator": [
+        71,
+        20,
+        56,
+        6,
+        38,
+        169,
+        182,
+        255
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "propose_council",
       "docs": [
-        "Pauses or resumes deposits, redemptions, requests and draws. Council only. Nothing else is",
-        "ever paused: repayments, pagaré instructions, collection and write-offs.",
         "Names the next council: `kind` 0 (a Squads vault) or 1 (a generic signer, not yet",
         "accepted). Council only; the zero key withdraws the proposal."
       ],
@@ -2038,6 +2284,159 @@
       ]
     },
     {
+      "name": "resume",
+      "docs": [
+        "Ends a pause. Council only."
+      ],
+      "discriminator": [
+        1,
+        166,
+        51,
+        170,
+        127,
+        32,
+        141,
+        206
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "resume_draws",
+      "docs": [
+        "Reopens the draw window of a suspended line to its original end. Council only; refused while",
+        "an acceleration is pending."
+      ],
+      "discriminator": [
+        240,
+        75,
+        84,
+        197,
+        23,
+        134,
+        80,
+        48
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "revoke_procuracion",
       "docs": [
         "Revokes the procuración in force on pagaré `draw_index`: appends the revocation entry over",
@@ -2190,6 +2589,73 @@
               32
             ]
           }
+        }
+      ]
+    },
+    {
+      "name": "set_acceleration_notice",
+      "docs": [
+        "Sets the acceleration notice, at least seven days. Council only."
+      ],
+      "discriminator": [
+        239,
+        65,
+        26,
+        170,
+        44,
+        208,
+        171,
+        147
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "acceleration_notice_seconds",
+          "type": "u32"
         }
       ]
     },
@@ -2397,16 +2863,19 @@
       ]
     },
     {
-      "name": "set_paused",
+      "name": "set_guardian",
+      "docs": [
+        "Sets the guardian, a key that may only pause (the zero key for none). Council only."
+      ],
       "discriminator": [
-        91,
-        60,
-        125,
-        192,
-        176,
-        225,
-        166,
-        218
+        147,
+        243,
+        50,
+        121,
+        154,
+        164,
+        50,
+        30
       ],
       "accounts": [
         {
@@ -2415,6 +2884,9 @@
           "relations": [
             "pool"
           ]
+        },
+        {
+          "name": "multisig"
         },
         {
           "name": "pool",
@@ -2452,8 +2924,142 @@
       ],
       "args": [
         {
-          "name": "paused",
-          "type": "bool"
+          "name": "guardian",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_max_line_bps",
+      "docs": [
+        "Sets the line cap, `1..=10_000` bps of the NAV at the approval. Council only."
+      ],
+      "discriminator": [
+        75,
+        144,
+        27,
+        131,
+        38,
+        238,
+        134,
+        233
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "max_line_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "set_outstanding_cap",
+      "docs": [
+        "Sets the pool-wide cap on the USDC cost lent out. Council only."
+      ],
+      "discriminator": [
+        129,
+        215,
+        3,
+        63,
+        69,
+        85,
+        37,
+        235
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "max_outstanding_principal",
+          "type": "u64"
         }
       ]
     },
@@ -2480,6 +3086,99 @@
           "relations": [
             "pool"
           ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "withdraw_acceleration",
+      "docs": [
+        "Withdraws a pending acceleration; draws stay suspended. Council only."
+      ],
+      "discriminator": [
+        186,
+        149,
+        55,
+        15,
+        0,
+        93,
+        173,
+        207
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
         },
         {
           "name": "pool",
@@ -2612,6 +3311,9 @@
           "relations": [
             "pool"
           ]
+        },
+        {
+          "name": "multisig"
         },
         {
           "name": "pool",
@@ -3944,14 +4646,16 @@
             "name": "availability_end_saved",
             "docs": [
               "The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which",
-              "`resume_draws` restores; zero when draws are not suspended."
+              "`resume_draws` restores; zero when draws are not suspended. Suspended ⇔ non-zero."
             ],
             "type": "i64"
           },
           {
             "name": "acceleration_due_at",
             "docs": [
-              "When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending."
+              "When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending.",
+              "`withdraw_acceleration` and `mark_in_collection` clear it, `accelerate_line` keeps it: with",
+              "`accelerated_at` it tells the route, the council's (non-zero) or the objective one (zero)."
             ],
             "type": "i64"
           },
@@ -5421,7 +6125,7 @@
             "name": "max_line_bps",
             "docs": [
               "The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points",
-              "(`1..=BPS`). Fixed at `init_pool`."
+              "(`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`."
             ],
             "type": "u16"
           },
@@ -5667,8 +6371,11 @@
             "type": "pubkey"
           },
           {
-            "name": "paused",
-            "type": "bool"
+            "name": "by",
+            "docs": [
+              "The member, guardian or council that paused."
+            ],
+            "type": "pubkey"
           }
         ]
       }

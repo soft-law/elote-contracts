@@ -54,6 +54,7 @@ export function getWriteOffDiscriminatorBytes(): ReadonlyUint8Array {
 export type WriteOffInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountCouncil extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountShareMint extends string | AccountMeta<string> = string,
@@ -70,6 +71,9 @@ export type WriteOffInstruction<
         ? ReadonlySignerAccount<TAccountCouncil> &
             AccountSignerMeta<TAccountCouncil>
         : TAccountCouncil,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -121,6 +125,7 @@ export function getWriteOffInstructionDataCodec(): FixedSizeCodec<
 
 export type WriteOffAsyncInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
@@ -130,6 +135,7 @@ export type WriteOffAsyncInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   council: TAccountCouncil;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for the share supply (`NavUpdated` and the invariant check). */
@@ -142,6 +148,7 @@ export type WriteOffAsyncInput<
 
 export async function getWriteOffInstructionAsync<
   TAccountCouncil extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
@@ -152,6 +159,7 @@ export async function getWriteOffInstructionAsync<
 >(
   input: WriteOffAsyncInput<
     TAccountCouncil,
+    TAccountMultisig,
     TAccountPool,
     TAccountLine,
     TAccountShareMint,
@@ -168,6 +176,10 @@ export async function getWriteOffInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -213,6 +225,11 @@ export async function getWriteOffInstructionAsync<
       isSigner: true,
       isWritable: false,
     },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     shareMint: {
@@ -252,6 +269,7 @@ export async function getWriteOffInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("council", accounts.council),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("shareMint", accounts.shareMint),
@@ -266,6 +284,10 @@ export async function getWriteOffInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -296,6 +318,7 @@ export async function getWriteOffInstructionAsync<
 
 export type WriteOffInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
@@ -305,6 +328,7 @@ export type WriteOffInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   council: TAccountCouncil;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for the share supply (`NavUpdated` and the invariant check). */
@@ -317,6 +341,7 @@ export type WriteOffInput<
 
 export function getWriteOffInstruction<
   TAccountCouncil extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountShareMint extends InstructionAccountInput,
@@ -327,6 +352,7 @@ export function getWriteOffInstruction<
 >(
   input: WriteOffInput<
     TAccountCouncil,
+    TAccountMultisig,
     TAccountPool,
     TAccountLine,
     TAccountShareMint,
@@ -342,6 +368,10 @@ export function getWriteOffInstruction<
   ResolvedInstructionAccountMeta<
     TAccountCouncil,
     InstructionAccountInputAddress<TAccountCouncil>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -386,6 +416,11 @@ export function getWriteOffInstruction<
       isSigner: true,
       isWritable: false,
     },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     shareMint: {
@@ -419,6 +454,7 @@ export function getWriteOffInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("council", accounts.council),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("shareMint", accounts.shareMint),
@@ -433,6 +469,10 @@ export function getWriteOffInstruction<
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -468,14 +508,15 @@ export type ParsedWriteOffInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     council: TAccountMetas[0];
-    pool: TAccountMetas[1];
-    line: TAccountMetas[2];
+    multisig: TAccountMetas[1];
+    pool: TAccountMetas[2];
+    line: TAccountMetas[3];
     /** Read for the share supply (`NavUpdated` and the invariant check). */
-    shareMint: TAccountMetas[3];
+    shareMint: TAccountMetas[4];
     /** Read for the NAV in the event. */
-    vault: TAccountMetas[4];
-    eventAuthority: TAccountMetas[5];
-    program: TAccountMetas[6];
+    vault: TAccountMetas[5];
+    eventAuthority: TAccountMetas[6];
+    program: TAccountMetas[7];
   };
   data: WriteOffInstructionData;
 };
@@ -488,12 +529,12 @@ export function parseWriteOffInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedWriteOffInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 7) {
+  if (instruction.accounts.length < 8) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 7,
+        expectedAccountMetas: 8,
       },
     );
   }
@@ -507,6 +548,7 @@ export function parseWriteOffInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       council: getNextAccount(),
+      multisig: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       shareMint: getNextAccount(),

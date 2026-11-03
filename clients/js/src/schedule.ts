@@ -24,6 +24,18 @@ export type Schedule = {
 };
 
 /** The schedule of a line, from its fields; `null` for a bullet line (`installments` is 0). */
+/**
+ * The ordinary interest a bullet line has accrued by `mark` (programs/elote_pool/src/math.rs
+ * `bullet_accrued_interest`): `rateBps * (drawn * mark - drawTimeWeight) / (10_000 * SECONDS_PER_YEAR)`,
+ * rounded down once. What `accelerate_line` keeps on a bullet line (never more than `interestDue`,
+ * never less than what was repaid).
+ */
+export function bulletAccruedInterest(drawn: bigint, drawTimeWeight: bigint, rateBps: number, mark: bigint): bigint {
+  const span = drawn * mark - drawTimeWeight;
+  if (span < 0n) throw new RangeError("the mark is before the draws");
+  return (span * BigInt(rateBps)) / (BPS * SECONDS_PER_YEAR);
+}
+
 export function lineSchedule(line: Schedule): Schedule | null {
   if (line.installments === 0) return null;
   const { intervalSeconds, installments, lateBps, maxMissed, lateCollected, latePaidUntil } = line;

@@ -6,6 +6,7 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./accelerateLine";
 export * from "./acceptCouncil";
 export * from "./annotatePayment";
 export * from "./approveLine";
@@ -17,17 +18,25 @@ export * from "./draw";
 export * from "./endorsePagare";
 export * from "./initPool";
 export * from "./markInCollection";
+export * from "./pause";
 export * from "./postFix";
+export * from "./proposeAcceleration";
 export * from "./proposeCouncil";
 export * from "./redeem";
 export * from "./rejectLine";
 export * from "./repay";
 export * from "./requestLine";
+export * from "./resume";
+export * from "./resumeDraws";
 export * from "./revokeProcuracion";
+export * from "./setAccelerationNotice";
 export * from "./setCancelGrace";
 export * from "./setCollectionPeriod";
 export * from "./setFxFeeder";
-export * from "./setPaused";
+export * from "./setGuardian";
+export * from "./setMaxLineBps";
+export * from "./setOutstandingCap";
 export * from "./suspendDraws";
+export * from "./withdrawAcceleration";
 export * from "./withdrawRequest";
 export * from "./writeOff";

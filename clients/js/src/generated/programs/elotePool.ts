@@ -47,6 +47,7 @@ import {
   type PoolArgs,
 } from "../accounts";
 import {
+  getAccelerateLineInstructionAsync,
   getAcceptCouncilInstructionAsync,
   getAnnotatePaymentInstructionAsync,
   getApproveLineInstructionAsync,
@@ -58,20 +59,29 @@ import {
   getEndorsePagareInstructionAsync,
   getInitPoolInstructionAsync,
   getMarkInCollectionInstructionAsync,
+  getPauseInstructionAsync,
   getPostFixInstructionAsync,
+  getProposeAccelerationInstructionAsync,
   getProposeCouncilInstructionAsync,
   getRedeemInstructionAsync,
   getRejectLineInstructionAsync,
   getRepayInstructionAsync,
   getRequestLineInstructionAsync,
+  getResumeDrawsInstructionAsync,
+  getResumeInstructionAsync,
   getRevokeProcuracionInstructionAsync,
+  getSetAccelerationNoticeInstructionAsync,
   getSetCancelGraceInstructionAsync,
   getSetCollectionPeriodInstructionAsync,
   getSetFxFeederInstructionAsync,
-  getSetPausedInstructionAsync,
+  getSetGuardianInstructionAsync,
+  getSetMaxLineBpsInstructionAsync,
+  getSetOutstandingCapInstructionAsync,
   getSuspendDrawsInstructionAsync,
+  getWithdrawAccelerationInstructionAsync,
   getWithdrawRequestInstructionAsync,
   getWriteOffInstructionAsync,
+  parseAccelerateLineInstruction,
   parseAcceptCouncilInstruction,
   parseAnnotatePaymentInstruction,
   parseApproveLineInstruction,
@@ -83,20 +93,29 @@ import {
   parseEndorsePagareInstruction,
   parseInitPoolInstruction,
   parseMarkInCollectionInstruction,
+  parsePauseInstruction,
   parsePostFixInstruction,
+  parseProposeAccelerationInstruction,
   parseProposeCouncilInstruction,
   parseRedeemInstruction,
   parseRejectLineInstruction,
   parseRepayInstruction,
   parseRequestLineInstruction,
+  parseResumeDrawsInstruction,
+  parseResumeInstruction,
   parseRevokeProcuracionInstruction,
+  parseSetAccelerationNoticeInstruction,
   parseSetCancelGraceInstruction,
   parseSetCollectionPeriodInstruction,
   parseSetFxFeederInstruction,
-  parseSetPausedInstruction,
+  parseSetGuardianInstruction,
+  parseSetMaxLineBpsInstruction,
+  parseSetOutstandingCapInstruction,
   parseSuspendDrawsInstruction,
+  parseWithdrawAccelerationInstruction,
   parseWithdrawRequestInstruction,
   parseWriteOffInstruction,
+  type AccelerateLineAsyncInput,
   type AcceptCouncilAsyncInput,
   type AnnotatePaymentAsyncInput,
   type ApproveLineAsyncInput,
@@ -108,6 +127,7 @@ import {
   type EndorsePagareAsyncInput,
   type InitPoolAsyncInput,
   type MarkInCollectionAsyncInput,
+  type ParsedAccelerateLineInstruction,
   type ParsedAcceptCouncilInstruction,
   type ParsedAnnotatePaymentInstruction,
   type ParsedApproveLineInstruction,
@@ -119,32 +139,48 @@ import {
   type ParsedEndorsePagareInstruction,
   type ParsedInitPoolInstruction,
   type ParsedMarkInCollectionInstruction,
+  type ParsedPauseInstruction,
   type ParsedPostFixInstruction,
+  type ParsedProposeAccelerationInstruction,
   type ParsedProposeCouncilInstruction,
   type ParsedRedeemInstruction,
   type ParsedRejectLineInstruction,
   type ParsedRepayInstruction,
   type ParsedRequestLineInstruction,
+  type ParsedResumeDrawsInstruction,
+  type ParsedResumeInstruction,
   type ParsedRevokeProcuracionInstruction,
+  type ParsedSetAccelerationNoticeInstruction,
   type ParsedSetCancelGraceInstruction,
   type ParsedSetCollectionPeriodInstruction,
   type ParsedSetFxFeederInstruction,
-  type ParsedSetPausedInstruction,
+  type ParsedSetGuardianInstruction,
+  type ParsedSetMaxLineBpsInstruction,
+  type ParsedSetOutstandingCapInstruction,
   type ParsedSuspendDrawsInstruction,
+  type ParsedWithdrawAccelerationInstruction,
   type ParsedWithdrawRequestInstruction,
   type ParsedWriteOffInstruction,
+  type PauseAsyncInput,
   type PostFixAsyncInput,
+  type ProposeAccelerationAsyncInput,
   type ProposeCouncilAsyncInput,
   type RedeemAsyncInput,
   type RejectLineAsyncInput,
   type RepayAsyncInput,
   type RequestLineAsyncInput,
+  type ResumeAsyncInput,
+  type ResumeDrawsAsyncInput,
   type RevokeProcuracionAsyncInput,
+  type SetAccelerationNoticeAsyncInput,
   type SetCancelGraceAsyncInput,
   type SetCollectionPeriodAsyncInput,
   type SetFxFeederAsyncInput,
-  type SetPausedAsyncInput,
+  type SetGuardianAsyncInput,
+  type SetMaxLineBpsAsyncInput,
+  type SetOutstandingCapAsyncInput,
   type SuspendDrawsAsyncInput,
+  type WithdrawAccelerationAsyncInput,
   type WithdrawRequestAsyncInput,
   type WriteOffAsyncInput,
 } from "../instructions";
@@ -665,6 +701,7 @@ export function identifyElotePoolEvent(
 }
 
 export enum ElotePoolInstruction {
+  AccelerateLine,
   AcceptCouncil,
   AnnotatePayment,
   ApproveLine,
@@ -676,18 +713,26 @@ export enum ElotePoolInstruction {
   EndorsePagare,
   InitPool,
   MarkInCollection,
+  Pause,
   PostFix,
+  ProposeAcceleration,
   ProposeCouncil,
   Redeem,
   RejectLine,
   Repay,
   RequestLine,
+  Resume,
+  ResumeDraws,
   RevokeProcuracion,
+  SetAccelerationNotice,
   SetCancelGrace,
   SetCollectionPeriod,
   SetFxFeeder,
-  SetPaused,
+  SetGuardian,
+  SetMaxLineBps,
+  SetOutstandingCap,
   SuspendDraws,
+  WithdrawAcceleration,
   WithdrawRequest,
   WriteOff,
 }
@@ -696,6 +741,17 @@ export function identifyElotePoolInstruction(
   instruction: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
 ): ElotePoolInstruction {
   const data = "data" in instruction ? instruction.data : instruction;
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([4, 33, 73, 107, 99, 35, 167, 29]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.AccelerateLine;
+  }
   if (
     containsBytes(
       data,
@@ -821,12 +877,34 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([211, 22, 221, 251, 74, 121, 193, 47]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.Pause;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([55, 246, 72, 71, 2, 3, 140, 249]),
       ),
       0,
     )
   ) {
     return ElotePoolInstruction.PostFix;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([71, 20, 56, 6, 38, 169, 182, 255]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.ProposeAcceleration;
   }
   if (
     containsBytes(
@@ -887,12 +965,45 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([1, 166, 51, 170, 127, 32, 141, 206]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.Resume;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([240, 75, 84, 197, 23, 134, 80, 48]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.ResumeDraws;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([139, 183, 251, 198, 206, 163, 91, 183]),
       ),
       0,
     )
   ) {
     return ElotePoolInstruction.RevokeProcuracion;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([239, 65, 26, 170, 44, 208, 171, 147]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SetAccelerationNotice;
   }
   if (
     containsBytes(
@@ -931,12 +1042,34 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([91, 60, 125, 192, 176, 225, 166, 218]),
+        new Uint8Array([147, 243, 50, 121, 154, 164, 50, 30]),
       ),
       0,
     )
   ) {
-    return ElotePoolInstruction.SetPaused;
+    return ElotePoolInstruction.SetGuardian;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([75, 144, 27, 131, 38, 238, 134, 233]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SetMaxLineBps;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([129, 215, 3, 63, 69, 85, 37, 235]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SetOutstandingCap;
   }
   if (
     containsBytes(
@@ -948,6 +1081,17 @@ export function identifyElotePoolInstruction(
     )
   ) {
     return ElotePoolInstruction.SuspendDraws;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([186, 149, 55, 15, 0, 93, 173, 207]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.WithdrawAcceleration;
   }
   if (
     containsBytes(
@@ -980,6 +1124,9 @@ export function identifyElotePoolInstruction(
 export type ParsedElotePoolInstruction<
   TProgram extends string = "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
 > =
+  | ({
+      instructionType: ElotePoolInstruction.AccelerateLine;
+    } & ParsedAccelerateLineInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.AcceptCouncil;
     } & ParsedAcceptCouncilInstruction<TProgram>)
@@ -1014,8 +1161,14 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.MarkInCollection;
     } & ParsedMarkInCollectionInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.Pause;
+    } & ParsedPauseInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.PostFix;
     } & ParsedPostFixInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.ProposeAcceleration;
+    } & ParsedProposeAccelerationInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.ProposeCouncil;
     } & ParsedProposeCouncilInstruction<TProgram>)
@@ -1032,8 +1185,17 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.RequestLine;
     } & ParsedRequestLineInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.Resume;
+    } & ParsedResumeInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.ResumeDraws;
+    } & ParsedResumeDrawsInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.RevokeProcuracion;
     } & ParsedRevokeProcuracionInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.SetAccelerationNotice;
+    } & ParsedSetAccelerationNoticeInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.SetCancelGrace;
     } & ParsedSetCancelGraceInstruction<TProgram>)
@@ -1044,11 +1206,20 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.SetFxFeeder;
     } & ParsedSetFxFeederInstruction<TProgram>)
   | ({
-      instructionType: ElotePoolInstruction.SetPaused;
-    } & ParsedSetPausedInstruction<TProgram>)
+      instructionType: ElotePoolInstruction.SetGuardian;
+    } & ParsedSetGuardianInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.SetMaxLineBps;
+    } & ParsedSetMaxLineBpsInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.SetOutstandingCap;
+    } & ParsedSetOutstandingCapInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.SuspendDraws;
     } & ParsedSuspendDrawsInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.WithdrawAcceleration;
+    } & ParsedWithdrawAccelerationInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.WithdrawRequest;
     } & ParsedWithdrawRequestInstruction<TProgram>)
@@ -1061,6 +1232,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
 ): ParsedElotePoolInstruction<TProgram> {
   const instructionType = identifyElotePoolInstruction(instruction);
   switch (instructionType) {
+    case ElotePoolInstruction.AccelerateLine: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.AccelerateLine,
+        ...parseAccelerateLineInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.AcceptCouncil: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -1138,11 +1316,25 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseMarkInCollectionInstruction(instruction),
       };
     }
+    case ElotePoolInstruction.Pause: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.Pause,
+        ...parsePauseInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.PostFix: {
       assertIsInstructionWithAccounts(instruction);
       return {
         instructionType: ElotePoolInstruction.PostFix,
         ...parsePostFixInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.ProposeAcceleration: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.ProposeAcceleration,
+        ...parseProposeAccelerationInstruction(instruction),
       };
     }
     case ElotePoolInstruction.ProposeCouncil: {
@@ -1180,11 +1372,32 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseRequestLineInstruction(instruction),
       };
     }
+    case ElotePoolInstruction.Resume: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.Resume,
+        ...parseResumeInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.ResumeDraws: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.ResumeDraws,
+        ...parseResumeDrawsInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.RevokeProcuracion: {
       assertIsInstructionWithAccounts(instruction);
       return {
         instructionType: ElotePoolInstruction.RevokeProcuracion,
         ...parseRevokeProcuracionInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.SetAccelerationNotice: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SetAccelerationNotice,
+        ...parseSetAccelerationNoticeInstruction(instruction),
       };
     }
     case ElotePoolInstruction.SetCancelGrace: {
@@ -1208,11 +1421,25 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseSetFxFeederInstruction(instruction),
       };
     }
-    case ElotePoolInstruction.SetPaused: {
+    case ElotePoolInstruction.SetGuardian: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: ElotePoolInstruction.SetPaused,
-        ...parseSetPausedInstruction(instruction),
+        instructionType: ElotePoolInstruction.SetGuardian,
+        ...parseSetGuardianInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.SetMaxLineBps: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SetMaxLineBps,
+        ...parseSetMaxLineBpsInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.SetOutstandingCap: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SetOutstandingCap,
+        ...parseSetOutstandingCapInstruction(instruction),
       };
     }
     case ElotePoolInstruction.SuspendDraws: {
@@ -1220,6 +1447,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.SuspendDraws,
         ...parseSuspendDrawsInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.WithdrawAcceleration: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.WithdrawAcceleration,
+        ...parseWithdrawAccelerationInstruction(instruction),
       };
     }
     case ElotePoolInstruction.WithdrawRequest: {
@@ -1265,6 +1499,11 @@ export type ElotePoolPluginAccounts = {
 };
 
 export type ElotePoolPluginInstructions = {
+  accelerateLine: (
+    input: AccelerateLineAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getAccelerateLineInstructionAsync> &
+    SelfPlanAndSendFunctions;
   acceptCouncil: (
     input: AcceptCouncilAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1318,10 +1557,19 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getMarkInCollectionInstructionAsync> &
     SelfPlanAndSendFunctions;
+  pause: (
+    input: PauseAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getPauseInstructionAsync> & SelfPlanAndSendFunctions;
   postFix: (
     input: PostFixAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getPostFixInstructionAsync> & SelfPlanAndSendFunctions;
+  proposeAcceleration: (
+    input: ProposeAccelerationAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getProposeAccelerationInstructionAsync> &
+    SelfPlanAndSendFunctions;
   proposeCouncil: (
     input: ProposeCouncilAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1345,10 +1593,24 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRequestLineInstructionAsync> &
     SelfPlanAndSendFunctions;
+  resume: (
+    input: ResumeAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getResumeInstructionAsync> & SelfPlanAndSendFunctions;
+  resumeDraws: (
+    input: ResumeDrawsAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getResumeDrawsInstructionAsync> &
+    SelfPlanAndSendFunctions;
   revokeProcuracion: (
     input: MakeOptional<RevokeProcuracionAsyncInput, "payer">,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRevokeProcuracionInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  setAccelerationNotice: (
+    input: SetAccelerationNoticeAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSetAccelerationNoticeInstructionAsync> &
     SelfPlanAndSendFunctions;
   setCancelGrace: (
     input: SetCancelGraceAsyncInput,
@@ -1365,15 +1627,30 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSetFxFeederInstructionAsync> &
     SelfPlanAndSendFunctions;
-  setPaused: (
-    input: SetPausedAsyncInput,
+  setGuardian: (
+    input: SetGuardianAsyncInput,
     config?: { programAddress?: Address | HasAddress },
-  ) => ReturnType<typeof getSetPausedInstructionAsync> &
+  ) => ReturnType<typeof getSetGuardianInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  setMaxLineBps: (
+    input: SetMaxLineBpsAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSetMaxLineBpsInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  setOutstandingCap: (
+    input: SetOutstandingCapAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSetOutstandingCapInstructionAsync> &
     SelfPlanAndSendFunctions;
   suspendDraws: (
     input: SuspendDrawsAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSuspendDrawsInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  withdrawAcceleration: (
+    input: WithdrawAccelerationAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getWithdrawAccelerationInstructionAsync> &
     SelfPlanAndSendFunctions;
   withdrawRequest: (
     input: MakeOptional<WithdrawRequestAsyncInput, "payer">,
@@ -1416,6 +1693,14 @@ export function elotePoolProgram(
           pool: addSelfFetchFunctions(client, getPoolCodec()),
         },
         instructions: {
+          accelerateLine: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getAccelerateLineInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
           acceptCouncil: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -1513,10 +1798,26 @@ export function elotePoolProgram(
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
             ),
+          pause: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getPauseInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
           postFix: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
               getPostFixInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          proposeAcceleration: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getProposeAccelerationInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
@@ -1570,6 +1871,22 @@ export function elotePoolProgram(
                 },
               ),
             ),
+          resume: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getResumeInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          resumeDraws: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getResumeDrawsInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
           revokeProcuracion: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -1580,6 +1897,14 @@ export function elotePoolProgram(
                     instructionConfig?.programAddress ?? config.programAddress,
                 },
               ),
+            ),
+          setAccelerationNotice: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetAccelerationNoticeInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
             ),
           setCancelGrace: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
@@ -1605,10 +1930,26 @@ export function elotePoolProgram(
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
             ),
-          setPaused: (input, instructionConfig) =>
+          setGuardian: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
-              getSetPausedInstructionAsync(input, {
+              getSetGuardianInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          setMaxLineBps: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetMaxLineBpsInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          setOutstandingCap: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetOutstandingCapInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
@@ -1617,6 +1958,14 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getSuspendDrawsInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          withdrawAcceleration: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getWithdrawAccelerationInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),

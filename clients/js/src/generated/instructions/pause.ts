@@ -10,8 +10,6 @@ import {
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
-  getBooleanDecoder,
-  getBooleanEncoder,
   getBytesDecoder,
   getBytesEncoder,
   getProgramDerivedAddress,
@@ -45,17 +43,18 @@ import {
 } from "@solana/program-client-core";
 import { ELOTE_POOL_PROGRAM_ADDRESS } from "../programs";
 
-export const SET_PAUSED_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
-  91, 60, 125, 192, 176, 225, 166, 218,
+export const PAUSE_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
+  211, 22, 221, 251, 74, 121, 193, 47,
 ]);
 
-export function getSetPausedDiscriminatorBytes(): ReadonlyUint8Array {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(SET_PAUSED_DISCRIMINATOR);
+export function getPauseDiscriminatorBytes(): ReadonlyUint8Array {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(PAUSE_DISCRIMINATOR);
 }
 
-export type SetPausedInstruction<
+export type PauseInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountCouncil extends string | AccountMeta<string> = string,
+  TAccountSigner extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
@@ -65,10 +64,13 @@ export type SetPausedInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountCouncil extends string
-        ? ReadonlySignerAccount<TAccountCouncil> &
-            AccountSignerMeta<TAccountCouncil>
-        : TAccountCouncil,
+      TAccountSigner extends string
+        ? ReadonlySignerAccount<TAccountSigner> &
+            AccountSignerMeta<TAccountSigner>
+        : TAccountSigner,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -82,63 +84,60 @@ export type SetPausedInstruction<
     ]
   >;
 
-export type SetPausedInstructionData = {
-  discriminator: ReadonlyUint8Array;
-  paused: boolean;
-};
+export type PauseInstructionData = { discriminator: ReadonlyUint8Array };
 
-export type SetPausedInstructionDataArgs = { paused: boolean };
+export type PauseInstructionDataArgs = {};
 
-export function getSetPausedInstructionDataEncoder(): FixedSizeEncoder<SetPausedInstructionDataArgs> {
+export function getPauseInstructionDataEncoder(): FixedSizeEncoder<PauseInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([
-      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["paused", getBooleanEncoder()],
-    ]),
-    (value) => ({ ...value, discriminator: SET_PAUSED_DISCRIMINATOR }),
+    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    (value) => ({ ...value, discriminator: PAUSE_DISCRIMINATOR }),
   );
 }
 
-export function getSetPausedInstructionDataDecoder(): FixedSizeDecoder<SetPausedInstructionData> {
+export function getPauseInstructionDataDecoder(): FixedSizeDecoder<PauseInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["paused", getBooleanDecoder()],
   ]);
 }
 
-export function getSetPausedInstructionDataCodec(): FixedSizeCodec<
-  SetPausedInstructionDataArgs,
-  SetPausedInstructionData
+export function getPauseInstructionDataCodec(): FixedSizeCodec<
+  PauseInstructionDataArgs,
+  PauseInstructionData
 > {
   return combineCodec(
-    getSetPausedInstructionDataEncoder(),
-    getSetPausedInstructionDataDecoder(),
+    getPauseInstructionDataEncoder(),
+    getPauseInstructionDataDecoder(),
   );
 }
 
-export type SetPausedAsyncInput<
-  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+export type PauseAsyncInput<
+  TAccountSigner extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  council: TAccountCouncil;
+  /** A member of the council's multisig, the stored guardian, or the council itself. */
+  signer: TAccountSigner;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  paused: SetPausedInstructionDataArgs["paused"];
 };
 
-export async function getSetPausedInstructionAsync<
-  TAccountCouncil extends InstructionSignerInput,
+export async function getPauseInstructionAsync<
+  TAccountSigner extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: SetPausedAsyncInput<
-    TAccountCouncil,
+  input: PauseAsyncInput<
+    TAccountSigner,
+    TAccountMultisig,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -147,11 +146,15 @@ export async function getSetPausedInstructionAsync<
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
 ): Promise<
-  SetPausedInstruction<
+  PauseInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountCouncil,
-      InstructionAccountInputAddress<TAccountCouncil>
+      TAccountSigner,
+      InstructionAccountInputAddress<TAccountSigner>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -180,9 +183,10 @@ export async function getSetPausedInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    council: {
-      value: input.council ?? null,
-      isSigner: true,
+    signer: { value: input.signer ?? null, isSigner: true, isWritable: false },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
@@ -202,9 +206,6 @@ export async function getSetPausedInstructionAsync<
     ResolvedInstructionAccount
   >;
 
-  // Original args.
-  const args = { ...input };
-
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -219,20 +220,23 @@ export async function getSetPausedInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("council", accounts.council),
+      getAccountMeta("signer", accounts.signer),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSetPausedInstructionDataEncoder().encode(
-      args as SetPausedInstructionDataArgs,
-    ),
+    data: getPauseInstructionDataEncoder().encode({}),
     programAddress,
-  } as SetPausedInstruction<
+  } as PauseInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountCouncil,
-      InstructionAccountInputAddress<TAccountCouncil>
+      TAccountSigner,
+      InstructionAccountInputAddress<TAccountSigner>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -249,29 +253,33 @@ export async function getSetPausedInstructionAsync<
   >);
 }
 
-export type SetPausedInput<
-  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+export type PauseInput<
+  TAccountSigner extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  council: TAccountCouncil;
+  /** A member of the council's multisig, the stored guardian, or the council itself. */
+  signer: TAccountSigner;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  paused: SetPausedInstructionDataArgs["paused"];
 };
 
-export function getSetPausedInstruction<
-  TAccountCouncil extends InstructionSignerInput,
+export function getPauseInstruction<
+  TAccountSigner extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: SetPausedInput<
-    TAccountCouncil,
+  input: PauseInput<
+    TAccountSigner,
+    TAccountMultisig,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -279,11 +287,15 @@ export function getSetPausedInstruction<
   config?: {
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
-): SetPausedInstruction<
+): PauseInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountCouncil,
-    InstructionAccountInputAddress<TAccountCouncil>
+    TAccountSigner,
+    InstructionAccountInputAddress<TAccountSigner>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -311,9 +323,10 @@ export function getSetPausedInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    council: {
-      value: input.council ?? null,
-      isSigner: true,
+    signer: { value: input.signer ?? null, isSigner: true, isWritable: false },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
@@ -333,9 +346,6 @@ export function getSetPausedInstruction<
     ResolvedInstructionAccount
   >;
 
-  // Original args.
-  const args = { ...input };
-
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -344,20 +354,23 @@ export function getSetPausedInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("council", accounts.council),
+      getAccountMeta("signer", accounts.signer),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSetPausedInstructionDataEncoder().encode(
-      args as SetPausedInstructionDataArgs,
-    ),
+    data: getPauseInstructionDataEncoder().encode({}),
     programAddress,
-  } as SetPausedInstruction<
+  } as PauseInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountCouncil,
-      InstructionAccountInputAddress<TAccountCouncil>
+      TAccountSigner,
+      InstructionAccountInputAddress<TAccountSigner>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -374,34 +387,36 @@ export function getSetPausedInstruction<
   >);
 }
 
-export type ParsedSetPausedInstruction<
+export type ParsedPauseInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    council: TAccountMetas[0];
-    pool: TAccountMetas[1];
-    eventAuthority: TAccountMetas[2];
-    program: TAccountMetas[3];
+    /** A member of the council's multisig, the stored guardian, or the council itself. */
+    signer: TAccountMetas[0];
+    multisig: TAccountMetas[1];
+    pool: TAccountMetas[2];
+    eventAuthority: TAccountMetas[3];
+    program: TAccountMetas[4];
   };
-  data: SetPausedInstructionData;
+  data: PauseInstructionData;
 };
 
-export function parseSetPausedInstruction<
+export function parsePauseInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedSetPausedInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 4) {
+): ParsedPauseInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 5) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 4,
+        expectedAccountMetas: 5,
       },
     );
   }
@@ -414,11 +429,12 @@ export function parseSetPausedInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      council: getNextAccount(),
+      signer: getNextAccount(),
+      multisig: getNextAccount(),
       pool: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },
-    data: getSetPausedInstructionDataDecoder().decode(instruction.data),
+    data: getPauseInstructionDataDecoder().decode(instruction.data),
   };
 }

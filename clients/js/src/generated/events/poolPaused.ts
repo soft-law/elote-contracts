@@ -12,8 +12,6 @@ import {
   fixEncoderSize,
   getAddressDecoder,
   getAddressEncoder,
-  getBooleanDecoder,
-  getBooleanEncoder,
   getBytesEncoder,
   getConstantDecoder,
   getConstantEncoder,
@@ -38,11 +36,16 @@ export function getPoolPausedEventDiscriminatorBytes(): ReadonlyUint8Array {
   );
 }
 
-export type PoolPausedEvent = { pool: Address; paused: boolean };
+export type PoolPausedEvent = {
+  pool: Address;
+  /** The member, guardian or council that paused. */
+  by: Address;
+};
 
 export type PoolPausedEventArgs = {
   pool: Address | HasAddress;
-  paused: boolean;
+  /** The member, guardian or council that paused. */
+  by: Address | HasAddress;
 };
 
 /** Gets the encoder for {@link PoolPausedEventArgs} event data. */
@@ -50,7 +53,7 @@ export function getPoolPausedEventEncoder(): FixedSizeEncoder<PoolPausedEventArg
   return getHiddenPrefixEncoder(
     getStructEncoder([
       ["pool", getAddressEncoder()],
-      ["paused", getBooleanEncoder()],
+      ["by", getAddressEncoder()],
     ]),
     [getConstantEncoder(POOL_PAUSED_EVENT_DISCRIMINATOR)],
   );
@@ -61,7 +64,7 @@ export function getPoolPausedEventDecoder(): FixedSizeDecoder<PoolPausedEvent> {
   return getHiddenPrefixDecoder(
     getStructDecoder([
       ["pool", getAddressDecoder()],
-      ["paused", getBooleanDecoder()],
+      ["by", getAddressDecoder()],
     ]),
     [getConstantDecoder(POOL_PAUSED_EVENT_DISCRIMINATOR)],
   );

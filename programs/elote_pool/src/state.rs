@@ -130,7 +130,7 @@ pub struct Pool {
     /// written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
     pub collection_period_seconds: u32,
     /// The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
-    /// (`1..=BPS`). Fixed at `init_pool`.
+    /// (`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`.
     pub max_line_bps: u16,
     /// `ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without
     /// the program. Recorded at `init_pool`, never refused.
@@ -302,9 +302,11 @@ pub struct CreditLine {
     /// `rate × (drawn × mark − draw_time_weight)`.
     pub draw_time_weight: u128,
     /// The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which
-    /// `resume_draws` restores; zero when draws are not suspended.
+    /// `resume_draws` restores; zero when draws are not suspended. Suspended ⇔ non-zero.
     pub availability_end_saved: i64,
     /// When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending.
+    /// `withdraw_acceleration` and `mark_in_collection` clear it, `accelerate_line` keeps it: with
+    /// `accelerated_at` it tells the route, the council's (non-zero) or the objective one (zero).
     pub acceleration_due_at: i64,
     /// USDC delivered over the draws: the pool's cost of the line.
     pub usdc_drawn: u64,

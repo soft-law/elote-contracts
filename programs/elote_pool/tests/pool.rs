@@ -225,13 +225,13 @@ fn paused_blocks_deposit_and_redeem() {
     let a = env.investor(&k, 3 * UNIT);
     env.deposit(&k, &a, UNIT);
 
-    // Only the council pauses.
+    // An investor cannot pause.
     let ix = env.set_paused_ix(&k, &a.pubkey(), true);
     env.expect_err(ix, &a, &[], E_UNAUTHORIZED);
 
     let meta = env.set_paused(&k, true);
     let ev: PoolPaused = find_event(&meta).expect("PoolPaused");
-    assert_eq!((ev.pool, ev.paused), (k.pool, true));
+    assert_eq!((ev.pool, ev.by), (k.pool, env.council.pubkey()));
     assert!(env.pool(&k).paused);
 
     let ix = env.deposit_ix(&k, &a.pubkey(), UNIT);
@@ -240,8 +240,8 @@ fn paused_blocks_deposit_and_redeem() {
     env.expect_err(ix, &a, &[], E_PAUSED);
 
     let meta = env.set_paused(&k, false);
-    let ev: PoolPaused = find_event(&meta).expect("PoolPaused");
-    assert!(!ev.paused);
+    let ev: elote_pool::events::PoolResumed = find_event(&meta).expect("PoolResumed");
+    assert_eq!(ev.pool, k.pool);
     env.deposit(&k, &a, UNIT);
     env.redeem(&k, &a, UNIT);
 }
@@ -842,10 +842,10 @@ fn every_pool_setter_announces_the_new_value() {
     assert_eq!((ev.pool, ev.cancel_grace_seconds), (k.pool, 2 * CANCEL_GRACE));
     assert_eq!(env.pool(&k).cancel_grace_seconds, 2 * CANCEL_GRACE);
 
-    for paused in [true, false] {
-        let meta = env.set_paused(&k, paused);
-        let ev: PoolPaused = find_event(&meta).expect("PoolPaused");
-        assert_eq!((ev.pool, ev.paused), (k.pool, paused));
-        assert_eq!(env.pool(&k).paused, paused);
-    }
+    let meta = env.set_paused(&k, true);
+    let ev: PoolPaused = find_event(&meta).expect("PoolPaused");
+    assert_eq!((ev.pool, ev.by), (k.pool, env.council.pubkey()));
+    let meta = env.set_paused(&k, false);
+    assert!(find_event::<elote_pool::events::PoolResumed>(&meta).is_some());
+    assert!(!env.pool(&k).paused);
 }

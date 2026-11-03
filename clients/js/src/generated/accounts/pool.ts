@@ -88,7 +88,7 @@ export type Pool = {
   collectionPeriodSeconds: number;
   /**
    * The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
-   * (`1..=BPS`). Fixed at `init_pool`.
+   * (`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`.
    */
   maxLineBps: number;
   /**
@@ -182,7 +182,7 @@ export type PoolArgs = {
   collectionPeriodSeconds: number;
   /**
    * The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
-   * (`1..=BPS`). Fixed at `init_pool`.
+   * (`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`.
    */
   maxLineBps: number;
   /**

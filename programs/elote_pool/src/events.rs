@@ -192,7 +192,8 @@ pub struct LineWrittenOff {
 #[event]
 pub struct PoolPaused {
     pub pool: Pubkey,
-    pub paused: bool,
+    /// The member, guardian or council that paused.
+    pub by: Pubkey,
 }
 
 /// One payment entry a `repay` wrote: the pagaré, the entry's kind (`Abono` or `Pagado`), its

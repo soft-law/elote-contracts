@@ -1055,14 +1055,55 @@ impl Env {
         find_event(&meta).expect("Redeemed event")
     }
 
-    pub fn set_paused_ix(&self, k: &PoolKeys, council: &Pubkey, paused: bool) -> Instruction {
+    /// `pause` signed by `signer` when `paused`, else `resume` signed by `signer` as the council.
+    pub fn set_paused_ix(&self, k: &PoolKeys, signer: &Pubkey, paused: bool) -> Instruction {
+        if paused { self.pause_ix(k, signer) } else { self.council_pool_ix(k, signer, elote_pool::instruction::Resume {}.data()) }
+    }
+
+    pub fn pause_ix(&self, k: &PoolKeys, signer: &Pubkey) -> Instruction {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SetPaused { council: *council, pool: k.pool, event_authority, program }
+            accounts: elote_pool::accounts::Pause { signer: *signer, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
-            data: elote_pool::instruction::SetPaused { paused }.data(),
+            data: elote_pool::instruction::Pause {}.data(),
         }
+    }
+
+    /// A council instruction on the pool (`resume` and the setters) with `data`.
+    pub fn council_pool_ix(&self, k: &PoolKeys, council: &Pubkey, data: Vec<u8>) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::CouncilPool { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
+                .to_account_metas(None),
+            data,
+        }
+    }
+
+    /// A council instruction on line `line_id` (suspend, resume, cancel, acceleration) with `data`.
+    pub fn council_line_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey, data: Vec<u8>) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::CouncilLine {
+                council: *council,
+                multisig: self.pool(k).multisig,
+                pool: k.pool,
+                line: line_pda(&k.pool, line_id).0,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data,
+        }
+    }
+
+    /// Sends the council line instruction `data` on `line_id` as the env's council.
+    pub fn council_line(&mut self, k: &PoolKeys, line_id: u64, data: Vec<u8>) -> TransactionMetadata {
+        let council = self.council.insecure_clone();
+        let ix = self.council_line_ix(k, line_id, &council.pubkey(), data);
+        self.send(ix, &council, &[])
     }
 
     pub fn set_paused(&mut self, k: &PoolKeys, paused: bool) -> TransactionMetadata {
@@ -1637,6 +1678,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::WriteOff {
                 council: *council,
+                multisig: self.pool(k).multisig,
                 pool: k.pool,
                 line: line_pda(&k.pool, line_id).0,
                 share_mint: k.share_mint,
@@ -1650,35 +1692,11 @@ impl Env {
     }
 
     pub fn suspend_draws_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey) -> Instruction {
-        let (event_authority, program) = event_metas();
-        Instruction {
-            program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SuspendDraws {
-                council: *council,
-                pool: k.pool,
-                line: line_pda(&k.pool, line_id).0,
-                event_authority,
-                program,
-            }
-            .to_account_metas(None),
-            data: elote_pool::instruction::SuspendDraws {}.data(),
-        }
+        self.council_line_ix(k, line_id, council, elote_pool::instruction::SuspendDraws {}.data())
     }
 
     pub fn cancel_line_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey) -> Instruction {
-        let (event_authority, program) = event_metas();
-        Instruction {
-            program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::CancelLine {
-                council: *council,
-                pool: k.pool,
-                line: line_pda(&k.pool, line_id).0,
-                event_authority,
-                program,
-            }
-            .to_account_metas(None),
-            data: elote_pool::instruction::CancelLine {}.data(),
-        }
+        self.council_line_ix(k, line_id, council, elote_pool::instruction::CancelLine {}.data())
     }
 
     pub fn mark_in_collection_ix(&self, k: &PoolKeys, line_id: u64) -> Instruction {

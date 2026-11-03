@@ -253,3 +253,66 @@ fn request_and_approve_stay_under_the_ceiling() {
     println!("approve_line (with the multisig check): {approve} CU");
     assert!(request < CEILING && approve < CEILING);
 }
+
+/// What moves `init_pool`'s cost between pools: Anchor's `init` finds the canonical bump of the
+/// pool, vault and dead-shares PDAs, and `init_pool` the Squads vault's, each try costing about
+/// 1,500 CU; the canonical bump differs by address, so two pools with the same extensions can
+/// differ by thousands of CU. Printed per pool with the tries each address took.
+#[test]
+fn init_pool_cost_follows_the_pda_bump_searches() {
+    let mut figures = Vec::new();
+    for permissioned in [false, true, false, true, false, true] {
+        let mut env = Env::new();
+        let (k, meta) = if permissioned {
+            let gate = env.funded(1);
+            env.setup_permissioned_pool(&gate.pubkey())
+        } else {
+            env.setup_pool()
+        };
+        let tries = |bump: u8| 256 - u32::from(bump);
+        let searches = tries(pool_pda(&k.creator, &k.asset_mint).1)
+            + tries(vault_pda(&k.pool).1)
+            + tries(dead_shares_pda(&k.pool).1)
+            + tries(squads_vault_pda(&env.multisig).1);
+        let cu = meta.compute_units_consumed;
+        println!("init_pool permissioned={permissioned}: {cu} CU, {searches} bump tries in all");
+        figures.push((permissioned, cu, searches));
+        assert!(cu < 70_000, "init_pool used {cu} CU");
+    }
+    // Same shape: the cost less 1,500 CU per try is one figure, so the tries explain all of it.
+    for p in [false, true] {
+        let base: Vec<u64> = figures.iter().filter(|f| f.0 == p).map(|f| f.1 - 1_500 * u64::from(f.2)).collect();
+        assert!(base.windows(2).all(|w| w[0] == w[1]), "permissioned={p}: {base:?}");
+    }
+}
+
+#[test]
+fn the_council_line_instructions_and_the_pause_stay_under_the_ceiling() {
+    use anchor_lang::InstructionData;
+    use elote_pool::instruction as ix;
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let investor = env.investor(&k, 10 * UNIT);
+    env.deposit(&k, &investor, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(4 * UNIT, 1_200, 120, 5_000);
+    let (id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw(&k, id, &borrower);
+    let suspend = env.council_line(&k, id, ix::SuspendDraws {}.data()).compute_units_consumed;
+    let resume = env.council_line(&k, id, ix::ResumeDraws {}.data()).compute_units_consumed;
+    let propose = env.council_line(&k, id, ix::ProposeAcceleration {}.data()).compute_units_consumed;
+    env.warp(p.first_due_at() + 119 * p.interval());
+    let accelerate = env.council_line(&k, id, ix::AccelerateLine {}.data()).compute_units_consumed;
+    let curator = env.curators[2].insecure_clone();
+    env.svm.airdrop(&curator.pubkey(), LAMPORTS_PER_SOL).unwrap();
+    let i = env.pause_ix(&k, &curator.pubkey());
+    let pause = env.send(i, &curator, &[]).compute_units_consumed;
+    println!("suspend_draws: {suspend} CU");
+    println!("resume_draws: {resume} CU");
+    println!("propose_acceleration: {propose} CU");
+    println!("accelerate_line at 120 installments, all due: {accelerate} CU");
+    println!("pause by a member: {pause} CU");
+    for cu in [suspend, resume, propose, accelerate, pause] {
+        assert!(cu < CEILING);
+    }
+}

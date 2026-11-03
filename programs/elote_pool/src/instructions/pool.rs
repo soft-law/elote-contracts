@@ -8,7 +8,8 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    CancelGraceSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, FixPosted, FxFeederSet, Deposited, NavUpdated, PoolInitialized, PoolPaused, Redeemed,
+    AccelerationNoticeSet, CancelGraceSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, FixPosted, FxFeederSet,
+    GuardianSet, MaxLineBpsSet, NavUpdated, OutstandingCapSet, PoolInitialized, PoolPaused, PoolResumed, Redeemed,
 };
 use crate::council;
 use crate::fx;
@@ -587,8 +588,47 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
 
 #[event_cpi]
 #[derive(Accounts)]
-pub struct SetPaused<'info> {
+pub struct Pause<'info> {
+    /// A member of the council's multisig, the stored guardian, or the council itself.
+    pub signer: Signer<'info>,
+
+    /// CHECK: read by `council::is_member`.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+    )]
+    pub pool: Account<'info, Pool>,
+}
+
+/// Any member of the council's multisig alone (a Squads council), the stored guardian, or the
+/// council pauses the pool (`Unauthorized` otherwise), so an emergency needs no vote. A paused
+/// pool refuses deposits, redemptions, requests and draws; repayments, the FIX, the pagaré
+/// instructions, collection and write-offs go on. Only the council resumes.
+pub fn pause(ctx: Context<Pause>) -> Result<()> {
+    let by = ctx.accounts.signer.key();
+    let pool = &ctx.accounts.pool;
+    let allowed = by == pool.council
+        || (pool.guardian != Pubkey::default() && by == pool.guardian)
+        || (pool.council_kind == COUNCIL_SQUADS && council::is_member(&ctx.accounts.multisig.to_account_info(), &by)?);
+    require!(allowed, PoolError::Unauthorized);
+    let pool = &mut ctx.accounts.pool;
+    pool.paused = true;
+    emit_cpi!(PoolPaused { pool: pool.key(), by });
+    Ok(())
+}
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct CouncilPool<'info> {
     pub council: Signer<'info>,
+
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -599,12 +639,60 @@ pub struct SetPaused<'info> {
     pub pool: Account<'info, Pool>,
 }
 
-/// Council only. A paused pool refuses deposits, redemptions, requests and draws; repayments,
-/// cancellations and write-offs go on.
-pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
+impl CouncilPool<'_> {
+    fn check_council(&self) -> Result<()> {
+        council::check(&self.multisig.to_account_info(), &self.pool.council, self.pool.council_vault_bump)
+    }
+}
+
+/// Council only: ends a pause.
+pub fn resume(ctx: Context<CouncilPool>) -> Result<()> {
+    ctx.accounts.check_council()?;
     let pool = &mut ctx.accounts.pool;
-    pool.paused = paused;
-    emit_cpi!(PoolPaused { pool: pool.key(), paused });
+    pool.paused = false;
+    emit_cpi!(PoolResumed { pool: pool.key() });
+    Ok(())
+}
+
+/// Council only: the key that may pause alone besides the members; the zero key for none.
+pub fn set_guardian(ctx: Context<CouncilPool>, guardian: Pubkey) -> Result<()> {
+    ctx.accounts.check_council()?;
+    let pool = &mut ctx.accounts.pool;
+    pool.guardian = guardian;
+    emit_cpi!(GuardianSet { pool: pool.key(), guardian });
+    Ok(())
+}
+
+/// Council only: the largest line `approve_line` accepts, `1..=BPS` of the NAV; lines already
+/// approved keep their principal.
+pub fn set_max_line_bps(ctx: Context<CouncilPool>, max_line_bps: u16) -> Result<()> {
+    require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);
+    ctx.accounts.check_council()?;
+    let pool = &mut ctx.accounts.pool;
+    pool.max_line_bps = max_line_bps;
+    emit_cpi!(MaxLineBpsSet { pool: pool.key(), max_line_bps });
+    Ok(())
+}
+
+/// Council only: the most USDC cost the pool may have lent out at once, checked at every draw
+/// (at least one base unit); lowering it below the outstanding only stops new draws.
+pub fn set_outstanding_cap(ctx: Context<CouncilPool>, max_outstanding_principal: u64) -> Result<()> {
+    require!(max_outstanding_principal >= 1, PoolError::WrongAmount);
+    ctx.accounts.check_council()?;
+    let pool = &mut ctx.accounts.pool;
+    pool.max_outstanding_principal = max_outstanding_principal;
+    emit_cpi!(OutstandingCapSet { pool: pool.key(), max_outstanding_principal });
+    Ok(())
+}
+
+/// Council only: the notice between `propose_acceleration` and `accelerate_line`, at least
+/// `MIN_ACCELERATION_NOTICE_SECONDS`; a pending proposal keeps its own deadline.
+pub fn set_acceleration_notice(ctx: Context<CouncilPool>, acceleration_notice_seconds: u32) -> Result<()> {
+    require!(acceleration_notice_seconds >= MIN_ACCELERATION_NOTICE_SECONDS, PoolError::AccelerationNoticeTooShort);
+    ctx.accounts.check_council()?;
+    let pool = &mut ctx.accounts.pool;
+    pool.acceleration_notice_seconds = acceleration_notice_seconds;
+    emit_cpi!(AccelerationNoticeSet { pool: pool.key(), acceleration_notice_seconds });
     Ok(())
 }
 

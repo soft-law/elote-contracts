@@ -152,10 +152,14 @@ export type CreditLine = {
   drawTimeWeight: bigint;
   /**
    * The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which
-   * `resume_draws` restores; zero when draws are not suspended.
+   * `resume_draws` restores; zero when draws are not suspended. Suspended ⇔ non-zero.
    */
   availabilityEndSaved: bigint;
-  /** When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending. */
+  /**
+   * When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending.
+   * `withdraw_acceleration` and `mark_in_collection` clear it, `accelerate_line` keeps it: with
+   * `accelerated_at` it tells the route, the council's (non-zero) or the objective one (zero).
+   */
   accelerationDueAt: bigint;
   /** USDC delivered over the draws: the pool's cost of the line. */
   usdcDrawn: bigint;
@@ -255,10 +259,14 @@ export type CreditLineArgs = {
   drawTimeWeight: number | bigint;
   /**
    * The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which
-   * `resume_draws` restores; zero when draws are not suspended.
+   * `resume_draws` restores; zero when draws are not suspended. Suspended ⇔ non-zero.
    */
   availabilityEndSaved: number | bigint;
-  /** When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending. */
+  /**
+   * When `accelerate_line` may fire, set by `propose_acceleration`; zero when none is pending.
+   * `withdraw_acceleration` and `mark_in_collection` clear it, `accelerate_line` keeps it: with
+   * `accelerated_at` it tells the route, the council's (non-zero) or the objective one (zero).
+   */
   accelerationDueAt: number | bigint;
   /** USDC delivered over the draws: the pool's cost of the line. */
   usdcDrawn: number | bigint;

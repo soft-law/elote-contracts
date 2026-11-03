@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { lineArrears, lineSchedule, maxLinePrincipal } from "../src/schedule";
+import { bulletAccruedInterest, lineArrears, lineSchedule, maxLinePrincipal } from "../src/schedule";
 
 type Vector = {
   total: string;
@@ -130,4 +130,13 @@ test("lateDue is never negative when lateCollected exceeds the principal (R-24)"
   );
   assert.equal(a.overdue, 600n);
   assert.equal(a.lateDue, 0n);
+});
+
+test("bulletAccruedInterest matches the program's unit case", () => {
+  const year = 31_536_000n;
+  // 4.0 drawn at t = 0 and 2.0 at half a year, at 12%; marked at one year.
+  const weight = 2_000_000n * (year / 2n);
+  assert.equal(bulletAccruedInterest(6_000_000n, weight, 1_200, year), 600_000n);
+  assert.equal(bulletAccruedInterest(0n, 0n, 1_200, year), 0n);
+  assert.throws(() => bulletAccruedInterest(2_000_000n, 2_000_000n * year, 1_200, 0n));
 });

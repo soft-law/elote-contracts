@@ -38,6 +38,17 @@ pub fn tranche_interest(amount: u64, rate_bps: u16, seconds: u64) -> Option<u64>
         .and_then(|v| u64::try_from(v).ok())
 }
 
+/// The ordinary interest a bullet line has accrued by `mark`: every tranche from its draw to the
+/// mark, `rate_bps * (drawn * mark - draw_time_weight) / (10_000 * SECONDS_PER_YEAR)` rounded down
+/// once, where `draw_time_weight = Σ amount_k * drawn_at_k`. `None` on overflow or a mark before the
+/// draw.
+pub fn bullet_accrued_interest(drawn: u64, draw_time_weight: u128, rate_bps: u16, mark: i64) -> Option<u64> {
+    let span = (drawn as u128).checked_mul(u128::try_from(mark).ok()?)?.checked_sub(draw_time_weight)?;
+    span.checked_mul(rate_bps as u128)?
+        .checked_div((BPS as u128).checked_mul(SECONDS_PER_YEAR as u128)?)
+        .and_then(|v| u64::try_from(v).ok())
+}
+
 // -----------------------------------------------------------------------------------------------
 // Installments and arrears
 // -----------------------------------------------------------------------------------------------
@@ -251,6 +262,18 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bullet_interest_accrues_per_tranche_to_the_mark() {
+        let year = SECONDS_PER_YEAR as i64;
+        // 4.0 drawn at t = 0 and 2.0 at half a year, at 12%; marked at one year.
+        let weight = 2_000_000u128 * (year as u128 / 2); // the first tranche, drawn at t = 0, adds nothing
+        let kept = bullet_accrued_interest(6_000_000, weight, 1_200, year).unwrap();
+        assert_eq!(kept, 480_000 + 120_000);
+        assert_eq!(kept, tranche_interest(4_000_000, 1_200, year as u64).unwrap() + tranche_interest(2_000_000, 1_200, year as u64 / 2).unwrap());
+        assert_eq!(bullet_accrued_interest(2_000_000, 2_000_000u128 * year as u128, 1_200, 0), None, "a mark before every draw");
+        assert_eq!(bullet_accrued_interest(0, 0, 1_200, year), Some(0));
+    }
 
     #[test]
     fn rounding_favours_the_pool() {

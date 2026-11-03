@@ -11,7 +11,7 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 
 use crate::errors::PoolError;
 use crate::events::{
-    LateInterestCollected, LineApproved, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection,
+    AccelerationProposed, AccelerationWithdrawn, LateInterestCollected, LineAccelerated, LineApproved, LineDrawsResumed, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection,
     FxRealized, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
     PagarePayment, PaymentEntry,
 };
@@ -1029,8 +1029,9 @@ pub struct MarkInCollection<'info> {
 /// `accelerated_at = now`, from which every installment is due and late interest runs on all
 /// remaining principal, and the ordinary interest of the installments not yet due is forgiven
 /// (`interest_due` shrinks to the share of the installments due, never below what was repaid; no
-/// NAV effect, since interest counts when collected). It records facts and moves no funds, so it
-/// is not blocked by the pause.
+/// NAV effect, since interest counts when collected). A council proposal still in its notice is
+/// superseded (`acceleration_due_at` back to zero, `AccelerationWithdrawn`). It records facts and
+/// moves no funds, so it is not blocked by the pause.
 pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
@@ -1049,23 +1050,21 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
         .ok_or(PoolError::Overflow)?;
     require!(now > grace_end, PoolError::NotEnoughMissed);
 
-    // The ordinary interest of the installments not yet due is forgiven: the line keeps the share
-    // of the installments due at the mark, at least the ones that put it in collection, and never
-    // less than what was already repaid.
-    let due_count = a.due.max(k);
-    let (kept, _) = math::accelerated_interest(line.interest_due, due_count, s.installments).ok_or(PoolError::Overflow)?;
-    let kept = kept.max(line.interest_repaid);
-    let interest_forgiven = line.interest_due.checked_sub(kept).ok_or(PoolError::Overflow)?;
-    let remaining = line
-        .drawn
-        .checked_sub(line.principal_repaid)
-        .and_then(|v| v.checked_add(kept.checked_sub(line.interest_repaid)?))
-        .ok_or(PoolError::Overflow)?;
+    // The line keeps the ordinary interest of the installments due at the mark, at least the ones
+    // that put it in collection.
+    let (kept, interest_forgiven, remaining) = accelerated_balance(line, a.due.max(k), now)?;
+    let pool_key = pool.key();
     let line = &mut ctx.accounts.line;
     line.status = LineStatus::InCollection;
     line.accelerated_at = now;
     line.interest_due = kept;
-    emit_cpi!(LineInCollection { pool: pool.key(), line_id: line.line_id, missed: a.missed, remaining, interest_forgiven });
+    // The objective route supersedes a council proposal still in its notice; draws stay suspended.
+    let superseded = line.acceleration_due_at != 0;
+    line.acceleration_due_at = 0;
+    emit_cpi!(LineInCollection { pool: pool_key, line_id: line.line_id, missed: a.missed, remaining, interest_forgiven });
+    if superseded {
+        emit_cpi!(AccelerationWithdrawn { pool: pool_key, line_id: line.line_id });
+    }
     Ok(())
 }
 
@@ -1073,6 +1072,10 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
 #[derive(Accounts)]
 pub struct WriteOff<'info> {
     pub council: Signer<'info>,
+
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -1105,21 +1108,28 @@ pub struct WriteOff<'info> {
 /// - the line is `Active` and `now > term_end + grace` (else `TermNotEnded`), or
 /// - the line is `InCollection`, the collection period has run (`now > accelerated_at +
 ///   collection_period_seconds`), and either a missed installment is still unpaid and
-///   `now > first_missed_due + grace`, or `now > term_end + grace` (else `WriteOffTooEarly`).
+///   `now > first_missed_due + grace`, or `now > term_end + grace`, or the line is a bullet line
+///   accelerated by the council (else `WriteOffTooEarly`).
 ///
 /// `grace` is the pool's grace period.
 pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     let line = &ctx.accounts.line;
     let grace = i64::from(pool.grace_period_seconds);
     let after_term = now > line.term_end.checked_add(grace).ok_or(PoolError::Overflow)?;
     match line.status {
         LineStatus::Active => require!(after_term, PoolError::TermNotEnded),
         LineStatus::InCollection => {
-            let after_missed = match line_arrears(line, pool, now)?.first_missed_due {
-                Some(due) => now > due.checked_add(grace).ok_or(PoolError::Overflow)?,
-                None => false, // nothing is missed
+            // An accelerated bullet line is wholly due at the mark, which the collection period
+            // below already waits for.
+            let after_missed = match line.schedule() {
+                Some(_) => match line_arrears(line, pool, now)?.first_missed_due {
+                    Some(due) => now > due.checked_add(grace).ok_or(PoolError::Overflow)?,
+                    None => false, // nothing is missed
+                },
+                None => true,
             };
             require!(after_missed || after_term, PoolError::WriteOffTooEarly);
             let period_end = line
@@ -1157,15 +1167,19 @@ pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
 
 #[event_cpi]
 #[derive(Accounts)]
-pub struct SuspendDraws<'info> {
+pub struct CouncilLine<'info> {
     pub council: Signer<'info>,
+
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
 
     #[account(
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
         has_one = council @ PoolError::Unauthorized,
     )]
-    pub pool: Account<'info, Pool>,
+    pub pool: Box<Account<'info, Pool>>,
 
     #[account(
         mut,
@@ -1173,47 +1187,134 @@ pub struct SuspendDraws<'info> {
         bump = line.bump,
         has_one = pool @ PoolError::WrongAccount,
     )]
-    pub line: Account<'info, CreditLine>,
+    pub line: Box<Account<'info, CreditLine>>,
 }
 
-/// Council only: closes the draw window of an `Approved` or `Active` line now. The undrawn
-/// remainder is forfeited; repayment, collection and write-off are untouched; the pool is not
-/// paused.
-pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
+impl CouncilLine<'_> {
+    fn check_council(&self) -> Result<()> {
+        council::check(&self.multisig.to_account_info(), &self.pool.council, self.pool.council_vault_bump)
+    }
+}
+
+/// Closes the draw window now, keeping the original end in `availability_end_saved` the first
+/// time, so `resume_draws` can restore it and a second suspension never overwrites it. Returns the
+/// undrawn remainder.
+fn suspend(line: &mut CreditLine, now: i64) -> Result<u64> {
+    if line.availability_end_saved == 0 {
+        line.availability_end_saved = line.availability_end;
+    }
+    line.availability_end = line.availability_end.min(now);
+    line.available().ok_or(error!(PoolError::Overflow))
+}
+
+/// Council only: closes the draw window of an `Approved` or `Active` line now; the line is then
+/// suspended (`availability_end_saved != 0`) until `resume_draws`. Repayment, collection and
+/// write-off are untouched; the pool is not paused.
+pub fn suspend_draws(ctx: Context<CouncilLine>) -> Result<()> {
+    ctx.accounts.check_council()?;
     let now = Clock::get()?.unix_timestamp;
     let line = &mut ctx.accounts.line;
     require!(matches!(line.status, LineStatus::Approved | LineStatus::Active), PoolError::LineStatus);
-    let available_forfeited = line.available().ok_or(PoolError::Overflow)?;
-    line.availability_end = now;
+    let available_forfeited = suspend(line, now)?;
     emit_cpi!(LineDrawsSuspended { pool: ctx.accounts.pool.key(), line_id: line.line_id, available_forfeited });
     Ok(())
 }
 
-#[event_cpi]
-#[derive(Accounts)]
-pub struct CancelLine<'info> {
-    pub council: Signer<'info>,
+/// Council only: reopens the draw window of a suspended `Approved` or `Active` line to its original
+/// end, never later (`DrawsNotSuspended` if not suspended); refused while an acceleration is
+/// pending (`AccelerationState`).
+pub fn resume_draws(ctx: Context<CouncilLine>) -> Result<()> {
+    ctx.accounts.check_council()?;
+    let line = &mut ctx.accounts.line;
+    require!(matches!(line.status, LineStatus::Approved | LineStatus::Active), PoolError::LineStatus);
+    require!(line.availability_end_saved != 0, PoolError::DrawsNotSuspended);
+    require!(line.acceleration_due_at == 0, PoolError::AccelerationState);
+    line.availability_end = line.availability_end_saved;
+    line.availability_end_saved = 0;
+    emit_cpi!(LineDrawsResumed { pool: ctx.accounts.pool.key(), line_id: line.line_id, availability_end: line.availability_end });
+    Ok(())
+}
 
-    #[account(
-        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
-        bump = pool.bump,
-        has_one = council @ PoolError::Unauthorized,
-    )]
-    pub pool: Account<'info, Pool>,
+/// Council only: proposes to collect a drawn (`Active`) line early; a never-drawn line is cleared
+/// with `cancel_line` instead (`LineStatus`). Draws are suspended at once, and `accelerate_line`
+/// may fire from `now + acceleration_notice_seconds`, a deadline the proposal keeps whatever the
+/// pool's notice becomes. One at a time (`AccelerationState`).
+pub fn propose_acceleration(ctx: Context<CouncilLine>) -> Result<()> {
+    ctx.accounts.check_council()?;
+    let now = Clock::get()?.unix_timestamp;
+    let notice = i64::from(ctx.accounts.pool.acceleration_notice_seconds);
+    let line = &mut ctx.accounts.line;
+    require!(line.status == LineStatus::Active && line.drawn > 0, PoolError::LineStatus);
+    require!(line.acceleration_due_at == 0, PoolError::AccelerationState);
+    let due_at = now.checked_add(notice).ok_or(PoolError::Overflow)?;
+    line.acceleration_due_at = due_at;
+    suspend(line, now)?;
+    emit_cpi!(AccelerationProposed { pool: ctx.accounts.pool.key(), line_id: line.line_id, due_at });
+    Ok(())
+}
 
-    #[account(
-        mut,
-        seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
-        bump = line.bump,
-        has_one = pool @ PoolError::WrongAccount,
-    )]
-    pub line: Account<'info, CreditLine>,
+/// Council only: withdraws the pending proposal (`AccelerationState` if none). Draws stay
+/// suspended until `resume_draws`.
+pub fn withdraw_acceleration(ctx: Context<CouncilLine>) -> Result<()> {
+    ctx.accounts.check_council()?;
+    let line = &mut ctx.accounts.line;
+    require!(line.status == LineStatus::Active && line.acceleration_due_at != 0, PoolError::AccelerationState);
+    line.acceleration_due_at = 0;
+    emit_cpi!(AccelerationWithdrawn { pool: ctx.accounts.pool.key(), line_id: line.line_id });
+    Ok(())
+}
+
+/// The acceleration both routes share: the ordinary interest kept at the mark and the remaining
+/// balance. A scheduled line keeps the interest of the installments due at the mark (`due_count`);
+/// a bullet line keeps the interest accrued on each tranche from its draw to the mark. Never less
+/// than what was repaid. Returns `(kept, interest_forgiven, remaining)`.
+fn accelerated_balance(line: &CreditLine, due_count: u16, now: i64) -> Result<(u64, u64, u64)> {
+    let kept = match line.schedule() {
+        Some(s) => math::accelerated_interest(line.interest_due, due_count, s.installments).ok_or(PoolError::Overflow)?.0,
+        None => math::bullet_accrued_interest(line.drawn, line.draw_time_weight, line.rate_bps, now)
+            .ok_or(PoolError::Overflow)?
+            .min(line.interest_due),
+    };
+    let kept = kept.max(line.interest_repaid);
+    let interest_forgiven = line.interest_due.checked_sub(kept).ok_or(PoolError::Overflow)?;
+    let remaining = line
+        .drawn
+        .checked_sub(line.principal_repaid)
+        .and_then(|v| v.checked_add(kept.checked_sub(line.interest_repaid)?))
+        .ok_or(PoolError::Overflow)?;
+    Ok((kept, interest_forgiven, remaining))
+}
+
+/// Council only: fires a pending proposal once its notice has run (`AccelerationNotDue`): the
+/// line moves to `InCollection` with `accelerated_at = now`, as `mark_in_collection` would, without
+/// missed installments. A scheduled line keeps the ordinary interest of the installments due now
+/// (none due: only what was repaid); a bullet line keeps the interest accrued to now; the rest is
+/// forgiven. `acceleration_due_at` stays set: with `accelerated_at` it records the council's route.
+pub fn accelerate_line(ctx: Context<CouncilLine>) -> Result<()> {
+    ctx.accounts.check_council()?;
+    let now = Clock::get()?.unix_timestamp;
+    let pool_key = ctx.accounts.pool.key();
+    let line = &ctx.accounts.line;
+    require!(line.status == LineStatus::Active && line.acceleration_due_at != 0, PoolError::AccelerationState);
+    require!(now >= line.acceleration_due_at, PoolError::AccelerationNotDue);
+    let due_count = match line.schedule() {
+        Some(_) => line_arrears(line, &ctx.accounts.pool, now)?.due,
+        None => 0,
+    };
+    let (kept, interest_forgiven, remaining) = accelerated_balance(line, due_count, now)?;
+    let line = &mut ctx.accounts.line;
+    line.status = LineStatus::InCollection;
+    line.accelerated_at = now;
+    line.interest_due = kept;
+    emit_cpi!(LineAccelerated { pool: pool_key, line_id: line.line_id, remaining, interest_forgiven });
+    Ok(())
 }
 
 /// Council only: clears an approved commitment nobody drew (`Approved`, `drawn == 0`); once a
 /// tranche exists the line follows repayment, collection or write-off instead. `Cancelled` is
 /// terminal; the line id stays taken.
-pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {
+pub fn cancel_line(ctx: Context<CouncilLine>) -> Result<()> {
+    ctx.accounts.check_council()?;
     let now = Clock::get()?.unix_timestamp;
     let line = &mut ctx.accounts.line;
     require!(line.status == LineStatus::Approved && line.drawn == 0, PoolError::LineStatus);

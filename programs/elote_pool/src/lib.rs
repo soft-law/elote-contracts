@@ -64,13 +64,36 @@ pub mod elote_pool {
 
     /// Closes the draw window of an `Approved` or `Active` line now, forfeiting the undrawn
     /// remainder. Council only. Repayment is untouched.
-    pub fn suspend_draws(ctx: Context<SuspendDraws>) -> Result<()> {
+    pub fn suspend_draws(ctx: Context<CouncilLine>) -> Result<()> {
         instructions::lines::suspend_draws(ctx)
     }
 
     /// Cancels an `Approved` line nobody drew. Council only; refused once anything was drawn.
-    pub fn cancel_line(ctx: Context<CancelLine>) -> Result<()> {
+    pub fn cancel_line(ctx: Context<CouncilLine>) -> Result<()> {
         instructions::lines::cancel_line(ctx)
+    }
+
+    /// Reopens the draw window of a suspended line to its original end. Council only; refused while
+    /// an acceleration is pending.
+    pub fn resume_draws(ctx: Context<CouncilLine>) -> Result<()> {
+        instructions::lines::resume_draws(ctx)
+    }
+
+    /// Proposes to collect a drawn line early: draws are suspended at once and `accelerate_line`
+    /// may fire after the pool'"'"'s notice. Council only.
+    pub fn propose_acceleration(ctx: Context<CouncilLine>) -> Result<()> {
+        instructions::lines::propose_acceleration(ctx)
+    }
+
+    /// Withdraws a pending acceleration; draws stay suspended. Council only.
+    pub fn withdraw_acceleration(ctx: Context<CouncilLine>) -> Result<()> {
+        instructions::lines::withdraw_acceleration(ctx)
+    }
+
+    /// Fires a pending acceleration once its notice has run: the line moves to collection, as with
+    /// `mark_in_collection`, without missed installments. Council only.
+    pub fn accelerate_line(ctx: Context<CouncilLine>) -> Result<()> {
+        instructions::lines::accelerate_line(ctx)
     }
 
     /// The depositor pays `assets` for shares at the current NAV, at least `min_shares_out`; the
@@ -191,8 +214,7 @@ pub mod elote_pool {
         instructions::lines::write_off(ctx)
     }
 
-    /// Pauses or resumes deposits, redemptions, requests and draws. Council only. Nothing else is
-    /// ever paused: repayments, pagaré instructions, collection and write-offs.
+
     /// Names the next council: `kind` 0 (a Squads vault) or 1 (a generic signer, not yet
     /// accepted). Council only; the zero key withdraws the proposal.
     pub fn propose_council(ctx: Context<ProposeCouncil>, new_council: Pubkey, kind: u8) -> Result<()> {
@@ -215,7 +237,34 @@ pub mod elote_pool {
         instructions::pool::post_fix(ctx, fix_rate, fix_date)
     }
 
-    pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
-        instructions::pool::set_paused(ctx, paused)
+    /// Pauses deposits, redemptions, requests and draws. Any member of the council'"'"'s multisig alone,
+    /// the guardian or the council; repayments and everything else go on.
+    pub fn pause(ctx: Context<Pause>) -> Result<()> {
+        instructions::pool::pause(ctx)
+    }
+
+    /// Ends a pause. Council only.
+    pub fn resume(ctx: Context<CouncilPool>) -> Result<()> {
+        instructions::pool::resume(ctx)
+    }
+
+    /// Sets the guardian, a key that may only pause (the zero key for none). Council only.
+    pub fn set_guardian(ctx: Context<CouncilPool>, guardian: Pubkey) -> Result<()> {
+        instructions::pool::set_guardian(ctx, guardian)
+    }
+
+    /// Sets the line cap, `1..=10_000` bps of the NAV at the approval. Council only.
+    pub fn set_max_line_bps(ctx: Context<CouncilPool>, max_line_bps: u16) -> Result<()> {
+        instructions::pool::set_max_line_bps(ctx, max_line_bps)
+    }
+
+    /// Sets the pool-wide cap on the USDC cost lent out. Council only.
+    pub fn set_outstanding_cap(ctx: Context<CouncilPool>, max_outstanding_principal: u64) -> Result<()> {
+        instructions::pool::set_outstanding_cap(ctx, max_outstanding_principal)
+    }
+
+    /// Sets the acceleration notice, at least seven days. Council only.
+    pub fn set_acceleration_notice(ctx: Context<CouncilPool>, acceleration_notice_seconds: u32) -> Result<()> {
+        instructions::pool::set_acceleration_notice(ctx, acceleration_notice_seconds)
     }
 }
