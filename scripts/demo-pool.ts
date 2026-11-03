@@ -4,7 +4,7 @@
 // installments: one is missed and the next repayment collects late interest first.
 //
 //   npx tsx scripts/demo-pool.ts --cluster local|devnet --multisig <address> [--agreement-hash <64 hex>] [--sponsor]
-//                                [--schedule [--interval-seconds <n>]] [--grace-seconds <n>]
+//        [--schedule [--interval-seconds <n>]] [--grace-seconds <n>] [--max-line-bps <n>] [--yes]
 //
 // --agreement-hash    hash of the signed credit agreement recorded on the line (placeholder if absent)
 // --sponsor           the sponsor co-signs the opening and is named on the line
@@ -14,40 +14,21 @@
 // --grace-seconds     the pool's grace period (default 0; 5 with --schedule on local)
 // --max-line-bps      largest line as a share of the NAV, in basis points (default 5000 here, so
 //                     the 6,000 line fits the 15,000 of deposits; production pools use 1000)
+// --yes               send without asking when the cluster is not this machine
 //
 // Keys live in .demo-keys/ (generated on first run, ignored by git) unless a path is given in
-// ELOTE_ADMIN_KEYPAIR, ELOTE_INVESTOR_A_KEYPAIR, ELOTE_INVESTOR_B_KEYPAIR, ELOTE_BORROWER_KEYPAIR or
-// ELOTE_SPONSOR_KEYPAIR. Only addresses are printed. ELOTE_RPC overrides the cluster's RPC URL.
+// ELOTE_ADMIN_KEYPAIR, ELOTE_ATTESTOR_KEYPAIR, ELOTE_INVESTOR_A_KEYPAIR, ELOTE_INVESTOR_B_KEYPAIR,
+// ELOTE_BORROWER_KEYPAIR or ELOTE_SPONSOR_KEYPAIR. The attestor stands in for the agreements
+// engine's key; open-line.ts, draw.ts and cancel-pagare.ts read it from the same place. Only
+// addresses are printed. ELOTE_RPC overrides the cluster's RPC URL.
 //
 // Demo on Solana devnet with test assets. Not an offer of securities.
-import { createHash, generateKeyPairSync } from "node:crypto";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import {
-  type Address,
-  address,
-  type Instruction,
-  type KeyPairSigner,
-  appendTransactionMessageInstructions,
-  createKeyPairSignerFromBytes,
-  createSolanaRpc,
-  createTransactionMessage,
-  generateKeyPairSigner,
-  getBase64EncodedWireTransaction,
-  getSignatureFromTransaction,
-  lamports,
-  pipe,
-  setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash,
-  signTransactionMessageWithSigners,
-} from "@solana/kit";
+import { type Address, type Instruction, address, type KeyPairSigner, generateKeyPairSigner, lamports } from "@solana/kit";
 import { SYSTEM_PROGRAM_ADDRESS, getCreateAccountInstruction, getTransferSolInstruction } from "@solana-program/system";
 import {
   TOKEN_PROGRAM_ADDRESS,
   fetchMint,
   fetchToken,
-  findAssociatedTokenPda,
   getCreateAssociatedTokenIdempotentInstructionAsync,
   getInitializeMint2Instruction,
   getMintSize,
@@ -55,173 +36,73 @@ import {
 } from "@solana-program/token";
 import {
   LineStatus,
+  drawPagareAccounts,
   fetchCreditLine,
   fetchPool,
   findDeadSharesPda,
   findLinePda,
   findPoolPda,
   findVaultPda,
+  getCreateCollectionV2Instruction,
   getDepositInstructionAsync,
   getDrawInstructionAsync,
-  drawPagareAccounts,
-  fetchPagare,
-  findPagarePda,
-  repaySidecars,
-  withRemainingAccounts,
   getInitPoolInstructionAsync,
   getOpenLineInstructionAsync,
   getRedeemInstructionAsync,
-  getRepayInstructionAsync,
   lineArrears,
   lineSchedule,
 } from "../clients/js/src/index.ts";
+import {
+  ASSET,
+  DISCLAIMER,
+  UNIT,
+  arg,
+  chainNow,
+  checkFlags,
+  cluster,
+  confirmCluster,
+  demoSigner,
+  fail,
+  flag,
+  fmt,
+  hash32,
+  sendOrFail,
+  sleep,
+} from "./lib/cli.ts";
+import { ataOf, repayInParts } from "./lib/pool.ts";
 
-const DISCLAIMER = "Demo on Solana devnet with test assets. Not an offer of securities.";
-const ASSET = "tMXN (devnet test token, no value)";
-const DECIMALS = 6;
-const UNIT = 10n ** BigInt(DECIMALS);
-
-// -- arguments ------------------------------------------------------------------------------------
-
-function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : undefined;
-}
-const cluster = arg("cluster") ?? "local";
-if (cluster !== "local" && cluster !== "devnet") throw new Error("--cluster must be local or devnet");
-const withSponsor = process.argv.includes("--sponsor");
-const withSchedule = process.argv.includes("--schedule");
+checkFlags(["cluster", "multisig", "agreement-hash", "sponsor", "schedule", "interval-seconds", "grace-seconds", "max-line-bps", "yes"]);
+const c = cluster();
+const withSponsor = flag("sponsor");
+const withSchedule = flag("schedule");
 const MONTH_SECONDS = 30n * 86_400n;
-const intervalSeconds = BigInt(arg("interval-seconds") ?? (cluster === "local" ? "20" : MONTH_SECONDS.toString()));
-const graceSeconds = Number(arg("grace-seconds") ?? (withSchedule && cluster === "local" ? "5" : "0"));
+const intervalSeconds = BigInt(arg("interval-seconds") ?? (c.local ? "20" : MONTH_SECONDS.toString()));
+const graceSeconds = Number(arg("grace-seconds") ?? (withSchedule && c.local ? "5" : "0"));
 // The council: vault 0 of an existing autonomous Squads v4 multisig with a majority threshold. The
-// admin key below cannot sign as it, so the steps after init_pool need the council tooling.
-const multisigArg = arg("multisig");
-if (!multisigArg) {
-  console.error("--multisig <address> is required: the Squads v4 multisig whose vault 0 is the council");
-  process.exit(1);
-}
-const multisig = address(multisigArg);
-if (intervalSeconds <= 0n) throw new Error("--interval-seconds must be positive");
-if (!Number.isInteger(graceSeconds) || graceSeconds < 0 || graceSeconds > 0xffffffff) {
-  throw new Error("--grace-seconds must fit in a u32");
-}
-// The concentration cap: the largest line as a share of the NAV at open_line, in basis points.
-// Production pools use 1,000 (decision 20); the demo's 6,000 tMXN line is 40% of its 15,000 of
-// deposits, so it defaults to 5,000.
+// admin key below cannot sign as it, so the steps after init_pool need the council tooling (PR 4).
+const multisig = address(arg("multisig") ?? fail("--multisig <address> is required: the Squads v4 multisig whose vault 0 is the council"));
+if (intervalSeconds <= 0n) fail("--interval-seconds must be positive");
+if (!Number.isInteger(graceSeconds) || graceSeconds < 0 || graceSeconds > 0xffffffff) fail("--grace-seconds must fit in a u32");
+// The concentration cap: production pools use 1,000 bps; the demo's 6,000 tMXN line is 40% of its
+// 15,000 of deposits, so it defaults to 5,000.
 const maxLineBps = Number(arg("max-line-bps") ?? "5000");
-if (!Number.isInteger(maxLineBps) || maxLineBps < 1 || maxLineBps > 10_000) {
-  throw new Error("--max-line-bps must be between 1 and 10000");
-}
-const rpcUrl = process.env.ELOTE_RPC ?? (cluster === "devnet" ? "https://api.devnet.solana.com" : "http://127.0.0.1:8899");
-const rpc = createSolanaRpc(rpcUrl);
+if (!Number.isInteger(maxLineBps) || maxLineBps < 1 || maxLineBps > 10_000) fail("--max-line-bps must be between 1 and 10000");
 
-function agreementHash(): Uint8Array {
-  const given = arg("agreement-hash");
-  if (given) {
-    const hex = given.replace(/^0x/, "");
-    if (!/^[0-9a-fA-F]{64}$/.test(hex)) throw new Error("--agreement-hash must be 32 bytes of hex");
-    return Uint8Array.from(Buffer.from(hex, "hex"));
-  }
-  console.log("No --agreement-hash given: using a placeholder hash of a fixed demo text.");
-  return Uint8Array.from(createHash("sha256").update("elote.fun demo credit agreement").digest());
-}
+await confirmCluster(c, "the demo's transactions");
+const hash = hash32("agreement-hash", "elote.fun demo credit agreement");
+const send = (label: string, feePayer: KeyPairSigner, instructions: Instruction[]) => sendOrFail(c, label, feePayer, instructions);
 
-// -- keys -----------------------------------------------------------------------------------------
-
-const KEY_DIR = path.resolve(".demo-keys");
-
-/** Loads a 64-byte Solana keypair file, creating one in .demo-keys/ if needed. Never printed. */
-async function loadSigner(name: string, envVar: string): Promise<KeyPairSigner> {
-  const fromEnv = process.env[envVar];
-  let file = fromEnv ? fromEnv.replace(/^~/, os.homedir()) : path.join(KEY_DIR, `${name}.json`);
-  if (!fs.existsSync(file)) {
-    if (fromEnv) throw new Error(`${envVar} points to a missing file`);
-    fs.mkdirSync(KEY_DIR, { recursive: true, mode: 0o700 });
-    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-    const seed = Buffer.from(privateKey.export({ format: "jwk" }).d!, "base64url");
-    const pub = Buffer.from(publicKey.export({ format: "jwk" }).x!, "base64url");
-    fs.writeFileSync(file, JSON.stringify([...seed, ...pub]), { mode: 0o600 });
-  }
-  return createKeyPairSignerFromBytes(Uint8Array.from(JSON.parse(fs.readFileSync(file, "utf8"))));
-}
-
-// -- transactions ---------------------------------------------------------------------------------
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-function explorer(signature: string): string {
-  const c = cluster === "devnet" ? "devnet" : `custom&customUrl=${encodeURIComponent(rpcUrl)}`;
-  return `https://explorer.solana.com/tx/${signature}?cluster=${c}`;
-}
-
-async function send(label: string, feePayer: KeyPairSigner, instructions: Instruction[]): Promise<string> {
-  const { value: blockhash } = await rpc.getLatestBlockhash({ commitment: "confirmed" }).send();
-  const tx = await signTransactionMessageWithSigners(
-    pipe(
-      createTransactionMessage({ version: 0 }),
-      (m) => setTransactionMessageFeePayerSigner(feePayer, m),
-      (m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
-      (m) => appendTransactionMessageInstructions(instructions, m)
-    )
-  );
-  const signature = getSignatureFromTransaction(tx);
-  await rpc
-    .sendTransaction(getBase64EncodedWireTransaction(tx), { encoding: "base64", preflightCommitment: "confirmed" })
-    .send();
-  for (let i = 0; i < 60; i++) {
-    await sleep(1_000);
-    const {
-      value: [status],
-    } = await rpc.getSignatureStatuses([signature]).send();
-    if (status?.err) throw new Error(`${label} failed (${signature}): ${JSON.stringify(status.err)}`);
-    if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") {
-      console.log(`  ${label}\n    ${signature}\n    ${explorer(signature)}`);
-      return signature;
-    }
-  }
-  throw new Error(`${label}: not confirmed in time (${signature})`);
-}
-
-async function airdrop(to: Address, sol: number): Promise<void> {
-  const want = BigInt(sol * 1e9);
-  for (let attempt = 1; attempt <= 6; attempt++) {
-    try {
-      const { value: balance } = await rpc.getBalance(to, { commitment: "confirmed" }).send();
-      if (balance >= want / 2n) return;
-      await rpc.requestAirdrop(to, lamports(want)).send();
-      for (let i = 0; i < 30; i++) {
-        await sleep(1_000);
-        const { value } = await rpc.getBalance(to, { commitment: "confirmed" }).send();
-        if (value > balance) return;
-      }
-    } catch (e) {
-      console.log(`  airdrop attempt ${attempt} failed: ${(e as Error).message}`);
-    }
-    await sleep(attempt * 3_000);
-  }
-  throw new Error(`could not fund ${to}; send it some SOL and run again`);
-}
-
-const fmt = (units: bigint) => {
-  const whole = units / UNIT;
-  const frac = (units % UNIT).toString().padStart(DECIMALS, "0").replace(/0+$/, "");
-  return `${whole.toLocaleString("en-US")}${frac ? "." + frac : ""}`;
-};
-
-// -- demo -----------------------------------------------------------------------------------------
-
-console.log(`${DISCLAIMER}\nCluster: ${cluster} (${rpcUrl})\n`);
-const hash = agreementHash();
-
-const admin = await loadSigner("admin", "ELOTE_ADMIN_KEYPAIR");
-const investorA = await loadSigner("investor-a", "ELOTE_INVESTOR_A_KEYPAIR");
-const investorB = await loadSigner("investor-b", "ELOTE_INVESTOR_B_KEYPAIR");
-const borrower = await loadSigner("borrower", "ELOTE_BORROWER_KEYPAIR");
-const sponsor = await loadSigner("sponsor", "ELOTE_SPONSOR_KEYPAIR");
+const admin = await demoSigner("admin", "ELOTE_ADMIN_KEYPAIR");
+const attestor = await demoSigner("attestor", "ELOTE_ATTESTOR_KEYPAIR");
+const investorA = await demoSigner("investor-a", "ELOTE_INVESTOR_A_KEYPAIR");
+const investorB = await demoSigner("investor-b", "ELOTE_INVESTOR_B_KEYPAIR");
+const borrower = await demoSigner("borrower", "ELOTE_BORROWER_KEYPAIR");
+const sponsor = await demoSigner("sponsor", "ELOTE_SPONSOR_KEYPAIR");
+if (attestor.address === admin.address) fail("the attestor key must differ from the admin key");
 console.log(
   [
     `admin      ${admin.address}`,
+    `attestor   ${attestor.address}`,
     `investor A ${investorA.address}`,
     `investor B ${investorB.address}`,
     `borrower   ${borrower.address}`,
@@ -229,12 +110,32 @@ console.log(
   ].join("\n") + "\n"
 );
 
+async function airdrop(to: Address, sol: number): Promise<void> {
+  const want = BigInt(sol * 1e9);
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    try {
+      const { value: balance } = await c.rpc.getBalance(to, { commitment: "confirmed" }).send();
+      if (balance >= want / 2n) return;
+      await c.rpc.requestAirdrop(to, lamports(want)).send();
+      for (let i = 0; i < 30; i++) {
+        await sleep(1_000);
+        const { value } = await c.rpc.getBalance(to, { commitment: "confirmed" }).send();
+        if (value > balance) return;
+      }
+    } catch (e) {
+      console.log(`  airdrop attempt ${attempt} failed: ${(e as Error).message}`);
+    }
+    await sleep(attempt * 3_000);
+  }
+  fail(`could not fund ${to}; send it some SOL and run again`);
+}
+
 console.log("Funding the admin with SOL for fees and rent");
-await airdrop(admin.address, cluster === "devnet" ? 1 : 10);
+await airdrop(admin.address, c.name === "devnet" ? 1 : 10);
 await send(
   "SOL for the other wallets' fees",
   admin,
-  [investorA, investorB, borrower, sponsor].map((w) =>
+  [attestor, investorA, investorB, borrower, sponsor].map((w) =>
     getTransferSolInstruction({ source: admin, destination: w.address, amount: lamports(20_000_000n) })
   )
 );
@@ -243,45 +144,29 @@ await send(
 console.log(`\nCreating the ${ASSET}`);
 const assetMint = await generateKeyPairSigner();
 const mintSpace = BigInt(getMintSize());
-const mintRent = await rpc.getMinimumBalanceForRentExemption(mintSpace).send();
-await send("create tMXN (devnet test token, no value)", admin, [
-  getCreateAccountInstruction({
-    payer: admin,
-    newAccount: assetMint,
-    lamports: mintRent,
-    space: mintSpace,
-    programAddress: TOKEN_PROGRAM_ADDRESS,
-  }),
-  getInitializeMint2Instruction({ mint: assetMint.address, decimals: DECIMALS, mintAuthority: admin.address }),
+const mintRent = await c.rpc.getMinimumBalanceForRentExemption(mintSpace).send();
+await send(`create ${ASSET}`, admin, [
+  getCreateAccountInstruction({ payer: admin, newAccount: assetMint, lamports: mintRent, space: mintSpace, programAddress: TOKEN_PROGRAM_ADDRESS }),
+  getInitializeMint2Instruction({ mint: assetMint.address, decimals: 6, mintAuthority: admin.address }),
 ]);
-console.log(`  tMXN (devnet test token, no value) address ${assetMint.address}`);
+console.log(`  ${ASSET} address ${assetMint.address}`);
 
 const [pool] = await findPoolPda({ creator: admin.address, assetMint: assetMint.address });
 
-// The share mint is supplied by the admin: created here with the pool PDA as mint authority and
-// the asset's decimals. The demo uses a classic SPL mint, which the program accepts; a production
-// series uses a Token-2022 mint frozen by default under Token ACL, so that `Pool.permissioned` is
-// true.
+// The share mint is supplied by the admin, with the pool PDA as mint authority and the asset's
+// decimals. The demo uses a classic SPL mint, which the program accepts; a production series uses
+// a Token-2022 mint frozen by default under Token ACL, so that `Pool.permissioned` is true.
 const shareMintSigner = await generateKeyPairSigner();
-await send("create the share token", admin, [
-  getCreateAccountInstruction({
-    payer: admin,
-    newAccount: shareMintSigner,
-    lamports: mintRent,
-    space: mintSpace,
-    programAddress: TOKEN_PROGRAM_ADDRESS,
-  }),
-  getInitializeMint2Instruction({ mint: shareMintSigner.address, decimals: DECIMALS, mintAuthority: pool }),
-]);
 const shareMint = shareMintSigner.address;
-// The pool records the attestor (the agreements engine's key; a throwaway key stands in for it in
-// the demo, since the admin may not be the attestor) and the series' Metaplex Core collection (a
-// placeholder address in the demo).
-const attestorSigner = await generateKeyPairSigner();
-const attestor = attestorSigner.address;
-const collection = (await generateKeyPairSigner()).address;
-const ataOf = async (owner: Address, mint: Address) =>
-  (await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
+// The series' Metaplex Core collection: bare, with the pool PDA as its update authority, so that
+// only the program can mint pagarés into it. It must exist before init_pool, which checks it.
+const collectionSigner = await generateKeyPairSigner();
+const collection = collectionSigner.address;
+await send("create the share token and the pagarés' Core collection", admin, [
+  getCreateAccountInstruction({ payer: admin, newAccount: shareMintSigner, lamports: mintRent, space: mintSpace, programAddress: TOKEN_PROGRAM_ADDRESS }),
+  getInitializeMint2Instruction({ mint: shareMint, decimals: 6, mintAuthority: pool }),
+  getCreateCollectionV2Instruction({ collection: collectionSigner, updateAuthority: pool, payer: admin, name: "ELOTE-DEMO", uri: "" }),
+]);
 const [vault] = await findVaultPda({ pool });
 const [deadShares] = await findDeadSharesPda({ pool });
 // The first deposit locks this many shares in the pool's own share account (state::DEAD_SHARES).
@@ -302,7 +187,7 @@ await send("init_pool", admin, [
     shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
     gracePeriodSeconds: graceSeconds,
     maxLineBps,
-    attestor,
+    attestor: attestor.address,
     collectionPeriodSeconds: 30 * 86_400,
     cancelDelaySeconds: 7 * 86_400,
     guardian: address("11111111111111111111111111111111"),
@@ -312,7 +197,7 @@ await send("init_pool", admin, [
   }),
 ]);
 console.log(
-  `  pool ${pool}\n  share token ${shareMint}\n  vault ${vault}\n  grace period ${graceSeconds} s\n  max line ${maxLineBps} bps of the NAV`
+  `  pool ${pool}\n  share token ${shareMint}\n  collection ${collection}\n  vault ${vault}\n  grace period ${graceSeconds} s\n  max line ${maxLineBps} bps of the NAV`
 );
 
 console.log(`\nIssuing ${ASSET} to the investors and the sponsor`);
@@ -326,12 +211,12 @@ for (const [w, amount] of [
   issue.push(getMintToInstruction({ mint: assetMint.address, token: await ataOf(w.address, assetMint.address), mintAuthority: admin, amount }));
 }
 issue.push(await getCreateAssociatedTokenIdempotentInstructionAsync({ payer: admin, owner: borrower.address, mint: assetMint.address }));
-await send("issue tMXN (devnet test token, no value): A 10,000, B 5,000, sponsor 720", admin, issue);
+await send(`issue ${ASSET}: A 10,000, B 5,000, sponsor 720`, admin, issue);
 
 async function snapshot() {
-  const p = await fetchPool(rpc, pool, { commitment: "confirmed" });
-  const v = await fetchToken(rpc, vault, { commitment: "confirmed" });
-  const s = await fetchMint(rpc, shareMint, { commitment: "confirmed" });
+  const p = await fetchPool(c.rpc, pool, { commitment: "confirmed" });
+  const v = await fetchToken(c.rpc, vault, { commitment: "confirmed" });
+  const s = await fetchMint(c.rpc, shareMint, { commitment: "confirmed" });
   const nav = v.data.amount + p.data.outstandingPrincipal;
   const supply = s.data.supply;
   const perShare = supply === 0n ? 0n : (nav * UNIT) / supply;
@@ -362,12 +247,12 @@ async function deposit(label: string, who: KeyPairSigner, assets: bigint) {
 }
 
 console.log("\nDeposits");
-await deposit("investor A deposits 10,000 tMXN (devnet test token, no value)", investorA, 10_000n * UNIT);
-await deposit("investor B deposits 5,000 tMXN (devnet test token, no value)", investorB, 5_000n * UNIT);
+await deposit(`investor A deposits 10,000 ${ASSET}`, investorA, 10_000n * UNIT);
+await deposit(`investor B deposits 5,000 ${ASSET}`, investorB, 5_000n * UNIT);
 const before = await snapshot();
 
-console.log(`\nCredit line: 6,000 tMXN (devnet test token, no value) at 12%${withSponsor ? ", co-signed by the sponsor" : ""}`);
-const { lineCount } = (await fetchPool(rpc, pool, { commitment: "confirmed" })).data;
+console.log(`\nCredit line: 6,000 ${ASSET} at 12%${withSponsor ? ", co-signed by the sponsor" : ""}`);
+const { lineCount } = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
 const [line] = await findLinePda({ pool, lineId: lineCount });
 const termEnd = BigInt(Math.floor(Date.now() / 1000) + 90 * 86_400);
 await send("open_line", admin, [
@@ -375,7 +260,7 @@ await send("open_line", admin, [
     council: admin,
     borrower,
     ...(withSponsor ? { sponsor } : {}),
-    attestor: attestorSigner, // stands in for the agreements engine's key in the demo
+    attestor,
     pool,
     line,
     vault,
@@ -391,86 +276,37 @@ await send("open_line", admin, [
   }),
 ]);
 const borrowerAsset = await ataOf(borrower.address, assetMint.address);
-// The draw mints the pagaré: a Core asset and a sidecar at addresses seeded by the line and the
-// draw index (`CreditLine.draws` before the draw); the admin stands in for the app's relayer as
-// the rent payer.
-// The pagaré records a repayment must pass: the line's cursor through the first pagaré
-// the payment's principal leaves uncovered. The program applies late interest, then interest, then
-// principal, never more than is due; `late` is the client's quote of the late interest.
-async function repayRemaining(lineAddress: Address, amount: bigint, late: bigint): Promise<Address[]> {
-  const l = (await fetchCreditLine(rpc, lineAddress, { commitment: "confirmed" })).data;
-  const interestLeft = l.interestDue - l.interestRepaid;
-  const remaining = l.drawn - l.principalRepaid + interestLeft;
-  const afterLate = amount > late ? amount - late : 0n;
-  const rest = afterLate < remaining ? afterLate : remaining;
-  const principalAfter = l.principalRepaid + (rest > interestLeft ? rest - interestLeft : 0n);
-  const drawnThrough: bigint[] = [];
-  for (let drawIndex = 0; drawIndex < l.draws; drawIndex++) {
-    const [pagare] = await findPagarePda({ line: lineAddress, drawIndex });
-    drawnThrough.push((await fetchPagare(rpc, pagare, { commitment: "confirmed" })).data.drawnThrough);
-  }
-  return repaySidecars({ line: lineAddress, pagaresPaid: l.pagaresPaid, drawnThrough, principalAfter });
-}
 
-const pagareAccounts = async (lineAddress: Address, drawIndex: number) => ({
-  payer: admin,
-  ...(await drawPagareAccounts({ line: lineAddress, drawIndex, collection })),
-  systemProgram: SYSTEM_PROGRAM_ADDRESS,
-});
-await send("draw: 6,000 tMXN (devnet test token, no value) to the borrower, pagaré 0 minted", borrower, [
-  await getDrawInstructionAsync({
+/** A draw: the borrower receives `amount`; the admin pays the pagaré's rent as the app's relayer. */
+async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
+  return getDrawInstructionAsync({
     borrower,
-    attestor: attestorSigner,
+    attestor,
     pool,
-    line,
+    line: lineAddress,
     assetMint: assetMint.address,
     vault,
     borrowerAssetAccount: borrowerAsset,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
-    ...(await pagareAccounts(line, 0)),
-    amount: 6_000n * UNIT,
+    payer: admin,
+    ...(await drawPagareAccounts({ line: lineAddress, drawIndex, collection })),
+    systemProgram: SYSTEM_PROGRAM_ADDRESS,
+    amount,
     documentHash: hash, // the signed pagaré's hash; the agreement hash stands in
     certFingerprint: new Uint8Array(32), // wallet-only signature in the demo: no certificate
     signatureMethod: 0,
-  }),
-]);
+  });
+}
+
+await send(`draw: 6,000 ${ASSET} to the borrower, pagaré 0 minted`, borrower, [await drawIx(line, 0, 6_000n * UNIT)]);
 const drawn = await snapshot();
-await send("repay by the borrower: 6,000 tMXN (devnet test token, no value) of principal", borrower, [
-  withRemainingAccounts(
-    await getRepayInstructionAsync({
-      payer: borrower,
-      pool,
-      line,
-      assetMint: assetMint.address,
-      shareMint,
-      vault,
-      payerAssetAccount: borrowerAsset,
-      tokenProgram: TOKEN_PROGRAM_ADDRESS,
-      amount: 6_000n * UNIT,
-      receiptHash: new Uint8Array(32), // the demo has no receipt: "to follow"
-    }),
-    await repayRemaining(line, 6_000n * UNIT, 0n)
-  ),
-]);
-await send("repay by the sponsor: 720 tMXN (devnet test token, no value) of interest", sponsor, [
-  withRemainingAccounts(
-    await getRepayInstructionAsync({
-      payer: sponsor,
-      pool,
-      line,
-      assetMint: assetMint.address,
-      shareMint,
-      vault,
-      payerAssetAccount: await ataOf(sponsor.address, assetMint.address),
-      tokenProgram: TOKEN_PROGRAM_ADDRESS,
-      amount: 720n * UNIT,
-      receiptHash: new Uint8Array(32),
-    }),
-    await repayRemaining(line, 720n * UNIT, 0n)
-  ),
-]);
+const poolData = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
+const noReceipt = new Uint8Array(32); // the demo has no receipt: "to follow"
+console.log(`\nRepayments (interest is taken first)`);
+await repayInParts(c, { pool, poolData, line, payer: borrower, amount: 6_000n * UNIT, receiptHash: noReceipt });
+await repayInParts(c, { pool, poolData, line, payer: sponsor, amount: 720n * UNIT, receiptHash: noReceipt });
 const repaid = await snapshot();
-const status = (await fetchCreditLine(rpc, line, { commitment: "confirmed" })).data.status;
+const status = (await fetchCreditLine(c.rpc, line, { commitment: "confirmed" })).data.status;
 
 console.log("\nRedemption");
 const redeemShares = 4_000n * UNIT;
@@ -500,38 +336,30 @@ console.log(row("after deposits", before));
 console.log(row("line drawn", drawn));
 console.log(row("line repaid", repaid));
 console.log(row("after A redeems 4,000", after));
-console.log(`\nInvestor A received ${fmt(received)} tMXN (devnet test token, no value) for 4,000 shares (value per share ${fmt(before.perShare)} -> ${fmt(repaid.perShare)}).`);
+console.log(`\nInvestor A received ${fmt(received)} ${ASSET} for 4,000 shares (value per share ${fmt(before.perShare)} -> ${fmt(repaid.perShare)}).`);
+console.log(`\npool ${pool}\nline 0 is repaid; its pagaré 0 is marked paid: cancel it with scripts/cancel-pagare.ts --line-id ${lineCount} --draw-index 0`);
 
 if (withSchedule) await scheduleDemo();
 console.log(`\n${DISCLAIMER}`);
 
 // -- installments ---------------------------------------------------------------------------------
 
-/** The cluster's `Clock::unix_timestamp`: what the program reads as `now`. */
-async function chainNow(): Promise<bigint> {
-  const clock = "SysvarC1ock11111111111111111111111111111111" as Address;
-  const { value } = await rpc.getAccountInfo(clock, { encoding: "base64", commitment: "confirmed" }).send();
-  const data = Buffer.from(value!.data[0], "base64");
-  return data.readBigInt64LE(32); // slot, epoch_start_timestamp, epoch, leader_schedule_epoch, unix_timestamp
-}
-
 async function scheduleDemo() {
   const installments = 6;
   const principal = 600n * UNIT;
   const label = intervalSeconds === MONTH_SECONDS ? "monthly" : `every ${intervalSeconds} s (a compressed demo month)`;
   console.log(`\nInstallment line: 600 ${ASSET} at 12%, ${installments} installments ${label}, late interest 100% a year, collection after 3 missed`);
-  const { lineCount: id } = (await fetchPool(rpc, pool, { commitment: "confirmed" })).data;
+  const { lineCount: id } = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
   const [sLine] = await findLinePda({ pool, lineId: id });
-  // The calendar comes from the contract (decision 25): the first installment one interval from
-  // now, the draw window open until then.
-  const sNow = await chainNow();
-  const firstDueAt = sNow + intervalSeconds;
+  // The calendar comes from the contract: the first installment one interval from now, the draw
+  // window open until then.
+  const firstDueAt = (await chainNow(c)) + intervalSeconds;
   const sTermEnd = firstDueAt + BigInt(installments) * intervalSeconds;
   await send("open_line with a schedule", admin, [
     await getOpenLineInstructionAsync({
       council: admin,
       borrower,
-      attestor: attestorSigner,
+      attestor,
       pool,
       line: sLine,
       vault,
@@ -546,71 +374,37 @@ async function scheduleDemo() {
       expedienteRoot: hash,
     }),
   ]);
-  await send("draw: 600 tMXN (devnet test token, no value) to the borrower, pagaré 0 minted", borrower, [
-    await getDrawInstructionAsync({
-      borrower,
-      attestor: attestorSigner,
-      pool,
-      line: sLine,
-      assetMint: assetMint.address,
-      vault,
-      borrowerAssetAccount: borrowerAsset,
-      tokenProgram: TOKEN_PROGRAM_ADDRESS,
-      ...(await pagareAccounts(sLine, 0)),
-      amount: principal,
-      documentHash: hash,
-      certFingerprint: new Uint8Array(32),
-      signatureMethod: 0,
-    }),
-  ]);
+  await send(`draw: 600 ${ASSET} to the borrower, pagaré 0 minted`, borrower, [await drawIx(sLine, 0, principal)]);
 
-  const grace = BigInt((await fetchPool(rpc, pool, { commitment: "confirmed" })).data.gracePeriodSeconds);
+  const grace = BigInt((await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.gracePeriodSeconds);
   const read = async () => {
-    const l = (await fetchCreditLine(rpc, sLine, { commitment: "confirmed" })).data;
+    const l = (await fetchCreditLine(c.rpc, sLine, { commitment: "confirmed" })).data;
     const s = lineSchedule(l)!;
-    const now = await chainNow();
+    const now = await chainNow(c);
     return { l, s, now, a: lineArrears(l, s, grace, now) };
   };
-  let { l, s } = await read();
+  let { l } = await read();
   const installment = (l.drawn + l.interestDue) / BigInt(installments);
   console.log(`  installment ${fmt(installment)}; first due at ${l.firstDueAt} (from the contract, one interval after the opening)`);
 
   // Let the first installment go unpaid past its due date and the grace period.
   const target = l.firstDueAt + grace + 10n;
-  if (target - (await chainNow()) > 600n) {
+  if (target - (await chainNow(c)) > 600n) {
     console.log(`  the first installment falls due in ${intervalSeconds} s: run with --interval-seconds 20 on a local validator to see arrears`);
     return;
   }
   console.log(`  waiting until ${target} (due + ${grace} s grace + 10 s) without paying`);
-  while ((await chainNow()) < target) await sleep(2_000);
+  while ((await chainNow(c)) < target) await sleep(2_000);
   let a;
-  ({ l, s, a } = await read());
+  ({ l, a } = await read());
   console.log(`  missed installments ${a.missed}; overdue ${fmt(a.overdue)}; late interest so far ${fmt(a.lateDue)}`);
 
-  // The next repayment: the overdue installment plus the second one. Late interest grows every
-  // second, so the payment includes a margin; the program takes late interest first, then interest,
-  // then principal, and never more than is due.
-  const amount = a.overdue + installment + 2n * a.lateDue + 1_000n;
-  const lateBefore = s.lateCollected;
-  await send("repay: overdue installment, its late interest and the next installment", borrower, [
-    withRemainingAccounts(
-      await getRepayInstructionAsync({
-        payer: borrower,
-        pool,
-        line: sLine,
-        assetMint: assetMint.address,
-        shareMint,
-        vault,
-        payerAssetAccount: borrowerAsset,
-        tokenProgram: TOKEN_PROGRAM_ADDRESS,
-        amount,
-        receiptHash: new Uint8Array(32),
-      }),
-      await repayRemaining(sLine, amount, a.lateDue)
-    ),
-  ]);
-  ({ l, s, a } = await read());
-  console.log(`  late interest collected ${fmt(s.lateCollected - lateBefore)}; missed installments now ${a.missed}`);
+  // The overdue installment, its late interest and the next installment; the program takes late
+  // interest first, then interest, then principal, and never more than is due.
+  const lateBefore = l.lateCollected;
+  await repayInParts(c, { pool, poolData, line: sLine, payer: borrower, amount: a.overdue + installment + 2n * a.lateDue, receiptHash: noReceipt });
+  ({ l, a } = await read());
+  console.log(`  late interest collected ${fmt(l.lateCollected - lateBefore)}; missed installments now ${a.missed}`);
   console.log(`  repaid: interest ${fmt(l.interestRepaid)}, principal ${fmt(l.principalRepaid)} (late interest first, then interest, then principal)`);
   console.log(`  line status ${LineStatus[l.status]}; once 3 installments are missed and the grace period of the third has run, anyone may call mark_in_collection`);
 }

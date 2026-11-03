@@ -101,3 +101,40 @@ export function withRemainingAccounts<T extends Instruction>(instruction: T, add
   const extra: AccountMeta[] = addresses.map((address) => ({ address, role: AccountRole.WRITABLE }));
   return { ...instruction, accounts: [...(instruction.accounts ?? []), ...extra] } as T;
 }
+
+/**
+ * The program address that holds a pagaré's burn delegate during an endoso en procuración,
+ * `["procurador", pagare, procurador]`. The procurador's `cancel_pagare` passes it as
+ * `procuradorAuthority`.
+ */
+export async function findProcuradorAuthorityPda(
+  seeds: { pagare: Address; procurador: Address },
+  config: { programAddress?: Address } = {}
+): Promise<ProgramDerivedAddress> {
+  return await getProgramDerivedAddress({
+    programAddress: config.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS,
+    seeds: [
+      getUtf8Encoder().encode("procurador"),
+      getAddressEncoder().encode(seeds.pagare),
+      getAddressEncoder().encode(seeds.procurador),
+    ],
+  });
+}
+
+/**
+ * The most principal one `repay` may apply so that it touches at most `maxRecords` pagaré
+ * records: it may cover pagarés `pagaresPaid ..= pagaresPaid + maxRecords - 2`, the next one
+ * being the last record it passes. A payment above the cap is split into several `repay` calls.
+ */
+export function repayPrincipalCap(input: {
+  pagaresPaid: number;
+  drawnThrough: readonly bigint[];
+  principalRepaid: bigint;
+  maxRecords: number;
+}): bigint {
+  const { pagaresPaid, drawnThrough, principalRepaid, maxRecords } = input;
+  const lastCovered = pagaresPaid + maxRecords - 2;
+  const ceiling =
+    lastCovered + 1 < drawnThrough.length ? drawnThrough[lastCovered] : drawnThrough[drawnThrough.length - 1];
+  return ceiling > principalRepaid ? ceiling - principalRepaid : 0n;
+}

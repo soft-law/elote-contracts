@@ -262,10 +262,12 @@ npx tsx scripts/demo-pool.ts --cluster local  [--agreement-hash <64 hex>] [--spo
 npx tsx scripts/demo-pool.ts --cluster devnet [--agreement-hash <64 hex>] [--sponsor]
 ```
 
-All amounts below are in tMXN (devnet test token, no value). The script creates the test token
-and a pool, then runs two investors (10,000 and 5,000), a 6,000 line at 12% with the given
-agreement hash, the draw, the borrower's repayment of principal and the sponsor's payment of the
-720 interest, then a partial redemption. It prints every signature with an explorer link and a final table of NAV, supply and
+All amounts below are in tMXN (devnet test token, no value). The script creates the test token,
+the share token and the pagarés' Metaplex Core collection (bare, with the pool PDA as update
+authority, as `init_pool` requires) and a pool, then runs two investors (10,000 and 5,000), a 6,000
+line at 12% with the given agreement hash, the draw (which mints pagaré 0), the borrower's
+repayment (interest first, then principal) and the sponsor's payment of the rest, then a partial
+redemption. It prints every signature with an explorer link and a final table of NAV, supply and
 value per share before and after.
 
 With `--schedule` it then opens a 600 line at 12% in six installments with 100% a year late interest
@@ -278,8 +280,10 @@ Over a few seconds the late interest is a few millionths of a tMXN; the integrat
 by months instead.
 
 Wallets are generated into `.demo-keys/` (ignored by git) unless `ELOTE_ADMIN_KEYPAIR`,
-`ELOTE_INVESTOR_A_KEYPAIR`, `ELOTE_INVESTOR_B_KEYPAIR`, `ELOTE_BORROWER_KEYPAIR` or
-`ELOTE_SPONSOR_KEYPAIR` point to keypair files. `ELOTE_RPC` overrides the RPC URL. On devnet the
+`ELOTE_ATTESTOR_KEYPAIR`, `ELOTE_INVESTOR_A_KEYPAIR`, `ELOTE_INVESTOR_B_KEYPAIR`,
+`ELOTE_BORROWER_KEYPAIR` or `ELOTE_SPONSOR_KEYPAIR` point to keypair files. The attestor stands in
+for the agreements engine's key; the other scripts read it from the same place. Every script prints
+the cluster and, unless the RPC is this machine or `--yes` is given, asks before sending. `ELOTE_RPC` overrides the RPC URL. On devnet the
 admin is funded by airdrop (with retries) and pays the other wallets' fees.
 
 For a local run, start a validator with the program loaded and the demo admin funded (the script
@@ -289,20 +293,49 @@ creates `.demo-keys/admin.json` on its first run; create it beforehand for the v
 mkdir -p .demo-keys && test -f .demo-keys/admin.json || solana-keygen new --no-bip39-passphrase -s -o .demo-keys/admin.json
 solana-test-validator --reset \
   --bpf-program BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM target/deploy/elote_pool.so \
+  --bpf-program CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d programs/elote_pool/tests/fixtures/mpl_core_program-0.15.3.so \
   --mint "$(solana-keygen pubkey .demo-keys/admin.json)"
 ```
+
+`scripts/local-e2e.sh` runs every script below end to end on a validator of its own, with the
+ledger and all keys in a temporary directory removed on exit; it refuses any RPC that is not this
+machine. Build first (`NO_DNA=1 anchor build --ignore-keys --arch v0`).
 
 `scripts/open-line.ts` opens one approved line on an existing pool for a borrower whose keypair file
 is held locally, so the borrower's draw and repayments can be rehearsed in the app:
 `npx tsx scripts/open-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path> --principal <tMXN>`,
-with `--rate-bps` (1200), `--term-days` (90), `--sponsor-keypair` and `--agreement-hash` (the demo's
-placeholder if absent). `--installments <n> --interval-days <n>` open a scheduled line, with
+with `--rate-bps` (1200), `--term-days` (90), `--sponsor-keypair` with `--sponsor-role promoter|guarantor`
+(promoter by default), `--agreement-hash` and `--expediente-root` (placeholders if absent), and
+`--attestor-keypair` (`.demo-keys/attestor.json` by default). `--installments <n> --interval-days <n>` open a scheduled line, with
 `--late-rate-bps` (10000) and `--max-missed` (3, the program's minimum, so at least three
 installments); the script puts the first due date one interval from now, standing in for the
 contract's calendar, so `--term-days` must be at least installments times interval. The admin
 (`ELOTE_ADMIN_KEYPAIR` or `.demo-keys/admin.json`), the borrower and the pool's attestor sign the
 same transaction. The script checks the pool's admin and pause state, then prints the line id and
 address, the terms, the signature and an explorer link; program errors are shown by code and name.
+
+`scripts/draw.ts --pool <address> --line-id <n> --borrower-keypair <path> --amount <tMXN>` draws one
+tranche and mints its pagaré, with `--document-hash`, `--signature-method wallet|psc|efirma` and
+`--cert-fingerprint` (required with psc or efirma); the borrower and the attestor sign, the admin
+pays the pagaré's rent.
+
+`scripts/repay.ts --pool <address> --line-id <n> --amount <tMXN> | --all` pays on a line (the
+borrower by default, `--payer-keypair` for anyone else; `--receipt-hash`, zero meaning "to
+follow"). A payment that would touch more than five pagaré records is split into several `repay`
+calls (`MAX_SIDECARS_PER_REPAY`); a part refused because another payment landed first is rebuilt
+and sent again.
+
+`scripts/endorse-pagare.ts --pool <address> --line-id <n> --draw-index <n> --procurador <address>`
+endorses an outstanding pagaré en procuración (the admin as holder and the attestor sign;
+`--endoso-hash`), and `--revoke` (with `--revocation-hash`) revokes the procuración in force. The
+procurador can never be the pool, the admin or the attestor; endorse before the payment marks the
+pagaré paid.
+
+`scripts/cancel-pagare.ts --pool <address> --line-id <n> --draw-index <n> --receipt-hash <64 hex>`
+extinguishes a pagaré a repayment marked paid: by default the admin as holder with the attestor;
+`--request` files the holder's cancellation request; `--backstop` cancels without the attestor
+after that request's deadline (refused before it); `--procurador-keypair` cancels as the
+procurador of record through its program address.
 
 `scripts/key-to-base58.ts <keypair.json>` prints the base58 form of a keypair file's secret bytes,
 the format a wallet's private key import accepts. The output is a secret: use it for devnet demo keys only.
