@@ -197,22 +197,22 @@ consejo"; no double signature), example figures.
 4. Removing the holder-only cancellation backstop: is the PAGADO mark at payment enough?
 5. The acceleration notice period.
 
-## Open for Mario
+## Answered by Mario (2026-11-03)
 
-1. Investors without KYC: pilot and devnet only, or production too? (Earlier plan: first mainnet pool
-   permissioned; research: the private-offering exemption does not cover participations.)
-2. The first council: who are the curators and what threshold (the guard requires a majority, for
-   example 2 of 3)?
-3. Who holds the guardian key.
-4. Review time and visibility for the borrower (from design): a committed maximum review time,
-   whether the borrower sees the stage (received, in review, decided), what happens if the council
-   never reaches the threshold (technical default: the request does not expire on its own; the
-   borrower can withdraw it and recover the rent), and whether curators appear by name and face or
-   only the result is shown (naming needs counsel so it does not read as an aval or guarantee).
-5. Acceleration notice delivery (from design): the notice goes to the borrower, and an in-app
-   notice alone does not reach a small merchant who opens the app only when collecting. Send it by
-   SMS to the KYC-verified number as well (product decision with a cost)? The provisional floor was
-   raised from 72 h to 7 days for the same reason.
+1. Investors without KYC for testing (devnet); production decided later.
+2. First council: two curators, Gabriel and Mario, threshold 2 of 2. More curators join by council
+   proposal (a Squads config transaction voted by the council). The majority guard accepts 2 of 2
+   (floor(2/2)+1 = 2). Liveness risk noted: with 2 of 2, one lost key stops the council until a
+   member is replaced, which itself needs both; adding a third curator removes that risk.
+3. The curators are the admin. Guardian: each curator's own key can pause alone (fast in an
+   emergency); only the council resumes. (Coordinator's reading of "guardian key the curators
+   also".)
+4. Maximum review time 15 days: `approve_line` refuses after `requested_at + 15 days`
+   (`RequestExpired`); after that the borrower withdraws and recovers the rent, or requests again.
+   The borrower sees only the result, not the curators.
+5. The acceleration notice also goes by SMS to the KYC-verified number (backend, off chain).
+6. Pool limits are council-gated: the council can raise the pool's lending limits (Mario: "the
+   council approves to raise the pool limit 100k"); the figure and unit are confirmed with Mario.
 
 ## Left to the builder
 
