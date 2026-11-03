@@ -71,6 +71,32 @@ pub const MIN_ACCELERATION_NOTICE_SECONDS: u32 = 7 * 86_400;
 /// The shortest wait a pool may set from a pagaré's payment before its borrower may cancel it
 /// alone.
 pub const MIN_CANCEL_GRACE_SECONDS: u32 = 30 * 86_400;
+#[cfg(all(feature = "devnet", feature = "localnet"))]
+compile_error!("the cluster features `devnet` and `localnet` are exclusive");
+
+/// The asset mints `init_pool` accepts (R2). Without a cluster feature, the mainnet list: a build
+/// that forgets its feature stays on the strictest list.
+#[cfg(not(any(feature = "devnet", feature = "localnet")))]
+pub const ASSET_ALLOWLIST: Option<&[Pubkey]> = Some(&[
+    pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // USDC
+    pubkey!("MEXeQE5UjuusUoyS2KxbUXp6o21YbbBJaNvPMMEfr4y"), // MEXe (Etherfuse)
+]);
+/// Devnet: the Etherfuse sandbox mints and Circle's devnet USDC.
+#[cfg(feature = "devnet")]
+pub const ASSET_ALLOWLIST: Option<&[Pubkey]> = Some(&[
+    pubkey!("MEXeDZ8UKQUzKK3yXcXFjHwCG2AAigdSTnaXPuxxchK"), // MEXe, Etherfuse sandbox
+    pubkey!("4D4r1KuS9WxbPCzzAJnWtYUJSSzDEZzrF1CbwajWGVjg"), // USDC, Etherfuse sandbox
+    pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"), // USDC, Circle
+]);
+/// Localnet (the tests and the local e2e): any mint the asset policy accepts.
+#[cfg(feature = "localnet")]
+pub const ASSET_ALLOWLIST: Option<&[Pubkey]> = None;
+
+/// Whether `mint` is on this build's `ASSET_ALLOWLIST`.
+pub fn asset_listed(mint: &Pubkey) -> bool {
+    ASSET_ALLOWLIST.is_none_or(|list| list.contains(mint))
+}
+
 /// `Pool::asset_controls` bit: the asset mint has a freeze authority.
 pub const ASSET_CONTROL_FREEZE: u8 = 1 << 0;
 /// `Pool::asset_controls` bit: the asset mint carries the Token-2022 `Pausable` extension.
@@ -482,6 +508,31 @@ mod tests {
         assert!(p.check(10, Some(1)).is_err());
         assert!(p.check(u64::MAX, None).is_err(), "vault + outstanding overflows");
         assert!(pool(0).check(u64::MAX, Some(DEAD_SHARES)).is_ok(), "the maximum NAV itself is fine");
+    }
+
+    #[test]
+    #[cfg(not(any(feature = "devnet", feature = "localnet")))]
+    fn without_a_cluster_feature_only_mainnet_usdc_and_mexe_are_listed() {
+        assert!(asset_listed(&pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")));
+        assert!(asset_listed(&pubkey!("MEXeQE5UjuusUoyS2KxbUXp6o21YbbBJaNvPMMEfr4y")));
+        assert!(!asset_listed(&pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU")), "devnet USDC is not mainnet's");
+        assert!(!asset_listed(&Pubkey::new_unique()));
+    }
+
+    #[test]
+    #[cfg(feature = "devnet")]
+    fn devnet_lists_the_sandbox_mints_and_circles_usdc() {
+        assert!(asset_listed(&pubkey!("MEXeDZ8UKQUzKK3yXcXFjHwCG2AAigdSTnaXPuxxchK")));
+        assert!(asset_listed(&pubkey!("4D4r1KuS9WxbPCzzAJnWtYUJSSzDEZzrF1CbwajWGVjg")));
+        assert!(asset_listed(&pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU")));
+        assert!(!asset_listed(&pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")));
+        assert!(!asset_listed(&Pubkey::new_unique()));
+    }
+
+    #[test]
+    #[cfg(feature = "localnet")]
+    fn localnet_lists_any_mint() {
+        assert!(asset_listed(&Pubkey::new_unique()));
     }
 
     #[test]

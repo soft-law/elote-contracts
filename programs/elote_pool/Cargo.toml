@@ -9,6 +9,10 @@ name = "elote_pool"
 
 [features]
 default = []
+# Cluster of the asset allow-list (`state::ASSET_ALLOWLIST`): none = mainnet, `devnet`, or
+# `localnet` (any mint; the tests and the local e2e).
+devnet = []
+localnet = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []

@@ -27,6 +27,7 @@ use common::*;
 use elote_pool::errors::PoolError;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
+use anchor_spl::token_2022::spl_token_2022;
 
 const E_COUNCIL_INVALID: u32 = ERR_BASE + PoolError::CouncilInvalid as u32;
 const E_COUNCIL_TOO_LARGE: u32 = ERR_BASE + PoolError::CouncilTooLarge as u32;
@@ -257,4 +258,23 @@ fn proposing_the_zero_key_withdraws_a_rotation() {
     assert_eq!(env.pool(&k).pending_council, Pubkey::default());
     let ix = env.accept_council_ix(&k, &new.pubkey(), &multisig);
     env.expect_err(ix, &new, &[], ERR_BASE + PoolError::NoPendingCouncil as u32);
+}
+
+#[test]
+fn init_pool_refuses_the_share_mint_as_the_asset() {
+    let mut env = Env::new();
+    let council = env.council.pubkey();
+    let creator = env.creator.insecure_clone();
+    // A share mint that passes every share check, passed as the asset too. The pool PDA depends on
+    // the asset, so the mint is created first and its authority handed to that pool afterwards.
+    let council_kp = env.council.insecure_clone();
+    let mint = env.create_share_mint(&council, 6, None, false);
+    let pool = pool_pda(&creator.pubkey(), &mint).0;
+    env.set_mint_authority(&mint, spl_token_2022::instruction::AuthorityType::MintTokens, &council_kp, Some(&pool));
+    let share_mint = mint;
+    let mut k = PoolKeys::new(&creator.pubkey(), &share_mint, &share_mint, TOKEN_2022_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
+    k.collection = env.create_collection(&k.pool);
+    let p = env.init_params(0, BPS, env.attestor.pubkey(), COLLECTION_PERIOD, CANCEL_DELAY);
+    let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), p);
+    env.expect_err(ix, &creator, &[], ERR_BASE + PoolError::AssetIsShareMint as u32);
 }

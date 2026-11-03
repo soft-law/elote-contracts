@@ -6,7 +6,7 @@
 # and the procurador's cancellation. The backstop's success needs seven days to pass; the Rust suite
 # covers it.
 #
-#   scripts/local-e2e.sh            (after `NO_DNA=1 anchor build --ignore-keys --arch v0`)
+#   scripts/local-e2e.sh            (after `NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet`)
 #
 # Local only: the validator preloads target/deploy/elote_pool.so and the pinned Metaplex Core
 # binary at their program ids (`--bpf-program`), which is not a deploy. The RPC must be this
@@ -27,7 +27,7 @@ case "${ELOTE_RPC:-$RPC}" in
   http://127.0.0.1:*|http://localhost:*) ;;
   *) echo "error: local-e2e runs against this machine only (ELOTE_RPC=${ELOTE_RPC})" >&2; exit 1 ;;
 esac
-[ -f "$PROGRAM_SO" ] || { echo "error: build first: NO_DNA=1 anchor build --ignore-keys --arch v0" >&2; exit 1; }
+[ -f "$PROGRAM_SO" ] || { echo "error: build first: NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet" >&2; exit 1; }
 [ -f "$CORE_SO" ] || { echo "error: missing $CORE_SO" >&2; exit 1; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/elote-e2e.XXXXXX")"

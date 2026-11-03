@@ -184,7 +184,7 @@ the order listed for each instruction.
 Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.2.1 (from [otter-sec/anchor](https://github.com/otter-sec/anchor), where Anchor now lives), Solana CLI 4.1.2 (the pairing Anchor 1.2 is tested against), Node 22.12+. `avm install 1.2.1 && avm use 1.2.1` and `agave-install init 4.1.2` set both; CI installs the same versions and checks the Anchor binary's sha256.
 
 ```sh
-NO_DNA=1 anchor build --ignore-keys --arch v0   # target/deploy/elote_pool.so and target/idl/elote_pool.json
+NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet   # target/deploy/elote_pool.so and target/idl/elote_pool.json
 cargo test -p elote_pool         # unit tests + LiteSVM integration tests against the built .so
 npm install
 npm run codama                   # copies the IDL to idl/ and regenerates clients/js/src/generated
@@ -192,6 +192,11 @@ npm run check:client             # fails if the committed client differs from id
 npm run typecheck
 npm run test:client              # replays the program's arrears vectors against clients/js/src/schedule.ts
 ```
+
+The `localnet` feature lets `init_pool` accept any asset mint, which the tests and the local e2e
+need. Without a feature the program accepts only mainnet USDC and MEXe; `--features devnet`
+accepts the Etherfuse sandbox MEXe and USDC and Circle's devnet USDC (`state::ASSET_ALLOWLIST`). A
+deployed build is verified byte for byte against a build with its cluster's feature.
 
 `anchor build` on a fresh clone writes a new random `target/deploy/elote_pool-keypair.json`. It is
 not the program's key: never run `anchor keys sync` or `anchor deploy` with it, or the program id
@@ -299,7 +304,7 @@ solana-test-validator --reset \
 
 `scripts/local-e2e.sh` runs every script below end to end on a validator of its own, with the
 ledger and all keys in a temporary directory removed on exit; it refuses any RPC that is not this
-machine. Build first (`NO_DNA=1 anchor build --ignore-keys --arch v0`).
+machine. Build first (`NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet`).
 
 `scripts/open-line.ts` opens one approved line on an existing pool for a borrower whose keypair file
 is held locally, so the borrower's draw and repayments can be rehearsed in the app:

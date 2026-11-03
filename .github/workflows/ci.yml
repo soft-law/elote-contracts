@@ -70,9 +70,12 @@ jobs:
       # --ignore-keys: the build keypair is random on a fresh checkout and is never the program's key.
       # --arch v0: Anchor 1.2 defaults to SBPF v3, which the Solana 3.x runtime in LiteSVM 0.11
       # cannot load; v0 is what is deployed on devnet. v3 comes with the move to the 4.x crate line.
+      # --features localnet: the tests create their own asset mints (state::ASSET_ALLOWLIST).
       - name: Build
-        run: NO_DNA=1 anchor build --ignore-keys --arch v0
+        run: NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet
       - name: Committed IDL matches the build
         run: npm run idl:sync && git diff --exit-code --stat idl/
       - name: Unit and LiteSVM tests
         run: cargo test -p elote_pool
+      - name: The devnet allow-list
+        run: cargo test -p elote_pool --lib --features devnet

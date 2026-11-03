@@ -12,7 +12,7 @@ use crate::events::{
 };
 use crate::council;
 use crate::math;
-use crate::state::{
+use crate::state::{self, 
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
     COUNCIL_GENERIC, COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_DELAY_SECONDS, MIN_CANCEL_GRACE_SECONDS,
     MIN_COLLECTION_PERIOD_SECONDS,
@@ -268,6 +268,8 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
     // would collapse the two-signature model into one key.
     require!(p.attestor != Pubkey::default(), PoolError::WrongAccount);
     require!(p.attestor != council, PoolError::AttestorIsCouncil);
+    require!(state::asset_listed(&ctx.accounts.asset_mint.key()), PoolError::AssetNotListed);
+    require_keys_neq!(ctx.accounts.asset_mint.key(), ctx.accounts.share_mint.key(), PoolError::AssetIsShareMint);
     // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
     require!(min_first_deposit(ctx.accounts.asset_mint.decimals).is_some(), PoolError::WrongAccount);
     let controls = asset_controls(&ctx.accounts.asset_mint.to_account_info())?;
