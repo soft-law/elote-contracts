@@ -65,8 +65,8 @@ for this change.
 - **Unchanged:** `repay`, `deposit`, `redeem`, `mark_in_collection` (anyone, after the third missed
   installment plus grace).
 - **Collect the debt early:** `propose_acceleration` (council, emits a notice event) then
-  `accelerate_line` after `acceleration_notice_seconds` (pool parameter, provisional floor 72 h,
-  counsel sets the figure); withdrawable before it fires. Same math as `mark_in_collection`
+  `accelerate_line` after `acceleration_notice_seconds` (pool parameter, provisional floor 7 days,
+  counsel sets the figure; the notice is addressed to the borrower); withdrawable before it fires. Same math as `mark_in_collection`
   without the missed-installment requirement. No Squads time_lock (it would delay every council
   action).
 - **Guardian:** a key that can only pause the pool; only the council resumes. Held by Elote
@@ -91,6 +91,35 @@ for this change.
 - **Events (auditor LM-005):** LineRequested, LineApproved{expediente_root, terms_hash},
   LineRejected, RequestWithdrawn, AccelerationProposed, AccelerationWithdrawn, LineAccelerated,
   CouncilProposed, CouncilAccepted{old, new, kind}, PoolPaused{by}, PoolResumed.
+
+## Settled after the builder check (coordinator's calls)
+
+- **`terms_hash` is computed on chain**, never supplied: sha256 of a fixed encoding of the stored
+  terms (principal, rate, term_end, schedule, sponsor and role, `agreement_hash`,
+  `pagare_template_hash`, `expediente_root`). `request_line` stores the terms and the hash;
+  `approve_line` takes the hash the curators computed off chain from the documents and refuses on
+  mismatch. The encoding is specified once, in the client, and reproduced by the scripts and the
+  curators' tooling (one test vector pins it). The council's approval therefore covers the pagaré
+  template and the agreement.
+- **Acceleration scope:** `propose_acceleration` applies only to drawn lines (Active or past the
+  draw window); for never-drawn lines the council uses `cancel_line`. Proposing **suspends draws at
+  once** (same effect as `suspend_draws`), so a borrower cannot drain the line during the notice;
+  withdrawing the proposal does not resume draws by itself (the council resumes explicitly).
+  Scheduled lines use decision 28's math. Bullet lines: whole principal due at the mark, ordinary
+  interest accrued to that date kept, unaccrued interest forgiven pro rata by time, late interest
+  from the mark; this mirrors decision 28's working rule and goes to Mario and counsel with it.
+- **CU:** the 100,000 CU ceiling applies to elote_pool's own consumption per instruction. The Squads
+  execution transaction may request a higher compute budget; the council tooling sets it. If an
+  elote_pool instruction itself exceeds the ceiling, restructure (for example thaw and burn in two
+  instructions) rather than raising the ceiling.
+- **Pool creation:** seeds use `creator` (v1 has no series id). `init_pool` accepts only
+  council_kind 0 and runs the full multisig check (owner, vault PDA index 0, `config_authority`
+  default, majority threshold); it does not need the council's signature, since a vault PDA of a
+  valid multisig can sign by construction. Kind 1 is reachable only by rotation. If the series is
+  permissioned, `init_pool` requires the share mint's freeze authority to be the pool PDA, so the
+  creator keeps no power over investors. Other small calls (rent payer inside Squads, pause scope:
+  draws, deposits and new requests; repay and redeem stay open; the council rotates the guardian)
+  are left to the builder and noted in ARCHITECTURE.
 
 ## Goals
 
@@ -164,6 +193,15 @@ consejo"; no double signature), example figures.
 2. The first council: who are the curators and what threshold (the guard requires a majority, for
    example 2 of 3)?
 3. Who holds the guardian key.
+4. Review time and visibility for the borrower (from design): a committed maximum review time,
+   whether the borrower sees the stage (received, in review, decided), what happens if the council
+   never reaches the threshold (technical default: the request does not expire on its own; the
+   borrower can withdraw it and recover the rent), and whether curators appear by name and face or
+   only the result is shown (naming needs counsel so it does not read as an aval or guarantee).
+5. Acceleration notice delivery (from design): the notice goes to the borrower, and an in-app
+   notice alone does not reach a small merchant who opens the app only when collecting. Send it by
+   SMS to the KYC-verified number as well (product decision with a cost)? The provisional floor was
+   raised from 72 h to 7 days for the same reason.
 
 ## Left to the builder
 
