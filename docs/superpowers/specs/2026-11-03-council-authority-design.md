@@ -187,8 +187,8 @@ for this change.
    `init_pool`; Mario's "100k" is pending his unit confirmation.
 6. **CU rule:** one rule, 100,000 CU per transaction including the Squads execution, pinned in
    `tests/squads.rs`. Supersedes the two other readings in this document.
-7. **Pause scope:** pause blocks draws, deposits, new requests and redeem (as in v1); repay always
-   stays open, so a borrower can always pay. This replaces "repay and redeem stay open".
+7. **Pause scope:** pause blocks draws, deposits, request_line, approve_line and redeem; repay always
+   stays open, so a borrower can always pay (approve_line added 2026-11-04: an emergency pause must not let new credit be born). This replaces "repay and redeem stay open".
 8. **Accepted as the dev proposed:** a pool may name an existing multisig without its signature
    (harmless: only the council exercises the powers; documented); a curator added after an approval
    does not invalidate lines already approved; rejected or withdrawn line ids are never reused;
