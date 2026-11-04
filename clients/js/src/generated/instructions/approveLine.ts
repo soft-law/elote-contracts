@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -98,11 +100,13 @@ export type ApproveLineInstructionData = {
   discriminator: ReadonlyUint8Array;
   expedienteRoot: ReadonlyUint8Array;
   termsHash: ReadonlyUint8Array;
+  validUntil: bigint;
 };
 
 export type ApproveLineInstructionDataArgs = {
   expedienteRoot: ReadonlyUint8Array;
   termsHash: ReadonlyUint8Array;
+  validUntil: number | bigint;
 };
 
 export function getApproveLineInstructionDataEncoder(): FixedSizeEncoder<ApproveLineInstructionDataArgs> {
@@ -111,6 +115,7 @@ export function getApproveLineInstructionDataEncoder(): FixedSizeEncoder<Approve
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
       ["termsHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: APPROVE_LINE_DISCRIMINATOR }),
   );
@@ -121,6 +126,7 @@ export function getApproveLineInstructionDataDecoder(): FixedSizeDecoder<Approve
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
     ["termsHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -154,6 +160,7 @@ export type ApproveLineAsyncInput<
   program?: TAccountProgram;
   expedienteRoot: ApproveLineInstructionDataArgs["expedienteRoot"];
   termsHash: ApproveLineInstructionDataArgs["termsHash"];
+  validUntil: ApproveLineInstructionDataArgs["validUntil"];
 };
 
 export async function getApproveLineInstructionAsync<
@@ -335,6 +342,7 @@ export type ApproveLineInput<
   program?: TAccountProgram;
   expedienteRoot: ApproveLineInstructionDataArgs["expedienteRoot"];
   termsHash: ApproveLineInstructionDataArgs["termsHash"];
+  validUntil: ApproveLineInstructionDataArgs["validUntil"];
 };
 
 export function getApproveLineInstruction<

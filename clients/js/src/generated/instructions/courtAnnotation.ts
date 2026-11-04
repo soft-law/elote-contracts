@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -105,12 +107,14 @@ export type CourtAnnotationInstructionData = {
   drawIndex: number;
   kind: number;
   documentHash: ReadonlyUint8Array;
+  validUntil: bigint;
 };
 
 export type CourtAnnotationInstructionDataArgs = {
   drawIndex: number;
   kind: number;
   documentHash: ReadonlyUint8Array;
+  validUntil: number | bigint;
 };
 
 export function getCourtAnnotationInstructionDataEncoder(): FixedSizeEncoder<CourtAnnotationInstructionDataArgs> {
@@ -120,6 +124,7 @@ export function getCourtAnnotationInstructionDataEncoder(): FixedSizeEncoder<Cou
       ["drawIndex", getU16Encoder()],
       ["kind", getU8Encoder()],
       ["documentHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: COURT_ANNOTATION_DISCRIMINATOR }),
   );
@@ -131,6 +136,7 @@ export function getCourtAnnotationInstructionDataDecoder(): FixedSizeDecoder<Cou
     ["drawIndex", getU16Decoder()],
     ["kind", getU8Decoder()],
     ["documentHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -165,6 +171,7 @@ export type CourtAnnotationAsyncInput<
   drawIndex: CourtAnnotationInstructionDataArgs["drawIndex"];
   kind: CourtAnnotationInstructionDataArgs["kind"];
   documentHash: CourtAnnotationInstructionDataArgs["documentHash"];
+  validUntil: CourtAnnotationInstructionDataArgs["validUntil"];
 };
 
 export async function getCourtAnnotationInstructionAsync<
@@ -358,6 +365,7 @@ export type CourtAnnotationInput<
   drawIndex: CourtAnnotationInstructionDataArgs["drawIndex"];
   kind: CourtAnnotationInstructionDataArgs["kind"];
   documentHash: CourtAnnotationInstructionDataArgs["documentHash"];
+  validUntil: CourtAnnotationInstructionDataArgs["validUntil"];
 };
 
 export function getCourtAnnotationInstruction<

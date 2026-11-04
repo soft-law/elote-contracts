@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -90,15 +92,20 @@ export type SetMaxLineBpsInstruction<
 export type SetMaxLineBpsInstructionData = {
   discriminator: ReadonlyUint8Array;
   maxLineBps: number;
+  validUntil: bigint;
 };
 
-export type SetMaxLineBpsInstructionDataArgs = { maxLineBps: number };
+export type SetMaxLineBpsInstructionDataArgs = {
+  maxLineBps: number;
+  validUntil: number | bigint;
+};
 
 export function getSetMaxLineBpsInstructionDataEncoder(): FixedSizeEncoder<SetMaxLineBpsInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["maxLineBps", getU16Encoder()],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: SET_MAX_LINE_BPS_DISCRIMINATOR }),
   );
@@ -108,6 +115,7 @@ export function getSetMaxLineBpsInstructionDataDecoder(): FixedSizeDecoder<SetMa
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["maxLineBps", getU16Decoder()],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -135,6 +143,7 @@ export type SetMaxLineBpsAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   maxLineBps: SetMaxLineBpsInstructionDataArgs["maxLineBps"];
+  validUntil: SetMaxLineBpsInstructionDataArgs["validUntil"];
 };
 
 export async function getSetMaxLineBpsInstructionAsync<
@@ -286,6 +295,7 @@ export type SetMaxLineBpsInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   maxLineBps: SetMaxLineBpsInstructionDataArgs["maxLineBps"];
+  validUntil: SetMaxLineBpsInstructionDataArgs["validUntil"];
 };
 
 export function getSetMaxLineBpsInstruction<

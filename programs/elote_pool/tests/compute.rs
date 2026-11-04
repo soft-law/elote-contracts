@@ -298,11 +298,11 @@ fn the_council_line_instructions_and_the_pause_stay_under_the_ceiling() {
     let p = env.scheduled_params(4 * UNIT, 1_200, 120, 5_000);
     let (id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, id, &borrower);
-    let suspend = env.council_line(&k, id, ix::SuspendDraws {}.data()).compute_units_consumed;
-    let resume = env.council_line(&k, id, ix::ResumeDraws {}.data()).compute_units_consumed;
-    let propose = env.council_line(&k, id, ix::ProposeAcceleration {}.data()).compute_units_consumed;
+    let suspend = env.council_line(&k, id, ix::SuspendDraws { valid_until: i64::MAX }.data()).compute_units_consumed;
+    let resume = env.council_line(&k, id, ix::ResumeDraws { valid_until: i64::MAX }.data()).compute_units_consumed;
+    let propose = env.council_line(&k, id, ix::ProposeAcceleration { valid_until: i64::MAX }.data()).compute_units_consumed;
     env.warp(p.first_due_at() + 119 * p.interval());
-    let accelerate = env.council_line(&k, id, ix::AccelerateLine {}.data()).compute_units_consumed;
+    let accelerate = env.council_line(&k, id, ix::AccelerateLine { valid_until: i64::MAX }.data()).compute_units_consumed;
     let curator = env.curators[2].insecure_clone();
     env.svm.airdrop(&curator.pubkey(), LAMPORTS_PER_SOL).unwrap();
     let i = env.pause_ix(&k, &curator.pubkey());

@@ -16,6 +16,14 @@ const PERMISSION_VOTE: u8 = 1 << 1;
 /// One member: its key and its permission mask.
 const MEMBER_LEN: usize = 33;
 
+/// A council decision carries `valid_until`: Squads proposals never expire and execute even when
+/// stale after a config change, so the program refuses one past its date (`ProposalExpired`; equal
+/// is accepted).
+pub fn fresh(valid_until: i64) -> Result<()> {
+    require!(Clock::get()?.unix_timestamp <= valid_until, PoolError::ProposalExpired);
+    Ok(())
+}
+
 /// `["multisig", multisig, "vault", 0, vault_bump]` under Squads: the multisig's vault 0.
 pub fn vault_address(multisig: &Pubkey, vault_bump: u8) -> Result<Pubkey> {
     Pubkey::create_program_address(&[b"multisig", multisig.as_ref(), b"vault", &[0], &[vault_bump]], &SQUADS_PROGRAM_ID)

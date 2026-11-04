@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -126,11 +128,13 @@ export type RevokeProcuracionInstructionData = {
   discriminator: ReadonlyUint8Array;
   drawIndex: number;
   entryHash: ReadonlyUint8Array;
+  validUntil: bigint;
 };
 
 export type RevokeProcuracionInstructionDataArgs = {
   drawIndex: number;
   entryHash: ReadonlyUint8Array;
+  validUntil: number | bigint;
 };
 
 export function getRevokeProcuracionInstructionDataEncoder(): FixedSizeEncoder<RevokeProcuracionInstructionDataArgs> {
@@ -139,6 +143,7 @@ export function getRevokeProcuracionInstructionDataEncoder(): FixedSizeEncoder<R
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["drawIndex", getU16Encoder()],
       ["entryHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: REVOKE_PROCURACION_DISCRIMINATOR }),
   );
@@ -149,6 +154,7 @@ export function getRevokeProcuracionInstructionDataDecoder(): FixedSizeDecoder<R
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["drawIndex", getU16Decoder()],
     ["entryHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -194,6 +200,7 @@ export type RevokeProcuracionAsyncInput<
   program?: TAccountProgram;
   drawIndex: RevokeProcuracionInstructionDataArgs["drawIndex"];
   entryHash: RevokeProcuracionInstructionDataArgs["entryHash"];
+  validUntil: RevokeProcuracionInstructionDataArgs["validUntil"];
 };
 
 export async function getRevokeProcuracionInstructionAsync<
@@ -478,6 +485,7 @@ export type RevokeProcuracionInput<
   program?: TAccountProgram;
   drawIndex: RevokeProcuracionInstructionDataArgs["drawIndex"];
   entryHash: RevokeProcuracionInstructionDataArgs["entryHash"];
+  validUntil: RevokeProcuracionInstructionDataArgs["validUntil"];
 };
 
 export function getRevokeProcuracionInstruction<

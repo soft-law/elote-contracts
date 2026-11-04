@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -92,13 +94,19 @@ export type RejectLineInstruction<
     ]
   >;
 
-export type RejectLineInstructionData = { discriminator: ReadonlyUint8Array };
+export type RejectLineInstructionData = {
+  discriminator: ReadonlyUint8Array;
+  validUntil: bigint;
+};
 
-export type RejectLineInstructionDataArgs = {};
+export type RejectLineInstructionDataArgs = { validUntil: number | bigint };
 
 export function getRejectLineInstructionDataEncoder(): FixedSizeEncoder<RejectLineInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["validUntil", getI64Encoder()],
+    ]),
     (value) => ({ ...value, discriminator: REJECT_LINE_DISCRIMINATOR }),
   );
 }
@@ -106,6 +114,7 @@ export function getRejectLineInstructionDataEncoder(): FixedSizeEncoder<RejectLi
 export function getRejectLineInstructionDataDecoder(): FixedSizeDecoder<RejectLineInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -136,6 +145,7 @@ export type RejectLineAsyncInput<
   payer: TAccountPayer;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: RejectLineInstructionDataArgs["validUntil"];
 };
 
 export async function getRejectLineInstructionAsync<
@@ -235,6 +245,9 @@ export async function getRejectLineInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -257,7 +270,9 @@ export async function getRejectLineInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getRejectLineInstructionDataEncoder().encode({}),
+    data: getRejectLineInstructionDataEncoder().encode(
+      args as RejectLineInstructionDataArgs,
+    ),
     programAddress,
   } as RejectLineInstruction<
     TProgramAddress,
@@ -309,6 +324,7 @@ export type RejectLineInput<
   payer: TAccountPayer;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: RejectLineInstructionDataArgs["validUntil"];
 };
 
 export function getRejectLineInstruction<
@@ -406,6 +422,9 @@ export function getRejectLineInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -422,7 +441,9 @@ export function getRejectLineInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getRejectLineInstructionDataEncoder().encode({}),
+    data: getRejectLineInstructionDataEncoder().encode(
+      args as RejectLineInstructionDataArgs,
+    ),
     programAddress,
   } as RejectLineInstruction<
     TProgramAddress,

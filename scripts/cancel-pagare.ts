@@ -94,6 +94,8 @@ if (before.status === PAGARE_OUTSTANDING) fail(`no repayment has marked pagaré 
     await getCancelPagareInstructionAsync({
       holder,
       multisig: pool.multisig,
+      // A council decision expires a day after it is built (Squads proposals never do).
+      validUntil: (await chainNow(c)) + 86_400n,
       payer: admin,
       pool: poolAddress,
       line,

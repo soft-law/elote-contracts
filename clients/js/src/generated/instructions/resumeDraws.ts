@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -90,13 +92,19 @@ export type ResumeDrawsInstruction<
     ]
   >;
 
-export type ResumeDrawsInstructionData = { discriminator: ReadonlyUint8Array };
+export type ResumeDrawsInstructionData = {
+  discriminator: ReadonlyUint8Array;
+  validUntil: bigint;
+};
 
-export type ResumeDrawsInstructionDataArgs = {};
+export type ResumeDrawsInstructionDataArgs = { validUntil: number | bigint };
 
 export function getResumeDrawsInstructionDataEncoder(): FixedSizeEncoder<ResumeDrawsInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["validUntil", getI64Encoder()],
+    ]),
     (value) => ({ ...value, discriminator: RESUME_DRAWS_DISCRIMINATOR }),
   );
 }
@@ -104,6 +112,7 @@ export function getResumeDrawsInstructionDataEncoder(): FixedSizeEncoder<ResumeD
 export function getResumeDrawsInstructionDataDecoder(): FixedSizeDecoder<ResumeDrawsInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -132,6 +141,7 @@ export type ResumeDrawsAsyncInput<
   line: TAccountLine;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: ResumeDrawsInstructionDataArgs["validUntil"];
 };
 
 export async function getResumeDrawsInstructionAsync<
@@ -224,6 +234,9 @@ export async function getResumeDrawsInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -245,7 +258,9 @@ export async function getResumeDrawsInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getResumeDrawsInstructionDataEncoder().encode({}),
+    data: getResumeDrawsInstructionDataEncoder().encode(
+      args as ResumeDrawsInstructionDataArgs,
+    ),
     programAddress,
   } as ResumeDrawsInstruction<
     TProgramAddress,
@@ -291,6 +306,7 @@ export type ResumeDrawsInput<
   line: TAccountLine;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: ResumeDrawsInstructionDataArgs["validUntil"];
 };
 
 export function getResumeDrawsInstruction<
@@ -381,6 +397,9 @@ export function getResumeDrawsInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -396,7 +415,9 @@ export function getResumeDrawsInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getResumeDrawsInstructionDataEncoder().encode({}),
+    data: getResumeDrawsInstructionDataEncoder().encode(
+      args as ResumeDrawsInstructionDataArgs,
+    ),
     programAddress,
   } as ResumeDrawsInstruction<
     TProgramAddress,

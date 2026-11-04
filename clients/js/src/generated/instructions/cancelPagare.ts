@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -131,11 +133,13 @@ export type CancelPagareInstructionData = {
   discriminator: ReadonlyUint8Array;
   drawIndex: number;
   receiptHash: ReadonlyUint8Array;
+  validUntil: bigint;
 };
 
 export type CancelPagareInstructionDataArgs = {
   drawIndex: number;
   receiptHash: ReadonlyUint8Array;
+  validUntil: number | bigint;
 };
 
 export function getCancelPagareInstructionDataEncoder(): FixedSizeEncoder<CancelPagareInstructionDataArgs> {
@@ -144,6 +148,7 @@ export function getCancelPagareInstructionDataEncoder(): FixedSizeEncoder<Cancel
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["drawIndex", getU16Encoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: CANCEL_PAGARE_DISCRIMINATOR }),
   );
@@ -154,6 +159,7 @@ export function getCancelPagareInstructionDataDecoder(): FixedSizeDecoder<Cancel
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["drawIndex", getU16Decoder()],
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -214,6 +220,7 @@ export type CancelPagareAsyncInput<
   program?: TAccountProgram;
   drawIndex: CancelPagareInstructionDataArgs["drawIndex"];
   receiptHash: CancelPagareInstructionDataArgs["receiptHash"];
+  validUntil: CancelPagareInstructionDataArgs["validUntil"];
 };
 
 export async function getCancelPagareInstructionAsync<
@@ -529,6 +536,7 @@ export type CancelPagareInput<
   program?: TAccountProgram;
   drawIndex: CancelPagareInstructionDataArgs["drawIndex"];
   receiptHash: CancelPagareInstructionDataArgs["receiptHash"];
+  validUntil: CancelPagareInstructionDataArgs["validUntil"];
 };
 
 export function getCancelPagareInstruction<

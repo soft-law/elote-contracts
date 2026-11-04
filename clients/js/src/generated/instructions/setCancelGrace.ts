@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -90,15 +92,20 @@ export type SetCancelGraceInstruction<
 export type SetCancelGraceInstructionData = {
   discriminator: ReadonlyUint8Array;
   cancelGraceSeconds: number;
+  validUntil: bigint;
 };
 
-export type SetCancelGraceInstructionDataArgs = { cancelGraceSeconds: number };
+export type SetCancelGraceInstructionDataArgs = {
+  cancelGraceSeconds: number;
+  validUntil: number | bigint;
+};
 
 export function getSetCancelGraceInstructionDataEncoder(): FixedSizeEncoder<SetCancelGraceInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["cancelGraceSeconds", getU32Encoder()],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: SET_CANCEL_GRACE_DISCRIMINATOR }),
   );
@@ -108,6 +115,7 @@ export function getSetCancelGraceInstructionDataDecoder(): FixedSizeDecoder<SetC
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["cancelGraceSeconds", getU32Decoder()],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -135,6 +143,7 @@ export type SetCancelGraceAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   cancelGraceSeconds: SetCancelGraceInstructionDataArgs["cancelGraceSeconds"];
+  validUntil: SetCancelGraceInstructionDataArgs["validUntil"];
 };
 
 export async function getSetCancelGraceInstructionAsync<
@@ -286,6 +295,7 @@ export type SetCancelGraceInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   cancelGraceSeconds: SetCancelGraceInstructionDataArgs["cancelGraceSeconds"];
+  validUntil: SetCancelGraceInstructionDataArgs["validUntil"];
 };
 
 export function getSetCancelGraceInstruction<

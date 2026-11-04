@@ -87,7 +87,8 @@ pub struct CancelPagare<'info> {
 /// and `cancel_receipt_hash` (`paid_at` and `receipt_hash` stay), clears any procuración, then
 /// thaws and burns the asset; the pool PDA burns as its owner except on the procurador's branch,
 /// also under a procuración. Never paused: it moves no funds.
-pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32]) -> Result<()> {
+pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32], valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
     let pagare = &ctx.accounts.pagare;
@@ -247,7 +248,8 @@ pub struct EndorsePagare<'info> {
 /// (`PagareAlreadyPaid`); a procuración in force (`ProcuracionState`). The plugin is added at the
 /// first procuración and approved afterwards (Core refuses a second `AddPluginV1`); a flag
 /// records it.
-pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32]) -> Result<()> {
+pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32], valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     use mpl_core::instructions::{AddPluginV1CpiBuilder, ApprovePluginAuthorityV1CpiBuilder};
     use mpl_core::types::{BurnDelegate, Plugin, PluginAuthority, PluginType};
     let pool = &ctx.accounts.pool;
@@ -380,7 +382,8 @@ pub struct RevokeProcuracion<'info> {
 /// (`DocumentHashRequired`); refused when none is in force (`ProcuracionState`). Appends a
 /// `Revocacion` entry (from the pool to the procurador) and returns the `BurnDelegate` authority
 /// to the owner; the plugin stays, so the next procuración approves it.
-pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entry_hash: [u8; 32]) -> Result<()> {
+pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entry_hash: [u8; 32], valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     use mpl_core::instructions::RevokePluginAuthorityV1CpiBuilder;
     use mpl_core::types::PluginType;
     let pool = &ctx.accounts.pool;
@@ -461,7 +464,8 @@ pub struct CourtAnnotation<'info> {
 /// over the court document's hash; the council signs. Appends the entry
 /// (from and to the pool: there is no counterparty); nothing else moves. Allowed on any line
 /// status and beside a procuración; refused only on a burnt title (`PAGARE_PAID`).
-pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32]) -> Result<()> {
+pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     let pool = &ctx.accounts.pool;
     council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     require!(kind == KIND_ANOTACION_JUDICIAL || kind == KIND_CONSTANCIA_JUDICIAL, PoolError::AnnotationKindInvalid);
@@ -527,7 +531,8 @@ pub struct AnnotatePayment<'info> {
 /// reference is not checked to be a payment entry; the engine checks it. Allowed on any status, a
 /// burnt title included: a receipt may arrive late. The annotation also replaces the payer's
 /// provisional `Pagare.receipt_hash` while the status is `PAGARE_PAID_PENDING_CANCEL`.
-pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32]) -> Result<()> {
+pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32], valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     let pool = &ctx.accounts.pool;
     council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);

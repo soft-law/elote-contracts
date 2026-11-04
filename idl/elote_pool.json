@@ -95,7 +95,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "accept_council",
@@ -157,7 +162,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "annotate_payment",
@@ -294,6 +304,10 @@
               32
             ]
           }
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -388,6 +402,10 @@
               32
             ]
           }
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -479,7 +497,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "cancel_pagare",
@@ -658,6 +681,10 @@
               32
             ]
           }
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -797,6 +824,10 @@
               32
             ]
           }
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -1308,6 +1339,10 @@
               32
             ]
           }
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -1690,6 +1725,10 @@
         {
           "name": "fix_date",
           "type": "u32"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -1782,7 +1821,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "propose_council",
@@ -1850,6 +1894,10 @@
         {
           "name": "kind",
           "type": "u8"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -2025,7 +2073,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "repay",
@@ -2343,7 +2396,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "resume_draws",
@@ -2434,7 +2492,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "revoke_procuracion",
@@ -2589,6 +2652,10 @@
               32
             ]
           }
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -2656,6 +2723,10 @@
         {
           "name": "acceleration_notice_seconds",
           "type": "u32"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -2724,6 +2795,10 @@
         {
           "name": "cancel_grace_seconds",
           "type": "u32"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -2792,6 +2867,10 @@
         {
           "name": "collection_period_seconds",
           "type": "u32"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -2859,6 +2938,10 @@
         {
           "name": "fx_feeder",
           "type": "pubkey"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -2926,6 +3009,10 @@
         {
           "name": "guardian",
           "type": "pubkey"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -2993,6 +3080,10 @@
         {
           "name": "max_line_bps",
           "type": "u16"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -3060,6 +3151,10 @@
         {
           "name": "max_outstanding_principal",
           "type": "u64"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
         }
       ]
     },
@@ -3152,7 +3247,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "withdraw_acceleration",
@@ -3242,7 +3342,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "withdraw_request",
@@ -3390,7 +3495,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     }
   ],
   "accounts": [

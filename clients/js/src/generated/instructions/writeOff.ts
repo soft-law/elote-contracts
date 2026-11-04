@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -96,13 +98,19 @@ export type WriteOffInstruction<
     ]
   >;
 
-export type WriteOffInstructionData = { discriminator: ReadonlyUint8Array };
+export type WriteOffInstructionData = {
+  discriminator: ReadonlyUint8Array;
+  validUntil: bigint;
+};
 
-export type WriteOffInstructionDataArgs = {};
+export type WriteOffInstructionDataArgs = { validUntil: number | bigint };
 
 export function getWriteOffInstructionDataEncoder(): FixedSizeEncoder<WriteOffInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["validUntil", getI64Encoder()],
+    ]),
     (value) => ({ ...value, discriminator: WRITE_OFF_DISCRIMINATOR }),
   );
 }
@@ -110,6 +118,7 @@ export function getWriteOffInstructionDataEncoder(): FixedSizeEncoder<WriteOffIn
 export function getWriteOffInstructionDataDecoder(): FixedSizeDecoder<WriteOffInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -144,6 +153,7 @@ export type WriteOffAsyncInput<
   vault: TAccountVault;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: WriteOffInstructionDataArgs["validUntil"];
 };
 
 export async function getWriteOffInstructionAsync<
@@ -254,6 +264,9 @@ export async function getWriteOffInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -277,7 +290,9 @@ export async function getWriteOffInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getWriteOffInstructionDataEncoder().encode({}),
+    data: getWriteOffInstructionDataEncoder().encode(
+      args as WriteOffInstructionDataArgs,
+    ),
     programAddress,
   } as WriteOffInstruction<
     TProgramAddress,
@@ -337,6 +352,7 @@ export type WriteOffInput<
   vault: TAccountVault;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: WriteOffInstructionDataArgs["validUntil"];
 };
 
 export function getWriteOffInstruction<
@@ -445,6 +461,9 @@ export function getWriteOffInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -462,7 +481,9 @@ export function getWriteOffInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getWriteOffInstructionDataEncoder().encode({}),
+    data: getWriteOffInstructionDataEncoder().encode(
+      args as WriteOffInstructionDataArgs,
+    ),
     programAddress,
   } as WriteOffInstruction<
     TProgramAddress,

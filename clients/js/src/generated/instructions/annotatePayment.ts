@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -105,12 +107,14 @@ export type AnnotatePaymentInstructionData = {
   drawIndex: number;
   entryCount: number;
   receiptHash: ReadonlyUint8Array;
+  validUntil: bigint;
 };
 
 export type AnnotatePaymentInstructionDataArgs = {
   drawIndex: number;
   entryCount: number;
   receiptHash: ReadonlyUint8Array;
+  validUntil: number | bigint;
 };
 
 export function getAnnotatePaymentInstructionDataEncoder(): FixedSizeEncoder<AnnotatePaymentInstructionDataArgs> {
@@ -120,6 +124,7 @@ export function getAnnotatePaymentInstructionDataEncoder(): FixedSizeEncoder<Ann
       ["drawIndex", getU16Encoder()],
       ["entryCount", getU32Encoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: ANNOTATE_PAYMENT_DISCRIMINATOR }),
   );
@@ -131,6 +136,7 @@ export function getAnnotatePaymentInstructionDataDecoder(): FixedSizeDecoder<Ann
     ["drawIndex", getU16Decoder()],
     ["entryCount", getU32Decoder()],
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -165,6 +171,7 @@ export type AnnotatePaymentAsyncInput<
   drawIndex: AnnotatePaymentInstructionDataArgs["drawIndex"];
   entryCount: AnnotatePaymentInstructionDataArgs["entryCount"];
   receiptHash: AnnotatePaymentInstructionDataArgs["receiptHash"];
+  validUntil: AnnotatePaymentInstructionDataArgs["validUntil"];
 };
 
 export async function getAnnotatePaymentInstructionAsync<
@@ -362,6 +369,7 @@ export type AnnotatePaymentInput<
   drawIndex: AnnotatePaymentInstructionDataArgs["drawIndex"];
   entryCount: AnnotatePaymentInstructionDataArgs["entryCount"];
   receiptHash: AnnotatePaymentInstructionDataArgs["receiptHash"];
+  validUntil: AnnotatePaymentInstructionDataArgs["validUntil"];
 };
 
 export function getAnnotatePaymentInstruction<

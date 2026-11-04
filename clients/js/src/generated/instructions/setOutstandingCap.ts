@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -90,10 +92,12 @@ export type SetOutstandingCapInstruction<
 export type SetOutstandingCapInstructionData = {
   discriminator: ReadonlyUint8Array;
   maxOutstandingPrincipal: bigint;
+  validUntil: bigint;
 };
 
 export type SetOutstandingCapInstructionDataArgs = {
   maxOutstandingPrincipal: number | bigint;
+  validUntil: number | bigint;
 };
 
 export function getSetOutstandingCapInstructionDataEncoder(): FixedSizeEncoder<SetOutstandingCapInstructionDataArgs> {
@@ -101,6 +105,7 @@ export function getSetOutstandingCapInstructionDataEncoder(): FixedSizeEncoder<S
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["maxOutstandingPrincipal", getU64Encoder()],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: SET_OUTSTANDING_CAP_DISCRIMINATOR }),
   );
@@ -110,6 +115,7 @@ export function getSetOutstandingCapInstructionDataDecoder(): FixedSizeDecoder<S
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["maxOutstandingPrincipal", getU64Decoder()],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -137,6 +143,7 @@ export type SetOutstandingCapAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   maxOutstandingPrincipal: SetOutstandingCapInstructionDataArgs["maxOutstandingPrincipal"];
+  validUntil: SetOutstandingCapInstructionDataArgs["validUntil"];
 };
 
 export async function getSetOutstandingCapInstructionAsync<
@@ -288,6 +295,7 @@ export type SetOutstandingCapInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   maxOutstandingPrincipal: SetOutstandingCapInstructionDataArgs["maxOutstandingPrincipal"];
+  validUntil: SetOutstandingCapInstructionDataArgs["validUntil"];
 };
 
 export function getSetOutstandingCapInstruction<

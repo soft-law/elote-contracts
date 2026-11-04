@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -88,13 +90,19 @@ export type CancelLineInstruction<
     ]
   >;
 
-export type CancelLineInstructionData = { discriminator: ReadonlyUint8Array };
+export type CancelLineInstructionData = {
+  discriminator: ReadonlyUint8Array;
+  validUntil: bigint;
+};
 
-export type CancelLineInstructionDataArgs = {};
+export type CancelLineInstructionDataArgs = { validUntil: number | bigint };
 
 export function getCancelLineInstructionDataEncoder(): FixedSizeEncoder<CancelLineInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["validUntil", getI64Encoder()],
+    ]),
     (value) => ({ ...value, discriminator: CANCEL_LINE_DISCRIMINATOR }),
   );
 }
@@ -102,6 +110,7 @@ export function getCancelLineInstructionDataEncoder(): FixedSizeEncoder<CancelLi
 export function getCancelLineInstructionDataDecoder(): FixedSizeDecoder<CancelLineInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -130,6 +139,7 @@ export type CancelLineAsyncInput<
   line: TAccountLine;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: CancelLineInstructionDataArgs["validUntil"];
 };
 
 export async function getCancelLineInstructionAsync<
@@ -222,6 +232,9 @@ export async function getCancelLineInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -243,7 +256,9 @@ export async function getCancelLineInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getCancelLineInstructionDataEncoder().encode({}),
+    data: getCancelLineInstructionDataEncoder().encode(
+      args as CancelLineInstructionDataArgs,
+    ),
     programAddress,
   } as CancelLineInstruction<
     TProgramAddress,
@@ -289,6 +304,7 @@ export type CancelLineInput<
   line: TAccountLine;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: CancelLineInstructionDataArgs["validUntil"];
 };
 
 export function getCancelLineInstruction<
@@ -379,6 +395,9 @@ export function getCancelLineInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -394,7 +413,9 @@ export function getCancelLineInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getCancelLineInstructionDataEncoder().encode({}),
+    data: getCancelLineInstructionDataEncoder().encode(
+      args as CancelLineInstructionDataArgs,
+    ),
     programAddress,
   } as CancelLineInstruction<
     TProgramAddress,

@@ -14,6 +14,8 @@ import {
   getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -92,15 +94,20 @@ export type SetFxFeederInstruction<
 export type SetFxFeederInstructionData = {
   discriminator: ReadonlyUint8Array;
   fxFeeder: Address;
+  validUntil: bigint;
 };
 
-export type SetFxFeederInstructionDataArgs = { fxFeeder: Address | HasAddress };
+export type SetFxFeederInstructionDataArgs = {
+  fxFeeder: Address | HasAddress;
+  validUntil: number | bigint;
+};
 
 export function getSetFxFeederInstructionDataEncoder(): FixedSizeEncoder<SetFxFeederInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["fxFeeder", getAddressEncoder()],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: SET_FX_FEEDER_DISCRIMINATOR }),
   );
@@ -110,6 +117,7 @@ export function getSetFxFeederInstructionDataDecoder(): FixedSizeDecoder<SetFxFe
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["fxFeeder", getAddressDecoder()],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -137,6 +145,7 @@ export type SetFxFeederAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   fxFeeder: SetFxFeederInstructionDataArgs["fxFeeder"];
+  validUntil: SetFxFeederInstructionDataArgs["validUntil"];
 };
 
 export async function getSetFxFeederInstructionAsync<
@@ -288,6 +297,7 @@ export type SetFxFeederInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   fxFeeder: SetFxFeederInstructionDataArgs["fxFeeder"];
+  validUntil: SetFxFeederInstructionDataArgs["validUntil"];
 };
 
 export function getSetFxFeederInstruction<

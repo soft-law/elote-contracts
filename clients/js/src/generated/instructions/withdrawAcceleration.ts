@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -91,13 +93,19 @@ export type WithdrawAccelerationInstruction<
 
 export type WithdrawAccelerationInstructionData = {
   discriminator: ReadonlyUint8Array;
+  validUntil: bigint;
 };
 
-export type WithdrawAccelerationInstructionDataArgs = {};
+export type WithdrawAccelerationInstructionDataArgs = {
+  validUntil: number | bigint;
+};
 
 export function getWithdrawAccelerationInstructionDataEncoder(): FixedSizeEncoder<WithdrawAccelerationInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["validUntil", getI64Encoder()],
+    ]),
     (value) => ({
       ...value,
       discriminator: WITHDRAW_ACCELERATION_DISCRIMINATOR,
@@ -108,6 +116,7 @@ export function getWithdrawAccelerationInstructionDataEncoder(): FixedSizeEncode
 export function getWithdrawAccelerationInstructionDataDecoder(): FixedSizeDecoder<WithdrawAccelerationInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -136,6 +145,7 @@ export type WithdrawAccelerationAsyncInput<
   line: TAccountLine;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: WithdrawAccelerationInstructionDataArgs["validUntil"];
 };
 
 export async function getWithdrawAccelerationInstructionAsync<
@@ -228,6 +238,9 @@ export async function getWithdrawAccelerationInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -249,7 +262,9 @@ export async function getWithdrawAccelerationInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getWithdrawAccelerationInstructionDataEncoder().encode({}),
+    data: getWithdrawAccelerationInstructionDataEncoder().encode(
+      args as WithdrawAccelerationInstructionDataArgs,
+    ),
     programAddress,
   } as WithdrawAccelerationInstruction<
     TProgramAddress,
@@ -295,6 +310,7 @@ export type WithdrawAccelerationInput<
   line: TAccountLine;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: WithdrawAccelerationInstructionDataArgs["validUntil"];
 };
 
 export function getWithdrawAccelerationInstruction<
@@ -385,6 +401,9 @@ export function getWithdrawAccelerationInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -400,7 +419,9 @@ export function getWithdrawAccelerationInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getWithdrawAccelerationInstructionDataEncoder().encode({}),
+    data: getWithdrawAccelerationInstructionDataEncoder().encode(
+      args as WithdrawAccelerationInstructionDataArgs,
+    ),
     programAddress,
   } as WithdrawAccelerationInstruction<
     TProgramAddress,

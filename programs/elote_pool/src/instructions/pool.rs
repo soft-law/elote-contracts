@@ -349,7 +349,8 @@ pub struct SetCollectionPeriod<'info> {
 
 /// Council only; refused below `MIN_COLLECTION_PERIOD_SECONDS`. Applies to every line from its
 /// next `write_off` check, marked or not.
-pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_period_seconds: u32) -> Result<()> {
+pub fn set_collection_period(ctx: Context<SetCollectionPeriod>, collection_period_seconds: u32, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     require!(collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
     let pool = &mut ctx.accounts.pool;
     council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
@@ -646,7 +647,8 @@ impl CouncilPool<'_> {
 }
 
 /// Council only: ends a pause.
-pub fn resume(ctx: Context<CouncilPool>) -> Result<()> {
+pub fn resume(ctx: Context<CouncilPool>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     ctx.accounts.check_council()?;
     let pool = &mut ctx.accounts.pool;
     pool.paused = false;
@@ -655,7 +657,8 @@ pub fn resume(ctx: Context<CouncilPool>) -> Result<()> {
 }
 
 /// Council only: the key that may pause alone besides the members; the zero key for none.
-pub fn set_guardian(ctx: Context<CouncilPool>, guardian: Pubkey) -> Result<()> {
+pub fn set_guardian(ctx: Context<CouncilPool>, guardian: Pubkey, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     ctx.accounts.check_council()?;
     let pool = &mut ctx.accounts.pool;
     pool.guardian = guardian;
@@ -665,7 +668,8 @@ pub fn set_guardian(ctx: Context<CouncilPool>, guardian: Pubkey) -> Result<()> {
 
 /// Council only: the largest line `approve_line` accepts, `1..=BPS` of the NAV; lines already
 /// approved keep their principal.
-pub fn set_max_line_bps(ctx: Context<CouncilPool>, max_line_bps: u16) -> Result<()> {
+pub fn set_max_line_bps(ctx: Context<CouncilPool>, max_line_bps: u16, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);
     ctx.accounts.check_council()?;
     let pool = &mut ctx.accounts.pool;
@@ -676,7 +680,8 @@ pub fn set_max_line_bps(ctx: Context<CouncilPool>, max_line_bps: u16) -> Result<
 
 /// Council only: the most USDC cost the pool may have lent out at once, checked at every draw
 /// (at least one base unit); lowering it below the outstanding only stops new draws.
-pub fn set_outstanding_cap(ctx: Context<CouncilPool>, max_outstanding_principal: u64) -> Result<()> {
+pub fn set_outstanding_cap(ctx: Context<CouncilPool>, max_outstanding_principal: u64, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     require!(max_outstanding_principal >= 1, PoolError::WrongAmount);
     ctx.accounts.check_council()?;
     let pool = &mut ctx.accounts.pool;
@@ -687,7 +692,8 @@ pub fn set_outstanding_cap(ctx: Context<CouncilPool>, max_outstanding_principal:
 
 /// Council only: the notice between `propose_acceleration` and `accelerate_line`, at least
 /// `MIN_ACCELERATION_NOTICE_SECONDS`; a pending proposal keeps its own deadline.
-pub fn set_acceleration_notice(ctx: Context<CouncilPool>, acceleration_notice_seconds: u32) -> Result<()> {
+pub fn set_acceleration_notice(ctx: Context<CouncilPool>, acceleration_notice_seconds: u32, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     require!(acceleration_notice_seconds >= MIN_ACCELERATION_NOTICE_SECONDS, PoolError::AccelerationNoticeTooShort);
     ctx.accounts.check_council()?;
     let pool = &mut ctx.accounts.pool;
@@ -716,7 +722,8 @@ pub struct SetCancelGrace<'info> {
 
 /// Council only; refused below `MIN_CANCEL_GRACE_SECONDS`. Applies to every paid pagaré from now
 /// on, so the borrower's exit always waits at least the floor from the payment.
-pub fn set_cancel_grace(ctx: Context<SetCancelGrace>, cancel_grace_seconds: u32) -> Result<()> {
+pub fn set_cancel_grace(ctx: Context<SetCancelGrace>, cancel_grace_seconds: u32, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     require!(cancel_grace_seconds >= MIN_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooShort);
     let pool = &mut ctx.accounts.pool;
     council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
@@ -742,7 +749,8 @@ pub struct ProposeCouncil<'info> {
 /// Council only. Names the authority that becomes the council once it signs `accept_council`;
 /// `kind` is `COUNCIL_SQUADS` or `COUNCIL_GENERIC` (`CouncilKindInvalid` otherwise). The zero key
 /// withdraws a pending proposal. A new proposal replaces the pending one.
-pub fn propose_council(ctx: Context<ProposeCouncil>, new_council: Pubkey, kind: u8) -> Result<()> {
+pub fn propose_council(ctx: Context<ProposeCouncil>, new_council: Pubkey, kind: u8, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     require!(kind == COUNCIL_SQUADS || kind == COUNCIL_GENERIC, PoolError::CouncilKindInvalid);
     let pool = &mut ctx.accounts.pool;
     pool.pending_council = new_council;
@@ -772,7 +780,8 @@ pub struct AcceptCouncil<'info> {
 /// `COUNCIL_SQUADS` is accepted (`CouncilKindInvalid`), and only after the same check as
 /// `init_pool` on `multisig`, so the pool never rotates to an address that cannot sign or to a
 /// multisig without a majority threshold.
-pub fn accept_council(ctx: Context<AcceptCouncil>) -> Result<()> {
+pub fn accept_council(ctx: Context<AcceptCouncil>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     let new_council = ctx.accounts.new_council.key();
     let pool = &ctx.accounts.pool;
     require!(pool.pending_council != Pubkey::default() && pool.pending_council == new_council, PoolError::NoPendingCouncil);
@@ -812,7 +821,8 @@ pub struct SetFxFeeder<'info> {
 }
 
 /// Council only: names the key that publishes the FIX, or the zero key for none.
-pub fn set_fx_feeder(ctx: Context<SetFxFeeder>, fx_feeder: Pubkey) -> Result<()> {
+pub fn set_fx_feeder(ctx: Context<SetFxFeeder>, fx_feeder: Pubkey, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     let pool = &mut ctx.accounts.pool;
     council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     pool.fx_feeder = fx_feeder;
@@ -842,7 +852,8 @@ pub struct PostFix<'info> {
 /// publishes a later date within `fx::MAX_FIX_JUMP_BPS` of the FIX in force (`FixJump`); the
 /// council publishes the first FIX, larger moves and same-day corrections. The date never moves
 /// back (`FixDateInvalid`).
-pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32) -> Result<()> {
+pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     let now = Clock::get()?;
     let poster = ctx.accounts.poster.key();
     let pool = &mut ctx.accounts.pool;

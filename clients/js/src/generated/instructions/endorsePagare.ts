@@ -14,6 +14,8 @@ import {
   getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -134,6 +136,7 @@ export type EndorsePagareInstructionData = {
   kind: number;
   to: Address;
   endosoHash: ReadonlyUint8Array;
+  validUntil: bigint;
 };
 
 export type EndorsePagareInstructionDataArgs = {
@@ -141,6 +144,7 @@ export type EndorsePagareInstructionDataArgs = {
   kind: number;
   to: Address | HasAddress;
   endosoHash: ReadonlyUint8Array;
+  validUntil: number | bigint;
 };
 
 export function getEndorsePagareInstructionDataEncoder(): FixedSizeEncoder<EndorsePagareInstructionDataArgs> {
@@ -151,6 +155,7 @@ export function getEndorsePagareInstructionDataEncoder(): FixedSizeEncoder<Endor
       ["kind", getU8Encoder()],
       ["to", getAddressEncoder()],
       ["endosoHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: ENDORSE_PAGARE_DISCRIMINATOR }),
   );
@@ -163,6 +168,7 @@ export function getEndorsePagareInstructionDataDecoder(): FixedSizeDecoder<Endor
     ["kind", getU8Decoder()],
     ["to", getAddressDecoder()],
     ["endosoHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -211,6 +217,7 @@ export type EndorsePagareAsyncInput<
   kind: EndorsePagareInstructionDataArgs["kind"];
   to: EndorsePagareInstructionDataArgs["to"];
   endosoHash: EndorsePagareInstructionDataArgs["endosoHash"];
+  validUntil: EndorsePagareInstructionDataArgs["validUntil"];
 };
 
 export async function getEndorsePagareInstructionAsync<
@@ -498,6 +505,7 @@ export type EndorsePagareInput<
   kind: EndorsePagareInstructionDataArgs["kind"];
   to: EndorsePagareInstructionDataArgs["to"];
   endosoHash: EndorsePagareInstructionDataArgs["endosoHash"];
+  validUntil: EndorsePagareInstructionDataArgs["validUntil"];
 };
 
 export function getEndorsePagareInstruction<

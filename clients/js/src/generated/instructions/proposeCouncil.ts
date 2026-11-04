@@ -14,6 +14,8 @@ import {
   getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -91,11 +93,13 @@ export type ProposeCouncilInstructionData = {
   discriminator: ReadonlyUint8Array;
   newCouncil: Address;
   kind: number;
+  validUntil: bigint;
 };
 
 export type ProposeCouncilInstructionDataArgs = {
   newCouncil: Address | HasAddress;
   kind: number;
+  validUntil: number | bigint;
 };
 
 export function getProposeCouncilInstructionDataEncoder(): FixedSizeEncoder<ProposeCouncilInstructionDataArgs> {
@@ -104,6 +108,7 @@ export function getProposeCouncilInstructionDataEncoder(): FixedSizeEncoder<Prop
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["newCouncil", getAddressEncoder()],
       ["kind", getU8Encoder()],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: PROPOSE_COUNCIL_DISCRIMINATOR }),
   );
@@ -114,6 +119,7 @@ export function getProposeCouncilInstructionDataDecoder(): FixedSizeDecoder<Prop
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["newCouncil", getAddressDecoder()],
     ["kind", getU8Decoder()],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -140,6 +146,7 @@ export type ProposeCouncilAsyncInput<
   program?: TAccountProgram;
   newCouncil: ProposeCouncilInstructionDataArgs["newCouncil"];
   kind: ProposeCouncilInstructionDataArgs["kind"];
+  validUntil: ProposeCouncilInstructionDataArgs["validUntil"];
 };
 
 export async function getProposeCouncilInstructionAsync<
@@ -274,6 +281,7 @@ export type ProposeCouncilInput<
   program?: TAccountProgram;
   newCouncil: ProposeCouncilInstructionDataArgs["newCouncil"];
   kind: ProposeCouncilInstructionDataArgs["kind"];
+  validUntil: ProposeCouncilInstructionDataArgs["validUntil"];
 };
 
 export function getProposeCouncilInstruction<

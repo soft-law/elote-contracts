@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -90,10 +92,12 @@ export type SetCollectionPeriodInstruction<
 export type SetCollectionPeriodInstructionData = {
   discriminator: ReadonlyUint8Array;
   collectionPeriodSeconds: number;
+  validUntil: bigint;
 };
 
 export type SetCollectionPeriodInstructionDataArgs = {
   collectionPeriodSeconds: number;
+  validUntil: number | bigint;
 };
 
 export function getSetCollectionPeriodInstructionDataEncoder(): FixedSizeEncoder<SetCollectionPeriodInstructionDataArgs> {
@@ -101,6 +105,7 @@ export function getSetCollectionPeriodInstructionDataEncoder(): FixedSizeEncoder
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["collectionPeriodSeconds", getU32Encoder()],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({
       ...value,
@@ -113,6 +118,7 @@ export function getSetCollectionPeriodInstructionDataDecoder(): FixedSizeDecoder
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["collectionPeriodSeconds", getU32Decoder()],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -140,6 +146,7 @@ export type SetCollectionPeriodAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   collectionPeriodSeconds: SetCollectionPeriodInstructionDataArgs["collectionPeriodSeconds"];
+  validUntil: SetCollectionPeriodInstructionDataArgs["validUntil"];
 };
 
 export async function getSetCollectionPeriodInstructionAsync<
@@ -291,6 +298,7 @@ export type SetCollectionPeriodInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   collectionPeriodSeconds: SetCollectionPeriodInstructionDataArgs["collectionPeriodSeconds"];
+  validUntil: SetCollectionPeriodInstructionDataArgs["validUntil"];
 };
 
 export function getSetCollectionPeriodInstruction<

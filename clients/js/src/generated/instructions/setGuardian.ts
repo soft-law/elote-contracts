@@ -14,6 +14,8 @@ import {
   getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -92,15 +94,20 @@ export type SetGuardianInstruction<
 export type SetGuardianInstructionData = {
   discriminator: ReadonlyUint8Array;
   guardian: Address;
+  validUntil: bigint;
 };
 
-export type SetGuardianInstructionDataArgs = { guardian: Address | HasAddress };
+export type SetGuardianInstructionDataArgs = {
+  guardian: Address | HasAddress;
+  validUntil: number | bigint;
+};
 
 export function getSetGuardianInstructionDataEncoder(): FixedSizeEncoder<SetGuardianInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["guardian", getAddressEncoder()],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: SET_GUARDIAN_DISCRIMINATOR }),
   );
@@ -110,6 +117,7 @@ export function getSetGuardianInstructionDataDecoder(): FixedSizeDecoder<SetGuar
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["guardian", getAddressDecoder()],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -137,6 +145,7 @@ export type SetGuardianAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   guardian: SetGuardianInstructionDataArgs["guardian"];
+  validUntil: SetGuardianInstructionDataArgs["validUntil"];
 };
 
 export async function getSetGuardianInstructionAsync<
@@ -288,6 +297,7 @@ export type SetGuardianInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   guardian: SetGuardianInstructionDataArgs["guardian"];
+  validUntil: SetGuardianInstructionDataArgs["validUntil"];
 };
 
 export function getSetGuardianInstruction<

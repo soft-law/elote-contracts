@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -88,13 +90,17 @@ export type AcceptCouncilInstruction<
 
 export type AcceptCouncilInstructionData = {
   discriminator: ReadonlyUint8Array;
+  validUntil: bigint;
 };
 
-export type AcceptCouncilInstructionDataArgs = {};
+export type AcceptCouncilInstructionDataArgs = { validUntil: number | bigint };
 
 export function getAcceptCouncilInstructionDataEncoder(): FixedSizeEncoder<AcceptCouncilInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["validUntil", getI64Encoder()],
+    ]),
     (value) => ({ ...value, discriminator: ACCEPT_COUNCIL_DISCRIMINATOR }),
   );
 }
@@ -102,6 +108,7 @@ export function getAcceptCouncilInstructionDataEncoder(): FixedSizeEncoder<Accep
 export function getAcceptCouncilInstructionDataDecoder(): FixedSizeDecoder<AcceptCouncilInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -129,6 +136,7 @@ export type AcceptCouncilAsyncInput<
   pool: TAccountPool;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: AcceptCouncilInstructionDataArgs["validUntil"];
 };
 
 export async function getAcceptCouncilInstructionAsync<
@@ -214,6 +222,9 @@ export async function getAcceptCouncilInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -234,7 +245,9 @@ export async function getAcceptCouncilInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getAcceptCouncilInstructionDataEncoder().encode({}),
+    data: getAcceptCouncilInstructionDataEncoder().encode(
+      args as AcceptCouncilInstructionDataArgs,
+    ),
     programAddress,
   } as AcceptCouncilInstruction<
     TProgramAddress,
@@ -275,6 +288,7 @@ export type AcceptCouncilInput<
   pool: TAccountPool;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: AcceptCouncilInstructionDataArgs["validUntil"];
 };
 
 export function getAcceptCouncilInstruction<
@@ -358,6 +372,9 @@ export function getAcceptCouncilInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -372,7 +389,9 @@ export function getAcceptCouncilInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getAcceptCouncilInstructionDataEncoder().encode({}),
+    data: getAcceptCouncilInstructionDataEncoder().encode(
+      args as AcceptCouncilInstructionDataArgs,
+    ),
     programAddress,
   } as AcceptCouncilInstruction<
     TProgramAddress,

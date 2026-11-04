@@ -185,7 +185,8 @@ pub struct ApproveLine<'info> {
 /// `REQUEST_TTL_SECONDS` of the request (`RequestExpired`), with the borrower not a member of the
 /// council's multisig (`BorrowerIsCurator`) and the principal at most `max_line_bps` of the NAV now
 /// (`LineTooLarge`), converted to MXN at the FIX in force; refused while paused. Opens the draw window: to the first due date, or to the term on a bullet line.
-pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_hash: [u8; 32]) -> Result<()> {
+pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_hash: [u8; 32], valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     require!(!pool.paused, PoolError::Paused);
@@ -244,7 +245,8 @@ pub struct RejectLine<'info> {
 
 /// The council rejects a `Requested` line; the account closes and its rent returns to the payer.
 /// The id is not reused.
-pub fn reject_line(ctx: Context<RejectLine>) -> Result<()> {
+pub fn reject_line(ctx: Context<RejectLine>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     let pool = &ctx.accounts.pool;
     council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     emit_cpi!(LineRejected { pool: pool.key(), line_id: ctx.accounts.line.line_id });
@@ -1118,7 +1120,8 @@ pub struct WriteOff<'info> {
 ///   accelerated by the council (else `WriteOffTooEarly`).
 ///
 /// `grace` is the pool's grace period.
-pub fn write_off(ctx: Context<WriteOff>) -> Result<()> {
+pub fn write_off(ctx: Context<WriteOff>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
@@ -1218,7 +1221,8 @@ fn suspend(line: &mut CreditLine, now: i64) -> Result<u64> {
 /// if it already closed, by date or by a suspension); the line is then suspended
 /// (`availability_end_saved != 0`) until `resume_draws`. Repayment, collection and
 /// write-off are untouched; the pool is not paused.
-pub fn suspend_draws(ctx: Context<CouncilLine>) -> Result<()> {
+pub fn suspend_draws(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     ctx.accounts.check_council()?;
     let now = Clock::get()?.unix_timestamp;
     let line = &mut ctx.accounts.line;
@@ -1232,7 +1236,8 @@ pub fn suspend_draws(ctx: Context<CouncilLine>) -> Result<()> {
 /// Council only: reopens the draw window of a suspended `Approved` or `Active` line to its original
 /// end, never later (`DrawsNotSuspended` if not suspended); refused while an acceleration is
 /// pending (`AccelerationState`).
-pub fn resume_draws(ctx: Context<CouncilLine>) -> Result<()> {
+pub fn resume_draws(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     ctx.accounts.check_council()?;
     let line = &mut ctx.accounts.line;
     require!(matches!(line.status, LineStatus::Approved | LineStatus::Active), PoolError::LineStatus);
@@ -1249,7 +1254,8 @@ pub fn resume_draws(ctx: Context<CouncilLine>) -> Result<()> {
 /// closed is left alone), and `accelerate_line`
 /// may fire from `now + acceleration_notice_seconds`, a deadline the proposal keeps whatever the
 /// pool's notice becomes. One at a time (`AccelerationState`).
-pub fn propose_acceleration(ctx: Context<CouncilLine>) -> Result<()> {
+pub fn propose_acceleration(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     ctx.accounts.check_council()?;
     let now = Clock::get()?.unix_timestamp;
     let notice = i64::from(ctx.accounts.pool.acceleration_notice_seconds);
@@ -1265,7 +1271,8 @@ pub fn propose_acceleration(ctx: Context<CouncilLine>) -> Result<()> {
 
 /// Council only: withdraws the pending proposal (`AccelerationState` if none). Draws stay
 /// suspended until `resume_draws`.
-pub fn withdraw_acceleration(ctx: Context<CouncilLine>) -> Result<()> {
+pub fn withdraw_acceleration(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     ctx.accounts.check_council()?;
     let line = &mut ctx.accounts.line;
     require!(line.status == LineStatus::Active && line.acceleration_due_at != 0, PoolError::AccelerationState);
@@ -1300,7 +1307,8 @@ fn accelerated_balance(line: &CreditLine, due_count: u16, now: i64) -> Result<(u
 /// missed installments. A scheduled line keeps the ordinary interest of the installments due now
 /// (none due: only what was repaid); a bullet line keeps the interest accrued to now; the rest is
 /// forgiven. `acceleration_due_at` stays set: with `accelerated_at` it records the council's route.
-pub fn accelerate_line(ctx: Context<CouncilLine>) -> Result<()> {
+pub fn accelerate_line(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     ctx.accounts.check_council()?;
     let now = Clock::get()?.unix_timestamp;
     let pool_key = ctx.accounts.pool.key();
@@ -1323,7 +1331,8 @@ pub fn accelerate_line(ctx: Context<CouncilLine>) -> Result<()> {
 /// Council only: clears an approved commitment nobody drew (`Approved`, `drawn == 0`); once a
 /// tranche exists the line follows repayment, collection or write-off instead. `Cancelled` is
 /// terminal; the line id stays taken.
-pub fn cancel_line(ctx: Context<CouncilLine>) -> Result<()> {
+pub fn cancel_line(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
     ctx.accounts.check_council()?;
     let now = Clock::get()?.unix_timestamp;
     let line = &mut ctx.accounts.line;

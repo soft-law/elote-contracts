@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -90,10 +92,12 @@ export type SetAccelerationNoticeInstruction<
 export type SetAccelerationNoticeInstructionData = {
   discriminator: ReadonlyUint8Array;
   accelerationNoticeSeconds: number;
+  validUntil: bigint;
 };
 
 export type SetAccelerationNoticeInstructionDataArgs = {
   accelerationNoticeSeconds: number;
+  validUntil: number | bigint;
 };
 
 export function getSetAccelerationNoticeInstructionDataEncoder(): FixedSizeEncoder<SetAccelerationNoticeInstructionDataArgs> {
@@ -101,6 +105,7 @@ export function getSetAccelerationNoticeInstructionDataEncoder(): FixedSizeEncod
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["accelerationNoticeSeconds", getU32Encoder()],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({
       ...value,
@@ -113,6 +118,7 @@ export function getSetAccelerationNoticeInstructionDataDecoder(): FixedSizeDecod
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["accelerationNoticeSeconds", getU32Decoder()],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -140,6 +146,7 @@ export type SetAccelerationNoticeAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   accelerationNoticeSeconds: SetAccelerationNoticeInstructionDataArgs["accelerationNoticeSeconds"];
+  validUntil: SetAccelerationNoticeInstructionDataArgs["validUntil"];
 };
 
 export async function getSetAccelerationNoticeInstructionAsync<
@@ -291,6 +298,7 @@ export type SetAccelerationNoticeInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   accelerationNoticeSeconds: SetAccelerationNoticeInstructionDataArgs["accelerationNoticeSeconds"];
+  validUntil: SetAccelerationNoticeInstructionDataArgs["validUntil"];
 };
 
 export function getSetAccelerationNoticeInstruction<

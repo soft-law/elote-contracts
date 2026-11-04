@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -90,13 +92,19 @@ export type SuspendDrawsInstruction<
     ]
   >;
 
-export type SuspendDrawsInstructionData = { discriminator: ReadonlyUint8Array };
+export type SuspendDrawsInstructionData = {
+  discriminator: ReadonlyUint8Array;
+  validUntil: bigint;
+};
 
-export type SuspendDrawsInstructionDataArgs = {};
+export type SuspendDrawsInstructionDataArgs = { validUntil: number | bigint };
 
 export function getSuspendDrawsInstructionDataEncoder(): FixedSizeEncoder<SuspendDrawsInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["validUntil", getI64Encoder()],
+    ]),
     (value) => ({ ...value, discriminator: SUSPEND_DRAWS_DISCRIMINATOR }),
   );
 }
@@ -104,6 +112,7 @@ export function getSuspendDrawsInstructionDataEncoder(): FixedSizeEncoder<Suspen
 export function getSuspendDrawsInstructionDataDecoder(): FixedSizeDecoder<SuspendDrawsInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -132,6 +141,7 @@ export type SuspendDrawsAsyncInput<
   line: TAccountLine;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: SuspendDrawsInstructionDataArgs["validUntil"];
 };
 
 export async function getSuspendDrawsInstructionAsync<
@@ -224,6 +234,9 @@ export async function getSuspendDrawsInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -245,7 +258,9 @@ export async function getSuspendDrawsInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSuspendDrawsInstructionDataEncoder().encode({}),
+    data: getSuspendDrawsInstructionDataEncoder().encode(
+      args as SuspendDrawsInstructionDataArgs,
+    ),
     programAddress,
   } as SuspendDrawsInstruction<
     TProgramAddress,
@@ -291,6 +306,7 @@ export type SuspendDrawsInput<
   line: TAccountLine;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: SuspendDrawsInstructionDataArgs["validUntil"];
 };
 
 export function getSuspendDrawsInstruction<
@@ -381,6 +397,9 @@ export function getSuspendDrawsInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -396,7 +415,9 @@ export function getSuspendDrawsInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSuspendDrawsInstructionDataEncoder().encode({}),
+    data: getSuspendDrawsInstructionDataEncoder().encode(
+      args as SuspendDrawsInstructionDataArgs,
+    ),
     programAddress,
   } as SuspendDrawsInstruction<
     TProgramAddress,

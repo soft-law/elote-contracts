@@ -30,6 +30,7 @@ import {
   DISCLAIMER,
   arg,
   checkFlags,
+  chainNow,
   cluster,
   confirmCluster,
   fail,
@@ -76,6 +77,7 @@ if (revoke) {
     await getRevokeProcuracionInstructionAsync({
       holder: admin,
       multisig: pool.multisig,
+      validUntil: (await chainNow(c)) + 86_400n,
       payer: admin,
       pool: poolAddress,
       line,
@@ -98,6 +100,7 @@ if (revoke) {
     await getEndorsePagareInstructionAsync({
       holder: admin,
       multisig: pool.multisig,
+      validUntil: (await chainNow(c)) + 86_400n,
       payer: admin,
       pool: poolAddress,
       line,

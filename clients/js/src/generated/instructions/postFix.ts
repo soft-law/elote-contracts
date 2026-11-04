@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -92,11 +94,13 @@ export type PostFixInstructionData = {
   discriminator: ReadonlyUint8Array;
   fixRate: bigint;
   fixDate: number;
+  validUntil: bigint;
 };
 
 export type PostFixInstructionDataArgs = {
   fixRate: number | bigint;
   fixDate: number;
+  validUntil: number | bigint;
 };
 
 export function getPostFixInstructionDataEncoder(): FixedSizeEncoder<PostFixInstructionDataArgs> {
@@ -105,6 +109,7 @@ export function getPostFixInstructionDataEncoder(): FixedSizeEncoder<PostFixInst
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["fixRate", getU64Encoder()],
       ["fixDate", getU32Encoder()],
+      ["validUntil", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: POST_FIX_DISCRIMINATOR }),
   );
@@ -115,6 +120,7 @@ export function getPostFixInstructionDataDecoder(): FixedSizeDecoder<PostFixInst
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["fixRate", getU64Decoder()],
     ["fixDate", getU32Decoder()],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -144,6 +150,7 @@ export type PostFixAsyncInput<
   program?: TAccountProgram;
   fixRate: PostFixInstructionDataArgs["fixRate"];
   fixDate: PostFixInstructionDataArgs["fixDate"];
+  validUntil: PostFixInstructionDataArgs["validUntil"];
 };
 
 export async function getPostFixInstructionAsync<
@@ -293,6 +300,7 @@ export type PostFixInput<
   program?: TAccountProgram;
   fixRate: PostFixInstructionDataArgs["fixRate"];
   fixDate: PostFixInstructionDataArgs["fixDate"];
+  validUntil: PostFixInstructionDataArgs["validUntil"];
 };
 
 export function getPostFixInstruction<

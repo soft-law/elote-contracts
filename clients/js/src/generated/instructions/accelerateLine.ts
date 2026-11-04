@@ -12,6 +12,8 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getI64Decoder,
+  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -92,13 +94,17 @@ export type AccelerateLineInstruction<
 
 export type AccelerateLineInstructionData = {
   discriminator: ReadonlyUint8Array;
+  validUntil: bigint;
 };
 
-export type AccelerateLineInstructionDataArgs = {};
+export type AccelerateLineInstructionDataArgs = { validUntil: number | bigint };
 
 export function getAccelerateLineInstructionDataEncoder(): FixedSizeEncoder<AccelerateLineInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
+    getStructEncoder([
+      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
+      ["validUntil", getI64Encoder()],
+    ]),
     (value) => ({ ...value, discriminator: ACCELERATE_LINE_DISCRIMINATOR }),
   );
 }
@@ -106,6 +112,7 @@ export function getAccelerateLineInstructionDataEncoder(): FixedSizeEncoder<Acce
 export function getAccelerateLineInstructionDataDecoder(): FixedSizeDecoder<AccelerateLineInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
+    ["validUntil", getI64Decoder()],
   ]);
 }
 
@@ -134,6 +141,7 @@ export type AccelerateLineAsyncInput<
   line: TAccountLine;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: AccelerateLineInstructionDataArgs["validUntil"];
 };
 
 export async function getAccelerateLineInstructionAsync<
@@ -226,6 +234,9 @@ export async function getAccelerateLineInstructionAsync<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
@@ -247,7 +258,9 @@ export async function getAccelerateLineInstructionAsync<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getAccelerateLineInstructionDataEncoder().encode({}),
+    data: getAccelerateLineInstructionDataEncoder().encode(
+      args as AccelerateLineInstructionDataArgs,
+    ),
     programAddress,
   } as AccelerateLineInstruction<
     TProgramAddress,
@@ -293,6 +306,7 @@ export type AccelerateLineInput<
   line: TAccountLine;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
+  validUntil: AccelerateLineInstructionDataArgs["validUntil"];
 };
 
 export function getAccelerateLineInstruction<
@@ -383,6 +397,9 @@ export function getAccelerateLineInstruction<
     ResolvedInstructionAccount
   >;
 
+  // Original args.
+  const args = { ...input };
+
   // Resolve default values.
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
@@ -398,7 +415,9 @@ export function getAccelerateLineInstruction<
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getAccelerateLineInstructionDataEncoder().encode({}),
+    data: getAccelerateLineInstructionDataEncoder().encode(
+      args as AccelerateLineInstructionDataArgs,
+    ),
     programAddress,
   } as AccelerateLineInstruction<
     TProgramAddress,
