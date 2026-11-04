@@ -109,16 +109,18 @@ pub const PERM_ALL: u8 = 7;
 
 /// The bytes of a Squads v4 `Multisig` account (v4 `af94153`): discriminator, create_key,
 /// config_authority, threshold, time_lock, transaction_index, stale_transaction_index,
-/// rent_collector, bump, members.
+/// rent_collector, bump, members. Members are sorted by key, as Squads keeps them (it finds a member
+/// by binary search); `transaction_index` is 1,000 so tests may write proposals 1 to 1,000. Pinned
+/// against the real binary by `tests/squads.rs`.
 pub fn multisig_data(create_key: &Pubkey, config_authority: &Pubkey, threshold: u16, rent_collector: Option<Pubkey>, members: &[(Pubkey, u8)]) -> Vec<u8> {
     let disc = <sha2::Sha256 as sha2::Digest>::digest(b"account:Multisig");
     let mut d = disc[..8].to_vec();
     d.extend_from_slice(create_key.as_ref());
     d.extend_from_slice(config_authority.as_ref());
     d.extend_from_slice(&threshold.to_le_bytes());
-    d.extend_from_slice(&0u32.to_le_bytes());
-    d.extend_from_slice(&0u64.to_le_bytes());
-    d.extend_from_slice(&0u64.to_le_bytes());
+    d.extend_from_slice(&0u32.to_le_bytes()); // time_lock
+    d.extend_from_slice(&1_000u64.to_le_bytes()); // transaction_index
+    d.extend_from_slice(&0u64.to_le_bytes()); // stale_transaction_index
     match rent_collector {
         None => d.push(0),
         Some(k) => {
@@ -127,8 +129,10 @@ pub fn multisig_data(create_key: &Pubkey, config_authority: &Pubkey, threshold: 
         }
     }
     d.push(multisig_pda(create_key).1);
-    d.extend_from_slice(&(members.len() as u32).to_le_bytes());
-    for (k, mask) in members {
+    let mut sorted = members.to_vec();
+    sorted.sort_by_key(|m| m.0);
+    d.extend_from_slice(&(sorted.len() as u32).to_le_bytes());
+    for (k, mask) in &sorted {
         d.extend_from_slice(k.as_ref());
         d.push(*mask);
     }
@@ -426,7 +430,7 @@ fn event_metas() -> (Pubkey, Pubkey) {
     (event_authority_pda().0, PROGRAM_ID)
 }
 
-fn workspace_root() -> std::path::PathBuf {
+pub fn workspace_root() -> std::path::PathBuf {
     // CARGO_MANIFEST_DIR is `<root>/programs/elote_pool`.
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
