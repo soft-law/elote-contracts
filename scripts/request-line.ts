@@ -6,12 +6,12 @@
 // hash printed here (approve-line.ts, PR 4 commit 10).
 //
 //   npx tsx scripts/request-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path>
-//        --principal <tMXN> [--rate-bps <n>] [--term-days <n>]
+//        --principal <MXN> [--rate-bps <n>] [--term-days <n>]
 //        [--late-rate-bps <n>] [--installments <n> --interval-days <n> [--max-missed <n>]]
 //        [--sponsor-keypair <path> [--sponsor-role promoter|guarantor]]
-//        [--agreement-hash <64 hex>] [--expediente-root <64 hex>] [--pagare-template-hash <64 hex>] [--yes]
+//        [--agreement-hash <64 hex> | --agreement-file <path> --agreement-salt <64 hex>] [--expediente-root <64 hex>] [--pagare-template-hash <64 hex>] [--yes]
 //
-// --principal        amount in tMXN, up to 6 decimals (500, 1250.5)
+// --principal        the line in MXN pesos, up to 2 decimals (50000, 1250.50)
 // --rate-bps         annual interest, charged per tranche at the draw (default 1200)
 // --term-days        days from now to the end of the term (default 90)
 // --installments     open a scheduled line with this many installments; needs --interval-days
@@ -20,7 +20,8 @@
 // --max-missed       missed installments before collection (default 3, the program's minimum)
 // --sponsor-keypair  the sponsor co-signs and is named on the line
 // --sponsor-role     promoter (no payment obligation, the default) or guarantor (full liability)
-// --agreement-hash   hash of the signed credit agreement (a placeholder if absent)
+// --agreement-hash   hash of the signed credit agreement (a placeholder if absent); --agreement-file
+//                    with --agreement-salt hashes the agreement as sha256(salt || file) instead
 // --expediente-root  salted merkle root of the credit file (a placeholder if absent)
 // --pagare-template-hash  hash of the approved pagaré text (a placeholder if absent)
 // --yes              send without asking when the cluster is not this machine
@@ -38,6 +39,8 @@ import {
   getRequestLineInstructionAsync,
   lineSchedule,
   maxLinePrincipal,
+  mxnForUsdc,
+  usdcForMxn,
 } from "../clients/js/src/index.ts";
 import {
   ASSET,
@@ -50,10 +53,12 @@ import {
   explorer,
   fail,
   fmt,
+  documentHash,
+  fmtMxn,
   hash32,
   integer,
   loadSigner,
-  parseAmount,
+  parseMxn,
   required,
   sendOrFail,
 } from "./lib/cli.ts";
@@ -65,13 +70,13 @@ const SPONSOR_ROLES = { promoter: 0, guarantor: 1 } as const; // state::SPONSOR_
 
 checkFlags([
   "cluster", "pool", "borrower-keypair", "principal", "rate-bps", "term-days", "installments", "interval-days",
-  "late-rate-bps", "max-missed", "sponsor-keypair", "sponsor-role", "agreement-hash", "expediente-root",
+  "late-rate-bps", "max-missed", "sponsor-keypair", "sponsor-role", "agreement-hash", "agreement-file", "agreement-salt", "expediente-root",
   "pagare-template-hash", "yes",
 ]);
 const c = cluster();
 const poolAddress = address(required("pool"));
 const borrowerFile = required("borrower-keypair");
-const principal = parseAmount("principal", required("principal"));
+const principal = parseMxn("principal", required("principal"));
 const rateBps = integer("rate-bps", 1_200, 0, 0xffff)!;
 const termDays = integer("term-days", 90, 1, 36_500)!;
 const installments = integer("installments", undefined, 1, MAX_INSTALLMENTS);
@@ -107,7 +112,7 @@ if (schedule && schedule.firstDueAt + BigInt(installments! - 1) * schedule.inter
 }
 
 await confirmCluster(c, "request_line");
-const agreementHash = hash32("agreement-hash", "elote.fun demo credit agreement");
+const agreementHash = documentHash("agreement", "elote.fun demo credit agreement");
 const expedienteRoot = hash32("expediente-root", "elote.fun demo credit file");
 const pagareTemplateHash = hash32("pagare-template-hash", "elote.fun demo pagare template");
 const admin = await loadSigner("admin", process.env.ELOTE_ADMIN_KEYPAIR ?? ".demo-keys/admin.json");
@@ -123,9 +128,10 @@ const lineId = pool.lineCount;
 const [line] = await findLinePda({ pool: poolAddress, lineId });
 const vault = await fetchToken(c.rpc, pool.vault, { commitment: "confirmed" });
 // The concentration cap, checked now as a courtesy; approve_line measures it at the approval.
-const cap = maxLinePrincipal(vault.data.amount + pool.outstandingPrincipal, pool.maxLineBps);
+if (pool.fixRate === 0n) fail("no FIX is published on this pool: the council or the feeder posts it first");
+const cap = mxnForUsdc(maxLinePrincipal(vault.data.amount + pool.outstandingPrincipal, pool.maxLineBps), pool.fixRate);
 if (principal > cap) {
-  fail(`the principal (${fmt(principal)}) exceeds this pool's largest line: ${pool.maxLineBps} bps of the NAV, ${fmt(cap)} right now`);
+  fail(`the principal (MXN ${fmtMxn(principal)}) exceeds this pool's largest line: ${pool.maxLineBps} bps of the NAV, MXN ${fmtMxn(cap)} right now`);
 }
 
 const signature = await sendOrFail(c, "request_line", admin, [
@@ -160,7 +166,7 @@ console.log(
     `line         ${line}`,
     `borrower     ${opened.borrower}`,
     `sponsor      ${opened.sponsor.__option === "Some" ? `${opened.sponsor.value} (${roleName})` : "none"}`,
-    `principal    ${fmt(opened.principal)} tMXN`,
+    `principal    MXN ${fmtMxn(opened.principal)}`,
     `rate         ${opened.rateBps} bps a year, charged per tranche at the draw`,
     `term         ${termDays} days, ends ${new Date(Number(opened.termEnd) * 1000).toISOString()}`,
     `terms hash   ${Buffer.from(opened.termsHash).toString("hex")} (the council approves this value)`,
@@ -172,7 +178,8 @@ console.log(
     `explorer     ${explorer(c, signature)}`,
   ].join("\n")
 );
-if (opened.principal > vault.data.amount) {
-  console.log(`\nNote: the vault holds ${fmt(vault.data.amount)} tMXN; the line needs ${fmt(opened.principal)} tMXN of liquidity to be drawn in full.`);
+const needed = usdcForMxn(opened.principal, pool.fixRate);
+if (needed > vault.data.amount) {
+  console.log(`\nNote: the vault holds ${fmt(vault.data.amount)} USDC; the line needs about ${fmt(needed)} USDC at today's FIX to be drawn in full.`);
 }
 console.log(`\n${DISCLAIMER}`);

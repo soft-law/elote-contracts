@@ -128,7 +128,7 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     // Immutable metadata, nobody's.
     let immutable = asset.plugin_list.immutable_metadata.as_ref().expect("ImmutableMetadata");
     assert_eq!(immutable.base.authority.authority_type, AuthorityType::None);
-    // Attributes, nobody's, with the nine facts and nothing personal.
+    // Attributes, nobody's, with the eight facts and nothing personal (the certificate commitment is not one of them).
     let attributes = asset.plugin_list.attributes.as_ref().expect("Attributes");
     assert_eq!(attributes.base.authority.authority_type, AuthorityType::None);
     let list: Vec<(&str, &str)> =
@@ -147,7 +147,6 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
             ("due_at", due.as_str()),
             ("line", line_s.as_str()),
             ("draw_index", "0"),
-            ("cert_fingerprint", hex(&CERT_FINGERPRINT).as_str()),
             ("signature_method", "1"),
         ]
     );

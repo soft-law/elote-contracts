@@ -394,7 +394,8 @@ pub fn yyyymmdd(days: i64) -> u32 {
     let y = yoe + era * 400 + i64::from(m <= 2);
     (y * 10_000 + m * 100 + d) as u32
 }
-/// The fingerprint of the PSC certificate behind the default test signature (method 1, PSC + wallet).
+/// The salted commitment to the PSC certificate behind the default test signature (method 1, PSC +
+/// wallet): what the client sends, never the bare fingerprint.
 pub const CERT_FINGERPRINT: [u8; 32] = [0xcf; 32];
 pub const SIGNATURE_METHOD: u8 = elote_pool::state::SIGNATURE_PSC_WALLET;
 /// The hash of the FEA-signed receipt `cancel_pagare` is given in the tests.

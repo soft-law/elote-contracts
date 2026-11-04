@@ -3,21 +3,26 @@
 // approves the asset's burn delegate to the program address ["procurador", pagare, procurador].
 //
 //   npx tsx scripts/endorse-pagare.ts --cluster local|devnet --pool <address> --line-id <n>
-//        --draw-index <n> (--procurador <address> [--endoso-hash <64 hex>] | --revoke [--revocation-hash <64 hex>])
-//        [--yes]
+//        --draw-index <n> ([--procurador <address>] [--endoso-hash <64 hex>] | --revoke [--revocation-hash <64 hex>])
+//        [--council-keypairs <a.json,b.json>] [--yes]
 //
 // --procurador       the endorsee: never the pool, the council, a curator, the guardian or the borrower
-//                    (the program refuses them)
+//                    (the program refuses them). Without it the script creates a key for this case,
+//                    .demo-keys/procuradores/<pool>-<line>-<draw>.json, to hand to the collection
+//                    agency: one key per case, never reused, or anyone could list the lines in
+//                    collection from it. With it, the script warns when the key already holds a
+//                    pagaré under procuración.
 // --endoso-hash      hash of the signed endoso (a placeholder if absent)
 // --revoke           revoke the procuración in force
 // --revocation-hash  hash of the signed revocation (a placeholder if absent)
 // --yes              send without asking when the cluster is not this machine
 //
-// The council (the holder while the asset is in the pool) signs through Squads, so the script runs
-// only with the council tooling (PR 4, commit 10); the admin key (ELOTE_ADMIN_KEYPAIR or
-// .demo-keys/admin.json) stands in for it and pays the fees; ELOTE_RPC overrides the cluster's RPC URL.
+// The council (the holder while the asset is in the pool) decides through Squads: the members' keys
+// from --council-keypairs, ELOTE_COUNCIL_KEYPAIRS or .demo-keys/curator-<n>.json; the executing member
+// pays. ELOTE_RPC overrides the cluster's RPC URL.
 //
 // Demo on Solana devnet with test assets. Not an offer of securities.
+import path from "node:path";
 import { address } from "@solana/kit";
 import {
   fetchPagare,
@@ -25,9 +30,11 @@ import {
   findProcuradorAuthorityPda,
   getEndorsePagareInstructionAsync,
   getRevokeProcuracionInstructionAsync,
+  pagaresUnderProcuracion,
 } from "../clients/js/src/index.ts";
 import {
   DISCLAIMER,
+  KEY_DIR,
   arg,
   checkFlags,
   chainNow,
@@ -39,8 +46,9 @@ import {
   integer,
   loadSigner,
   required,
-  sendOrFail,
+  writeNewKey,
 } from "./lib/cli.ts";
+import { councilExecute, loadCouncil } from "./lib/council.ts";
 import { loadLine, loadPool } from "./lib/pool.ts";
 
 const KIND_PROCURACION = 2; // state::KIND_PROCURACION
@@ -48,7 +56,8 @@ const PAGARE_OUTSTANDING = 0; // state::PAGARE_OUTSTANDING
 const PAGARE_FLAG_PROCURACION = 1 << 1; // state::PAGARE_FLAG_PROCURACION
 
 checkFlags([
-  "cluster", "pool", "line-id", "draw-index", "procurador", "endoso-hash", "revoke", "revocation-hash", "yes",
+  "cluster", "pool", "line-id", "draw-index", "procurador", "endoso-hash", "revoke", "revocation-hash", "council-keypairs",
+  "yes",
 ]);
 const c = cluster();
 const poolAddress = address(required("pool"));
@@ -57,14 +66,15 @@ if (!/^\d+$/.test(lineIdRaw)) fail("--line-id must be a whole number");
 const lineId = BigInt(lineIdRaw);
 const drawIndex = integer("draw-index", undefined, 0, 0xffff) ?? fail("--draw-index is required");
 const revoke = flag("revoke");
-if (revoke === (arg("procurador") !== undefined)) fail("give either --procurador or --revoke");
+if (revoke && arg("procurador") !== undefined) fail("--procurador goes with an endorsement, not --revoke");
 if (revoke && arg("endoso-hash") !== undefined) fail("--endoso-hash goes with --procurador");
 if (!revoke && arg("revocation-hash") !== undefined) fail("--revocation-hash goes with --revoke");
 
 await confirmCluster(c, revoke ? "revoke_procuracion" : "endorse_pagare");
-const admin = await loadSigner("admin", process.env.ELOTE_ADMIN_KEYPAIR ?? ".demo-keys/admin.json");
 const pool = await loadPool(c, poolAddress);
-if (pool.council !== admin.address) fail(`the key (${admin.address}) is not this pool's council (${pool.council}); a Squads council signs through Squads`);
+const council = await loadCouncil(c, pool.multisig);
+const payer = council.members[0];
+const validUntil = (await chainNow(c)) + 86_400n;
 const { line } = await loadLine(c, poolAddress, lineId);
 const [record] = await findPagarePda({ line, drawIndex });
 const before = (await fetchPagare(c.rpc, record, { commitment: "confirmed" })).data;
@@ -73,12 +83,12 @@ const inForce = (before.flags & PAGARE_FLAG_PROCURACION) !== 0;
 if (revoke) {
   if (!inForce) fail(`pagaré ${drawIndex} has no procuración in force`);
   const entryHash = hash32("revocation-hash", "elote.fun demo revocation");
-  await sendOrFail(c, `revoke_procuracion of pagaré ${drawIndex} (procurador ${before.procurador})`, admin, [
+  await councilExecute(c, council, `revoke_procuracion of pagaré ${drawIndex}`, [
     await getRevokeProcuracionInstructionAsync({
-      holder: admin,
+      holder: council.signer,
       multisig: pool.multisig,
-      validUntil: (await chainNow(c)) + 86_400n,
-      payer: admin,
+      validUntil,
+      payer,
       pool: poolAddress,
       line,
       pagare: record,
@@ -87,21 +97,33 @@ if (revoke) {
       drawIndex,
       entryHash,
     }),
-  ]);
+  ], [payer]).catch((e) => fail((e as Error).message));
 } else {
   if (before.status !== PAGARE_OUTSTANDING) fail(`pagaré ${drawIndex} is already marked paid: endorse before the payment`);
   if (inForce) fail(`pagaré ${drawIndex} already has a procuración in force (${before.procurador}); revoke it first`);
-  const procurador = address(required("procurador"));
+  let procurador;
+  if (arg("procurador") !== undefined) {
+    procurador = address(arg("procurador")!);
+    const others = await pagaresUnderProcuracion(c.rpc, procurador);
+    if (others.length > 0) {
+      console.log(`  warning: ${procurador} already holds ${others.length} pagaré(s) under procuración; one key per case keeps the lines in collection from being listed`);
+    }
+  } else {
+    const file = path.join(KEY_DIR, "procuradores", `${poolAddress}-${lineId}-${drawIndex}.json`);
+    writeNewKey(file);
+    procurador = (await loadSigner("procurador", file)).address;
+    console.log(`  a new procurador key for this case, ${procurador}, is in ${file}: hand it to the collection agency`);
+  }
   if (procurador === poolAddress || procurador === pool.council || procurador === pool.guardian) {
     fail("the procurador cannot be the pool, the council or the guardian");
   }
   const endosoHash = hash32("endoso-hash", "elote.fun demo endoso en procuración");
-  await sendOrFail(c, `endorse_pagare ${drawIndex} en procuración to ${procurador}`, admin, [
+  await councilExecute(c, council, `endorse_pagare ${drawIndex} en procuración`, [
     await getEndorsePagareInstructionAsync({
-      holder: admin,
+      holder: council.signer,
       multisig: pool.multisig,
-      validUntil: (await chainNow(c)) + 86_400n,
-      payer: admin,
+      validUntil,
+      payer,
       pool: poolAddress,
       line,
       pagare: record,
@@ -112,7 +134,7 @@ if (revoke) {
       to: procurador,
       endosoHash,
     }),
-  ]);
+  ], [payer]).catch((e) => fail((e as Error).message));
   const [authority] = await findProcuradorAuthorityPda({ pagare: record, procurador });
   console.log(`  the burn delegate is approved to ${authority}; the procurador cancels with cancel-pagare.ts --procurador-keypair`);
 }

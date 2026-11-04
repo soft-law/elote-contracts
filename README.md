@@ -21,8 +21,8 @@ Investors deposit the pool asset and receive shares. The pool admin approves cre
 entrepreneurs from the pool. When borrowers repay, the interest stays in the pool and every share
 is worth more. A recognised loss lowers the value of every share once.
 
-The demo asset is **tMXN (devnet test token, no value)**: a plain SPL token created by the demo
-script. Nothing here holds or moves real money.
+The demo asset is **tUSDC (devnet test token, no value)**: a plain SPL token created by the demo
+script; lines and pagarés are in MXN. Nothing here holds or moves real money.
 
 Documentation for investors, borrowers and developers (how the pool works, credit lines, the app,
 the agreements server, program reference and addresses) lives in `soft-law/elote-docs`.
@@ -263,78 +263,90 @@ to the `npm-publish` environment in this repository's settings.
 ## Demo
 
 ```sh
-npx tsx scripts/demo-pool.ts --cluster local  [--agreement-hash <64 hex>] [--sponsor] [--schedule]
-npx tsx scripts/demo-pool.ts --cluster devnet [--agreement-hash <64 hex>] [--sponsor]
+npx tsx scripts/demo-pool.ts --cluster local  --multisig <address> [--agreement-hash <64 hex>] [--sponsor] [--schedule]
+npx tsx scripts/demo-pool.ts --cluster devnet --multisig <address> [--agreement-hash <64 hex>] [--sponsor]
 ```
 
-All amounts below are in tMXN (devnet test token, no value). The script creates the test token,
-the share token and the pagarés' Metaplex Core collection (bare, with the pool PDA as update
-authority, as `init_pool` requires) and a pool, then runs two investors (10,000 and 5,000), a 6,000
-line at 12% with the given agreement hash, the draw (which mints pagaré 0), the borrower's
-repayment (interest first, then principal) and the sponsor's payment of the rest, then a partial
-redemption. It prints every signature with an explorer link and a final table of NAV, supply and
-value per share before and after.
+Units: lines and pagarés are in MXN (centavos on chain; the scripts take pesos with up to 2
+decimals), the vault holds the pool asset, here **tUSDC (devnet test token, no value)**, 6 decimals;
+deposits, redemptions and repayments are in tUSDC. Draws deliver tUSDC at the FIX in force and
+repayments are credited in MXN at it. The test asset has no value: nothing here is ever tested with
+an asset of real value.
 
-With `--schedule` it then opens a 600 line at 12% in six installments with 100% a year late interest
-and collection after three missed installments, draws it, lets the first installment go unpaid past its
-due date and the grace period, and repays it with the next one: the repayment collects the late interest
-first, then interest, then principal, and no installment remains missed. A validator's clock cannot be
-moved forward, so on `--cluster local` an installment falls due every 20 seconds (a compressed demo
-month, `--interval-seconds` to change it) and the pool's grace period is 5 seconds (`--grace-seconds`).
-Over a few seconds the late interest is a few millionths of a tMXN; the integration tests move the clock
-by months instead.
+The council is vault 0 of a Squads v4 multisig (`--multisig`); its members' keys come from
+`--council-keypairs <a.json,b.json>`, `ELOTE_COUNCIL_KEYPAIRS` or `.demo-keys/curator-<n>.json`, and every
+council step runs as a Squads vault transaction (created, proposed, approved by the threshold,
+executed with a 100,000 CU limit) through `scripts/lib/council.ts`, whose Squads instructions are
+hand-built in `scripts/lib/squads.ts` (Squads v4 af94153, the pinned binary's sha256 in its header).
+A Squads error and an elote_pool error can share a number (both count from 6000): the scripts name
+the program that raised it from the logs.
+
+The demo creates the test token, the share token and the pagarés' Metaplex Core collection (bare,
+with the pool PDA as update authority, as `init_pool` requires) and a pool on the given multisig. The
+council publishes a FIX (18.3740); two investors deposit (10,000 and 5,000 tUSDC); a MXN 60,000 line
+at 12% is requested and approved by the council; the borrower draws it (pagaré 0, delivered as tUSDC
+at the FIX) and repays what it holds; the sponsor pays the rest; then a partial redemption. It prints
+every signature with an explorer link and a final table of NAV, supply and value per share.
+
+With `--schedule` it then requests a MXN 6,000 line at 12% in six installments with 100% a year late
+interest and collection after three missed installments, has the council approve it, draws it, lets
+the first installment go unpaid past its due date and the grace period, and repays it with the next
+one: late interest first, then interest, then principal. A validator's clock cannot be moved forward,
+so on `--cluster local` an installment falls due every 20 seconds (`--interval-seconds`) and the
+pool's grace period is 5 seconds (`--grace-seconds`).
 
 Wallets are generated into `.demo-keys/` (ignored by git) unless `ELOTE_ADMIN_KEYPAIR`,
 `ELOTE_INVESTOR_A_KEYPAIR`, `ELOTE_INVESTOR_B_KEYPAIR`, `ELOTE_BORROWER_KEYPAIR` or
-`ELOTE_SPONSOR_KEYPAIR` point to keypair files. Every script prints
-the cluster and, unless the RPC is this machine or `--yes` is given, asks before sending. `ELOTE_RPC` overrides the RPC URL. On devnet the
-admin is funded by airdrop (with retries) and pays the other wallets' fees.
+`ELOTE_SPONSOR_KEYPAIR` point to keypair files. Every script prints the cluster and, unless the RPC is
+this machine or `--yes` is given, asks before sending. `ELOTE_RPC` overrides the RPC URL.
 
-For a local run, start a validator with the program loaded and the demo admin funded (the script
-creates `.demo-keys/admin.json` on its first run; create it beforehand for the validator):
+`scripts/local-e2e.sh` runs every script below end to end on a validator of its own: it preloads the
+program, the pinned Metaplex Core and Squads v4 binaries (checking their sha256) and a 2-of-3 Squads
+multisig of three keys it makes (`scripts/squads-local-multisig.ts` writes the account file, so no
+Squads ProgramConfig is needed), with the ledger and all keys in a temporary directory removed on
+exit. It refuses any RPC that is not this machine and refuses to start when something already
+answers on its port (`ELOTE_E2E_PORT`, default 18899). Build first
+(`NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet`).
 
-```sh
-mkdir -p .demo-keys && test -f .demo-keys/admin.json || solana-keygen new --no-bip39-passphrase -s -o .demo-keys/admin.json
-solana-test-validator --reset \
-  --bpf-program BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM target/deploy/elote_pool.so \
-  --bpf-program CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d programs/elote_pool/tests/fixtures/mpl_core_program-0.15.3.so \
-  --mint "$(solana-keygen pubkey .demo-keys/admin.json)"
-```
+`scripts/request-line.ts --pool <address> --borrower-keypair <path> --principal <MXN>` requests one
+line, with `--rate-bps` (1200), `--term-days` (90), `--late-rate-bps` (10000), `--sponsor-keypair` with
+`--sponsor-role promoter|guarantor`, and `--agreement-hash` (or `--agreement-file` with
+`--agreement-salt`: the hash is then `sha256(salt || file)`, the convention for agreement and receipt
+hashes), `--expediente-root` and `--pagare-template-hash`. `--installments <n> --interval-days <n>`
+request a scheduled line, with `--max-missed` (3, the program's minimum). The borrower and a payer
+(the demo admin, standing in for Elote's backend) sign; the script prints the terms hash the council
+approves.
 
-`scripts/local-e2e.sh` runs every script below end to end on a validator of its own, with the
-ledger and all keys in a temporary directory removed on exit; it refuses any RPC that is not this
-machine. Build first (`NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet`).
+`scripts/approve-line.ts --pool <address> --line-id <n>` has the council approve a requested line: it
+recomputes the terms hash from the stored terms with the client's `termsHash`, refuses on a mismatch,
+and runs `approve_line` through Squads with `valid_until` a day ahead.
 
-`scripts/request-line.ts` requests one line on an existing pool for a borrower whose keypair file
-is held locally, so the borrower's draw and repayments can be rehearsed in the app:
-`npx tsx scripts/request-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path> --principal <tMXN>`,
-with `--rate-bps` (1200), `--term-days` (90), `--sponsor-keypair` with `--sponsor-role promoter|guarantor`
-(promoter by default), and `--agreement-hash`, `--expediente-root` and `--pagare-template-hash`
-(placeholders if absent). `--installments <n> --interval-days <n>` request a scheduled line, with
-`--late-rate-bps` (10000) and `--max-missed` (3, the program's minimum, so at least three
-installments); the script puts the first due date one interval from now, standing in for the
-contract's calendar, so `--term-days` must be at least installments times interval. The borrower and
-a payer (`ELOTE_ADMIN_KEYPAIR` or `.demo-keys/admin.json`, standing in for Elote's backend) sign; the
-script prints the line id, the terms, the terms hash the council approves, the signature and an
-explorer link. The council's approval goes through Squads (PR 4, commit 10).
+`scripts/post-fix.ts --pool <address> --fix <18.3740> [--fix-date <yyyymmdd>]` publishes Banxico's FIX
+(the date defaults to today in Mexico City by the chain clock): through the council, or by the pool's
+feeder with `--feeder-keypair`.
 
-`scripts/draw.ts --pool <address> --line-id <n> --borrower-keypair <path> --amount <tMXN>` draws one
-tranche and mints its pagaré, with `--signature-method wallet|psc|efirma` and `--cert-fingerprint`
-(required with psc or efirma). The script prints the FIX in force and the USDC it delivers before
-asking; the borrower signs alone (a FIX published in between fails the draw) and the admin pays the
-pagaré's rent. The pagaré hash is derived on chain from the approved template and terms.
+`scripts/council-propose.ts --pool <address> --op <op>` runs one council decision on the pool's
+settings through Squads: `set-fx-feeder --address`, `set-guardian --address`, `set-max-line-bps
+--bps`, `set-outstanding-cap --usdc`, `reject-line --line-id`, `resume`.
 
-`scripts/repay.ts --pool <address> --line-id <n> --amount <tMXN> | --all` pays on a line (the
-borrower by default, `--payer-keypair` for anyone else; `--receipt-hash`, zero meaning "to
-follow"). A payment that would touch more than four pagaré records is split into several `repay`
-calls (`MAX_SIDECARS_PER_REPAY`); a part refused because another payment landed first is rebuilt
-and sent again.
+`scripts/draw.ts --pool <address> --line-id <n> --borrower-keypair <path> --amount <MXN>` draws one
+tranche and mints its pagaré, with `--signature-method wallet|psc|efirma`; psc and efirma need
+`--cert-fingerprint` and `--cert-salt`, and the draw records `sha256(salt || fingerprint)`, never the
+fingerprint (the SAT publishes e.firma certificates by RFC). The script prints the FIX and the tUSDC it
+delivers before asking; the borrower signs alone (a FIX published in between fails the draw).
 
-`scripts/endorse-pagare.ts --pool <address> --line-id <n> --draw-index <n> --procurador <address>`
-endorses an outstanding pagaré en procuración (the council as holder signs, through Squads from PR 4
-commit 10; `--endoso-hash`), and `--revoke` (with `--revocation-hash`) revokes the procuración in
-force. The procurador can never be the pool, the council, a curator, the guardian or the borrower;
-endorse before the payment marks the pagaré paid.
+`scripts/repay.ts --pool <address> --line-id <n> --amount <tUSDC> | --all` pays on a line (the
+borrower by default, `--payer-keypair` for anyone else; `--receipt-hash` or `--receipt-file` with
+`--receipt-salt`, zero meaning "to follow"), credited in MXN at the FIX in force. A payment that would
+touch more than four pagaré records is split into several `repay` calls (`MAX_SIDECARS_PER_REPAY`).
+
+`scripts/endorse-pagare.ts --pool <address> --line-id <n> --draw-index <n>` endorses an outstanding
+pagaré en procuración through the council. By default it makes a procurador key for the case,
+`.demo-keys/procuradores/<pool>-<line>-<draw>.json`, to hand to the collection agency: one key per
+case, never reused, or anyone could list the lines in collection from it. `--procurador <address>`
+names an existing key and warns when it already holds a pagaré under procuración
+(`pagaresUnderProcuracion` in the client). `--revoke` revokes the procuración in force. The procurador
+can never be the pool, the council, a curator, the guardian or the borrower.
 
 `scripts/cancel-pagare.ts --pool <address> --line-id <n> --draw-index <n> --receipt-hash <64 hex>`
 extinguishes a pagaré a repayment marked paid: by default the council as holder (through Squads);

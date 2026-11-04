@@ -74,8 +74,9 @@ export type Pagare = {
    */
   drawnThrough: bigint;
   /**
-   * Hash of the PSC certificate that signed the pagaré text; zero only when
-   * `signature_method` is `SIGNATURE_WALLET`.
+   * `sha256(salt || fingerprint)` of the PSC or e.firma certificate that signed the pagaré text,
+   * with the salt kept in the expediente: a bare fingerprint can be looked up to the signer's
+   * RFC. Zero only when `signature_method` is `SIGNATURE_WALLET`.
    */
   certFingerprint: ReadonlyUint8Array;
   /** `SIGNATURE_*`. */
@@ -141,8 +142,9 @@ export type PagareArgs = {
    */
   drawnThrough: number | bigint;
   /**
-   * Hash of the PSC certificate that signed the pagaré text; zero only when
-   * `signature_method` is `SIGNATURE_WALLET`.
+   * `sha256(salt || fingerprint)` of the PSC or e.firma certificate that signed the pagaré text,
+   * with the salt kept in the expediente: a bare fingerprint can be looked up to the signer's
+   * RFC. Zero only when `signature_method` is `SIGNATURE_WALLET`.
    */
   certFingerprint: ReadonlyUint8Array;
   /** `SIGNATURE_*`. */

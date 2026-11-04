@@ -22,7 +22,7 @@ import {
   repaySidecars,
   withRemainingAccounts,
 } from "../../clients/js/src/index.ts";
-import { type Cluster, SendError, chainNow, fail, fmt, send } from "./cli.ts";
+import { type Cluster, SendError, chainNow, fail, fmtMxn, send } from "./cli.ts";
 
 /** The pool at `address`, checked to be an elote_pool pool at its own PDA. */
 export async function loadPool(c: Cluster, address: Address): Promise<Pool> {
@@ -93,7 +93,7 @@ export async function repayInParts(
       const piece = late + interest + principal;
       if (piece === 0n) return start - (await balance());
       const records = await repaySidecars({ line, pagaresPaid: l.pagaresPaid, drawnThrough, principalAfter: l.principalRepaid + principal });
-      const label = `repay part ${part}: ${fmt(piece)} (${records.length} pagaré record${records.length === 1 ? "" : "s"})`;
+      const label = `repay part ${part}: MXN ${fmtMxn(piece)} (${records.length} pagaré record${records.length === 1 ? "" : "s"})`;
       try {
         await send(c, label, payer, [
           withRemainingAccounts(

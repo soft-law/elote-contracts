@@ -11,12 +11,16 @@ import {
   type Instruction,
   type ProgramDerivedAddress,
   type ReadonlyUint8Array,
+  type Base58EncodedBytes,
+  type GetProgramAccountsApi,
+  type Rpc,
   getAddressEncoder,
+  getBase58Decoder,
   getProgramDerivedAddress,
   getU16Encoder,
   getUtf8Encoder,
 } from "@solana/kit";
-import { ELOTE_POOL_PROGRAM_ADDRESS, type PagareSeeds, findPagarePda } from "./generated";
+import { ELOTE_POOL_PROGRAM_ADDRESS, type PagareSeeds, findPagarePda, getPagareDiscriminatorBytes } from "./generated";
 
 /** The Metaplex Core program the pool mints pagarés through (pinned in the program). */
 export const MPL_CORE_PROGRAM_ADDRESS = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d" as Address<
@@ -137,4 +141,30 @@ export function repayPrincipalCap(input: {
   const ceiling =
     lastCovered + 1 < drawnThrough.length ? drawnThrough[lastCovered] : drawnThrough[drawnThrough.length - 1];
   return ceiling > principalRepaid ? ceiling - principalRepaid : 0n;
+}
+
+/** Byte offset of `procurador` in a `Pagare` account (pinned against the generated codec in the tests). */
+export const PAGARE_PROCURADOR_OFFSET = 244;
+
+/**
+ * The pagaré records whose procuración in force names `procurador`. A procurador key must serve
+ * one case only: a key with several pagarés lets anyone list the lines in collection from it.
+ */
+export async function pagaresUnderProcuracion(
+  rpc: Rpc<GetProgramAccountsApi>,
+  procurador: Address,
+  config: { programAddress?: Address } = {}
+): Promise<Address[]> {
+  const discriminator = getBase58Decoder().decode(getPagareDiscriminatorBytes());
+  const accounts = await rpc
+    .getProgramAccounts(config.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS, {
+      commitment: "confirmed",
+      dataSlice: { offset: 0, length: 0 },
+      filters: [
+        { memcmp: { offset: 0n, bytes: discriminator as Base58EncodedBytes, encoding: "base58" } },
+        { memcmp: { offset: BigInt(PAGARE_PROCURADOR_OFFSET), bytes: procurador as unknown as Base58EncodedBytes, encoding: "base58" } },
+      ],
+    })
+    .send();
+  return accounts.map((a) => a.pubkey);
 }

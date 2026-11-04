@@ -371,8 +371,9 @@ pub struct Pagare {
     /// The line's `drawn` after this tranche. Pagarés are covered oldest first, so pagaré k is
     /// paid once the line's `principal_repaid` reaches it.
     pub drawn_through: u64,
-    /// Hash of the PSC certificate that signed the pagaré text; zero only when
-    /// `signature_method` is `SIGNATURE_WALLET`.
+    /// `sha256(salt || fingerprint)` of the PSC or e.firma certificate that signed the pagaré text,
+    /// with the salt kept in the expediente: a bare fingerprint can be looked up to the signer's
+    /// RFC. Zero only when `signature_method` is `SIGNATURE_WALLET`.
     pub cert_fingerprint: [u8; 32],
     /// `SIGNATURE_*`.
     pub signature_method: u8,

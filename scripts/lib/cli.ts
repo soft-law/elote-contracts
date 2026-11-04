@@ -25,15 +25,19 @@ import {
   signTransactionMessageWithSigners,
 } from "@solana/kit";
 import {
+  ELOTE_POOL_PROGRAM_ADDRESS,
   type ElotePoolError,
   getElotePoolErrorMessage,
   isElotePoolError,
 } from "../../clients/js/src/index.ts";
 
 export const DISCLAIMER = "Demo on Solana devnet with test assets. Not an offer of securities.";
-export const ASSET = "tMXN (devnet test token, no value)";
+/** The pool asset in the demos: a USDC-like test mint with 6 decimals. */
+export const ASSET = "tUSDC (devnet test token, no value)";
 export const DECIMALS = 6;
 export const UNIT = 10n ** BigInt(DECIMALS);
+/** Lines and pagarés count centavos of MXN. */
+export const CENTAVOS = 100n;
 export const DAY = 86_400n;
 export const KEY_DIR = path.resolve(".demo-keys");
 
@@ -79,7 +83,16 @@ export function integer(name: string, fallback: number | undefined, min: number,
   return n;
 }
 
-/** An amount of the asset with up to `DECIMALS` decimals ("500", "1250.5"), in base units. */
+/** Pesos with up to 2 decimals ("50000", "1250.5"), in centavos. */
+export function parseMxn(name: string, raw: string): bigint {
+  if (!/^\d+(\.\d{1,2})?$/.test(raw)) fail(`--${name} must be an amount of MXN with at most 2 decimals, like 50000 or 1250.50`);
+  const [whole, frac = ""] = raw.split(".");
+  const centavos = BigInt(whole) * CENTAVOS + BigInt(frac.padEnd(2, "0"));
+  if (centavos === 0n) fail(`--${name} must be more than zero`);
+  return centavos;
+}
+
+/** An amount of the asset (USDC) with up to `DECIMALS` decimals ("500", "1250.5"), in base units. */
 export function parseAmount(name: string, raw: string): bigint {
   if (!/^\d+(\.\d+)?$/.test(raw)) fail(`--${name} must be a positive amount, like 500 or 1250.5`);
   const [whole, frac = ""] = raw.split(".");
@@ -87,6 +100,22 @@ export function parseAmount(name: string, raw: string): bigint {
   const units = BigInt(whole) * UNIT + BigInt(frac.padEnd(DECIMALS, "0"));
   if (units === 0n) fail(`--${name} must be more than zero`);
   return units;
+}
+
+/**
+ * The salted hash of a document, `sha256(salt || bytes)` (the convention for agreement and receipt
+ * hashes, so a hash cannot be matched against a guessed document): `--<name>-file <path>` with
+ * `--<name>-salt <64 hex>`; otherwise `hash32(<name>-hash, placeholder)`.
+ */
+export function documentHash(name: string, placeholder: string): Uint8Array {
+  const file = arg(`${name}-file`);
+  const salt = arg(`${name}-salt`);
+  if (file === undefined && salt === undefined) return hash32(`${name}-hash`, placeholder);
+  if (file === undefined || salt === undefined) fail(`--${name}-file and --${name}-salt go together`);
+  if (arg(`${name}-hash`) !== undefined) fail(`give --${name}-hash or --${name}-file, not both`);
+  if (!/^[0-9a-fA-F]{64}$/.test(salt.replace(/^0x/, ""))) fail(`--${name}-salt must be 32 bytes of hex`);
+  if (!fs.existsSync(file)) fail(`${file} not found`);
+  return Uint8Array.from(createHash("sha256").update(Buffer.from(salt.replace(/^0x/, ""), "hex")).update(fs.readFileSync(file)).digest());
 }
 
 /** 32 bytes of hex from `--name`, or the sha256 of `placeholder` when absent (and says so). */
@@ -165,14 +194,18 @@ export async function demoSigner(name: string, envVar: string): Promise<KeyPairS
   const fromEnv = process.env[envVar];
   if (fromEnv) return loadSigner(name, fromEnv);
   const file = path.join(KEY_DIR, `${name}.json`);
-  if (!fs.existsSync(file)) {
-    fs.mkdirSync(KEY_DIR, { recursive: true, mode: 0o700 });
-    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-    const seed = Buffer.from(privateKey.export({ format: "jwk" }).d!, "base64url");
-    const pub = Buffer.from(publicKey.export({ format: "jwk" }).x!, "base64url");
-    fs.writeFileSync(file, JSON.stringify([...seed, ...pub]), { mode: 0o600 });
-  }
+  if (!fs.existsSync(file)) writeNewKey(file);
   return loadSigner(name, file);
+}
+
+/** Writes a fresh ed25519 keypair file (mode 600, its directory 700); refuses to overwrite. Never printed. */
+export function writeNewKey(file: string): void {
+  if (fs.existsSync(file)) fail(`${file} already exists`);
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const seed = Buffer.from(privateKey.export({ format: "jwk" }).d!, "base64url");
+  const pub = Buffer.from(publicKey.export({ format: "jwk" }).x!, "base64url");
+  fs.writeFileSync(file, JSON.stringify([...seed, ...pub]), { mode: 0o600 });
 }
 
 /** `--<name>-keypair <path>`, else the `ELOTE_<NAME>_KEYPAIR` variable, else `.demo-keys/<name>.json`. */
@@ -189,6 +222,36 @@ export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function explorer(c: Cluster, signature: string): string {
   const q = c.name === "devnet" && !process.env.ELOTE_RPC ? "devnet" : `custom&customUrl=${encodeURIComponent(c.rpcUrl)}`;
   return `https://explorer.solana.com/tx/${signature}?cluster=${q}`;
+}
+
+/**
+ * The error named by the program that raised it, from the transaction's logs. Squads numbers its
+ * errors from 6000 too, so inside a Squads execution a bare code is ambiguous; the Anchor log line
+ * says which program threw it.
+ */
+function logsError(error: unknown): string | null {
+  for (let e: unknown = error; e; e = (e as { cause?: unknown }).cause) {
+    const logs = (e as { context?: { logs?: unknown } }).context?.logs;
+    if (Array.isArray(logs)) {
+      // Follow the invoke stack, so each Anchor error line is attributed to the program running.
+      const stack: string[] = [];
+      let found: { program: string; line: string } | null = null;
+      for (const l of logs as string[]) {
+        const invoke = /^Program (\w+) invoke/.exec(l);
+        if (invoke) stack.push(invoke[1]);
+        else if (/^Program \w+ (success|failed)/.test(l)) stack.pop();
+        else if (l.includes("Error Code:")) found = { program: stack[stack.length - 1] ?? "?", line: l };
+      }
+      if (!found) return null;
+      const name = /Error Code: (\w+)/.exec(found.line)?.[1];
+      const account = /caused by account: (\w+)/.exec(found.line)?.[1];
+      const msg = /Error Message: (.*)$/.exec(found.line)?.[1] ?? "";
+      const where = found.program === ELOTE_POOL_PROGRAM_ADDRESS ? "elote_pool" : `program ${found.program}`;
+      return `${where} error ${name}${account ? ` (account ${account})` : ""}: ${msg}`;
+    }
+    if (!isSolanaError(e)) break;
+  }
+  return null;
 }
 
 /** The program's error in a failed send, named through the generated client; null otherwise. */
@@ -234,7 +297,7 @@ export async function send(c: Cluster, label: string, feePayer: KeyPairSigner, i
       .sendTransaction(getBase64EncodedWireTransaction(tx), { encoding: "base64", preflightCommitment: "confirmed" })
       .send();
   } catch (error) {
-    throw new SendError(`${label} was rejected: ${programError(error, message) ?? (error as Error).message}`);
+    throw new SendError(`${label} was rejected: ${logsError(error) ?? programError(error, message) ?? (error as Error).message}`);
   }
   for (let i = 0; i < 60; i++) {
     await sleep(1_000);
@@ -267,6 +330,11 @@ export async function chainNow(c: Cluster): Promise<bigint> {
   return Buffer.from(value!.data[0], "base64").readBigInt64LE(32);
 }
 
+/** Centavos as pesos, two decimals. */
+export const fmtMxn = (centavos: bigint) =>
+  `${(centavos / CENTAVOS).toLocaleString("en-US")}.${(centavos % CENTAVOS).toString().padStart(2, "0")}`;
+
+/** USDC base units, with only the decimals that are not zero. */
 export const fmt = (units: bigint) => {
   const whole = units / UNIT;
   const frac = (units % UNIT).toString().padStart(DECIMALS, "0").replace(/0+$/, "");

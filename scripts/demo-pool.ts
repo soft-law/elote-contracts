@@ -1,9 +1,11 @@
-// End-to-end demo of the elote_pool program: two investors deposit, a credit line is approved,
-// drawn and repaid (principal by the borrower, interest by a sponsor), and the value of every
+// End-to-end demo of the elote_pool program: two investors deposit test USDC, the council (a Squads
+// v4 multisig) publishes the FIX and approves a line in MXN, the borrower draws it as USDC at the
+// FIX and repays it (principal by the borrower, interest by a sponsor), and the value of every
 // share rises with the collected interest. With --schedule, a second line is repaid in six
 // installments: one is missed and the next repayment collects late interest first.
 //
-//   npx tsx scripts/demo-pool.ts --cluster local|devnet --multisig <address> [--agreement-hash <64 hex>] [--sponsor]
+//   npx tsx scripts/demo-pool.ts --cluster local|devnet --multisig <address> [--council-keypairs <a.json,b.json>]
+//        [--agreement-hash <64 hex>] [--sponsor]
 //        [--schedule [--interval-seconds <n>]] [--grace-seconds <n>] [--max-line-bps <n>] [--yes]
 //
 // --agreement-hash    hash of the signed credit agreement recorded on the line (placeholder if absent)
@@ -13,7 +15,9 @@
 //                     compressed "demo month", since a validator's clock cannot be moved forward)
 // --grace-seconds     the pool's grace period (default 0; 5 with --schedule on local)
 // --max-line-bps      largest line as a share of the NAV, in basis points (default 5000 here, so
-//                     the 6,000 line fits the 15,000 of deposits; production pools use 1000)
+//                     the MXN 60,000 line fits the 15,000 USDC of deposits; production pools use 1000)
+// --multisig          the Squads v4 multisig whose vault 0 is the council; its members' keys come
+//                     from --council-keypairs, ELOTE_COUNCIL_KEYPAIRS or .demo-keys/curator-<n>.json
 // --yes               send without asking when the cluster is not this machine
 //
 // Keys live in .demo-keys/ (generated on first run, ignored by git) unless a path is given in
@@ -45,14 +49,19 @@ import {
   getDepositInstructionAsync,
   getDrawInstructionAsync,
   getInitPoolInstructionAsync,
+  getPostFixInstructionAsync,
   getRequestLineInstructionAsync,
   getRedeemInstructionAsync,
   lineArrears,
   lineSchedule,
+  mexicoCityDate,
+  usdcCeilForMxn,
+  usdcForMxn,
 } from "../clients/js/src/index.ts";
 import {
   ASSET,
   DISCLAIMER,
+  CENTAVOS,
   UNIT,
   arg,
   chainNow,
@@ -63,26 +72,27 @@ import {
   fail,
   flag,
   fmt,
+  fmtMxn,
   hash32,
   sendOrFail,
   sleep,
 } from "./lib/cli.ts";
+import { approveLine, councilExecute, loadCouncil } from "./lib/council.ts";
 import { ataOf, repayInParts } from "./lib/pool.ts";
 
-checkFlags(["cluster", "multisig", "agreement-hash", "sponsor", "schedule", "interval-seconds", "grace-seconds", "max-line-bps", "yes"]);
+checkFlags(["cluster", "multisig", "council-keypairs", "agreement-hash", "sponsor", "schedule", "interval-seconds", "grace-seconds", "max-line-bps", "yes"]);
 const c = cluster();
 const withSponsor = flag("sponsor");
 const withSchedule = flag("schedule");
 const MONTH_SECONDS = 30n * 86_400n;
 const intervalSeconds = BigInt(arg("interval-seconds") ?? (c.local ? "20" : MONTH_SECONDS.toString()));
 const graceSeconds = Number(arg("grace-seconds") ?? (withSchedule && c.local ? "5" : "0"));
-// The council: vault 0 of an existing autonomous Squads v4 multisig with a majority threshold. The
-// admin key below cannot sign as it, so the steps after init_pool need the council tooling (PR 4).
+// The council: vault 0 of an existing autonomous Squads v4 multisig with a majority threshold.
 const multisig = address(arg("multisig") ?? fail("--multisig <address> is required: the Squads v4 multisig whose vault 0 is the council"));
 if (intervalSeconds <= 0n) fail("--interval-seconds must be positive");
 if (!Number.isInteger(graceSeconds) || graceSeconds < 0 || graceSeconds > 0xffffffff) fail("--grace-seconds must fit in a u32");
-// The concentration cap: production pools use 1,000 bps; the demo's 6,000 tMXN line is 40% of its
-// 15,000 of deposits, so it defaults to 5,000.
+// The concentration cap: production pools use 1,000 bps; the demo's MXN 60,000 line is about 22%
+// of its 15,000 USDC of deposits at the FIX, so it defaults to 5,000.
 const maxLineBps = Number(arg("max-line-bps") ?? "5000");
 if (!Number.isInteger(maxLineBps) || maxLineBps < 1 || maxLineBps > 10_000) fail("--max-line-bps must be between 1 and 10000");
 
@@ -193,6 +203,20 @@ console.log(
   `  pool ${pool}\n  share token ${shareMint}\n  collection ${collection}\n  vault ${vault}\n  grace period ${graceSeconds} s\n  max line ${maxLineBps} bps of the NAV`
 );
 
+// The council publishes the first FIX; draws and repayments are converted at it.
+const council = await loadCouncil(c, multisig);
+const FIX = 183_740n; // 18.3740 MXN per USD, a demo figure
+await councilExecute(c, council, `post_fix 18.3740 for ${mexicoCityDate(await chainNow(c))}`, [
+  await getPostFixInstructionAsync({
+    poster: council.signer,
+    multisig,
+    pool,
+    fixRate: FIX,
+    fixDate: mexicoCityDate(await chainNow(c)),
+    validUntil: (await chainNow(c)) + 86_400n,
+  }),
+]).catch((e) => fail((e as Error).message));
+
 console.log(`\nIssuing ${ASSET} to the investors and the sponsor`);
 const issue: Instruction[] = [];
 for (const [w, amount] of [
@@ -244,12 +268,10 @@ await deposit(`investor A deposits 10,000 ${ASSET}`, investorA, 10_000n * UNIT);
 await deposit(`investor B deposits 5,000 ${ASSET}`, investorB, 5_000n * UNIT);
 const before = await snapshot();
 
-console.log(`\nCredit line: 6,000 ${ASSET} at 12%${withSponsor ? ", co-signed by the sponsor" : ""}`);
+console.log(`\nCredit line: MXN 60,000 at 12%${withSponsor ? ", co-signed by the sponsor" : ""}, drawn as USDC at the FIX`);
 const { lineCount } = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
 const [line] = await findLinePda({ pool, lineId: lineCount });
 const termEnd = BigInt(Math.floor(Date.now() / 1000) + 90 * 86_400);
-// The council approves the request through Squads (PR 4 commit 10); until then the demo stops
-// being runnable here.
 await send("request_line", admin, [
   await getRequestLineInstructionAsync({
     borrower,
@@ -258,7 +280,7 @@ await send("request_line", admin, [
     pool,
     line,
     lineId: lineCount,
-    principal: 6_000n * UNIT,
+    principal: 60_000n * CENTAVOS,
     rateBps: 1_200,
     lateBps: 10_000,
     termEnd,
@@ -270,6 +292,7 @@ await send("request_line", admin, [
     pagareTemplateHash: hash,
   }),
 ]);
+await approveLine(c, council, pool, lineCount).catch((e) => fail((e as Error).message));
 const borrowerAsset = await ataOf(borrower.address, assetMint.address);
 
 /** A draw: the borrower receives `amount`; the admin pays the pagaré's rent as the app's relayer. */
@@ -293,12 +316,15 @@ async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
   });
 }
 
-await send(`draw: 6,000 ${ASSET} to the borrower, pagaré 0 minted`, borrower, [await drawIx(line, 0, 6_000n * UNIT)]);
+await send(`draw: MXN 60,000 as ${fmt(usdcForMxn(60_000n * CENTAVOS, FIX))} ${ASSET} to the borrower, pagaré 0 minted`, borrower, [
+  await drawIx(line, 0, 60_000n * CENTAVOS),
+]);
 const drawn = await snapshot();
 const poolData = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
 const noReceipt = new Uint8Array(32); // the demo has no receipt: "to follow"
 console.log(`\nRepayments (interest is taken first)`);
-await repayInParts(c, { pool, poolData, line, payer: borrower, amount: 6_000n * UNIT, receiptHash: noReceipt });
+const borrowerHolds = (await fetchToken(c.rpc, borrowerAsset, { commitment: "confirmed" })).data.amount;
+await repayInParts(c, { pool, poolData, line, payer: borrower, amount: borrowerHolds, receiptHash: noReceipt });
 await repayInParts(c, { pool, poolData, line, payer: sponsor, amount: 720n * UNIT, receiptHash: noReceipt });
 const repaid = await snapshot();
 const status = (await fetchCreditLine(c.rpc, line, { commitment: "confirmed" })).data.status;
@@ -341,9 +367,9 @@ console.log(`\n${DISCLAIMER}`);
 
 async function scheduleDemo() {
   const installments = 6;
-  const principal = 600n * UNIT;
+  const principal = 6_000n * CENTAVOS;
   const label = intervalSeconds === MONTH_SECONDS ? "monthly" : `every ${intervalSeconds} s (a compressed demo month)`;
-  console.log(`\nInstallment line: 600 ${ASSET} at 12%, ${installments} installments ${label}, late interest 100% a year, collection after 3 missed`);
+  console.log(`\nInstallment line: MXN 6,000 at 12%, ${installments} installments ${label}, late interest 100% a year, collection after 3 missed`);
   const { lineCount: id } = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
   const [sLine] = await findLinePda({ pool, lineId: id });
   // The calendar comes from the contract: the first installment one interval from now, the draw
@@ -369,7 +395,8 @@ async function scheduleDemo() {
       pagareTemplateHash: hash,
     }),
   ]);
-  await send(`draw: 600 ${ASSET} to the borrower, pagaré 0 minted`, borrower, [await drawIx(sLine, 0, principal)]);
+  await approveLine(c, council, pool, id).catch((e) => fail((e as Error).message));
+  await send(`draw: MXN 6,000 to the borrower, pagaré 0 minted`, borrower, [await drawIx(sLine, 0, principal)]);
 
   const grace = BigInt((await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.gracePeriodSeconds);
   const read = async () => {
@@ -380,7 +407,7 @@ async function scheduleDemo() {
   };
   let { l } = await read();
   const installment = (l.drawn + l.interestDue) / BigInt(installments);
-  console.log(`  installment ${fmt(installment)}; first due at ${l.firstDueAt} (from the contract, one interval after the opening)`);
+  console.log(`  installment MXN ${fmtMxn(installment)}; first due at ${l.firstDueAt} (from the contract, one interval after the opening)`);
 
   // Let the first installment go unpaid past its due date and the grace period.
   const target = l.firstDueAt + grace + 10n;
@@ -392,14 +419,14 @@ async function scheduleDemo() {
   while ((await chainNow(c)) < target) await sleep(2_000);
   let a;
   ({ l, a } = await read());
-  console.log(`  missed installments ${a.missed}; overdue ${fmt(a.overdue)}; late interest so far ${fmt(a.lateDue)}`);
+  console.log(`  missed installments ${a.missed}; overdue MXN ${fmtMxn(a.overdue)}; late interest so far MXN ${fmtMxn(a.lateDue)}`);
 
   // The overdue installment, its late interest and the next installment; the program takes late
   // interest first, then interest, then principal, and never more than is due.
   const lateBefore = l.lateCollected;
-  await repayInParts(c, { pool, poolData, line: sLine, payer: borrower, amount: a.overdue + installment + 2n * a.lateDue, receiptHash: noReceipt });
+  await repayInParts(c, { pool, poolData, line: sLine, payer: borrower, amount: usdcCeilForMxn(a.overdue + installment + 2n * a.lateDue, FIX), receiptHash: noReceipt });
   ({ l, a } = await read());
-  console.log(`  late interest collected ${fmt(l.lateCollected - lateBefore)}; missed installments now ${a.missed}`);
-  console.log(`  repaid: interest ${fmt(l.interestRepaid)}, principal ${fmt(l.principalRepaid)} (late interest first, then interest, then principal)`);
+  console.log(`  late interest collected MXN ${fmtMxn(l.lateCollected - lateBefore)}; missed installments now ${a.missed}`);
+  console.log(`  repaid: interest MXN ${fmtMxn(l.interestRepaid)}, principal MXN ${fmtMxn(l.principalRepaid)} (late interest first, then interest, then principal)`);
   console.log(`  line status ${LineStatus[l.status]}; once 3 installments are missed and the grace period of the third has run, anyone may call mark_in_collection`);
 }

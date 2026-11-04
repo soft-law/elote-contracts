@@ -427,7 +427,7 @@ fn dec_u(mut m: u64) -> String {
 /// - `PermanentFreezeDelegate`, frozen, authority `UpdateAuthority` (the collection's, the pool
 ///   PDA): the asset cannot move, and only the program can thaw it, which `cancel_pagare` does
 ///   right before the burn.
-/// - `ImmutableMetadata` and `Attributes` (the nine facts, 32-byte values as hex), authority
+/// - `ImmutableMetadata` and `Attributes` (the eight facts, 32-byte values as hex; the certificate commitment stays in the record only), authority
 ///   `None`: name, URI and facts never change.
 /// - `AddBlocker`, authority `None`: no authority-managed plugin can be added later.
 ///
@@ -454,7 +454,6 @@ fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) 
         Attribute { key: "due_at".into(), value: dec(due_at) },
         Attribute { key: "line".into(), value: dec_u(line.line_id) },
         Attribute { key: "draw_index".into(), value: dec_u(draw_index.into()) },
-        Attribute { key: "cert_fingerprint".into(), value: hex(&record.cert_fingerprint) },
         Attribute { key: "signature_method".into(), value: dec_u(record.signature_method.into()) },
     ];
     let plugins = vec![
