@@ -107,44 +107,46 @@ export const ELOTE_POOL_ERROR__AVAILABILITY_ENDED = 0x179b; // 6043
 export const ELOTE_POOL_ERROR__TOO_MANY_DRAWS = 0x179c; // 6044
 /** DrawsNotSuspended: The line's draws are not suspended */
 export const ELOTE_POOL_ERROR__DRAWS_NOT_SUSPENDED = 0x179d; // 6045
+/** WindowClosed: The line's draw window has already closed */
+export const ELOTE_POOL_ERROR__WINDOW_CLOSED = 0x179e; // 6046
 /** AccelerationState: No acceleration is pending on this line, or one already is */
-export const ELOTE_POOL_ERROR__ACCELERATION_STATE = 0x179e; // 6046
+export const ELOTE_POOL_ERROR__ACCELERATION_STATE = 0x179f; // 6047
 /** AccelerationNotDue: The acceleration notice has not run */
-export const ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE = 0x179f; // 6047
+export const ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE = 0x17a0; // 6048
 /** LateInterestUnpaid: The repayment must cover the late interest due */
-export const ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID = 0x17a0; // 6048
+export const ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID = 0x17a1; // 6049
 /** NotEnoughMissed: Fewer installments missed than the line allows before collection */
-export const ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED = 0x17a1; // 6049
+export const ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED = 0x17a2; // 6050
 /** TermNotEnded: The term has not ended */
-export const ELOTE_POOL_ERROR__TERM_NOT_ENDED = 0x17a2; // 6050
+export const ELOTE_POOL_ERROR__TERM_NOT_ENDED = 0x17a3; // 6051
 /** WriteOffTooEarly: A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace */
-export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x17a3; // 6051
+export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x17a4; // 6052
 /** FixDateInvalid: The FIX date is not a valid date, is in the future, or is older than the published one */
-export const ELOTE_POOL_ERROR__FIX_DATE_INVALID = 0x17a4; // 6052
+export const ELOTE_POOL_ERROR__FIX_DATE_INVALID = 0x17a5; // 6053
 /** FixJump: The FIX moves more than the feeder may publish; the council must */
-export const ELOTE_POOL_ERROR__FIX_JUMP = 0x17a5; // 6053
+export const ELOTE_POOL_ERROR__FIX_JUMP = 0x17a6; // 6054
 /** FixMismatch: The FIX signed is not the one published now */
-export const ELOTE_POOL_ERROR__FIX_MISMATCH = 0x17a6; // 6054
+export const ELOTE_POOL_ERROR__FIX_MISMATCH = 0x17a7; // 6055
 /** FixStale: No FIX is published, or it is too old for a draw */
-export const ELOTE_POOL_ERROR__FIX_STALE = 0x17a7; // 6055
+export const ELOTE_POOL_ERROR__FIX_STALE = 0x17a8; // 6056
 /** DocumentHashRequired: The signed document's hash is required */
-export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x17a8; // 6056
+export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x17a9; // 6057
 /** SignatureMethodInvalid: signature_method is unknown, or lacks its certificate fingerprint */
-export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x17a9; // 6057
+export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x17aa; // 6058
 /** PagareNotCovered: No repayment has marked this pagaré paid */
-export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x17aa; // 6058
+export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x17ab; // 6059
 /** PagareAlreadyPaid: This pagaré is already extinguished */
-export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x17ab; // 6059
+export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x17ac; // 6060
 /** CancelGraceNotElapsed: The borrower may cancel alone only after the cancel grace from the payment */
-export const ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED = 0x17ac; // 6060
+export const ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED = 0x17ad; // 6061
 /** EndosoKindInvalid: This kind of endoso is not one the program records */
-export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x17ad; // 6061
+export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x17ae; // 6062
 /** ProcuracionState: The pagaré has no procuración in force, or already has one */
-export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x17ae; // 6062
+export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x17af; // 6063
 /** AnnotationKindInvalid: This kind is not a court annotation */
-export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x17af; // 6063
+export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x17b0; // 6064
 /** EntryNotFound: The referenced registry entry does not exist */
-export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x17b0; // 6064
+export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x17b1; // 6065
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -208,6 +210,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__TERM_NOT_ENDED
   | typeof ELOTE_POOL_ERROR__TOO_MANY_DRAWS
   | typeof ELOTE_POOL_ERROR__UNAUTHORIZED
+  | typeof ELOTE_POOL_ERROR__WINDOW_CLOSED
   | typeof ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY
   | typeof ELOTE_POOL_ERROR__WRONG_ACCOUNT
   | typeof ELOTE_POOL_ERROR__WRONG_AMOUNT
@@ -277,6 +280,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__TERM_NOT_ENDED]: `The term has not ended`,
     [ELOTE_POOL_ERROR__TOO_MANY_DRAWS]: `The line has reached its maximum number of draws`,
     [ELOTE_POOL_ERROR__UNAUTHORIZED]: `This signer may not do this`,
+    [ELOTE_POOL_ERROR__WINDOW_CLOSED]: `The line's draw window has already closed`,
     [ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY]: `A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace`,
     [ELOTE_POOL_ERROR__WRONG_ACCOUNT]: `Wrong mint or token account`,
     [ELOTE_POOL_ERROR__WRONG_AMOUNT]: `Amount is zero or exceeds what is due`,

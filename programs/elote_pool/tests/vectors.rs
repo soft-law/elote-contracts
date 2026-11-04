@@ -110,6 +110,19 @@ fn hand_cases() -> Vec<Value> {
     t.late_paid_until = 1_300;
     v.push(case(&t, 100, 1_350));
     v.push(case(&t, 100, 1_250));
+    // An accelerated bullet line, as `line_arrears` builds it: one installment due at the term
+    // (anchor term - 1, interval 1), accelerated before it, late interest on the principal from the
+    // mark. Term 1_000_000, mark 500_000; 4_000 principal and 100 of interest kept.
+    let mut t = terms(4_100, 1, 3_650, 86_400);
+    t.anchor = 999_999;
+    t.interval = 1;
+    t.principal = 4_000;
+    t.accelerated_at = 500_000;
+    for (paid, now) in [(0, 500_000), (0, 500_000 + 10 * 86_400), (100, 500_000 + 10 * 86_400), (2_100, 500_000 + 30 * 86_400), (0, 1_000_000 + YEAR as i64)] {
+        v.push(case(&t, paid, now));
+    }
+    t.late_paid_until = 500_000 + 10 * 86_400;
+    v.push(case(&t, 0, 500_000 + 20 * 86_400));
     v
 }
 

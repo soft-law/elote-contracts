@@ -15,6 +15,8 @@ pub struct LineTerms {
     /// In centavos of `CURRENCY_MXN`.
     pub principal: u64,
     pub rate_bps: u16,
+    /// Annual late interest on the overdue principal, in basis points, scheduled or bullet.
+    pub late_bps: u16,
     pub term_end: i64,
     pub agreement_hash: [u8; 32],
     pub sponsor: Option<Pubkey>,
@@ -30,7 +32,7 @@ pub struct LineTerms {
 /// sponsor_role u8 || agreement_hash || pagare_template_hash || expediente_root)`, integers little
 /// endian, the schedule fields zero on a bullet line.
 pub fn terms_hash(pool: &Pubkey, line_id: u64, borrower: &Pubkey, currency: u16, t: &LineTerms) -> [u8; 32] {
-    let s = t.schedule.unwrap_or(ScheduleParams { first_due_at: 0, interval_seconds: 0, installments: 0, late_bps: 0, max_missed: 0 });
+    let s = t.schedule.unwrap_or(ScheduleParams { first_due_at: 0, interval_seconds: 0, installments: 0, max_missed: 0 });
     let sponsor = t.sponsor.unwrap_or_default();
     solana_sha256_hasher::hashv(&[
         TERMS_DOMAIN,
@@ -44,7 +46,7 @@ pub fn terms_hash(pool: &Pubkey, line_id: u64, borrower: &Pubkey, currency: u16,
         &s.first_due_at.to_le_bytes(),
         &s.interval_seconds.to_le_bytes(),
         &s.installments.to_le_bytes(),
-        &s.late_bps.to_le_bytes(),
+        &t.late_bps.to_le_bytes(),
         &[s.max_missed, u8::from(t.sponsor.is_some())],
         sponsor.as_ref(),
         &[t.sponsor_role],
@@ -64,6 +66,7 @@ mod tests {
         let terms = LineTerms {
             principal: 5_000_000,
             rate_bps: 2_400,
+            late_bps: 5_000,
             term_end: 1_800_000_000,
             agreement_hash: [0xa7; 32],
             sponsor: Some(Pubkey::new_from_array([0x55; 32])),
@@ -72,7 +75,6 @@ mod tests {
                 first_due_at: 1_770_000_000,
                 interval_seconds: 2_592_000,
                 installments: 12,
-                late_bps: 5_000,
                 max_missed: 3,
             }),
             expediente_root: [0xe7; 32],

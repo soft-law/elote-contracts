@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { bulletAccruedInterest, lineArrears, lineSchedule, maxLinePrincipal } from "../src/schedule";
+import { bulletAccruedInterest, lineArrears, lineLateDue, lineSchedule, maxLinePrincipal } from "../src/schedule";
 
 type Vector = {
   total: string;
@@ -139,4 +139,16 @@ test("bulletAccruedInterest matches the program's unit case", () => {
   assert.equal(bulletAccruedInterest(6_000_000n, weight, 1_200, year), 600_000n);
   assert.equal(bulletAccruedInterest(0n, 0n, 1_200, year), 0n);
   assert.throws(() => bulletAccruedInterest(2_000_000n, 2_000_000n * year, 1_200, 0n));
+});
+
+test("lineLateDue: an accelerated bullet line owes late interest from the mark", () => {
+  const day = 86_400n;
+  const line = {
+    intervalSeconds: 0n, installments: 0, lateBps: 3_650, maxMissed: 0, lateCollected: 0n, latePaidUntil: 0n,
+    drawn: 4_000_000n, interestDue: 0n, principalRepaid: 0n, interestRepaid: 0n, firstDueAt: 0n,
+    acceleratedAt: 1_000n, termEnd: 1_000_000_000n,
+  };
+  // The program's integration case: 4.0 overdue for 10 days at 36.5% a year.
+  assert.equal(lineLateDue(line, 0n, 1_000n + 10n * day), 40_000n);
+  assert.equal(lineLateDue({ ...line, acceleratedAt: 0n }, 0n, 1_000n + 10n * day), 0n, "not accelerated");
 });

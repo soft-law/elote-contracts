@@ -606,7 +606,7 @@ pub struct Pause<'info> {
 
 /// Any member of the council's multisig alone (a Squads council), the stored guardian, or the
 /// council pauses the pool (`Unauthorized` otherwise), so an emergency needs no vote. A paused
-/// pool refuses deposits, redemptions, requests and draws; repayments, the FIX, the pagaré
+/// pool refuses deposits, redemptions, requests, approvals and draws; repayments, the FIX, the pagaré
 /// instructions, collection and write-offs go on. Only the council resumes.
 pub fn pause(ctx: Context<Pause>) -> Result<()> {
     let by = ctx.accounts.signer.key();

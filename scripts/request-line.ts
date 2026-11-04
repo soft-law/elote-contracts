@@ -7,7 +7,7 @@
 //
 //   npx tsx scripts/request-line.ts --cluster local|devnet --pool <address> --borrower-keypair <path>
 //        --principal <tMXN> [--rate-bps <n>] [--term-days <n>]
-//        [--installments <n> --interval-days <n> [--late-rate-bps <n>] [--max-missed <n>]]
+//        [--late-rate-bps <n>] [--installments <n> --interval-days <n> [--max-missed <n>]]
 //        [--sponsor-keypair <path> [--sponsor-role promoter|guarantor]]
 //        [--agreement-hash <64 hex>] [--expediente-root <64 hex>] [--pagare-template-hash <64 hex>] [--yes]
 //
@@ -16,7 +16,7 @@
 // --term-days        days from now to the end of the term (default 90)
 // --installments     open a scheduled line with this many installments; needs --interval-days
 // --interval-days    days between installments; the first falls due one interval from now
-// --late-rate-bps    annual late interest on overdue principal (default 10000)
+// --late-rate-bps    annual late interest on overdue principal, bullet or scheduled (default 10000)
 // --max-missed       missed installments before collection (default 3, the program's minimum)
 // --sponsor-keypair  the sponsor co-signs and is named on the line
 // --sponsor-role     promoter (no payment obligation, the default) or guarantor (full liability)
@@ -84,8 +84,8 @@ if (!(roleName in SPONSOR_ROLES)) fail("--sponsor-role must be promoter or guara
 if (arg("sponsor-role") !== undefined && !sponsorFile) fail("--sponsor-role needs --sponsor-keypair");
 const sponsorRole = SPONSOR_ROLES[roleName as keyof typeof SPONSOR_ROLES];
 if ((installments === undefined) !== (intervalDays === undefined)) fail("--installments and --interval-days go together");
-if (installments === undefined && (arg("late-rate-bps") !== undefined || arg("max-missed") !== undefined)) {
-  fail("--late-rate-bps and --max-missed apply to a scheduled line only (add --installments and --interval-days)");
+if (installments === undefined && arg("max-missed") !== undefined) {
+  fail("--max-missed applies to a scheduled line only (add --installments and --interval-days)");
 }
 if (installments !== undefined && maxMissed > installments) fail("--max-missed cannot exceed --installments");
 
@@ -100,7 +100,6 @@ const schedule =
         firstDueAt: nowSeconds + BigInt(intervalDays!) * DAY,
         intervalSeconds: BigInt(intervalDays!) * DAY,
         installments,
-        lateBps,
         maxMissed,
       };
 if (schedule && schedule.firstDueAt + BigInt(installments! - 1) * schedule.intervalSeconds > termEnd) {
@@ -139,6 +138,7 @@ const signature = await sendOrFail(c, "request_line", admin, [
     lineId,
     principal,
     rateBps,
+    lateBps,
     termEnd,
     agreementHash,
     sponsorArg: sponsor ? sponsor.address : null,
@@ -165,7 +165,7 @@ console.log(
     `term         ${termDays} days, ends ${new Date(Number(opened.termEnd) * 1000).toISOString()}`,
     `terms hash   ${Buffer.from(opened.termsHash).toString("hex")} (the council approves this value)`,
     s
-      ? `schedule     ${s.installments} installments every ${s.intervalSeconds / DAY} days from ${new Date(Number(opened.firstDueAt) * 1000).toISOString()}, late interest ${s.lateBps} bps a year, collection after ${s.maxMissed} missed`
+      ? `schedule     ${s.installments} installments every ${s.intervalSeconds / DAY} days from ${new Date(Number(opened.firstDueAt) * 1000).toISOString()}, late interest ${opened.lateBps} bps a year, collection after ${s.maxMissed} missed`
       : `schedule     none (bullet)`,
     `status       ${LineStatus[opened.status]}`,
     `signature    ${signature}`,

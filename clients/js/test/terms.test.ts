@@ -12,11 +12,12 @@ test("the terms hash matches the program's pinned vector", async () => {
   const h = await termsHash(key(0x11), 7n, key(0x22), {
     principal: 5_000_000n,
     rateBps: 2_400,
+    lateBps: 5_000,
     termEnd: 1_800_000_000n,
     agreementHash: fill(0xa7),
     sponsor: key(0x55),
     sponsorRole: 1,
-    schedule: { firstDueAt: 1_770_000_000n, intervalSeconds: 2_592_000n, installments: 12, lateBps: 5_000, maxMissed: 3 },
+    schedule: { firstDueAt: 1_770_000_000n, intervalSeconds: 2_592_000n, installments: 12, maxMissed: 3 },
     expedienteRoot: fill(0xe7),
     pagareTemplateHash: fill(0x7e),
   });

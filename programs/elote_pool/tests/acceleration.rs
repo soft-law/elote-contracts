@@ -46,8 +46,8 @@ fn suspension_keeps_the_original_window_and_resumption_restores_it() {
     let i = env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT);
     env.expect_err(i, &borrower, &[], E_AVAILABILITY_ENDED);
     env.warp(env.now() + 100);
-    env.council_line(&k, id, ix::SuspendDraws {}.data());
-    assert_eq!(env.line(&k, id).availability_end_saved, original, "a second suspension keeps the original");
+    expect_line(&mut env, &k, id, ix::SuspendDraws {}.data(), PoolError::WindowClosed);
+    assert_eq!(env.line(&k, id).availability_end_saved, original, "the original end is kept");
 
     let ev: LineDrawsResumed = find_event(&env.council_line(&k, id, ix::ResumeDraws {}.data())).expect("LineDrawsResumed");
     assert_eq!(ev.availability_end, original);
@@ -243,4 +243,70 @@ fn a_council_line_instruction_refuses_a_multisig_weakened_below_a_majority() {
     let multisig = env.multisig;
     put_squads_account(&mut env.svm, &multisig, multisig_data(&solana_pubkey::Pubkey::new_unique(), &solana_pubkey::Pubkey::default(), 1, None, &members));
     expect_line(&mut env, &k, id, ix::SuspendDraws {}.data(), PoolError::CouncilInvalid);
+}
+
+#[test]
+fn a_window_closed_by_date_is_not_suspended() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let (id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw_amount(&k, id, &borrower, UNIT);
+    env.warp(p.term_end);
+    expect_line(&mut env, &k, id, ix::SuspendDraws {}.data(), PoolError::WindowClosed);
+    // A proposal on a line whose window closed by date sets only its deadline.
+    env.council_line(&k, id, ix::ProposeAcceleration {}.data());
+    let line = env.line(&k, id);
+    assert_eq!((line.availability_end, line.availability_end_saved), (p.term_end, 0), "not suspended");
+    assert_eq!(line.acceleration_due_at, env.now() + i64::from(ACCELERATION_NOTICE));
+}
+
+#[test]
+fn an_accelerated_bullet_line_owes_late_interest_from_the_mark_collected_first() {
+    use elote_pool::events::{LateInterestCollected, LineRepaid};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let mut p = env.line_params(4 * UNIT, 0);
+    p.late_bps = 3_650; // 36.5% a year: 0.1% of the overdue principal a day
+    let (id, _) = env.open_line_with(&k, &borrower, &p, None);
+    assert_eq!(env.line(&k, id).late_bps, 3_650, "a bullet line carries its late rate");
+    env.draw(&k, id, &borrower);
+    env.council_line(&k, id, ix::ProposeAcceleration {}.data());
+    env.warp(env.now() + i64::from(ACCELERATION_NOTICE));
+    env.council_line(&k, id, ix::AccelerateLine {}.data());
+    let mark = env.line(&k, id).accelerated_at;
+    assert_eq!(env.arrears(&k, id).late_due, 0, "nothing at the mark itself");
+
+    env.warp(mark + 10 * 86_400);
+    // 4.0 overdue for 10 days at 36.5% a year: 0.04.
+    let late = 4 * UNIT * 3_650 * 10 * 86_400 / (10_000 * elote_pool::state::SECONDS_PER_YEAR);
+    assert_eq!((late, env.arrears(&k, id).late_due), (40_000, 40_000));
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), late);
+    let nav = env.nav(&k);
+    let i = env.repay_ix(&k, id, &borrower.pubkey(), UNIT);
+    let meta = env.send(i, &borrower, &[]);
+    let ev: LateInterestCollected = find_event(&meta).expect("LateInterestCollected");
+    let repaid: LineRepaid = find_event(&meta).expect("LineRepaid");
+    assert_eq!((ev.amount, repaid.principal_part), (late, UNIT - late), "late interest first");
+    assert_eq!(env.nav(&k), nav + late, "the late interest raises the NAV");
+    assert_eq!(env.line(&k, id).late_collected, late);
+}
+
+#[test]
+fn the_pause_also_blocks_approvals() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(UNIT, 0);
+    let (id, _) = env.request_line_with(&k, &borrower, &p, None);
+    env.set_paused(&k, true);
+    let council = env.council.insecure_clone();
+    let hash = env.terms_hash(&k, id, &borrower.pubkey(), &p);
+    let i = env.approve_line_ix(&k, &council.pubkey(), id, p.expediente_root, hash);
+    env.expect_err(i, &council, &[], E_PAUSED);
+    env.set_paused(&k, false);
+    env.approve_line(&k, id, &borrower.pubkey(), &p);
 }

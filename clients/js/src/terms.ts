@@ -14,6 +14,8 @@ export type LineTermsInput = {
   /** Centavos of MXN. */
   principal: bigint;
   rateBps: number;
+  /** Annual late interest, bullet or scheduled. */
+  lateBps: number;
   termEnd: bigint;
   agreementHash: ReadonlyUint8Array;
   sponsor: Address | null;
@@ -49,7 +51,7 @@ export async function termsHash(
   currency: number = CURRENCY_MXN
 ): Promise<Uint8Array> {
   const key = getAddressEncoder();
-  const s = t.schedule ?? { firstDueAt: 0, intervalSeconds: 0, installments: 0, lateBps: 0, maxMissed: 0 };
+  const s = t.schedule ?? { firstDueAt: 0, intervalSeconds: 0, installments: 0, maxMissed: 0 };
   const parts: ReadonlyUint8Array[] = [
     DOMAIN,
     key.encode(pool),
@@ -62,7 +64,7 @@ export async function termsHash(
     le(s.firstDueAt, 8, true),
     le(s.intervalSeconds, 8, true),
     le(s.installments, 2),
-    le(s.lateBps, 2),
+    le(t.lateBps, 2),
     le(s.maxMissed, 1),
     le(t.sponsor ? 1 : 0, 1),
     key.encode(t.sponsor ?? ZERO_KEY),

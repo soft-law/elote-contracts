@@ -109,6 +109,8 @@ pub enum PoolError {
     TooManyDraws,
     #[msg("The line's draws are not suspended")]
     DrawsNotSuspended,
+    #[msg("The line's draw window has already closed")]
+    WindowClosed,
     #[msg("No acceleration is pending on this line, or one already is")]
     AccelerationState,
     #[msg("The acceleration notice has not run")]

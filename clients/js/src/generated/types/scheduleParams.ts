@@ -28,8 +28,6 @@ export type ScheduleParams = {
   intervalSeconds: bigint;
   /** `drawn + interest_due` is paid in this many installments. */
   installments: number;
-  /** Annual late interest rate on the overdue principal, in basis points. */
-  lateBps: number;
   /** Missed installments after which anyone may move the line to collection. */
   maxMissed: number;
 };
@@ -40,8 +38,6 @@ export type ScheduleParamsArgs = {
   intervalSeconds: number | bigint;
   /** `drawn + interest_due` is paid in this many installments. */
   installments: number;
-  /** Annual late interest rate on the overdue principal, in basis points. */
-  lateBps: number;
   /** Missed installments after which anyone may move the line to collection. */
   maxMissed: number;
 };
@@ -51,7 +47,6 @@ export function getScheduleParamsEncoder(): FixedSizeEncoder<ScheduleParamsArgs>
     ["firstDueAt", getI64Encoder()],
     ["intervalSeconds", getI64Encoder()],
     ["installments", getU16Encoder()],
-    ["lateBps", getU16Encoder()],
     ["maxMissed", getU8Encoder()],
   ]);
 }
@@ -61,7 +56,6 @@ export function getScheduleParamsDecoder(): FixedSizeDecoder<ScheduleParams> {
     ["firstDueAt", getI64Decoder()],
     ["intervalSeconds", getI64Decoder()],
     ["installments", getU16Decoder()],
-    ["lateBps", getU16Decoder()],
     ["maxMissed", getU8Decoder()],
   ]);
 }

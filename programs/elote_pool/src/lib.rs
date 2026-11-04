@@ -237,7 +237,7 @@ pub mod elote_pool {
         instructions::pool::post_fix(ctx, fix_rate, fix_date)
     }
 
-    /// Pauses deposits, redemptions, requests and draws. Any member of the council'"'"'s multisig alone,
+    /// Pauses deposits, redemptions, requests, approvals and draws. Any member of the council'"'"'s multisig alone,
     /// the guardian or the council; repayments and everything else go on.
     pub fn pause(ctx: Context<Pause>) -> Result<()> {
         instructions::pool::pause(ctx)

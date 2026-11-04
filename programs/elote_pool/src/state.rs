@@ -418,8 +418,6 @@ pub struct ScheduleParams {
     pub interval_seconds: i64,
     /// `drawn + interest_due` is paid in this many installments.
     pub installments: u16,
-    /// Annual late interest rate on the overdue principal, in basis points.
-    pub late_bps: u16,
     /// Missed installments after which anyone may move the line to collection.
     pub max_missed: u8,
 }

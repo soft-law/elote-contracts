@@ -234,7 +234,7 @@ pub struct PagareReceiptAnnotated {
 }
 
 /// Every term `request_line` stored, with the hash of their fixed encoding. On a bullet line the
-/// schedule fields are zero; `payer` funded the request and gets its rent back.
+/// schedule fields other than `late_bps` are zero; `payer` funded the request and gets its rent back.
 #[event]
 pub struct LineRequested {
     pub pool: Pubkey,

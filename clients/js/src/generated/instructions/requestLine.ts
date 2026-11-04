@@ -132,6 +132,8 @@ export type RequestLineInstructionData = {
   /** In centavos of `CURRENCY_MXN`. */
   principal: bigint;
   rateBps: number;
+  /** Annual late interest on the overdue principal, in basis points, scheduled or bullet. */
+  lateBps: number;
   termEnd: bigint;
   agreementHash: ReadonlyUint8Array;
   sponsor: Option<Address>;
@@ -146,6 +148,8 @@ export type RequestLineInstructionDataArgs = {
   /** In centavos of `CURRENCY_MXN`. */
   principal: number | bigint;
   rateBps: number;
+  /** Annual late interest on the overdue principal, in basis points, scheduled or bullet. */
+  lateBps: number;
   termEnd: number | bigint;
   agreementHash: ReadonlyUint8Array;
   sponsor: OptionOrNullable<Address | HasAddress>;
@@ -162,6 +166,7 @@ export function getRequestLineInstructionDataEncoder(): Encoder<RequestLineInstr
       ["lineId", getU64Encoder()],
       ["principal", getU64Encoder()],
       ["rateBps", getU16Encoder()],
+      ["lateBps", getU16Encoder()],
       ["termEnd", getI64Encoder()],
       ["agreementHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["sponsor", getOptionEncoder(getAddressEncoder())],
@@ -180,6 +185,7 @@ export function getRequestLineInstructionDataDecoder(): Decoder<RequestLineInstr
     ["lineId", getU64Decoder()],
     ["principal", getU64Decoder()],
     ["rateBps", getU16Decoder()],
+    ["lateBps", getU16Decoder()],
     ["termEnd", getI64Decoder()],
     ["agreementHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["sponsor", getOptionDecoder(getAddressDecoder())],
@@ -228,6 +234,7 @@ export type RequestLineAsyncInput<
   lineId: RequestLineInstructionDataArgs["lineId"];
   principal: RequestLineInstructionDataArgs["principal"];
   rateBps: RequestLineInstructionDataArgs["rateBps"];
+  lateBps: RequestLineInstructionDataArgs["lateBps"];
   termEnd: RequestLineInstructionDataArgs["termEnd"];
   agreementHash: RequestLineInstructionDataArgs["agreementHash"];
   sponsorArg: RequestLineInstructionDataArgs["sponsor"];
@@ -456,6 +463,7 @@ export type RequestLineInput<
   lineId: RequestLineInstructionDataArgs["lineId"];
   principal: RequestLineInstructionDataArgs["principal"];
   rateBps: RequestLineInstructionDataArgs["rateBps"];
+  lateBps: RequestLineInstructionDataArgs["lateBps"];
   termEnd: RequestLineInstructionDataArgs["termEnd"];
   agreementHash: RequestLineInstructionDataArgs["agreementHash"];
   sponsorArg: RequestLineInstructionDataArgs["sponsor"];

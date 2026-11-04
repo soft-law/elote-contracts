@@ -94,7 +94,7 @@ fn open_rejects_invalid_schedules() {
         ("above the maximum", with(&|s| s.installments = 121), E_INVALID_SCHEDULE),
         ("zero interval", with(&|s| s.interval_seconds = 0), E_INVALID_SCHEDULE),
         ("negative interval", with(&|s| s.interval_seconds = -good.interval()), E_INVALID_SCHEDULE),
-        ("late rate above 100%", with(&|s| s.late_bps = 10_001), E_INVALID_SCHEDULE),
+        ("late rate above 100%", { let mut p = good; p.late_bps = 10_001; p }, E_WRONG_AMOUNT),
         ("zero max missed", with(&|s| s.max_missed = 0), E_MAX_MISSED_TOO_LOW),
         ("max missed below the three-month policy", with(&|s| s.max_missed = 2), E_MAX_MISSED_TOO_LOW),
         ("max missed above installments", with(&|s| s.max_missed = 7), E_INVALID_SCHEDULE),
@@ -121,12 +121,12 @@ fn open_rejects_invalid_schedules() {
     // The edges are accepted: three installments with max_missed == installments, 100% late
     // rate, a wider interval whose last due date stays within the term; and the last due date
     // exactly at the term (six installments, first due one interval in, last at the term).
-    let p = with(&|s| {
+    let mut p = with(&|s| {
         s.installments = 3;
         s.max_missed = 3;
-        s.late_bps = 10_000;
         s.interval_seconds = 2 * good.interval();
     });
+    p.late_bps = 10_000;
     open(&mut env, &k, &borrower, &p);
     let p = with(&|s| s.max_missed = 6);
     assert_eq!(p.first_due_at() + 5 * p.interval(), p.term_end, "last due date at the term");

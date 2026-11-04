@@ -326,6 +326,8 @@ pub const AGREEMENT_HASH: [u8; 32] = [0xa7; 32];
 pub struct LineParams {
     pub principal: u64,
     pub rate_bps: u16,
+    /// Annual late interest, bullet or scheduled.
+    pub late_bps: u16,
     pub term_end: i64,
     pub agreement_hash: [u8; 32],
     pub sponsor: Option<Pubkey>,
@@ -341,6 +343,7 @@ impl LineParams {
         elote_pool::terms::LineTerms {
             principal: self.principal,
             rate_bps: self.rate_bps,
+            late_bps: self.late_bps,
             term_end: self.term_end,
             agreement_hash: self.agreement_hash,
             sponsor: self.sponsor,
@@ -1265,6 +1268,7 @@ impl Env {
             principal,
             rate_bps,
             term_end: self.now() + YEAR,
+            late_bps: 0,
             agreement_hash: AGREEMENT_HASH,
             sponsor: None,
             sponsor_role: elote_pool::state::SPONSOR_PROMOTER,
@@ -1292,9 +1296,9 @@ impl Env {
                 first_due_at: self.now() + interval,
                 interval_seconds: interval,
                 installments,
-                late_bps,
                 max_missed: 3,
             }),
+            late_bps,
             expediente_root: EXPEDIENTE_ROOT,
             pagare_template_hash: PAGARE_TEMPLATE_HASH,
         }
@@ -1604,7 +1608,7 @@ impl Env {
         if cursor >= line.draws {
             return vec![];
         }
-        let late = if line.schedule().is_some() { self.arrears(k, line_id).late_due } else { 0 };
+        let late = if line.schedule().is_some() || line.accelerated_at != 0 { self.arrears(k, line_id).late_due } else { 0 };
         let interest_left = line.interest_due - line.interest_repaid;
         let remaining = (line.drawn - line.principal_repaid) + interest_left;
         let rest = amount.saturating_sub(late).min(remaining);
@@ -1714,16 +1718,23 @@ impl Env {
         }
     }
 
-    /// The arrears of a scheduled line at the SVM's current time, as the program computes them.
+    /// The arrears of a scheduled line, or of an accelerated bullet line (one installment due at the
+    /// term), at the SVM's current time, as the program computes them.
     pub fn arrears(&self, k: &PoolKeys, line_id: u64) -> elote_pool::math::Arrears {
         let line = self.line(k, line_id);
-        let s = line.schedule().expect("scheduled line");
+        let (anchor, interval, installments) = match line.schedule() {
+            Some(s) => (line.anchor().expect("anchor"), s.interval_seconds, s.installments),
+            None => {
+                assert!(line.accelerated_at != 0, "a bullet line has arrears only once accelerated");
+                (line.term_end - 1, 1, 1)
+            }
+        };
         let terms = elote_pool::math::ScheduleTerms {
             total: line.drawn + line.interest_due,
-            anchor: line.anchor().expect("anchor"),
-            interval: s.interval_seconds,
-            installments: s.installments,
-            late_bps: s.late_bps,
+            anchor,
+            interval,
+            installments,
+            late_bps: line.late_bps,
             grace: self.pool(k).grace_period_seconds,
             late_paid_until: line.late_paid_until,
             principal: line.drawn,

@@ -15,10 +15,9 @@ import {
   findPoolPda,
   getRepayInstructionAsync,
   fetchPool,
-  lineArrears,
+  lineLateDue,
   mxnForUsdc,
   usdcCeilForMxn,
-  lineSchedule,
   repayPrincipalCap,
   repaySidecars,
   withRemainingAccounts,
@@ -77,11 +76,11 @@ export async function repayInParts(
       const fix = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
       const leftMxn = mxnForUsdc(left, fix.fixRate);
       if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) return start - (await balance());
-      const s = lineSchedule(l);
+      // Late interest: a scheduled line's, or an accelerated bullet line's from the mark.
       // Late interest grows by the second until the part lands: quote it 30 s ahead. The program
       // takes only what is due; the excess falls on principal, and if that moves the records the
       // part touches, the retry below rebuilds it.
-      const late = s ? lineArrears(l, s, BigInt(poolData.gracePeriodSeconds), (await chainNow(c)) + 30n).lateDue : 0n;
+      const late = lineLateDue(l, BigInt(poolData.gracePeriodSeconds), (await chainNow(c)) + 30n);
       const interestLeft = l.interestDue - l.interestRepaid;
       const principalLeft = l.drawn - l.principalRepaid;
       const drawnThrough = await drawnThroughOf(c, line, l.draws);

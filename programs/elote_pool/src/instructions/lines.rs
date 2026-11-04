@@ -3,7 +3,7 @@
 //! A line moves `Requested -> Approved -> Active -> Repaid | WrittenOff` (a rejected or withdrawn
 //! request closes), or `Approved -> Cancelled` if nothing
 //! was drawn; a scheduled line can also move `Active -> InCollection -> Repaid | WrittenOff`. The
-//! pause blocks requests and draws. Repayments go to late interest, then interest,
+//! pause blocks requests, approvals and draws. Repayments go to late interest, then interest,
 //! then principal. Collected interest raises the NAV; a written-off principal lowers it once.
 
 use anchor_lang::prelude::*;
@@ -71,7 +71,7 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
     require!(line_id == pool.line_count, PoolError::WrongAccount);
     require!(borrower != pool.council, PoolError::BorrowerIsCouncil);
     require!(t.principal > 0, PoolError::WrongAmount);
-    require!(u64::from(t.rate_bps) <= BPS, PoolError::WrongAmount);
+    require!(u64::from(t.rate_bps) <= BPS && u64::from(t.late_bps) <= BPS, PoolError::WrongAmount);
     require!(t.term_end > now, PoolError::TermEnded);
     require!(t.agreement_hash != [0u8; 32], PoolError::AgreementHashRequired);
     require!(t.expediente_root != [0u8; 32], PoolError::ExpedienteRootRequired);
@@ -85,7 +85,7 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
         validate_schedule(&s, t.principal, t.rate_bps, now, t.term_end)?;
     }
     let terms_hash = terms::terms_hash(&pool.key(), line_id, &borrower, CURRENCY_MXN, &t);
-    let s = t.schedule.unwrap_or(ScheduleParams { first_due_at: 0, interval_seconds: 0, installments: 0, late_bps: 0, max_missed: 0 });
+    let s = t.schedule.unwrap_or(ScheduleParams { first_due_at: 0, interval_seconds: 0, installments: 0, max_missed: 0 });
 
     let line = &mut ctx.accounts.line;
     line.set_inner(CreditLine {
@@ -110,7 +110,7 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
         first_due_at: s.first_due_at,
         interval_seconds: s.interval_seconds,
         installments: s.installments,
-        late_bps: s.late_bps,
+        late_bps: t.late_bps,
         max_missed: s.max_missed,
         late_collected: 0,
         late_paid_until: 0,
@@ -151,7 +151,7 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
         first_due_at: s.first_due_at,
         interval_seconds: s.interval_seconds,
         installments: s.installments,
-        late_bps: s.late_bps,
+        late_bps: t.late_bps,
         max_missed: s.max_missed,
     });
     Ok(())
@@ -184,10 +184,11 @@ pub struct ApproveLine<'info> {
 /// The council approves exactly the requested expediente and terms (`ExpedienteMismatch`), within
 /// `REQUEST_TTL_SECONDS` of the request (`RequestExpired`), with the borrower not a member of the
 /// council's multisig (`BorrowerIsCurator`) and the principal at most `max_line_bps` of the NAV now
-/// (`LineTooLarge`), converted to MXN at the FIX in force. Opens the draw window: to the first due date, or to the term on a bullet line.
+/// (`LineTooLarge`), converted to MXN at the FIX in force; refused while paused. Opens the draw window: to the first due date, or to the term on a bullet line.
 pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_hash: [u8; 32]) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
+    require!(!pool.paused, PoolError::Paused);
     let multisig = ctx.accounts.multisig.to_account_info();
     council::check(&multisig, &pool.council, pool.council_vault_bump)?;
     let line = &mut ctx.accounts.line;
@@ -278,7 +279,7 @@ pub fn withdraw_request(ctx: Context<WithdrawRequest>) -> Result<()> {
 }
 
 /// Checks the schedule against the line's terms: at least one and at most `MAX_INSTALLMENTS`
-/// installments, a positive interval, `late_bps <= BPS`, `MIN_MAX_MISSED <= max_missed <=
+/// installments, a positive interval, `MIN_MAX_MISSED <= max_missed <=
 /// installments`, a first due date after the request, the last due date
 /// (`first_due_at + (installments - 1) * interval`) no later than `term_end`, and at least one
 /// unit per installment if the whole commitment were drawn now (`draw` re-checks on what is
@@ -286,7 +287,6 @@ pub fn withdraw_request(ctx: Context<WithdrawRequest>) -> Result<()> {
 fn validate_schedule(s: &ScheduleParams, principal: u64, rate_bps: u16, now: i64, term_end: i64) -> Result<()> {
     require!(s.installments >= 1 && s.installments <= MAX_INSTALLMENTS, PoolError::InvalidSchedule);
     require!(s.interval_seconds > 0, PoolError::InvalidSchedule);
-    require!(u64::from(s.late_bps) <= BPS, PoolError::InvalidSchedule);
     require!(s.max_missed >= MIN_MAX_MISSED, PoolError::MaxMissedTooLow);
     require!(u16::from(s.max_missed) <= s.installments, PoolError::InvalidSchedule);
     require!(s.first_due_at > now, PoolError::InvalidSchedule);
@@ -796,9 +796,9 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
     let remaining = principal_left.checked_add(interest_left).ok_or(PoolError::Overflow)?;
     require!(amount > 0, PoolError::WrongAmount);
 
-    let late_part = match schedule {
-        Some(_) => line_arrears(line, pool, now)?.late_due,
-        None => 0,
+    let late_part = match (schedule, line.accelerated_at) {
+        (None, 0) => 0,
+        _ => line_arrears(line, pool, now)?.late_due,
     };
     require!(amount >= late_part, PoolError::LateInterestUnpaid);
     // While the line can still draw, a zero debt is nothing to pay, and a payment that clears the
@@ -987,13 +987,19 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
 /// contract's calendar, and late interest accrues on the principal share, `drawn`, of what is
 /// overdue.
 fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
-    let s = line.schedule().ok_or(PoolError::NotScheduled)?;
+    // An accelerated bullet line is one installment due at the term, accelerated at the mark: late
+    // interest runs on its principal from the mark, at the same rate formula as a schedule.
+    let (anchor, interval, installments) = match line.schedule() {
+        Some(s) => (line.anchor().ok_or(PoolError::Overflow)?, s.interval_seconds, s.installments),
+        None if line.accelerated_at != 0 => (line.term_end.checked_sub(1).ok_or(PoolError::Overflow)?, 1, 1),
+        None => return err!(PoolError::NotScheduled),
+    };
     let terms = ScheduleTerms {
         total: line.drawn.checked_add(line.interest_due).ok_or(PoolError::Overflow)?,
-        anchor: line.anchor().ok_or(PoolError::Overflow)?,
-        interval: s.interval_seconds,
-        installments: s.installments,
-        late_bps: s.late_bps,
+        anchor,
+        interval,
+        installments,
+        late_bps: line.late_bps,
         grace: pool.grace_period_seconds,
         late_paid_until: line.late_paid_until,
         principal: line.drawn,
@@ -1196,25 +1202,28 @@ impl CouncilLine<'_> {
     }
 }
 
-/// Closes the draw window now, keeping the original end in `availability_end_saved` the first
-/// time, so `resume_draws` can restore it and a second suspension never overwrites it. Returns the
-/// undrawn remainder.
+/// Closes a draw window still open, keeping its original end in `availability_end_saved` so
+/// `resume_draws` can restore it. A window already closed (by date or by a suspension) has nothing
+/// to suspend and is left alone, so `availability_end_saved != 0` always means a suspension the UI
+/// shows. Returns the undrawn remainder.
 fn suspend(line: &mut CreditLine, now: i64) -> Result<u64> {
-    if line.availability_end_saved == 0 {
+    if now < line.availability_end {
         line.availability_end_saved = line.availability_end;
+        line.availability_end = now;
     }
-    line.availability_end = line.availability_end.min(now);
     line.available().ok_or(error!(PoolError::Overflow))
 }
 
-/// Council only: closes the draw window of an `Approved` or `Active` line now; the line is then
-/// suspended (`availability_end_saved != 0`) until `resume_draws`. Repayment, collection and
+/// Council only: closes the open draw window of an `Approved` or `Active` line now (`WindowClosed`
+/// if it already closed, by date or by a suspension); the line is then suspended
+/// (`availability_end_saved != 0`) until `resume_draws`. Repayment, collection and
 /// write-off are untouched; the pool is not paused.
 pub fn suspend_draws(ctx: Context<CouncilLine>) -> Result<()> {
     ctx.accounts.check_council()?;
     let now = Clock::get()?.unix_timestamp;
     let line = &mut ctx.accounts.line;
     require!(matches!(line.status, LineStatus::Approved | LineStatus::Active), PoolError::LineStatus);
+    require!(now < line.availability_end, PoolError::WindowClosed);
     let available_forfeited = suspend(line, now)?;
     emit_cpi!(LineDrawsSuspended { pool: ctx.accounts.pool.key(), line_id: line.line_id, available_forfeited });
     Ok(())
@@ -1236,7 +1245,8 @@ pub fn resume_draws(ctx: Context<CouncilLine>) -> Result<()> {
 }
 
 /// Council only: proposes to collect a drawn (`Active`) line early; a never-drawn line is cleared
-/// with `cancel_line` instead (`LineStatus`). Draws are suspended at once, and `accelerate_line`
+/// with `cancel_line` instead (`LineStatus`). An open draw window is suspended at once (one already
+/// closed is left alone), and `accelerate_line`
 /// may fire from `now + acceleration_notice_seconds`, a deadline the proposal keeps whatever the
 /// pool's notice becomes. One at a time (`AccelerationState`).
 pub fn propose_acceleration(ctx: Context<CouncilLine>) -> Result<()> {

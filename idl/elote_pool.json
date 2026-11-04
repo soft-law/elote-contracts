@@ -1561,7 +1561,7 @@
     {
       "name": "pause",
       "docs": [
-        "Pauses deposits, redemptions, requests and draws. Any member of the council'\"'\"'s multisig alone,",
+        "Pauses deposits, redemptions, requests, approvals and draws. Any member of the council'\"'\"'s multisig alone,",
         "the guardian or the council; repayments and everything else go on."
       ],
       "discriminator": [
@@ -4150,96 +4150,101 @@
     },
     {
       "code": 6046,
+      "name": "WindowClosed",
+      "msg": "The line's draw window has already closed"
+    },
+    {
+      "code": 6047,
       "name": "AccelerationState",
       "msg": "No acceleration is pending on this line, or one already is"
     },
     {
-      "code": 6047,
+      "code": 6048,
       "name": "AccelerationNotDue",
       "msg": "The acceleration notice has not run"
     },
     {
-      "code": 6048,
+      "code": 6049,
       "name": "LateInterestUnpaid",
       "msg": "The repayment must cover the late interest due"
     },
     {
-      "code": 6049,
+      "code": 6050,
       "name": "NotEnoughMissed",
       "msg": "Fewer installments missed than the line allows before collection"
     },
     {
-      "code": 6050,
+      "code": 6051,
       "name": "TermNotEnded",
       "msg": "The term has not ended"
     },
     {
-      "code": 6051,
+      "code": 6052,
       "name": "WriteOffTooEarly",
       "msg": "A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace"
     },
     {
-      "code": 6052,
+      "code": 6053,
       "name": "FixDateInvalid",
       "msg": "The FIX date is not a valid date, is in the future, or is older than the published one"
     },
     {
-      "code": 6053,
+      "code": 6054,
       "name": "FixJump",
       "msg": "The FIX moves more than the feeder may publish; the council must"
     },
     {
-      "code": 6054,
+      "code": 6055,
       "name": "FixMismatch",
       "msg": "The FIX signed is not the one published now"
     },
     {
-      "code": 6055,
+      "code": 6056,
       "name": "FixStale",
       "msg": "No FIX is published, or it is too old for a draw"
     },
     {
-      "code": 6056,
+      "code": 6057,
       "name": "DocumentHashRequired",
       "msg": "The signed document's hash is required"
     },
     {
-      "code": 6057,
+      "code": 6058,
       "name": "SignatureMethodInvalid",
       "msg": "signature_method is unknown, or lacks its certificate fingerprint"
     },
     {
-      "code": 6058,
+      "code": 6059,
       "name": "PagareNotCovered",
       "msg": "No repayment has marked this pagaré paid"
     },
     {
-      "code": 6059,
+      "code": 6060,
       "name": "PagareAlreadyPaid",
       "msg": "This pagaré is already extinguished"
     },
     {
-      "code": 6060,
+      "code": 6061,
       "name": "CancelGraceNotElapsed",
       "msg": "The borrower may cancel alone only after the cancel grace from the payment"
     },
     {
-      "code": 6061,
+      "code": 6062,
       "name": "EndosoKindInvalid",
       "msg": "This kind of endoso is not one the program records"
     },
     {
-      "code": 6062,
+      "code": 6063,
       "name": "ProcuracionState",
       "msg": "The pagaré has no procuración in force, or already has one"
     },
     {
-      "code": 6063,
+      "code": 6064,
       "name": "AnnotationKindInvalid",
       "msg": "This kind is not a court annotation"
     },
     {
-      "code": 6064,
+      "code": 6065,
       "name": "EntryNotFound",
       "msg": "The referenced registry entry does not exist"
     }
@@ -5232,7 +5237,7 @@
       "name": "LineRequested",
       "docs": [
         "Every term `request_line` stored, with the hash of their fixed encoding. On a bullet line the",
-        "schedule fields are zero; `payer` funded the request and gets its rent back."
+        "schedule fields other than `late_bps` are zero; `payer` funded the request and gets its rent back."
       ],
       "type": {
         "kind": "struct",
@@ -5384,6 +5389,13 @@
           },
           {
             "name": "rate_bps",
+            "type": "u16"
+          },
+          {
+            "name": "late_bps",
+            "docs": [
+              "Annual late interest on the overdue principal, in basis points, scheduled or bullet."
+            ],
             "type": "u16"
           },
           {
@@ -6463,13 +6475,6 @@
             "name": "installments",
             "docs": [
               "`drawn + interest_due` is paid in this many installments."
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "late_bps",
-            "docs": [
-              "Annual late interest rate on the overdue principal, in basis points."
             ],
             "type": "u16"
           },
