@@ -5,6 +5,7 @@
 // CLI (`solana find-program-derived-address <program> string:pagare pubkey:<line> u16le:<n>`).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { AccountRole, address } from "@solana/kit";
 import {
   MAX_SIDECARS_PER_REPAY,
@@ -32,7 +33,14 @@ test("repayPrincipalCap keeps a repay within maxRecords pagaré records", () => 
   assert.equal(repayPrincipalCap({ pagaresPaid: 2, drawnThrough, principalRepaid: 250n, maxRecords: 5 }), 350n);
   // Fewer pagarés left than the limit: the cap is all that is left.
   assert.equal(repayPrincipalCap({ pagaresPaid: 4, drawnThrough, principalRepaid: 400n, maxRecords: 5 }), 300n);
-  assert.equal(MAX_SIDECARS_PER_REPAY, 4);
+});
+
+test("MAX_SIDECARS_PER_REPAY is the program's state::MAX_SIDECARS_PER_REPAY", () => {
+  const state = readFileSync(new URL("../../../programs/elote_pool/src/state.rs", import.meta.url), "utf8");
+  const onChain = /pub const MAX_SIDECARS_PER_REPAY: usize = (\d+);/.exec(state);
+  assert.ok(onChain, "state.rs declares MAX_SIDECARS_PER_REPAY");
+  assert.equal(MAX_SIDECARS_PER_REPAY, Number(onChain[1]));
+  assert.equal(MAX_SIDECARS_PER_REPAY, 3);
 });
 
 test("findPagarePda derives the sidecar address of a draw", async () => {

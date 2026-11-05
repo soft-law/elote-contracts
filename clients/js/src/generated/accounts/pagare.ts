@@ -119,6 +119,12 @@ export type Pagare = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
+  /**
+   * The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then:
+   * the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool
+   * sets later. Zero while outstanding.
+   */
+  cancelGraceSeconds: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -187,6 +193,12 @@ export type PagareArgs = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
+  /**
+   * The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then:
+   * the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool
+   * sets later. Zero while outstanding.
+   */
+  cancelGraceSeconds: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -220,7 +232,8 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["fxDate", getU32Encoder()],
       ["usdcDelivered", getU64Encoder()],
       ["deliveryHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["reserved", fixEncoderSize(getBytesEncoder(), 32)],
+      ["cancelGraceSeconds", getU32Encoder()],
+      ["reserved", fixEncoderSize(getBytesEncoder(), 28)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
   );
@@ -254,7 +267,8 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["fxDate", getU32Decoder()],
     ["usdcDelivered", getU64Decoder()],
     ["deliveryHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["reserved", fixDecoderSize(getBytesDecoder(), 32)],
+    ["cancelGraceSeconds", getU32Decoder()],
+    ["reserved", fixDecoderSize(getBytesDecoder(), 28)],
   ]);
 }
 

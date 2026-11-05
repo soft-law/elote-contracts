@@ -295,6 +295,68 @@ fn an_accelerated_bullet_line_owes_late_interest_from_the_mark_collected_first()
     assert_eq!(env.line(&k, id).late_collected, late);
 }
 
+/// A bullet line past its term owes late interest without any acceleration: it is one installment
+/// due at `term_end`, and late interest runs on its unpaid principal from `term_end + grace`, by the
+/// same formula as an accelerated bullet line (anchor `term_end - 1`, interval 1, one installment).
+/// Up to `term_end + grace` nothing accrues and a payment takes none. The line's terms, and so its
+/// `terms_hash`, are what they were.
+#[test]
+fn a_bullet_line_past_its_term_owes_late_interest_from_the_term_end_plus_grace() {
+    use elote_pool::events::{LateInterestCollected, LineRepaid};
+    let grace = 5 * 86_400u32;
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool_with_grace(grace);
+    let investor = env.investor(&k, 20 * UNIT);
+    env.deposit(&k, &investor, 20 * UNIT);
+    let council = env.council.insecure_clone();
+    let mut p = env.line_params(4 * UNIT, 1_000); // 10% a year for a year: 0.4 of interest
+    p.late_bps = 3_650; // 36.5% a year
+    let late_one = env.borrower(&k);
+    let (id, _) = env.open_line_with(&k, &late_one, &p, None);
+    let on_time = env.borrower(&k);
+    let (other, _) = env.open_line_with(&k, &on_time, &p, None);
+    let hash = env.terms_hash(&k, id, &late_one.pubkey(), &p);
+    env.draw(&k, id, &late_one);
+    env.draw(&k, other, &on_time);
+    let line = env.line(&k, id);
+    assert_eq!((line.installments, line.accelerated_at, line.status, line.interest_due), (0, 0, LineStatus::Active, 400_000));
+    let start = p.term_end + i64::from(grace);
+
+    // Up to the term end plus grace, to the second, nothing accrues.
+    for at in [p.term_end - 1, p.term_end, start] {
+        env.warp(at);
+        assert_eq!(env.arrears(&k, id).late_due, 0, "at {at}");
+    }
+    // A payoff at that second takes no late interest.
+    let owed = 4 * UNIT + 400_000;
+    env.mint_to(&k.asset_mint, &council, &on_time.pubkey(), owed);
+    let i = env.repay_ix(&k, other, &on_time.pubkey(), owed);
+    let meta = env.send(i, &on_time, &[]);
+    assert!(find_event::<LateInterestCollected>(&meta).is_none());
+    let line = env.line(&k, other);
+    assert_eq!((line.status, line.late_collected, line.late_paid_until), (LineStatus::Repaid, 0, 0));
+
+    // One year later, never accelerated: a year of 36.5% on the 4.0 of principal, 1.46.
+    env.warp(start + YEAR);
+    let late = 4 * UNIT * 3_650 / 10_000;
+    assert_eq!((late, env.arrears(&k, id).late_due), (1_460_000, 1_460_000));
+    assert_eq!(env.line(&k, id).accelerated_at, 0);
+    env.mint_to(&k.asset_mint, &council, &late_one.pubkey(), late + 400_000);
+    // The payment must cover it.
+    let i = env.repay_ix(&k, id, &late_one.pubkey(), late - 1);
+    env.expect_err(i, &late_one, &[], code(PoolError::LateInterestUnpaid));
+    let nav = env.nav(&k);
+    let i = env.repay_ix(&k, id, &late_one.pubkey(), owed + late);
+    let meta = env.send(i, &late_one, &[]);
+    let ev: LateInterestCollected = find_event(&meta).expect("LateInterestCollected");
+    let repaid: LineRepaid = find_event(&meta).expect("LineRepaid");
+    assert_eq!((ev.amount, repaid.interest_part, repaid.principal_part, repaid.remaining), (late, 400_000, 4 * UNIT, 0));
+    assert_eq!(env.nav(&k), nav + 400_000 + late, "the interest and the late interest raise the NAV");
+    let line = env.line(&k, id);
+    assert_eq!((line.status, line.late_collected, line.late_paid_until, line.accelerated_at), (LineStatus::Repaid, late, start + YEAR, 0));
+    assert_eq!(line.terms_hash, hash, "the terms are unchanged");
+}
+
 #[test]
 fn the_pause_also_blocks_approvals() {
     let mut env = Env::new();

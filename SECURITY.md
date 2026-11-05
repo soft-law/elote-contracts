@@ -32,7 +32,7 @@ Never test with an asset that has real value, not even on a "test mainnet-beta".
 | Guardian | `Pool.guardian`, set by the council (the zero key for none) | `pause` only |
 | FIX feeder | `Pool.fx_feeder`, set by the council (the zero key for none) | `post_fix` for a later date within ±5% of the FIX in force; nothing else |
 | Creator | `Pool.creator`, the payer of `init_pool` and a seed of the pool's address | Nothing after `init_pool` |
-| Borrower | `CreditLine.borrower`, the signer of `request_line` | Request a line, withdraw its request, draw tranches alone at the FIX it signs while the window is open, and cancel a pagaré carrying the PAGADO mark alone once `cancel_grace_seconds` (at least 30 days) have passed since the payment |
+| Borrower | `CreditLine.borrower`, the signer of `request_line` | Request a line, withdraw its request, draw tranches alone at the FIX it signs while the window is open, and cancel a pagaré carrying the PAGADO mark alone once the `cancel_grace_seconds` in force at the payment (30 to 365 days, fixed on the pagaré) have passed since it |
 | Sponsor | `CreditLine.sponsor`, an optional co-signer of `request_line` | Nothing after the request; it is a recorded party |
 | Line payer | `CreditLine.payer`, the funder of the request's rent (Elote's backend in the product) | Receives the rent back when a request is rejected or withdrawn |
 | Procurador | `Pagare.procurador`, written by `endorse_pagare`, cleared by `revoke_procuracion` and the extinction | `cancel_pagare` on that pagaré alone, while the program signs for the burn delegate `["procurador", pagare, procurador]`. It can never be the pool, the council, the guardian, the line's borrower or a multisig member |
@@ -105,7 +105,6 @@ Documented limits, not open vulnerabilities; most are pinned by `programs/elote_
 - **Late interest is computed at the second of the repayment**, so clients pad a payment meant to settle it.
 - **Exact-second gates on a leader-set clock** can move by a few seconds.
 - **A concurrent payment makes an in-flight repayment retry** (`PagareAccountsMismatch`); the client re-reads and retries.
-- **Four pagaré records per repayment.** Nothing bounds the records one `repay` touches; the client splits a payment so each touches at most four (`MAX_SIDECARS_PER_REPAY`); five reach about 100,000 CU once the payment is converted at the FIX.
 - **`init_pool` and `draw` compute vary with PDA bump searches** (1,500 CU per failed try); `init_pool` is pinned under 70,000.
 - **`propose_council` does not run the per-instruction multisig check** that every other council instruction runs; the signer must still be `Pool.council`, and `accept_council` checks the new multisig.
 
@@ -115,6 +114,7 @@ Documented limits, not open vulnerabilities; most are pinned by `programs/elote_
 - Every money instruction ends with `Pool::check()`: the NAV fits a `u64` and the share supply is zero or at least the dead shares (`InvariantBroken`).
 - All arithmetic is checked; products go through `u128`; share accounting rounds in the pool's favour; FX conversions round down, and a repayment takes USDC rounded up so the pool never credits more MXN than it received.
 - The first deposit locks dead shares and must meet a minimum.
+- A repayment takes at most three pagaré records (`MAX_SIDECARS_PER_REPAY`, `TooManySidecars`), which keeps its heaviest shape under 100,000 CU; the client splits a larger payment.
 - Events are emitted through `emit_cpi!`, with `nav_after` on every movement of the NAV and `NavUpdated` last.
 
 ## Not final

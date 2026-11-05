@@ -147,6 +147,10 @@ export const ELOTE_POOL_ERROR__PROCURACION_STATE = 0x17af; // 6063
 export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x17b0; // 6064
 /** EntryNotFound: The referenced registry entry does not exist */
 export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x17b1; // 6065
+/** TooManySidecars: A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment */
+export const ELOTE_POOL_ERROR__TOO_MANY_SIDECARS = 0x17b2; // 6066
+/** CancelGraceTooLong: The borrower's cancel grace is above the one-year ceiling */
+export const ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_LONG = 0x17b3; // 6067
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -161,6 +165,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_COUNCIL
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_CURATOR
   | typeof ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED
+  | typeof ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_LONG
   | typeof ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_SHORT
   | typeof ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT
@@ -209,6 +214,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__TERM_ENDED
   | typeof ELOTE_POOL_ERROR__TERM_NOT_ENDED
   | typeof ELOTE_POOL_ERROR__TOO_MANY_DRAWS
+  | typeof ELOTE_POOL_ERROR__TOO_MANY_SIDECARS
   | typeof ELOTE_POOL_ERROR__UNAUTHORIZED
   | typeof ELOTE_POOL_ERROR__WINDOW_CLOSED
   | typeof ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY
@@ -231,6 +237,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__BORROWER_IS_COUNCIL]: `The council cannot be the borrower`,
     [ELOTE_POOL_ERROR__BORROWER_IS_CURATOR]: `A member of the council cannot be the borrower`,
     [ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED]: `The borrower may cancel alone only after the cancel grace from the payment`,
+    [ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_LONG]: `The borrower's cancel grace is above the one-year ceiling`,
     [ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_SHORT]: `The borrower's cancel grace is below the thirty-day floor`,
     [ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED]: `The collection is not a bare Metaplex Core collection whose update authority is the pool`,
     [ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT]: `The collection period is shorter than the minimum`,
@@ -279,6 +286,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__TERM_ENDED]: `The term has ended, or would end before the opening`,
     [ELOTE_POOL_ERROR__TERM_NOT_ENDED]: `The term has not ended`,
     [ELOTE_POOL_ERROR__TOO_MANY_DRAWS]: `The line has reached its maximum number of draws`,
+    [ELOTE_POOL_ERROR__TOO_MANY_SIDECARS]: `A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment`,
     [ELOTE_POOL_ERROR__UNAUTHORIZED]: `This signer may not do this`,
     [ELOTE_POOL_ERROR__WINDOW_CLOSED]: `The line's draw window has already closed`,
     [ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY]: `A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace`,

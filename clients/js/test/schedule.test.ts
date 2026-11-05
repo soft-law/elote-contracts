@@ -150,5 +150,21 @@ test("lineLateDue: an accelerated bullet line owes late interest from the mark",
   };
   // The program's integration case: 4.0 overdue for 10 days at 36.5% a year.
   assert.equal(lineLateDue(line, 0n, 1_000n + 10n * day), 40_000n);
-  assert.equal(lineLateDue({ ...line, acceleratedAt: 0n }, 0n, 1_000n + 10n * day), 0n, "not accelerated");
+  assert.equal(lineLateDue({ ...line, acceleratedAt: 0n }, 0n, 1_000n + 10n * day), 0n, "not accelerated, before the term");
+});
+
+test("lineLateDue: a bullet line past its term owes late interest from term_end + grace, accelerated or not", () => {
+  const day = 86_400n;
+  const year = 365n * day;
+  const termEnd = 1_000_000_000n;
+  const grace = 5n * day;
+  const line = {
+    intervalSeconds: 0n, installments: 0, lateBps: 3_650, maxMissed: 0, lateCollected: 0n, latePaidUntil: 0n,
+    drawn: 4_000_000n, interestDue: 400_000n, principalRepaid: 0n, interestRepaid: 0n, firstDueAt: 0n,
+    acceleratedAt: 0n, termEnd,
+  };
+  for (const now of [termEnd - 1n, termEnd, termEnd + grace]) assert.equal(lineLateDue(line, grace, now), 0n, `at ${now}`);
+  // The program's integration case: a year of 36.5% on the 4.0 of principal.
+  assert.equal(lineLateDue(line, grace, termEnd + grace + year), 1_460_000n);
+  assert.equal(lineLateDue(line, grace, termEnd + grace + 10n * day), 40_000n);
 });

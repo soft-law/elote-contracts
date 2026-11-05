@@ -31,7 +31,8 @@ fn account_sizes_are_fixed_and_reserved_starts_zero() {
     assert_eq!(line.draw_time_weight, u128::from(UNIT) * env.now() as u128, "amount times draw time");
     assert_eq!((line.acceleration_due_at, line.availability_end_saved), (0, 0));
     assert_eq!(line.reserved, [0u8; 64]);
-    assert_eq!(pagare.reserved, [0u8; 32]);
+    assert_eq!(pagare.reserved, [0u8; 28]);
+    assert_eq!(pagare.cancel_grace_seconds, 0, "fixed at payment, zero while outstanding");
     for (key, len) in [
         (k.pool, 8 + Pool::INIT_SPACE),
         (line_pda(&k.pool, line_id).0, 8 + CreditLine::INIT_SPACE),

@@ -533,6 +533,41 @@ mod tests {
         assert_eq!(accelerated_interest(100, 0, 0), None);
     }
 
+    /// A bullet line is one installment due at the term (anchor `term_end - 1`, interval 1): not
+    /// accelerated, it is due at `term_end` and late interest runs from `term_end + grace`;
+    /// accelerated before the term, it runs from the mark.
+    #[test]
+    fn arrears_of_a_bullet_line_run_from_the_term_plus_grace_or_from_the_mark() {
+        let term_end = 100_000_000;
+        let grace = 100u32;
+        let t = ScheduleTerms {
+            total: 4_400_000,
+            anchor: term_end - 1,
+            interval: 1,
+            installments: 1,
+            late_bps: 3_650,
+            grace,
+            late_paid_until: 0,
+            principal: 4_000_000,
+            late_collected: 0,
+            accelerated_at: 0,
+        };
+        let a = arrears(&t, 0, term_end - 1).unwrap();
+        assert_eq!((a.due, a.missed, a.overdue, a.late_due), (0, 0, 0, 0), "before the term nothing is due");
+        let a = arrears(&t, 0, term_end).unwrap();
+        assert_eq!((a.due, a.missed, a.overdue, a.first_missed_due), (1, 1, 4_400_000, Some(term_end)));
+        let start = term_end + i64::from(grace);
+        assert_eq!(arrears(&t, 0, start).unwrap().late_due, 0, "nothing within the grace");
+        let a = arrears(&t, 0, start + YEAR as i64).unwrap();
+        assert_eq!((a.overdue_principal, a.late_due), (4_000_000, 1_460_000), "a year at 36.5% on the principal");
+        // Accelerated a year before the term: the mark rules, with no grace after it.
+        let mut acc = t;
+        acc.accelerated_at = term_end - YEAR as i64;
+        assert_eq!(arrears(&acc, 0, term_end).unwrap().late_due, 1_460_000);
+        // Paid in full: nothing.
+        assert_eq!(arrears(&t, 4_400_000, start + YEAR as i64).unwrap().late_due, 0);
+    }
+
     /// Once accelerated, every installment is due, the whole balance is
     /// overdue, and an installment not yet due accrues from the acceleration (no further grace)
     /// while one already overdue keeps its own start.

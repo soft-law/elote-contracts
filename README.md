@@ -181,10 +181,11 @@ the order listed for each instruction.
 
 ## Build and test
 
-Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.2.1 (from [otter-sec/anchor](https://github.com/otter-sec/anchor), where Anchor now lives), Solana CLI 4.1.2 (the pairing Anchor 1.2 is tested against), Node 22.12+. `avm install 1.2.1 && avm use 1.2.1` and `agave-install init 4.1.2` set both; CI installs the same versions and checks the Anchor binary's sha256.
+Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.2.1 (from [otter-sec/anchor](https://github.com/otter-sec/anchor), where Anchor now lives), Solana CLI 4.1.2 (the pairing Anchor 1.2 is tested against), Node 22.12+. `avm install 1.2.1 && avm use 1.2.1` and `agave-install init 4.1.2` set both; CI installs the same versions and checks the Anchor binary's sha256. The build pins platform-tools v1.54
+(`--tools-version v1.54`): cargo-build-sbf 4.1.0's default does not build the program.
 
 ```sh
-NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet   # target/deploy/elote_pool.so and target/idl/elote_pool.json
+NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet   # target/deploy/elote_pool.so and target/idl/elote_pool.json
 cargo test -p elote_pool         # unit tests + LiteSVM integration tests against the built .so
 npm install
 npm run codama                   # copies the IDL to idl/ and regenerates clients/js/src/generated
@@ -306,7 +307,7 @@ multisig of three keys it makes (`scripts/squads-local-multisig.ts` writes the a
 Squads ProgramConfig is needed), with the ledger and all keys in a temporary directory removed on
 exit. It refuses any RPC that is not this machine and refuses to start when something already
 answers on its port (`ELOTE_E2E_PORT`, default 18899). Build first
-(`NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet`).
+(`NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet`).
 
 `scripts/request-line.ts --pool <address> --borrower-keypair <path> --principal <MXN>` requests one
 line, with `--rate-bps` (1200), `--term-days` (90), `--late-rate-bps` (10000), `--sponsor-keypair` with
@@ -338,7 +339,8 @@ delivers before asking; the borrower signs alone (a FIX published in between fai
 `scripts/repay.ts --pool <address> --line-id <n> --amount <tUSDC> | --all` pays on a line (the
 borrower by default, `--payer-keypair` for anyone else; `--receipt-hash` or `--receipt-file` with
 `--receipt-salt`, zero meaning "to follow"), credited in MXN at the FIX in force. A payment that would
-touch more than four pagaré records is split into several `repay` calls (`MAX_SIDECARS_PER_REPAY`).
+touch more than three pagaré records is split into several `repay` calls (`MAX_SIDECARS_PER_REPAY`; the
+program refuses more with `TooManySidecars`).
 
 `scripts/endorse-pagare.ts --pool <address> --line-id <n> --draw-index <n>` endorses an outstanding
 pagaré en procuración through the council. By default it makes a procurador key for the case,
@@ -350,8 +352,8 @@ can never be the pool, the council, a curator, the guardian or the borrower.
 
 `scripts/cancel-pagare.ts --pool <address> --line-id <n> --draw-index <n> --receipt-hash <64 hex>`
 extinguishes a pagaré a repayment marked paid: by default the council as holder (through Squads);
-`--borrower-keypair` cancels as the line's borrower alone once the pool's cancel grace from the
-payment has run (refused before it); `--procurador-keypair` cancels as the procurador of record
+`--borrower-keypair` cancels as the line's borrower alone once the cancel grace the payment fixed
+on the pagaré has run (refused before it); `--procurador-keypair` cancels as the procurador of record
 alone through its program address.
 
 `scripts/key-to-base58.ts <keypair.json>` prints the base58 form of a keypair file's secret bytes,

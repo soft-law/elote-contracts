@@ -356,6 +356,7 @@ and shows the class of the last entry.
 | constant | value | role |
 |---|---|---|
 | `MAX_DRAWS` | 64 | tranches per line (`TooManyDraws`); bounds a line's pagaré index space |
+| `MAX_SIDECARS_PER_REPAY` | 3 | pagaré records one `repay` takes (`TooManySidecars`); bounds its compute |
 | `min_first_deposit(decimals)` | `max(10^decimals, 1 000 × DEAD_SHARES)` | floor on the first deposit: one whole unit of the asset, never below 1 000 000 base units |
 | `DEAD_SHARES` | 1 000 | shares locked forever by the first deposit |
 | `MIN_FIRST_DEPOSIT_DEAD_RATIO` | 1 000 | the first deposit is at least this many dead shares, whatever the decimals |
@@ -363,6 +364,8 @@ and shows the class of the last entry.
 | `MAX_INSTALLMENTS` | 120 | bounds the arrears loop and its compute |
 | `MIN_MAX_MISSED` | 3 | policy: three missed installments before collection |
 | `MIN_COLLECTION_PERIOD_SECONDS` | 2 592 000 | 30 days: the shortest collection period a pool may set |
+| `MIN_CANCEL_GRACE_SECONDS` | 2 592 000 | 30 days: the shortest wait from a pagaré's payment before its borrower may cancel it alone |
+| `MAX_CANCEL_GRACE_SECONDS` | 31 536 000 | 365 days: the longest such wait (`CancelGraceTooLong`); each repayment fixes the pool's value on the pagarés it marks paid (`Pagare.cancel_grace_seconds`) |
 | `MIN_CANCEL_DELAY_SECONDS` | 604 800 | seven days: the shortest wait from a cancellation request to the holder's cancellation alone |
 | `SECONDS_PER_YEAR` | 31 536 000 | 365 days, annualises `late_bps` |
 
@@ -650,7 +653,8 @@ promise it made (`sponsor_role`) and grants no authority afterwards (a sponsor r
   computes the set as `clients/js/src/pagare.ts::repaySidecars` does.
 - **Checks, in order:** `status` is `Active` or `InCollection` (`LineStatus`); `remaining =
   (drawn - principal_repaid) + (interest_due - interest_repaid)`; `amount > 0`
-  (`WrongAmount`); `late = arrears(now).late_due` on a scheduled line, 0 on a bullet line;
+  (`WrongAmount`); `late = arrears(now).late_due`, on a bullet line as one installment due at
+  `term_end` (from `term_end + grace`, or from the mark if accelerated before);
   `amount >= late` (`LateInterestUnpaid`); while the line can still draw (`Active`, `now <
   availability_end` and something undrawn), a payment on a zero debt is refused
   (`WrongAmount`); `rest = min(amount - late, remaining)`; `interest_part = min(rest,
@@ -682,8 +686,9 @@ promise it made (`sponsor_role`) and grants no authority afterwards (a sponsor r
   gets no entry. Otherwise the entry goes from the payer to the pool over `receipt_hash` (the
   payer's, unverified; zero means "receipt to follow", repaired by `annotate_payment`): `Pagado`
   where `drawn_through <= principal_repaid` after the payment, which also sets `status =
-  PAGARE_PAID_PENDING_CANCEL`, `paid_at = now` and `receipt_hash` (the PAGADO mark at the moment
-  of payment; only the burn waits for `cancel_pagare`) and moves the cursor `pagares_paid` past
+  PAGARE_PAID_PENDING_CANCEL`, `paid_at = now`, `receipt_hash` and `cancel_grace_seconds` (the
+  pool's, fixed for the borrower's exit) (the PAGADO mark at the moment of payment; only the
+  burn waits for `cancel_pagare`) and moves the cursor `pagares_paid` past
   it; `Abono` on the one the payment reaches without covering. So a covered pagaré is never left
   without its mark, and an interest-only payment writes no entry. `Pool::check` runs on the
   reloaded vault and the share supply.
@@ -694,10 +699,11 @@ promise it made (`sponsor_role`) and grants no authority afterwards (a sponsor r
   with `remaining` after this payment (without late interest) and `nav_after`; `NavUpdated`.
 - **Compute:** at 120 installments with every installment missed, 62 015 CU; after an early
   mark, 53 169; a payment covering five sidecars with every installment missed, 91 455; at 18
-  installments, 34 967 (`tests/compute.rs`). Client rule: at
-  most five sidecars per `repay` (`MAX_SIDECARS_PER_REPAY` in `clients/js/src/pagare.ts`); a
-  payment that would touch more is split into several `repay` calls (§9). The program refuses
-  nothing on that count beyond the compute limit itself.
+  installments, 34 967 (`tests/compute.rs`). At most three sidecars per `repay`
+  (`state::MAX_SIDECARS_PER_REPAY`, mirrored in `clients/js/src/pagare.ts`); the program refuses
+  more with `TooManySidecars`, and a payment that would touch more is split into several `repay`
+  calls (§9). Three sidecars with every installment missed stay at least 5 000 CU under the
+  ceiling.
 
 Because `late_due` is computed at execution time, a client that quotes it a few seconds
 earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad the quote
@@ -1128,7 +1134,7 @@ or a limit it accepts.
 | `limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installments` | a line with `installments < covered + max_missed` can never enter collection; only the term releases it |
 | `limit_late_interest_is_settled_at_execution_time_so_clients_must_pad` | see §5.6 |
 | `limit_draw_accepts_a_valid_non_canonical_pagare_bump` | `draw` verifies the pagaré PDAs with the bumps the client passes (one `create_program_address` each, deterministic compute); a valid bump that is not the canonical one is accepted too, and the asset then sits where `find_program_address` never looks. Proving a bump canonical costs the search the client's bump avoids. The attestor derives the canonical bump and co-signs every draw, and `PagareIssued` and the sidecar carry the asset's address, so indexers never derive it |
-| `limit_a_repay_touching_more_than_five_pagare_records_must_be_split` | nothing in the program bounds how many pagaré records one `repay` touches (up to `MAX_DRAWS`), and each costs compute: a payment that marks eight paid runs over the 100 000 CU ceiling. The client splits such a payment (the amount is free) and passes at most five records per `repay` (`MAX_SIDECARS_PER_REPAY`) |
+| `a_repay_takes_at_most_three_pagare_records` (inverted 2026-11-05) | `repay` takes at most `MAX_SIDECARS_PER_REPAY` (3) pagaré records and refuses more with `TooManySidecars`; the client splits a larger payment (the amount is free) into parts of at most three records, each under the 100 000 CU ceiling |
 | `limit_a_payment_landing_first_makes_an_in_flight_repay_retry` | `repay` takes exactly the records `[pagares_paid ..= last_touched]`, computed by the client when it builds the transaction. Another payment landing first can change that set, and the transaction fails with `PagareAccountsMismatch` with nothing moved; the client re-reads the line and retries |
 
 Other points outside the test file:
@@ -1206,7 +1212,7 @@ steps with the procurador's key (the `find_program_address` bump search); it is 
 code is unchanged for it.
 
 ```sh
-NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
+NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet   # programs → target/deploy/elote_pool.so + target/idl
 cargo test -p elote_pool                           # 163 tests, LiteSVM in-process, no validator
 npm run test:client                                # 11 JS tests
 ```
@@ -1240,7 +1246,7 @@ every typed field of the accounts and events; `lineSchedule(line)` returns a lin
 `null` for a bullet line, and anything a UI shows about arrears or late interest comes from
 `schedule.ts`, which must change in step with `math.rs`. `repaySidecars` computes the exact
 remaining accounts of a `repay`, and a payment that would touch more than
-`MAX_SIDECARS_PER_REPAY` (5) records is split.
+`MAX_SIDECARS_PER_REPAY` (3) records is split; the program refuses more (`TooManySidecars`).
 
 ## 12. Deployment
 

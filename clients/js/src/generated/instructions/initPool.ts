@@ -143,7 +143,7 @@ export type InitPoolInstructionData = {
   maxOutstandingPrincipal: bigint;
   /** At least `MIN_ACCELERATION_NOTICE_SECONDS`. */
   accelerationNoticeSeconds: number;
-  /** At least `MIN_CANCEL_GRACE_SECONDS`. */
+  /** `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. */
   cancelGraceSeconds: number;
 };
 
@@ -160,7 +160,7 @@ export type InitPoolInstructionDataArgs = {
   maxOutstandingPrincipal: number | bigint;
   /** At least `MIN_ACCELERATION_NOTICE_SECONDS`. */
   accelerationNoticeSeconds: number;
-  /** At least `MIN_CANCEL_GRACE_SECONDS`. */
+  /** `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. */
   cancelGraceSeconds: number;
 };
 
