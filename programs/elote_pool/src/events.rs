@@ -387,8 +387,10 @@ pub struct FxFeederSet {
 }
 
 /// The FX result of one repayment's principal, in USDC base units: `cost` is the pool's cost of the
-/// principal repaid (at each pagaré's FIX), `received` the USDC that paid it, `delta = received -
-/// cost`. Emitted by `repay` before `LineRepaid`, with the same `receipt_hash`.
+/// principal repaid (at each pagaré's FIX), `received` the USDC that paid it (its centavos at the
+/// FIX of the payment, rounded up), `delta = received - cost`. Emitted by `repay` before
+/// `LineRepaid`, with the same `receipt_hash`, whenever principal is applied; the deltas add up to
+/// `Pool.fx_realized`.
 #[event]
 pub struct FxRealized {
     pub pool: Pubkey,

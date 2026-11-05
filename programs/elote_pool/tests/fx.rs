@@ -107,6 +107,11 @@ fn today_in_mexico_city_starts_six_hours_after_midnight_utc() {
 
 /// A pool of 5,000 USDC at the real FIX of 18.3740 MXN per USD, with a MXN 50,000 line approved.
 fn real_fix_pool(env: &mut Env, max_outstanding: u64) -> (PoolKeys, Keypair, u64) {
+    real_fix_pool_at(env, max_outstanding, 0)
+}
+
+/// As `real_fix_pool`, the line at `rate_bps` a year.
+fn real_fix_pool_at(env: &mut Env, max_outstanding: u64, rate_bps: u16) -> (PoolKeys, Keypair, u64) {
     let council = env.council.insecure_clone();
     let asset = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset);
@@ -119,7 +124,7 @@ fn real_fix_pool(env: &mut Env, max_outstanding: u64) -> (PoolKeys, Keypair, u64
     let investor = env.investor(&k, 5_000 * UNIT);
     env.deposit(&k, &investor, 5_000 * UNIT);
     let borrower = env.borrower(&k);
-    let terms = env.line_params(5_000_000, 0); // MXN 50,000.00 at no interest
+    let terms = env.line_params(5_000_000, rate_bps); // MXN 50,000.00
     let (id, _) = env.request_line_with(&k, &borrower, &terms, None);
     env.release_fix(&k);
     env.approve_line(&k, id, &borrower.pubkey(), &terms);
@@ -313,4 +318,45 @@ fn a_write_off_removes_the_lines_cost_in_usdc() {
     let ev: LineWrittenOff = find_event(&env.send(ix, &council, &[])).expect("LineWrittenOff");
     assert_eq!((ev.loss, ev.loss_usdc, ev.nav_after), (5_000_000, delivered, nav_before - delivered));
     assert_eq!(env.pool(&k).outstanding_principal, 0);
+}
+
+/// The principal's USDC is what its centavos cost at the FIX of the day, rounded up; the rounding of
+/// the USDC taken stays with the charges. A payment that applies no principal realizes nothing, and
+/// every payment that realizes something says so: after any sequence of payments, the `FxRealized`
+/// deltas add up to `Pool.fx_realized`.
+#[test]
+fn fx_realized_events_add_up_to_the_pools_figure() {
+    use elote_pool::events::{FxRealized, LineRepaid};
+    let mut env = Env::new();
+    let (k, borrower, id) = real_fix_pool_at(&mut env, u64::MAX, 1_200);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 5_000_000);
+    env.send(ix, &borrower, &[]);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 4_000 * UNIT);
+    let mut events = 0i64;
+    // Interest only, at an amount whose MXN does not convert back exactly; then interest and
+    // principal; then principal at other FIXes; then the payoff.
+    for (fix, max_usdc) in [(183_740u64, 1_000_001u64), (183_740, 777_777_777), (191_234, 333_333_333), (176_543, 1_234_567_891), (180_001, 4_000 * UNIT)] {
+        if fix != env.pool(&k).fix_rate {
+            env.warp(env.now() + DAY);
+            post(&mut env, &k, fix);
+        }
+        let line = env.line(&k, id);
+        let interest_left = line.interest_due - line.interest_repaid;
+        let ix = env.repay_ix(&k, id, &borrower.pubkey(), max_usdc.min(env.token_balance(&k.asset_ata(&borrower.pubkey()))));
+        let meta = env.send(ix, &borrower, &[]);
+        let repaid: LineRepaid = find_event(&meta).expect("LineRepaid");
+        if repaid.principal_part == 0 {
+            assert!(repaid.interest_part > 0 && repaid.interest_part <= interest_left);
+        }
+        match find_event::<FxRealized>(&meta) {
+            Some(fx) => {
+                assert_eq!(fx.received, elote_pool::fx::usdc_ceil_for_mxn(repaid.principal_part, fix).unwrap());
+                events += fx.delta;
+            }
+            None => assert_eq!(repaid.principal_part, 0, "a payment that applies principal emits FxRealized"),
+        }
+        assert_eq!(events, env.pool(&k).fx_realized, "after the payment at {fix}");
+    }
+    assert_eq!(env.line(&k, id).status, elote_pool::state::LineStatus::Repaid);
 }

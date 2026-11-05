@@ -784,7 +784,9 @@ pub struct Repay<'info> {
 ///
 /// The credit is `fx::mxn_for_usdc(max_usdc, fix)`; the USDC taken pays exactly the MXN applied,
 /// rounded up. The pool's outstanding falls by the cost of the principal repaid at each pagaré's
-/// own FIX; the difference with the USDC that paid it is `FxRealized`.
+/// own FIX; the difference with the USDC that paid it (the principal's centavos at today's FIX,
+/// rounded up; the rounding of the rest stays with the charges) is `FxRealized`, emitted whenever
+/// principal is applied or the difference is not zero.
 pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u64, fx_date: u32, receipt_hash: [u8; 32]) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
@@ -817,12 +819,12 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
         .ok_or(PoolError::Overflow)?;
     let principal_before = line.principal_repaid;
     let principal_after = principal_before.checked_add(principal_part).ok_or(PoolError::Overflow)?;
-    // The USDC taken, rounded up, and the part of it that paid principal; what the late and
-    // ordinary interest took is rounded down, so principal carries the rounding.
+    // The USDC taken, rounded up, and the part of it that paid principal: what the principal's
+    // centavos cost at the FIX, rounded up. The rest, at least the charges rounded down, is the
+    // charges', so their rounding never reaches `fx_realized` and a payment without principal
+    // realizes nothing.
     let usdc_in = fx::usdc_ceil_for_mxn(transfer, fx_rate).ok_or(PoolError::Overflow)?;
-    let charges = late_part.checked_add(interest_part).ok_or(PoolError::Overflow)?;
-    let usdc_charges = fx::usdc_for_mxn(charges, fx_rate).ok_or(PoolError::Overflow)?;
-    let usdc_principal = usdc_in.checked_sub(usdc_charges).ok_or(PoolError::Overflow)?;
+    let usdc_principal = fx::usdc_ceil_for_mxn(principal_part, fx_rate).ok_or(PoolError::Overflow)?;
 
     // The records, exactly `[pagares_paid ..= last_touched]`, are verified before any write.
     let line_key = line.key();
@@ -959,7 +961,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
     if late_part > 0 {
         emit_cpi!(LateInterestCollected { pool: pool.key(), line_id: line.line_id, amount: late_part });
     }
-    if principal_part > 0 {
+    if principal_part > 0 || fx_delta != 0 {
         emit_cpi!(FxRealized {
             pool: pool.key(),
             line_id: line.line_id,
