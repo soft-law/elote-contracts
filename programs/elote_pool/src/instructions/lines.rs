@@ -1291,6 +1291,8 @@ pub fn withdraw_acceleration(ctx: Context<CouncilLine>, valid_until: i64) -> Res
 fn accelerated_balance(line: &CreditLine, due_count: u16, now: i64) -> Result<(u64, u64, u64)> {
     let kept = match line.schedule() {
         Some(s) => math::accelerated_interest(line.interest_due, due_count, s.installments).ok_or(PoolError::Overflow)?.0,
+        // Rounded once over every tranche, the accrual can pass the per-tranche `interest_due`
+        // by a few units at the last due date: clamped (see `math::bullet_accrued_interest`).
         None => math::bullet_accrued_interest(line.drawn, line.draw_time_weight, line.rate_bps, now)
             .ok_or(PoolError::Overflow)?
             .min(line.interest_due),

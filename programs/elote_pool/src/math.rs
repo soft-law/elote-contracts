@@ -42,6 +42,12 @@ pub fn tranche_interest(amount: u64, rate_bps: u16, seconds: u64) -> Option<u64>
 /// mark, `rate_bps * (drawn * mark - draw_time_weight) / (10_000 * SECONDS_PER_YEAR)` rounded down
 /// once, where `draw_time_weight = Σ amount_k * drawn_at_k`. `None` on overflow or a mark before the
 /// draw.
+///
+/// Rounded once over the sum, it can exceed the line's `interest_due`, which `draw` rounds down per
+/// tranche (`tranche_interest` to the last due date): with the mark at the last due date it is
+/// `interest_due` plus up to one unit per tranche but the first. `accelerated_balance` (in
+/// `instructions/lines.rs`) therefore clamps it with `.min(interest_due)`: an acceleration never
+/// keeps more ordinary interest than the draws fixed.
 pub fn bullet_accrued_interest(drawn: u64, draw_time_weight: u128, rate_bps: u16, mark: i64) -> Option<u64> {
     let span = (drawn as u128).checked_mul(u128::try_from(mark).ok()?)?.checked_sub(draw_time_weight)?;
     span.checked_mul(rate_bps as u128)?
@@ -273,6 +279,24 @@ mod tests {
         assert_eq!(kept, tranche_interest(4_000_000, 1_200, year as u64).unwrap() + tranche_interest(2_000_000, 1_200, year as u64 / 2).unwrap());
         assert_eq!(bullet_accrued_interest(2_000_000, 2_000_000u128 * year as u128, 1_200, 0), None, "a mark before every draw");
         assert_eq!(bullet_accrued_interest(0, 0, 1_200, year), Some(0));
+    }
+
+    /// Three tranches of a bullet line, the mark at the last due date: accrued once over the sum,
+    /// the interest is two units above the `interest_due` the three draws fixed (each rounded
+    /// down), and the clamp `accelerated_balance` applies keeps exactly `interest_due`.
+    #[test]
+    fn bullet_interest_at_the_last_due_date_is_clamped_to_the_interest_due() {
+        let year = SECONDS_PER_YEAR as i64;
+        let start = 1_800_000_000i64;
+        let last_due = start + year;
+        let tranches = [(1_000_003u64, start + 1), (2_000_001, start + year / 3 + 1_589), (3_000_007, start + 2 * year / 3 + 398)];
+        let interest_due: u64 = tranches.iter().map(|&(a, t)| tranche_interest(a, 1_200, (last_due - t) as u64).unwrap()).sum();
+        let drawn: u64 = tranches.iter().map(|&(a, _)| a).sum();
+        let weight: u128 = tranches.iter().map(|&(a, t)| a as u128 * t as u128).sum();
+        let accrued = bullet_accrued_interest(drawn, weight, 1_200, last_due).unwrap();
+        assert_eq!((interest_due, accrued), (399_982, 399_984));
+        let kept = accrued.min(interest_due);
+        assert_eq!(kept, interest_due);
     }
 
     #[test]

@@ -141,6 +141,24 @@ test("bulletAccruedInterest matches the program's unit case", () => {
   assert.throws(() => bulletAccruedInterest(2_000_000n, 2_000_000n * year, 1_200, 0n));
 });
 
+test("bulletAccruedInterest at the last due date can pass interestDue; the program keeps interestDue", () => {
+  const year = 31_536_000n;
+  const start = 1_800_000_000n;
+  const lastDue = start + year;
+  const tranches: [bigint, bigint][] = [
+    [1_000_003n, start + 1n],
+    [2_000_001n, start + year / 3n + 1_589n],
+    [3_000_007n, start + (2n * year) / 3n + 398n],
+  ];
+  // What draw fixes per tranche, rounded down each time.
+  const interestDue = tranches.reduce((s, [a, t]) => s + (a * 1_200n * (lastDue - t)) / (10_000n * year), 0n);
+  const drawn = tranches.reduce((s, [a]) => s + a, 0n);
+  const weight = tranches.reduce((s, [a, t]) => s + a * t, 0n);
+  const accrued = bulletAccruedInterest(drawn, weight, 1_200, lastDue);
+  assert.deepEqual([interestDue, accrued], [399_982n, 399_984n]);
+  assert.equal(accrued < interestDue ? accrued : interestDue, interestDue);
+});
+
 test("lineLateDue: an accelerated bullet line owes late interest from the mark", () => {
   const day = 86_400n;
   const line = {
