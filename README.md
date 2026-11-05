@@ -181,10 +181,11 @@ the order listed for each instruction.
 
 ## Build and test
 
-Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.2.1 (from [otter-sec/anchor](https://github.com/otter-sec/anchor), where Anchor now lives), Solana CLI 4.1.2 (the pairing Anchor 1.2 is tested against), Node 22.12+. `avm install 1.2.1 && avm use 1.2.1` and `agave-install init 4.1.2` set both; CI installs the same versions and checks the Anchor binary's sha256.
+Toolchain: Rust 1.89.0 (`rust-toolchain.toml`), Anchor CLI 1.2.1 (from [otter-sec/anchor](https://github.com/otter-sec/anchor), where Anchor now lives), Solana CLI 4.1.2 (the pairing Anchor 1.2 is tested against), Node 22.12+. `avm install 1.2.1 && avm use 1.2.1` and `agave-install init 4.1.2` set both; CI installs the same versions and checks the Anchor binary's sha256. The build pins platform-tools v1.54
+(`--tools-version v1.54`): cargo-build-sbf 4.1.0's default does not build the program.
 
 ```sh
-NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet   # target/deploy/elote_pool.so and target/idl/elote_pool.json
+NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet   # target/deploy/elote_pool.so and target/idl/elote_pool.json
 cargo test -p elote_pool         # unit tests + LiteSVM integration tests against the built .so
 npm install
 npm run codama                   # copies the IDL to idl/ and regenerates clients/js/src/generated
@@ -306,7 +307,7 @@ multisig of three keys it makes (`scripts/squads-local-multisig.ts` writes the a
 Squads ProgramConfig is needed), with the ledger and all keys in a temporary directory removed on
 exit. It refuses any RPC that is not this machine and refuses to start when something already
 answers on its port (`ELOTE_E2E_PORT`, default 18899). Build first
-(`NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet`).
+(`NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet`).
 
 `scripts/request-line.ts --pool <address> --borrower-keypair <path> --principal <MXN>` requests one
 line, with `--rate-bps` (1200), `--term-days` (90), `--late-rate-bps` (10000), `--sponsor-keypair` with

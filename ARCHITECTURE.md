@@ -1212,7 +1212,7 @@ steps with the procurador's key (the `find_program_address` bump search); it is 
 code is unchanged for it.
 
 ```sh
-NO_DNA=1 anchor build --ignore-keys --arch v0      # programs → target/deploy/elote_pool.so + target/idl
+NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet   # programs → target/deploy/elote_pool.so + target/idl
 cargo test -p elote_pool                           # 163 tests, LiteSVM in-process, no validator
 npm run test:client                                # 11 JS tests
 ```

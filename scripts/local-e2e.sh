@@ -8,7 +8,7 @@
 # procurador's cancellation. The borrower's own cancellation needs the 30-day cancel grace to pass;
 # the Rust suite covers it.
 #
-#   scripts/local-e2e.sh            (after `NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet`)
+#   scripts/local-e2e.sh            (after `NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet`)
 #
 # Local only: the validator preloads target/deploy/elote_pool.so, the pinned Metaplex Core and
 # Squads v4 binaries at their program ids (`--bpf-program`) and a 2-of-3 Squads multisig account of
@@ -34,7 +34,7 @@ case "${ELOTE_RPC:-$RPC}" in
   http://127.0.0.1:*|http://localhost:*) ;;
   *) echo "error: local-e2e runs against this machine only (ELOTE_RPC=${ELOTE_RPC})" >&2; exit 1 ;;
 esac
-[ -f "$PROGRAM_SO" ] || { echo "error: build first: NO_DNA=1 anchor build --ignore-keys --arch v0 -- --features localnet" >&2; exit 1; }
+[ -f "$PROGRAM_SO" ] || { echo "error: build first: NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet" >&2; exit 1; }
 for pair in "$CORE_SO:$CORE_SHA256" "$SQUADS_SO:$SQUADS_SHA256"; do
   file="${pair%%:*}"; want="${pair##*:}"
   [ -f "$file" ] || { echo "error: missing $file" >&2; exit 1; }
