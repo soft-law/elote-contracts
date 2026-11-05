@@ -77,11 +77,7 @@ export function verifyWebhook(
     const alg = DIGEST_ALGS[algHeader as keyof typeof DIGEST_ALGS];
     if (!alg) return false;
     const expected = createHmac(alg, secret).update(rawBody).digest();
-    let given: Buffer;
-    try {
-        given = Buffer.from(digestHeader, 'hex');
-    } catch {
-        return false;
-    }
-    return given.length === expected.length && timingSafeEqual(given, expected);
+    // Buffer.from(x, 'hex') never throws, it truncates at the first bad character, so validate first.
+    if (!/^[0-9a-fA-F]+$/.test(digestHeader) || digestHeader.length !== expected.length * 2) return false;
+    return timingSafeEqual(Buffer.from(digestHeader, 'hex'), expected);
 }

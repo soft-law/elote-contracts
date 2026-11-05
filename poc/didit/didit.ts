@@ -31,9 +31,12 @@ export function canonicalJson(value: unknown): string {
     return JSON.stringify(sort(value));
 }
 
-const hmacHex = (secret: string, data: string | Buffer) => createHmac('sha256', secret).update(data).digest('hex');
-const sameHex = (a: string | undefined, b: string) =>
-    !!a && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const hmac = (secret: string, data: string | Buffer) => createHmac('sha256', secret).update(data).digest();
+// Hex is compared as bytes, so the header's letter case does not matter and a non-hex header fails.
+const sameHex = (given: string | undefined, expected: Buffer) => {
+    if (!given || !/^[0-9a-fA-F]+$/.test(given) || given.length !== expected.length * 2) return false;
+    return timingSafeEqual(Buffer.from(given, 'hex'), expected);
+};
 
 export function verifyWebhook(
     secret: string,
@@ -46,9 +49,9 @@ export function verifyWebhook(
     const ts = Number.parseInt(h['x-timestamp'] ?? '', 10);
     if (!Number.isFinite(ts) || Math.abs(nowSecs - ts) > toleranceSecs) return false;
     try {
-        if (sameHex(h['x-signature-v2'], hmacHex(secret, canonicalJson(JSON.parse(rawBody.toString('utf8')))))) return true;
+        if (sameHex(h['x-signature-v2'], hmac(secret, canonicalJson(JSON.parse(rawBody.toString('utf8')))))) return true;
     } catch {
         // not JSON: only the raw-body signature can match
     }
-    return sameHex(h['x-signature'], hmacHex(secret, rawBody));
+    return sameHex(h['x-signature'], hmac(secret, rawBody));
 }
