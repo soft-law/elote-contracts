@@ -219,8 +219,8 @@ pub mod elote_pool {
     }
 
 
-    /// Names the next council: `kind` 0 (a Squads vault) or 1 (a generic signer, not yet
-    /// accepted). Council only; the zero key withdraws the proposal.
+    /// Names the next council: `kind` 0 (a Squads vault), the only kind taken. Council only, after
+    /// the multisig check; the zero key withdraws the proposal.
     pub fn propose_council(ctx: Context<ProposeCouncil>, new_council: Pubkey, kind: u8, valid_until: i64) -> Result<()> {
         instructions::pool::propose_council(ctx, new_council, kind, valid_until)
     }

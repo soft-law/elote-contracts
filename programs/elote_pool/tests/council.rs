@@ -218,7 +218,7 @@ fn the_council_rotates_in_two_steps_to_a_verified_multisig() {
 }
 
 #[test]
-fn accept_council_refuses_a_weak_multisig_and_the_generic_kind() {
+fn accept_council_refuses_a_weak_multisig() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let old = env.council.insecure_clone();
@@ -230,15 +230,40 @@ fn accept_council_refuses_a_weak_multisig_and_the_generic_kind() {
     env.send(ix, &old, &[]);
     let ix = env.accept_council_ix(&k, &weak_vault.pubkey(), &weak);
     env.expect_err(ix, &weak_vault, &[], E_COUNCIL_INVALID);
+}
 
+#[test]
+fn propose_council_takes_only_the_squads_kind() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let old = env.council.insecure_clone();
     let generic = env.funded(1);
-    let ix = env.propose_council_ix(&k, &old.pubkey(), &generic.pubkey(), COUNCIL_GENERIC);
-    env.send(ix, &old, &[]);
-    let ix = env.accept_council_ix(&k, &generic.pubkey(), &weak);
-    env.expect_err(ix, &generic, &[], ERR_BASE + PoolError::CouncilKindInvalid as u32);
-
-    let ix = env.propose_council_ix(&k, &old.pubkey(), &generic.pubkey(), 2);
+    for kind in [COUNCIL_GENERIC, 2] {
+        let ix = env.propose_council_ix(&k, &old.pubkey(), &generic.pubkey(), kind);
+        env.expect_err(ix, &old, &[], ERR_BASE + PoolError::CouncilKindInvalid as u32);
+    }
+    // The zero key withdraws under the Squads kind only, too.
+    let ix = env.propose_council_ix(&k, &old.pubkey(), &Pubkey::default(), COUNCIL_GENERIC);
     env.expect_err(ix, &old, &[], ERR_BASE + PoolError::CouncilKindInvalid as u32);
+    let pool = env.pool(&k);
+    assert_eq!((pool.pending_council, pool.pending_council_kind), (Pubkey::default(), 0));
+}
+
+#[test]
+fn propose_council_runs_the_multisig_check() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let old = env.council.insecure_clone();
+    let (_, new) = second_council(&mut env);
+    // The council's own multisig at 1 of 3 voters, below a majority.
+    let members: Vec<(Pubkey, u8)> = env.curators.iter().map(|c| (c.pubkey(), PERM_ALL)).collect();
+    let multisig = env.multisig;
+    put_squads_account(&mut env.svm, &multisig, multisig_data(&Pubkey::new_unique(), &Pubkey::default(), 1, None, &members));
+    let ix = env.propose_council_ix(&k, &old.pubkey(), &new.pubkey(), COUNCIL_SQUADS);
+    env.expect_err(ix, &old, &[], E_COUNCIL_INVALID);
+    let ix = env.propose_council_ix(&k, &old.pubkey(), &Pubkey::default(), COUNCIL_SQUADS);
+    env.expect_err(ix, &old, &[], E_COUNCIL_INVALID);
+    assert_eq!(env.pool(&k).pending_council, Pubkey::default());
 }
 
 #[test]

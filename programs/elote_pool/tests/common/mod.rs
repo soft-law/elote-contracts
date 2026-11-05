@@ -848,7 +848,8 @@ impl Env {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::ProposeCouncil { council: *council, pool: k.pool, event_authority, program }.to_account_metas(None),
+            accounts: elote_pool::accounts::ProposeCouncil { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
+                .to_account_metas(None),
             data: elote_pool::instruction::ProposeCouncil { new_council: *new_council, kind, valid_until: self.valid_until }.data(),
         }
     }

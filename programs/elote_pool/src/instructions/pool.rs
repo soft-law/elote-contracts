@@ -16,7 +16,7 @@ use crate::fx;
 use crate::math;
 use crate::state::{self, 
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
-    COUNCIL_GENERIC, COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_GRACE_SECONDS,
+    COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_GRACE_SECONDS,
     MIN_COLLECTION_PERIOD_SECONDS,
 };
 
@@ -737,6 +737,10 @@ pub fn set_cancel_grace(ctx: Context<SetCancelGrace>, cancel_grace_seconds: u32,
 pub struct ProposeCouncil<'info> {
     pub council: Signer<'info>,
 
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
     #[account(
         mut,
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
@@ -747,12 +751,13 @@ pub struct ProposeCouncil<'info> {
 }
 
 /// Council only. Names the authority that becomes the council once it signs `accept_council`;
-/// `kind` is `COUNCIL_SQUADS` or `COUNCIL_GENERIC` (`CouncilKindInvalid` otherwise). The zero key
-/// withdraws a pending proposal. A new proposal replaces the pending one.
+/// `kind` must be `COUNCIL_SQUADS` (`CouncilKindInvalid` otherwise). The zero key withdraws a
+/// pending proposal. A new proposal replaces the pending one.
 pub fn propose_council(ctx: Context<ProposeCouncil>, new_council: Pubkey, kind: u8, valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
-    require!(kind == COUNCIL_SQUADS || kind == COUNCIL_GENERIC, PoolError::CouncilKindInvalid);
+    require!(kind == COUNCIL_SQUADS, PoolError::CouncilKindInvalid);
     let pool = &mut ctx.accounts.pool;
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     pool.pending_council = new_council;
     pool.pending_council_kind = kind;
     emit_cpi!(CouncilProposed { pool: pool.key(), council: new_council, kind });

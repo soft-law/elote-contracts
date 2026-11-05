@@ -63,6 +63,7 @@ export function getProposeCouncilDiscriminatorBytes(): ReadonlyUint8Array {
 export type ProposeCouncilInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountCouncil extends string | AccountMeta<string> = string,
+  TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
@@ -76,6 +77,9 @@ export type ProposeCouncilInstruction<
         ? ReadonlySignerAccount<TAccountCouncil> &
             AccountSignerMeta<TAccountCouncil>
         : TAccountCouncil,
+      TAccountMultisig extends string
+        ? ReadonlyAccount<TAccountMultisig>
+        : TAccountMultisig,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -135,12 +139,14 @@ export function getProposeCouncilInstructionDataCodec(): FixedSizeCodec<
 
 export type ProposeCouncilAsyncInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   council: TAccountCouncil;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -151,6 +157,7 @@ export type ProposeCouncilAsyncInput<
 
 export async function getProposeCouncilInstructionAsync<
   TAccountCouncil extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -158,6 +165,7 @@ export async function getProposeCouncilInstructionAsync<
 >(
   input: ProposeCouncilAsyncInput<
     TAccountCouncil,
+    TAccountMultisig,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -171,6 +179,10 @@ export async function getProposeCouncilInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -202,6 +214,11 @@ export async function getProposeCouncilInstructionAsync<
     council: {
       value: input.council ?? null,
       isSigner: true,
+      isWritable: false,
+    },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
@@ -239,6 +256,7 @@ export async function getProposeCouncilInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("council", accounts.council),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -252,6 +270,10 @@ export async function getProposeCouncilInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -270,12 +292,14 @@ export async function getProposeCouncilInstructionAsync<
 
 export type ProposeCouncilInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   council: TAccountCouncil;
+  multisig: TAccountMultisig;
   pool: TAccountPool;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
@@ -286,6 +310,7 @@ export type ProposeCouncilInput<
 
 export function getProposeCouncilInstruction<
   TAccountCouncil extends InstructionSignerInput,
+  TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
@@ -293,6 +318,7 @@ export function getProposeCouncilInstruction<
 >(
   input: ProposeCouncilInput<
     TAccountCouncil,
+    TAccountMultisig,
     TAccountPool,
     TAccountEventAuthority,
     TAccountProgram
@@ -305,6 +331,10 @@ export function getProposeCouncilInstruction<
   ResolvedInstructionAccountMeta<
     TAccountCouncil,
     InstructionAccountInputAddress<TAccountCouncil>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountMultisig,
+    InstructionAccountInputAddress<TAccountMultisig>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -337,6 +367,11 @@ export function getProposeCouncilInstruction<
       isSigner: true,
       isWritable: false,
     },
+    multisig: {
+      value: input.multisig ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -366,6 +401,7 @@ export function getProposeCouncilInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("council", accounts.council),
+      getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
@@ -379,6 +415,10 @@ export function getProposeCouncilInstruction<
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
       InstructionAccountInputAddress<TAccountCouncil>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountMultisig,
+      InstructionAccountInputAddress<TAccountMultisig>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -402,9 +442,10 @@ export type ParsedProposeCouncilInstruction<
   programAddress: Address<TProgram>;
   accounts: {
     council: TAccountMetas[0];
-    pool: TAccountMetas[1];
-    eventAuthority: TAccountMetas[2];
-    program: TAccountMetas[3];
+    multisig: TAccountMetas[1];
+    pool: TAccountMetas[2];
+    eventAuthority: TAccountMetas[3];
+    program: TAccountMetas[4];
   };
   data: ProposeCouncilInstructionData;
 };
@@ -417,12 +458,12 @@ export function parseProposeCouncilInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedProposeCouncilInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 4) {
+  if (instruction.accounts.length < 5) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 4,
+        expectedAccountMetas: 5,
       },
     );
   }
@@ -436,6 +477,7 @@ export function parseProposeCouncilInstruction<
     programAddress: instruction.programAddress,
     accounts: {
       council: getNextAccount(),
+      multisig: getNextAccount(),
       pool: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

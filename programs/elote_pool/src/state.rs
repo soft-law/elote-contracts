@@ -58,8 +58,8 @@ pub const SQUADS_PROGRAM_ID: Pubkey = pubkey!("SQDS4ep65T869zMMBKyuUq6aD6EgTu8ps
 /// `Pool::council_kind`: the vault (index 0) of an autonomous Squads v4 multisig with a majority
 /// threshold, checked on every council instruction.
 pub const COUNCIL_SQUADS: u8 = 0;
-/// `Pool::council_kind`: any signer, for a future governance PDA; `accept_council` refuses it
-/// until a verified kind exists.
+/// `Pool::council_kind`: any signer, for a future governance PDA; `propose_council` and
+/// `accept_council` refuse it until a verified kind exists.
 pub const COUNCIL_GENERIC: u8 = 1;
 /// The most members a council multisig may have, so the check's cost stays bounded.
 pub const MAX_COUNCIL_MEMBERS: usize = 10;
