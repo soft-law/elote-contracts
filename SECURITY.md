@@ -27,7 +27,7 @@ Never test with an asset that has real value, not even on a "test mainnet-beta".
 
 | Role | How it is identified | What it can do |
 |---|---|---|
-| Council | `Pool.council`: vault 0 of the Squads v4 multisig `Pool.multisig`. Every council instruction except `propose_council` re-checks the multisig account (owner = Squads, vault 0 at the stored canonical bump, no config authority, at most ten members, threshold greater than half the voting members) and refuses a decision past its `valid_until` | Approve or reject line requests; suspend and resume draws; cancel an undrawn line; propose, withdraw and fire an acceleration; write off; endorse a pagaré en procuración, revoke it, annotate court acts and receipts, and cancel a paid pagaré as its holder; publish the FIX (any move, the first one, same-day corrections); name the FIX feeder and the guardian; set the line cap, the outstanding cap, the acceleration notice, the collection period and the borrower's cancel grace; resume the pool; propose a new council |
+| Council | `Pool.council`: vault 0 of the Squads v4 multisig `Pool.multisig`. Every council instruction re-checks the multisig account (owner = Squads, vault 0 at the stored canonical bump, no config authority, at most ten members, threshold greater than half the voting members) and refuses a decision past its `valid_until` | Approve or reject line requests; suspend and resume draws; cancel an undrawn line; propose, withdraw and fire an acceleration; write off; endorse a pagaré en procuración, revoke it, annotate court acts and receipts, and cancel a paid pagaré as its holder; publish the FIX (any move, the first one, same-day corrections); name the FIX feeder and the guardian; set the line cap, the outstanding cap, the acceleration notice, the collection period and the borrower's cancel grace; resume the pool; propose a new council |
 | Council members | The members of `Pool.multisig` | Each one alone can `pause` the pool (voter or not); together, through Squads votes, they act as the council |
 | Guardian | `Pool.guardian`, set by the council (the zero key for none) | `pause` only |
 | FIX feeder | `Pool.fx_feeder`, set by the council (the zero key for none) | `post_fix` for a later date within ±5% of the FIX in force; nothing else |
@@ -106,7 +106,6 @@ Documented limits, not open vulnerabilities; most are pinned by `programs/elote_
 - **Exact-second gates on a leader-set clock** can move by a few seconds.
 - **A concurrent payment makes an in-flight repayment retry** (`PagareAccountsMismatch`); the client re-reads and retries.
 - **`init_pool` and `draw` compute vary with PDA bump searches** (1,500 CU per failed try); `init_pool` is pinned under 70,000.
-- **`propose_council` does not run the per-instruction multisig check** that every other council instruction runs; the signer must still be `Pool.council`, and `accept_council` checks the new multisig.
 
 ## What the program does enforce
 

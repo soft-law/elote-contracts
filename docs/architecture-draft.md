@@ -153,10 +153,10 @@ starts with `council::fresh(valid_until)` (`council.rs:22`): `now > valid_until`
 `ProposalExpired`, `now == valid_until` is accepted. Squads proposals never expire, so the program
 bounds them. `pause`, `init_pool` and the non-council instructions take no `valid_until`.
 
-**Rotation** is two steps: `propose_council` (signed by the council, `has_one = council`; it does
-not take the multisig account) stores `pending_council` and its kind; `accept_council` is signed by
-the proposed vault, accepts only `COUNCIL_SQUADS`, and runs `council::check` on the new multisig
-before writing it. The zero key in `propose_council` withdraws a pending proposal.
+**Rotation** is two steps: `propose_council` (signed by the council, `has_one = council`, after
+`council::check` on the current multisig; only `COUNCIL_SQUADS`) stores `pending_council` and its
+kind; `accept_council` is signed by the proposed vault, accepts only `COUNCIL_SQUADS`, and runs
+`council::check` on the new multisig before writing it. The zero key in `propose_council` withdraws a pending proposal.
 
 `council::is_member` (`council.rs:75`) reads the same member list and is used by `pause`
 (a member pauses alone), `approve_line` (`BorrowerIsCurator`) and `endorse_pagare`
@@ -393,7 +393,7 @@ handler. **C** marks the instructions that run `council::check`; **V** the ones 
 | `set_acceleration_notice` | 271 | `ix/pool.rs:695` | council | V | C | allowed |
 | `set_collection_period` | 59 | `ix/pool.rs:352` | council | V | C | allowed |
 | `set_cancel_grace` | 65 | `ix/pool.rs:725` | council | V | C | allowed |
-| `propose_council` | 224 | `ix/pool.rs:752` | council | V | | allowed |
+| `propose_council` | 224 | `ix/pool.rs:756` | council | V | yes | allowed |
 | `accept_council` | 229 | `ix/pool.rs:783` | proposed vault | V | on the new multisig | allowed |
 | `set_fx_feeder` | 234 | `ix/pool.rs:824` | council | V | C | allowed |
 | `post_fix` | 240 | `ix/pool.rs:855` | feeder or council | V | council branch | allowed |
@@ -542,8 +542,10 @@ under their own names.
 
 #### `propose_council(new_council: Pubkey, kind: u8, valid_until)` — **V** (`ix/pool.rs:752`)
 
-- **Accounts (4):** `council` (signer); `pool` (mut, `has_one = council` → `Unauthorized`); + 2.
-- **Checks:** `ProposalExpired`; `kind` is 0 or 1 (`CouncilKindInvalid`).
+- **Accounts (5):** `council` (signer); `multisig` (`address = pool.multisig` → `CouncilInvalid`);
+  `pool` (mut, `has_one = council` → `Unauthorized`); + 2.
+- **Checks:** `ProposalExpired`; `kind == COUNCIL_SQUADS` (`CouncilKindInvalid`); `council::check`
+  on `multisig` (`CouncilInvalid`).
 - **Writes:** `pending_council = new_council`, `pending_council_kind = kind`; a new proposal
   replaces a pending one and the zero key withdraws it.
 - **Events:** `CouncilProposed`.
