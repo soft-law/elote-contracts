@@ -60,13 +60,17 @@ fn init_pool_stays_under_the_ceiling_with_and_without_extensions() {
     assert!(plain < CEILING && permissioned < CEILING, "init_pool used {plain} / {permissioned} CU, ceiling {CEILING}");
 }
 
+/// `draw` carries the Metaplex Core CPI (about 37 000 CU, fixed by the plugin set), so it has its
+/// own ceiling, 10 000 CU below `CEILING`: a growth in `draw` fails here with that margin left.
+const DRAW_CEILING: u64 = 90_000;
+
 /// `draw` on a 120-installment line: the payability check and the tranche interest add a few
-/// multiplications; the Metaplex Core CPI lands here too (about 37 000 CU of the total, fixed by
-/// the plugin set) and so does the registry's issuance entry. Deterministic since the client
-/// passes the PDA bumps. At about 82 500 CU there are some 17 000 CU of room before any growth in
-/// `draw` needs a compute-budget request from clients; trimming attributes is the lever.
+/// multiplications; the Metaplex Core CPI lands here too and so does the registry's issuance
+/// entry. Deterministic since the client passes the PDA bumps. Measured on the first and second
+/// tranches and on a tranche with a two-digit index (a longer name and attribute); about 82 000 CU
+/// each. Trimming attributes is the lever if it grows.
 #[test]
-fn draw_stays_under_the_ceiling_at_120_installments() {
+fn draw_stays_under_its_ceiling_at_120_installments() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool_with_grace(0);
     let investor = env.investor(&k, 200 * UNIT);
@@ -76,11 +80,20 @@ fn draw_stays_under_the_ceiling_at_120_installments() {
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 40 * UNIT);
     let first = env.send(ix, &borrower, &[]).compute_units_consumed;
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 60 * UNIT);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 50 * UNIT);
     let second = env.send(ix, &borrower, &[]).compute_units_consumed;
+    let mut tenth = 0;
+    for _ in 2..=10 {
+        let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
+        tenth = env.send(ix, &borrower, &[]).compute_units_consumed;
+    }
+    assert_eq!(env.line(&k, line_id).draws, 11);
     println!("draw, first tranche at 120 installments: {first} CU");
     println!("draw, second tranche at 120 installments: {second} CU");
-    assert!(first < CEILING && second < CEILING, "draw used {first} / {second} CU, ceiling {CEILING}");
+    println!("draw, tranche 10 at 120 installments: {tenth} CU");
+    for (what, cu) in [("first", first), ("second", second), ("tranche 10", tenth)] {
+        assert!(cu <= DRAW_CEILING, "draw ({what}) used {cu} CU, ceiling {DRAW_CEILING}");
+    }
 }
 
 /// `cancel_pagare` runs no arrears loop: one coverage comparison, the sidecar's mark and the Core
