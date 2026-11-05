@@ -46,14 +46,17 @@ Signers: `creator`.
 
 ### `propose_council(new_council: pubkey, kind: u8, valid_until: i64)`
 
-Names the next council: `kind` 0 (a Squads vault) or 1 (a generic signer, not yet accepted). Council only; the zero key withdraws the proposal.
+Names the next council: `kind` 0 (a Squads vault), the only kind taken. Council only, after the multisig check; the zero key withdraws the proposal.
 
-Signers: `council`. Council instruction. **Known gap:** unlike every other council instruction it does not take the multisig account and does not run the multisig check (the signer must be `Pool.council`; `accept_council` checks the new multisig).
+Signers: `council`. Council instruction: runs the multisig check on the current council's multisig before writing the proposal; `accept_council` runs it again on the new one.
 
 | Account | Writable | Signer | Notes |
 |---|---|---|---|
 | `council` |  | yes |  |
+| `multisig` |  |  |  |
 | `pool` | yes |  |  |
+
+Errors: `ProposalExpired` (`valid_until` passed), `CouncilKindInvalid` (`kind` other than `COUNCIL_SQUADS`), `CouncilInvalid` (`multisig` is not `Pool.multisig`, or fails the multisig check), `CouncilTooLarge`, `Unauthorized` (the signer is not `Pool.council`).
 
 ### `accept_council(valid_until: i64)`
 
