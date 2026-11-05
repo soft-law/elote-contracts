@@ -674,8 +674,8 @@ pub fn set_guardian(ctx: Context<CouncilPool>, guardian: Pubkey, valid_until: i6
     Ok(())
 }
 
-/// Council only: the largest line `approve_line` accepts, `1..=BPS` of the NAV; lines already
-/// approved keep their principal.
+/// Council only: the line cap, `1..=BPS` of the NAV, measured at every approval and every draw;
+/// lines already approved keep their principal and draw within the new cap.
 pub fn set_max_line_bps(ctx: Context<CouncilPool>, max_line_bps: u16, valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
     require!(max_line_bps >= 1 && u64::from(max_line_bps) <= BPS, PoolError::WrongAmount);

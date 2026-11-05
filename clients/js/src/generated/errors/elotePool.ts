@@ -67,7 +67,7 @@ export const ELOTE_POOL_ERROR__ZERO_SHARES = 0x1787; // 6023
 export const ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL = 0x1788; // 6024
 /** SlippageExceeded: The result is below the minimum the caller accepts */
 export const ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED = 0x1789; // 6025
-/** LineTooLarge: The principal exceeds the pool's maximum line, max_line_bps of the NAV */
+/** LineTooLarge: The line exceeds max_line_bps of the NAV: its principal at the approval, or its USDC drawn at a draw */
 export const ELOTE_POOL_ERROR__LINE_TOO_LARGE = 0x178a; // 6026
 /** OutstandingCapExceeded: The draw would take the pool's outstanding principal above its cap */
 export const ELOTE_POOL_ERROR__OUTSTANDING_CAP_EXCEEDED = 0x178b; // 6027
@@ -127,7 +127,7 @@ export const ELOTE_POOL_ERROR__FIX_DATE_INVALID = 0x17a5; // 6053
 export const ELOTE_POOL_ERROR__FIX_JUMP = 0x17a6; // 6054
 /** FixMismatch: The FIX signed is not the one published now */
 export const ELOTE_POOL_ERROR__FIX_MISMATCH = 0x17a7; // 6055
-/** FixStale: No FIX is published, or it is too old for a draw */
+/** FixStale: No FIX is published, or it is too old for a draw or an approval */
 export const ELOTE_POOL_ERROR__FIX_STALE = 0x17a8; // 6056
 /** DocumentHashRequired: The signed document's hash is required */
 export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x17a9; // 6057
@@ -272,7 +272,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__FIX_MISMATCH]: `The FIX signed is not the one published now`,
     [ELOTE_POOL_ERROR__FIX_OFF_REFERENCE]: `The FIX is too far from the FX reference for the feeder; the council must publish it`,
     [ELOTE_POOL_ERROR__FIX_OUT_OF_BOUNDS]: `The FIX is outside the pool's bounds`,
-    [ELOTE_POOL_ERROR__FIX_STALE]: `No FIX is published, or it is too old for a draw`,
+    [ELOTE_POOL_ERROR__FIX_STALE]: `No FIX is published, or it is too old for a draw or an approval`,
     [ELOTE_POOL_ERROR__FX_REFERENCE_INVALID]: `The FX reference account is not RedStone's MXNe price`,
     [ELOTE_POOL_ERROR__FX_REFERENCE_STALE]: `The FX reference is too old for the feeder to publish against`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
@@ -280,7 +280,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__INVARIANT_BROKEN]: `A pool invariant does not hold after this instruction; the transaction is refused`,
     [ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID]: `The repayment must cover the late interest due`,
     [ELOTE_POOL_ERROR__LINE_STATUS]: `The line is not in the required status`,
-    [ELOTE_POOL_ERROR__LINE_TOO_LARGE]: `The principal exceeds the pool's maximum line, max_line_bps of the NAV`,
+    [ELOTE_POOL_ERROR__LINE_TOO_LARGE]: `The line exceeds max_line_bps of the NAV: its principal at the approval, or its USDC drawn at a draw`,
     [ELOTE_POOL_ERROR__MAX_MISSED_TOO_LOW]: `max_missed is below the floor: at least one missed installment must come before the collection trigger`,
     [ELOTE_POOL_ERROR__NO_PENDING_COUNCIL]: `No council rotation is pending, or this signer is not the one proposed`,
     [ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED]: `Fewer installments missed than the line allows before collection`,

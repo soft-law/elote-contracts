@@ -86,7 +86,7 @@ Signers: `council`. Council instruction.
 
 ### `set_max_line_bps(max_line_bps: u16, valid_until: i64)`
 
-Sets the line cap, `1..=10_000` bps of the NAV at the approval. Council only.
+Sets the line cap, `1..=10_000` bps of the NAV, measured at every approval and draw. Council only.
 
 Signers: `council`. Council instruction.
 
@@ -290,7 +290,9 @@ Signers: `borrower`, `payer`, `sponsor (optional)`.
 
 ### `approve_line(expediente_root: [u8; 32], terms_hash: [u8; 32], valid_until: i64)`
 
-The council approves a requested line, naming its expediente root and terms hash, within 15 days of the request and within the line cap; a curator cannot be the borrower.
+The council approves a requested line, naming its expediente root and terms hash, within 15 days of the request and within the line cap at a FIX at most five days old; a curator cannot be the borrower.
+
+The principal must be at most `max_line_bps` of the NAV now (`vault + outstanding_principal`), converted to MXN at the FIX in force (`LineTooLarge`); that FIX must be published and dated at most `fx::MAX_FIX_AGE_DAYS` (5) days before today in Mexico City, the same freshness as a draw (`FixStale`).
 
 Signers: `council`. Council instruction.
 
@@ -330,7 +332,9 @@ Signers: `borrower`.
 
 ### `draw(amount_mxn: u64, fix_rate: u64, fix_date: u32, asset_bump: u8, pagare_bump: u8, cert_fingerprint: [u8; 32], signature_method: u8)`
 
-Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain from the approved template and terms) as a frozen Core asset owned by the pool, with its `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw window has closed, on a changed or stale FIX, or above what the line, the vault or the pool cap allows.
+Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain from the approved template and terms) as a frozen Core asset owned by the pool, with its `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw window has closed, on a changed or stale FIX, or above what the line, the line cap (the line's USDC drawn within `max_line_bps` of the NAV now), the vault or the pool cap allows.
+
+The line cap is measured again in USDC at every draw: `line.usdc_drawn + usdc ≤ max_line_bps × (vault + outstanding_principal) / BPS`, with the NAV read before the tranche moves (the NAV a deposit prices at), after the vault check (`LineTooLarge`). A line approved within the cap in MXN can therefore draw less than its principal when the peso strengthens or the NAV falls.
 
 Signers: `borrower`, `payer`.
 
@@ -656,7 +660,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `line_count` | `u64` |  |
 | `grace_period_seconds` | `u32` | Reserved, always zero: there is no grace period. Late interest runs from the first second after a due date (or the term), and collection and write-offs count from the due dates themselves. `init_pool` writes zero and nothing reads it; the field stays so the layout does not move. |
 | `collection_period_seconds` | `u32` | Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`. |
-| `max_line_bps` | `u16` | The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points (`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`. |
+| `max_line_bps` | `u16` | The line cap, as a share of the NAV in basis points (`1..=BPS`): `approve_line` measures the principal (in MXN at the FIX) against the NAV at the approval, and every `draw` the line's USDC drawn, the tranche included, against the NAV at the draw. Set at `init_pool` and with `set_max_line_bps`. |
 | `asset_controls` | `u8` | `ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without the program. Recorded at `init_pool`, never refused. |
 | `permissioned` | `bool` | The share mint is `DefaultAccountState = Frozen`: a holder's account must be thawed by the mint's freeze authority before it can receive or burn shares. Recorded at `init_pool`. |
 | `paused` | `bool` |  |
@@ -753,7 +757,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6023 | `ZeroShares` | The deposit would mint zero shares |
 | 6024 | `FirstDepositTooSmall` | First deposit below the minimum |
 | 6025 | `SlippageExceeded` | The result is below the minimum the caller accepts |
-| 6026 | `LineTooLarge` | The principal exceeds the pool's maximum line, max_line_bps of the NAV |
+| 6026 | `LineTooLarge` | The line exceeds max_line_bps of the NAV: its principal at the approval, or its USDC drawn at a draw |
 | 6027 | `OutstandingCapExceeded` | The draw would take the pool's outstanding principal above its cap |
 | 6028 | `CollectionPeriodTooShort` | The collection period is shorter than the minimum |
 | 6029 | `AccelerationNoticeTooShort` | The acceleration notice is below the seven-day floor |
@@ -783,7 +787,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6053 | `FixDateInvalid` | The FIX date is not a valid date, is in the future, or is older than the published one |
 | 6054 | `FixJump` | The FIX moves more than the feeder may publish; the council must |
 | 6055 | `FixMismatch` | The FIX signed is not the one published now |
-| 6056 | `FixStale` | No FIX is published, or it is too old for a draw |
+| 6056 | `FixStale` | No FIX is published, or it is too old for a draw or an approval |
 | 6057 | `DocumentHashRequired` | The signed document's hash is required |
 | 6058 | `SignatureMethodInvalid` | signature_method is unknown, or lacks its certificate fingerprint |
 | 6059 | `PagareNotCovered` | No repayment has marked this pagaré paid |
@@ -809,16 +813,16 @@ Measured by `programs/elote_pool/tests/compute.rs` (the program alone) and `test
 |---|---|
 | accelerate_line at 120 installments, all due | 49251 |
 | annotate_payment at 120 installments | 20364 |
-| approve_line (with the multisig check) | 14798 |
-| approve_line through Squads | 40938 |
+| approve_line (with the multisig check) | 15271 |
+| approve_line through Squads | 41411 |
 | cancel_pagare (council) through Squads | 83924 |
 | cancel_pagare at 120 installments | 51805 |
 | cancel_pagare by the borrower at 120 installments | 51398 |
 | cancel_pagare by the procurador at 120 installments | 53516 |
 | court_annotation at 120 installments | 17686 |
-| draw, first tranche at 120 installments | 82055 |
-| draw, second tranche at 120 installments | 82229 |
-| draw, tranche 10 at 120 installments | 82242 |
+| draw, first tranche at 120 installments | 82336 |
+| draw, second tranche at 120 installments | 82510 |
+| draw, tranche 10 at 120 installments | 82523 |
 | endorse_pagare (procuracion, plugin added) at 120 installments | 38403 |
 | endorse_pagare (procuracion, plugin approved) at 120 installments | 44988 |
 | endorse_pagare through Squads | 70198 |

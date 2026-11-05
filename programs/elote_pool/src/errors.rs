@@ -65,7 +65,7 @@ pub enum PoolError {
     FirstDepositTooSmall,
     #[msg("The result is below the minimum the caller accepts")]
     SlippageExceeded,
-    #[msg("The principal exceeds the pool's maximum line, max_line_bps of the NAV")]
+    #[msg("The line exceeds max_line_bps of the NAV: its principal at the approval, or its USDC drawn at a draw")]
     LineTooLarge,
     #[msg("The draw would take the pool's outstanding principal above its cap")]
     OutstandingCapExceeded,
@@ -131,7 +131,7 @@ pub enum PoolError {
     FixJump,
     #[msg("The FIX signed is not the one published now")]
     FixMismatch,
-    #[msg("No FIX is published, or it is too old for a draw")]
+    #[msg("No FIX is published, or it is too old for a draw or an approval")]
     FixStale,
 
     // Pagarés.

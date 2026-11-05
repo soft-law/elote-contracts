@@ -89,8 +89,10 @@ export type Pool = {
    */
   collectionPeriodSeconds: number;
   /**
-   * The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
-   * (`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`.
+   * The line cap, as a share of the NAV in basis points (`1..=BPS`): `approve_line` measures the
+   * principal (in MXN at the FIX) against the NAV at the approval, and every `draw` the line's
+   * USDC drawn, the tranche included, against the NAV at the draw. Set at `init_pool` and with
+   * `set_max_line_bps`.
    */
   maxLineBps: number;
   /**
@@ -192,8 +194,10 @@ export type PoolArgs = {
    */
   collectionPeriodSeconds: number;
   /**
-   * The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
-   * (`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`.
+   * The line cap, as a share of the NAV in basis points (`1..=BPS`): `approve_line` measures the
+   * principal (in MXN at the FIX) against the NAV at the approval, and every `draw` the line's
+   * USDC drawn, the tranche included, against the NAV at the draw. Set at `init_pool` and with
+   * `set_max_line_bps`.
    */
   maxLineBps: number;
   /**

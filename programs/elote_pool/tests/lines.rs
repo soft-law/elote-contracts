@@ -10,7 +10,12 @@ use solana_signer::Signer;
 
 /// A pool with one investor who deposited `assets`.
 fn pool_with(env: &mut Env, assets: u64) -> (PoolKeys, Keypair) {
-    let (k, _) = env.setup_pool();
+    pool_capped(env, assets, HARNESS_MAX_LINE_BPS)
+}
+
+/// As `pool_with`, with the line cap `max_line_bps`.
+fn pool_capped(env: &mut Env, assets: u64, max_line_bps: u16) -> (PoolKeys, Keypair) {
+    let (k, _) = env.setup_pool_capped(max_line_bps);
     let a = env.investor(&k, assets);
     env.deposit(&k, &a, assets);
     (k, a)
@@ -223,7 +228,7 @@ fn repay_clamps_overpayment_and_rejects_wrong_status() {
 #[test]
 fn draw_rejects_insufficient_liquidity_strangers_and_the_pause() {
     let mut env = Env::new();
-    let (k, a) = pool_with(&mut env, 4 * UNIT);
+    let (k, a) = pool_capped(&mut env, 4 * UNIT, BPS); // a line of the whole NAV
     let borrower = env.borrower(&k);
     // A line can never exceed the NAV (the cap is at most 100%), so the vault runs short only
     // when a redemption drains it after the approval.

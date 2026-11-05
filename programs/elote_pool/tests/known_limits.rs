@@ -146,7 +146,7 @@ fn limit_pause_blocks_exit_while_repayments_continue() {
 #[test]
 fn limit_total_write_off_leaves_a_pool_that_cannot_take_deposits() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool();
+    let (k, _) = env.setup_pool_capped(BPS); // the whole NAV lent to one line
     let investor = env.investor(&k, 2 * UNIT);
     env.deposit(&k, &investor, 2 * UNIT);
     let borrower = env.borrower(&k);
@@ -177,7 +177,7 @@ fn limit_total_write_off_leaves_a_pool_that_cannot_take_deposits() {
 #[test]
 fn limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installments() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool();
+    let (k, _) = env.setup_pool_capped(BPS); // a line of 6 of 10
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
     let borrower = env.borrower(&k);
@@ -236,7 +236,7 @@ fn first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor() {
 #[test]
 fn limit_late_interest_is_settled_at_execution_time_so_clients_must_pad() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool();
+    let (k, _) = env.setup_pool_capped(BPS); // a line of 6 of 10
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
     let borrower = env.borrower(&k);

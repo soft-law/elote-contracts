@@ -14,7 +14,12 @@ use anchor_lang::Space;
 use solana_signer::Signer;
 
 fn pool_with(env: &mut Env, assets: u64) -> PoolKeys {
-    let (k, _) = env.setup_pool();
+    pool_capped(env, assets, HARNESS_MAX_LINE_BPS)
+}
+
+/// As `pool_with`, with the line cap `max_line_bps`.
+fn pool_capped(env: &mut Env, assets: u64, max_line_bps: u16) -> PoolKeys {
+    let (k, _) = env.setup_pool_capped(max_line_bps);
     let a = env.investor(&k, assets);
     env.deposit(&k, &a, assets);
     k
@@ -33,7 +38,7 @@ fn hex(bytes: &[u8]) -> String {
 #[test]
 fn every_draw_issues_one_frozen_pagare_held_by_the_pool() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT);
+    let k = pool_capped(&mut env, 10 * UNIT, BPS); // a line of 6 of 10
     let borrower = env.borrower(&k);
     let relayer = env.funded(1);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
@@ -167,7 +172,7 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
 #[test]
 fn drawn_through_is_the_lines_drawn_after_each_tranche() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT);
+    let k = pool_capped(&mut env, 10 * UNIT, BPS); // a line of 6 of 10
     let borrower = env.borrower(&k);
     let p = env.line_params(6 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -186,7 +191,7 @@ fn drawn_through_is_the_lines_drawn_after_each_tranche() {
 #[test]
 fn a_zero_fingerprint_is_allowed_only_for_a_wallet_only_signature() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT);
+    let k = pool_capped(&mut env, 10 * UNIT, BPS); // a line of 6 of 10
     let borrower = env.borrower(&k);
     let p = env.line_params(6 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);

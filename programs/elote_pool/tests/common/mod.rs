@@ -225,6 +225,9 @@ pub const SPL_TOKEN_ACCOUNT_FROZEN: u32 = 17;
 
 /// `state::BPS` as the `u16` that `init_pool` takes.
 pub const BPS: u16 = elote_pool::state::BPS as u16;
+/// The line cap the harness pools are created with: half the NAV, finite so every draw runs the
+/// cap; tests that need a larger line or another cap set their own.
+pub const HARNESS_MAX_LINE_BPS: u16 = 5_000;
 
 /// SPL Token's `TokenError::InsufficientFunds`, surfaced as custom error 1 by a failed CPI.
 pub const SPL_TOKEN_INSUFFICIENT_FUNDS: u32 = 1;
@@ -234,6 +237,9 @@ pub const DEAD_SHARES: u64 = 1_000;
 
 /// One whole test-token unit: the asset mint has 6 decimals.
 pub const UNIT: u64 = 1_000_000;
+/// The pool cap on outstanding cost the harness pools are created with: finite, so every draw runs
+/// it, and above what any harness test lends; tests of the cap set their own.
+pub const HARNESS_MAX_OUTSTANDING: u64 = 1_000 * UNIT;
 
 /// The installment interval the schedule tests use: 30 days.
 pub const MONTH: i64 = 30 * 24 * 3600;
@@ -852,7 +858,7 @@ impl Env {
             max_line_bps,
             collection_period_seconds,
             guardian: Pubkey::default(),
-            max_outstanding_principal: u64::MAX,
+            max_outstanding_principal: HARNESS_MAX_OUTSTANDING,
             acceleration_notice_seconds: ACCELERATION_NOTICE,
             cancel_grace_seconds: CANCEL_GRACE,
             min_fix_rate: 0,
@@ -946,23 +952,27 @@ impl Env {
         (k, ix)
     }
 
-    /// As `init_pool_full` with no effective concentration cap (`max_line_bps` = 10,000, the whole
-    /// NAV), so the tests that open large lines keep working; the cap has its own tests.
+    /// As `init_pool_full` with the harness line cap, `HARNESS_MAX_LINE_BPS`.
     pub fn init_pool_plain(&mut self, asset_mint: &Pubkey) -> (PoolKeys, Instruction) {
-        self.init_pool_full(asset_mint, BPS)
+        self.init_pool_full(asset_mint, HARNESS_MAX_LINE_BPS)
     }
 
     /// Creates a 6-decimal classic test asset mint (authority = council) and a pool for it with a
     /// plain Token-2022 share mint.
     pub fn setup_pool(&mut self) -> (PoolKeys, TransactionMetadata) {
+        self.setup_pool_capped(HARNESS_MAX_LINE_BPS)
+    }
+
+    /// As `setup_pool`, with the line cap `max_line_bps` (`BPS` for lines up to the whole NAV).
+    pub fn setup_pool_capped(&mut self, max_line_bps: u16) -> (PoolKeys, TransactionMetadata) {
         let council = self.council.insecure_clone();
         let asset_mint = self.create_mint(&council.pubkey(), 6);
-        let (k, ix) = self.init_pool_full(&asset_mint, BPS);
+        let (k, ix) = self.init_pool_full(&asset_mint, max_line_bps);
         let meta = self.send(ix, &council, &[]);
         (k, meta)
     }
 
-    /// A pool on a plain Token-2022 asset (6 decimals, no extensions, no effective cap).
+    /// A pool on a plain Token-2022 asset (6 decimals, no extensions, the harness caps).
     pub fn setup_pool_2022(&mut self) -> (PoolKeys, TransactionMetadata) {
         let council = self.council.insecure_clone();
         let asset_mint = self.create_mint_2022(&council.pubkey(), 6);
@@ -980,7 +990,7 @@ impl Env {
         let share_mint = self.create_share_mint(&pool, 6, Some(gate), true);
         let mut k = PoolKeys::new(&council.pubkey(), &asset_mint, &share_mint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
         k.collection = self.create_collection(&pool);
-        let ix = self.init_pool_ix_for(&k, BPS);
+        let ix = self.init_pool_ix_for(&k, HARNESS_MAX_LINE_BPS);
         let meta = self.send(ix, &council, &[]);
         (k, meta)
     }

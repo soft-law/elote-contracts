@@ -184,7 +184,9 @@ pub struct ApproveLine<'info> {
 /// The council approves exactly the requested expediente and terms (`ExpedienteMismatch`), within
 /// `REQUEST_TTL_SECONDS` of the request (`RequestExpired`), with the borrower not a member of the
 /// council's multisig (`BorrowerIsCurator`) and the principal at most `max_line_bps` of the NAV now
-/// (`LineTooLarge`), converted to MXN at the FIX in force; refused while paused. Opens the draw window: to the first due date, or to the term on a bullet line.
+/// (`LineTooLarge`), converted to MXN at the FIX in force, which must be at most
+/// `fx::MAX_FIX_AGE_DAYS` old (`FixStale`); refused while paused. Opens the draw window: to the first
+/// due date, or to the term on a bullet line. Every draw measures the cap again, in USDC.
 pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_hash: [u8; 32], valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
     let now = Clock::get()?.unix_timestamp;
@@ -199,8 +201,11 @@ pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_
     require!(expediente_root == line.expediente_root && terms_hash == line.terms_hash, PoolError::ExpedienteMismatch);
     require!(!council::is_member(&multisig, &line.borrower)?, PoolError::BorrowerIsCurator);
     let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
-    // The NAV is in USDC and the principal in MXN: the cap is converted at the FIX in force.
+    // The NAV is in USDC and the principal in MXN: the cap is converted at the FIX in force, as
+    // fresh as a draw needs it.
     require!(pool.fix_rate != 0, PoolError::FixStale);
+    let age = fx::mexico_city_day(now).checked_sub(fx::fix_day(pool.fix_date)?).ok_or(PoolError::Overflow)?;
+    require!(age <= fx::MAX_FIX_AGE_DAYS, PoolError::FixStale);
     let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
     let cap_mxn = fx::mxn_for_usdc(cap, pool.fix_rate).ok_or(PoolError::Overflow)?;
     require!(line.principal <= cap_mxn, PoolError::LineTooLarge);
@@ -560,7 +565,8 @@ pub fn delivery_hash(pagare_hash: &[u8; 32], fix_rate: u64, fix_date: u32, usdc_
 /// not paused; `Approved` or `Active`; `0 < amount_mxn <= principal - drawn`; `now <
 /// availability_end`, strictly; on a scheduled line every installment keeps at least one centavo;
 /// fewer than `MAX_DRAWS` tranches; at least one USDC base unit delivered; the vault has it; the
-/// pool's outstanding cost stays within `max_outstanding_principal`; a valid signature method. The
+/// line's USDC drawn, this tranche included, at most `max_line_bps` of the NAV now (`LineTooLarge`);
+/// the pool's outstanding cost stays within `max_outstanding_principal`; a valid signature method. The
 /// program derives the pagaré hash and the delivery hash; the tranche's interest, at the annual rate
 /// from now to the last due date, is fixed here.
 #[allow(clippy::too_many_arguments)]
@@ -598,6 +604,10 @@ pub fn draw(
     let usdc = fx::usdc_for_mxn(amount_mxn, fix_rate).ok_or(PoolError::Overflow)?;
     require!(usdc > 0, PoolError::WrongAmount);
     require!(usdc <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
+    // The concentration cap in USDC, against the NAV now (the one a deposit prices at).
+    let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
+    let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
+    require!(line.usdc_drawn.checked_add(usdc).ok_or(PoolError::Overflow)? <= cap, PoolError::LineTooLarge);
     let outstanding_after = pool.outstanding_principal.checked_add(usdc).ok_or(PoolError::Overflow)?;
     require!(outstanding_after <= pool.max_outstanding_principal, PoolError::OutstandingCapExceeded);
     // The certificate fingerprint may be zero only for a wallet-only signature.

@@ -173,7 +173,7 @@ fn f03_write_off_waits_for_the_pools_collection_period_from_the_mark() {
     let k = env.pool_keys_for(&asset_mint);
     let ix = env.init_pool_ix_full(&k, BPS, COLLECTION_PERIOD - 1);
     env.expect_err(ix, &council, &[], E_COLLECTION_PERIOD_TOO_SHORT);
-    let (k, meta) = env.setup_pool();
+    let (k, meta) = env.setup_pool_capped(BPS); // a line of 6 of 10 below
     let ev: elote_pool::events::PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((ev.pool, ev.collection_period_seconds), (k.pool, COLLECTION_PERIOD));
     assert_eq!(env.pool(&k).collection_period_seconds, COLLECTION_PERIOD);

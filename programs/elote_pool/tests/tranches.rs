@@ -11,7 +11,12 @@ use solana_signer::Signer;
 
 /// A pool with one investor who deposited `assets`.
 fn pool_with(env: &mut Env, assets: u64) -> PoolKeys {
-    let (k, _) = env.setup_pool();
+    pool_capped(env, assets, HARNESS_MAX_LINE_BPS)
+}
+
+/// As `pool_with`, with the line cap `max_line_bps`.
+fn pool_capped(env: &mut Env, assets: u64, max_line_bps: u16) -> PoolKeys {
+    let (k, _) = env.setup_pool_capped(max_line_bps);
     let a = env.investor(&k, assets);
     env.deposit(&k, &a, assets);
     k
@@ -85,7 +90,7 @@ fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
 #[test]
 fn tranche_interest_runs_to_the_last_due_date_not_the_term() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT);
+    let k = pool_capped(&mut env, 10 * UNIT, BPS); // a line of 6 of 10
     let borrower = env.borrower(&k);
     let mut p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     p.term_end += YEAR; // the term outlives the calendar by a year
@@ -104,7 +109,7 @@ fn tranche_interest_runs_to_the_last_due_date_not_the_term() {
 #[test]
 fn a_second_tranche_raises_every_installment() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT);
+    let k = pool_capped(&mut env, 10 * UNIT, BPS); // a line of 6 of 10
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -218,7 +223,7 @@ fn weekly_quincenal_and_monthly_calendars_run_a_full_cycle() {
 #[test]
 fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT);
+    let k = pool_capped(&mut env, 10 * UNIT, BPS); // a line of 6 of 10
     let investor = env.investor(&k, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
@@ -438,4 +443,99 @@ fn a_draw_derives_the_pagare_hash_and_the_delivery_hash() {
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     let ev2: PagareIssued = find_event(&env.send(ix, &borrower, &[])).unwrap();
     assert_ne!(ev2.pagare_hash, ev.pagare_hash);
+}
+
+/// A pool with a `max_line_bps` concentration cap, FIX `fix_rate` published today by the council,
+/// and `assets` deposited by one investor. The harness does not keep the FIX current.
+fn capped_pool(env: &mut Env, max_line_bps: u16, fix_rate: u64, assets: u64) -> PoolKeys {
+    let council = env.council.insecure_clone();
+    let asset = env.create_mint(&council.pubkey(), 6);
+    let (k, ix) = env.init_pool_full(&asset, max_line_bps);
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), fix_rate, env.today());
+    env.send(ix, &council, &[]);
+    let investor = env.investor(&k, assets);
+    env.deposit(&k, &investor, assets);
+    k
+}
+
+/// Requests and approves `p` on a pool whose FIX the test sets itself.
+fn open_at_own_fix(env: &mut Env, k: &PoolKeys, borrower: &Keypair, p: &LineParams) -> u64 {
+    let (id, _) = env.request_line_with(k, borrower, p, None);
+    env.release_fix(k);
+    env.approve_line(k, id, &borrower.pubkey(), p);
+    id
+}
+
+/// The concentration cap is measured in USDC when the money leaves: the line's USDC drawn after the
+/// tranche stays within `max_line_bps` of the NAV at the draw, whatever the line's MXN principal.
+#[test]
+fn a_tranche_past_the_cap_in_usdc_is_refused_though_the_line_fits_in_mxn() {
+    let mut env = Env::new();
+    // 10% of 1,000 USDC: 100 USDC, MXN 2,000.00 at 20.0000.
+    let k = capped_pool(&mut env, 1_000, 200_000, 1_000 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(200_000, 0);
+    let id = open_at_own_fix(&mut env, &k, &borrower, &p);
+    let ev = env.draw_amount(&k, id, &borrower, 100_000);
+    assert_eq!(ev.usdc_delivered, 50 * UNIT, "MXN 1,000.00 at 20.0000");
+
+    // The peso strengthens to 18.0000: MXN 1,000.00 is 55.56 USDC, past the 50 USDC left.
+    env.warp(env.now() + 86_400);
+    let council = env.council.insecure_clone();
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 180_000, env.today());
+    env.send(ix, &council, &[]);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 100_000);
+    env.expect_err(ix, &borrower, &[], E_LINE_TOO_LARGE);
+    assert!(env.line(&k, id).available().unwrap() >= 100_000, "the line still has the MXN");
+    // MXN 900.00 is exactly the 50 USDC left.
+    let ev = env.draw_amount(&k, id, &borrower, 90_000);
+    assert_eq!((ev.usdc_delivered, env.line(&k, id).usdc_drawn), (50 * UNIT, 100 * UNIT));
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 1_000);
+    env.expect_err(ix, &borrower, &[], E_LINE_TOO_LARGE);
+}
+
+/// A deposit redeemed after the approval does not carry the cap it raised to the draw.
+#[test]
+fn a_deposit_redeemed_after_the_approval_does_not_raise_the_cap_at_the_draw() {
+    let mut env = Env::new();
+    // 50% of the NAV per line, at parity (one centavo is one USDC base unit).
+    let k = capped_pool(&mut env, 5_000, PARITY_FIX, 400 * UNIT);
+    let whale = env.investor(&k, 600 * UNIT);
+    env.deposit(&k, &whale, 600 * UNIT);
+    assert_eq!(env.nav(&k), 1_000 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(500 * UNIT, 0);
+    let id = open_at_own_fix(&mut env, &k, &borrower, &p);
+    let shares = env.token_balance(&k.share_ata(&whale.pubkey()));
+    env.redeem(&k, &whale, shares);
+    assert_eq!((env.nav(&k), env.token_balance(&k.vault)), (400 * UNIT, 400 * UNIT));
+
+    // 50% of 400 USDC: 200 USDC, though the vault holds 400 and the line 500.
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 200 * UNIT + 1);
+    env.expect_err(ix, &borrower, &[], E_LINE_TOO_LARGE);
+    env.draw_amount(&k, id, &borrower, 200 * UNIT);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 1);
+    env.expect_err(ix, &borrower, &[], E_LINE_TOO_LARGE);
+}
+
+/// `approve_line` converts the cap at the FIX in force, so it needs the same freshness as a draw.
+#[test]
+fn approve_line_needs_a_fix_at_most_five_days_old() {
+    let mut env = Env::new();
+    let k = capped_pool(&mut env, 5_000, PARITY_FIX, 100 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(10 * UNIT, 0);
+    let (a, _) = env.request_line_with(&k, &borrower, &p, None);
+    let (b, _) = env.request_line_with(&k, &borrower, &p, None);
+    env.release_fix(&k);
+    env.warp(env.now() + 5 * 86_400);
+    env.approve_line(&k, a, &borrower.pubkey(), &p);
+    env.warp(env.now() + 86_400);
+    let council = env.council.insecure_clone();
+    let hash = env.terms_hash(&k, b, &borrower.pubkey(), &p);
+    let ix = env.approve_line_ix(&k, &council.pubkey(), b, p.expediente_root, hash);
+    env.expect_err(ix, &council, &[], ERR_BASE + elote_pool::errors::PoolError::FixStale as u32);
+    env.ensure_fix(&k);
+    env.approve_line(&k, b, &borrower.pubkey(), &p);
 }

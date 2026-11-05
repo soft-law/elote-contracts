@@ -18,7 +18,12 @@ fn code(e: PoolError) -> u32 {
 }
 
 fn pool_with(env: &mut Env, assets: u64) -> PoolKeys {
-    let (k, _) = env.setup_pool();
+    pool_capped(env, assets, HARNESS_MAX_LINE_BPS)
+}
+
+/// As `pool_with`, with the line cap `max_line_bps`.
+fn pool_capped(env: &mut Env, assets: u64, max_line_bps: u16) -> PoolKeys {
+    let (k, _) = env.setup_pool_capped(max_line_bps);
     let a = env.investor(&k, assets);
     env.deposit(&k, &a, assets);
     k
@@ -154,7 +159,7 @@ fn a_scheduled_line_accelerated_keeps_the_interest_of_the_installments_due() {
 #[test]
 fn the_objective_mark_supersedes_a_pending_proposal() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT);
+    let k = pool_capped(&mut env, 10 * UNIT, BPS); // a line of 6 of 10
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let (id, _) = env.open_line_with(&k, &borrower, &p, None);

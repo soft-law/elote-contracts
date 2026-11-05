@@ -122,7 +122,8 @@ pub mod elote_pool {
     }
 
     /// The council approves a requested line, naming its expediente root and terms hash, within 15
-    /// days of the request and within the line cap; a curator cannot be the borrower.
+    /// days of the request and within the line cap at a FIX at most five days old; a curator cannot
+    /// be the borrower.
     pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_hash: [u8; 32], valid_until: i64) -> Result<()> {
         instructions::lines::approve_line(ctx, expediente_root, terms_hash, valid_until)
     }
@@ -141,8 +142,8 @@ pub mod elote_pool {
     /// borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain
     /// from the approved template and terms) as a frozen Core asset owned by the pool, with its
     /// `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw
-    /// window has closed, on a changed or stale FIX, or above what the line, the vault or the pool cap
-    /// allows.
+    /// window has closed, on a changed or stale FIX, or above what the line, the line cap (the line's
+    /// USDC drawn within `max_line_bps` of the NAV now), the vault or the pool cap allows.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         ctx: Context<Draw>,
@@ -260,7 +261,8 @@ pub mod elote_pool {
         instructions::pool::set_guardian(ctx, guardian, valid_until)
     }
 
-    /// Sets the line cap, `1..=10_000` bps of the NAV at the approval. Council only.
+    /// Sets the line cap, `1..=10_000` bps of the NAV, measured at every approval and draw. Council
+    /// only.
     pub fn set_max_line_bps(ctx: Context<CouncilPool>, max_line_bps: u16, valid_until: i64) -> Result<()> {
         instructions::pool::set_max_line_bps(ctx, max_line_bps, valid_until)
     }

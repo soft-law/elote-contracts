@@ -126,7 +126,7 @@ fn deposit_after_interest_mints_fewer_shares() {
 #[test]
 fn redeem_returns_pro_rata_and_respects_liquidity() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool();
+    let (k, _) = env.setup_pool_capped(BPS); // a second line of 12.0 of 15.6
     let a = env.investor(&k, 10 * UNIT);
     let b = env.investor(&k, 5_200_000);
     let nobody = env.investor(&k, 0);
@@ -312,13 +312,13 @@ fn init_pool_records_its_parameters_and_no_grace_period() {
 
     let pool = env.pool(&k);
     assert_eq!(pool.grace_period_seconds, 0, "reserved");
-    assert_eq!(u64::from(pool.max_line_bps), u64::from(BPS), "the harness default cap of 10,000 bps");
+    assert_eq!(pool.max_line_bps, HARNESS_MAX_LINE_BPS, "the harness default cap of 5,000 bps");
     assert_eq!((pool.asset_controls, pool.permissioned), (0, false));
     assert_eq!((pool.cancel_grace_seconds, pool.collection_period_seconds), (CANCEL_GRACE, COLLECTION_PERIOD));
-    assert_eq!((pool.acceleration_notice_seconds, pool.max_outstanding_principal), (ACCELERATION_NOTICE, u64::MAX));
+    assert_eq!((pool.acceleration_notice_seconds, pool.max_outstanding_principal), (ACCELERATION_NOTICE, HARNESS_MAX_OUTSTANDING));
 
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
-    assert_eq!((ev.pool, ev.max_line_bps), (k.pool, BPS));
+    assert_eq!((ev.pool, ev.max_line_bps), (k.pool, HARNESS_MAX_LINE_BPS));
     assert_eq!((ev.collection_period_seconds, ev.cancel_grace_seconds), (COLLECTION_PERIOD, CANCEL_GRACE));
 }
 

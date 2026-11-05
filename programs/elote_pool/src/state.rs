@@ -142,8 +142,10 @@ pub struct Pool {
     /// Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
     /// written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
     pub collection_period_seconds: u32,
-    /// The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points
-    /// (`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`.
+    /// The line cap, as a share of the NAV in basis points (`1..=BPS`): `approve_line` measures the
+    /// principal (in MXN at the FIX) against the NAV at the approval, and every `draw` the line's
+    /// USDC drawn, the tranche included, against the NAV at the draw. Set at `init_pool` and with
+    /// `set_max_line_bps`.
     pub max_line_bps: u16,
     /// `ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without
     /// the program. Recorded at `init_pool`, never refused.
@@ -209,7 +211,7 @@ impl Pool {
         self.asset_controls & ASSET_CONTROL_PAUSABLE != 0
     }
 
-    /// `nav * max_line_bps / BPS`, rounded down: the largest line the pool opens at this NAV.
+    /// `nav * max_line_bps / BPS`, rounded down: the largest line, in asset units, at this NAV.
     pub fn max_line_principal(&self, nav: u64) -> Option<u64> {
         (nav as u128)
             .checked_mul(self.max_line_bps as u128)?

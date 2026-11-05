@@ -10,9 +10,10 @@ use elote_pool::events::{
 use elote_pool::state::{LineStatus, Schedule, ScheduleParams};
 use solana_signer::Signer;
 
-/// A pool with one investor who deposited `assets`.
+/// A pool with one investor who deposited `assets`. The schedule tests lend one line most of
+/// the NAV (6 of 10), so the line cap is the whole NAV.
 fn pool_with(env: &mut Env, assets: u64) -> PoolKeys {
-    let (k, _) = env.setup_pool();
+    let (k, _) = env.setup_pool_capped(BPS);
     let a = env.investor(&k, assets);
     env.deposit(&k, &a, assets);
     k

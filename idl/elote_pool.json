@@ -315,7 +315,8 @@
       "name": "approve_line",
       "docs": [
         "The council approves a requested line, naming its expediente root and terms hash, within 15",
-        "days of the request and within the line cap; a curator cannot be the borrower."
+        "days of the request and within the line cap at a FIX at most five days old; a curator cannot",
+        "be the borrower."
       ],
       "discriminator": [
         59,
@@ -941,8 +942,8 @@
         "borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain",
         "from the approved template and terms) as a frozen Core asset owned by the pool, with its",
         "`Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw",
-        "window has closed, on a changed or stale FIX, or above what the line, the vault or the pool cap",
-        "allows."
+        "window has closed, on a changed or stale FIX, or above what the line, the line cap (the line's",
+        "USDC drawn within `max_line_bps` of the NAV now), the vault or the pool cap allows."
       ],
       "discriminator": [
         61,
@@ -3107,7 +3108,8 @@
     {
       "name": "set_max_line_bps",
       "docs": [
-        "Sets the line cap, `1..=10_000` bps of the NAV at the approval. Council only."
+        "Sets the line cap, `1..=10_000` bps of the NAV, measured at every approval and draw. Council",
+        "only."
       ],
       "discriminator": [
         75,
@@ -4262,7 +4264,7 @@
     {
       "code": 6026,
       "name": "LineTooLarge",
-      "msg": "The principal exceeds the pool's maximum line, max_line_bps of the NAV"
+      "msg": "The line exceeds max_line_bps of the NAV: its principal at the approval, or its USDC drawn at a draw"
     },
     {
       "code": 6027,
@@ -4412,7 +4414,7 @@
     {
       "code": 6056,
       "name": "FixStale",
-      "msg": "No FIX is published, or it is too old for a draw"
+      "msg": "No FIX is published, or it is too old for a draw or an approval"
     },
     {
       "code": 6057,
@@ -6437,8 +6439,10 @@
           {
             "name": "max_line_bps",
             "docs": [
-              "The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points",
-              "(`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`."
+              "The line cap, as a share of the NAV in basis points (`1..=BPS`): `approve_line` measures the",
+              "principal (in MXN at the FIX) against the NAV at the approval, and every `draw` the line's",
+              "USDC drawn, the tranche included, against the NAV at the draw. Set at `init_pool` and with",
+              "`set_max_line_bps`."
             ],
             "type": "u16"
           },
