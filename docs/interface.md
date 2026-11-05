@@ -179,13 +179,19 @@ Rules, in order:
 - `fix_date` is a real date, not after today in Mexico City (`FixDateInvalid`).
 - The feeder: a date later than `Pool.fix_date` (`FixDateInvalid`), and `|fix_rate − Pool.fix_rate| ≤ Pool.fix_rate × 5% × days`, where `days = fix_date − Pool.fix_date` in calendar days, at least 1 and at most 3 (`fx::MAX_FIX_JUMP_BPS_PER_DAY`, `fx::MAX_FIX_JUMP_DAYS`): a jump of more than 15% always needs the council (`FixJump`). The first FIX is the council's (`FixJump`).
 - The council: a date not before `Pool.fix_date` (same-day corrections allowed) and not more than `fx::MAX_FIX_AGE_DAYS` (5) days before today in Mexico City (`FixDateInvalid`); no band.
+- The feeder, against the market reference `fx_reference` (RedStone's MXNe price, below): the reference at most `fx::MAX_REFERENCE_AGE_SECONDS` (26 h) old (`FxReferenceStale`) and `|fix_rate − reference| ≤ reference × 2%` (`fx::MAX_FIX_REFERENCE_GAP_BPS`, `FixOffReference`). The council publishes without this check.
 - Both: `Pool.min_fix_rate ≤ fix_rate ≤ Pool.max_fix_rate` unless both bounds are zero (`FixOutOfBounds`).
+
+The market reference is RedStone's MXNe price on Solana: account `8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2` (`fx::REFERENCE_ACCOUNT`, the PDA `["price", "MXNe"]`, each seed zero-padded to 32 bytes) owned by the adapter `REDSTBDUecGjwXd6YGPzHSvEUBHQqVRfCcjUVgPiHsr` (`fx::REFERENCE_PROGRAM`), which verifies RedStone's signed payload when it writes. The program reads its `PriceData` at fixed offsets (`fx::reference_rate`): discriminator `sha256("account:PriceData")[..8]`, feed id `"MXNe"` at 8..40, the value at 40..72 as a big-endian u256 of USD per MXNe × 10^8, the timestamp in milliseconds at 72..80 (little-endian), and decimals 8; the FIX-scale reference is `10^12 / value`, rounded down. Any other address is refused by the account constraint, any other owner, feed or layout with `FxReferenceInvalid`. `FixPosted` records `reference_rate` and `reference_at` for the feeder and the council (zero when the reference was missing or, for the council, unreadable).
+
+**On mainnet the check is mandatory**: a build without a cluster feature requires the account, owned by the adapter, for every feeder publication. RedStone's account exists on mainnet only, so a `localnet` or `devnet` build skips the check when the account is missing (empty and owned by the system program); an account that exists is checked as on mainnet.
 
 | Account | Writable | Signer | Notes |
 |---|---|---|---|
 | `poster` |  | yes | The feeder or the council. |
 | `multisig` |  |  |  |
 | `pool` | yes |  |  |
+| `fx_reference` |  |  | Fixed address `8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2`. RedStone's MXNe price account, the market reference the feeder's FIX is checked against. |
 
 ### `pause()`
 
@@ -687,7 +693,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`CouncilProposed`** `{ pool: pubkey, council: pubkey, kind: u8 }`: `council` must sign `accept_council` before it becomes the pool's council.
 - **`Deposited`** `{ pool: pubkey, depositor: pubkey, assets: u64, shares: u64, nav_after: u64, supply_after: u64 }`
 - **`FixBoundsSet`** `{ pool: pubkey, min_fix_rate: u64, max_fix_rate: u64 }`: The FIX bounds after `set_fix_bounds`: `post_fix` accepts `min_fix_rate ..= max_fix_rate`, or any FIX when both are zero.
-- **`FixPosted`** `{ pool: pubkey, fix_rate: u64, fix_date: u32, previous_rate: u64, by: pubkey, slot: u64, posted_at: i64 }`: A FIX publication: Banxico's rate for `fix_date` as published by `by` (the feeder or the council) at `slot`. Each one can be checked against the DOF.
+- **`FixPosted`** `{ pool: pubkey, fix_rate: u64, fix_date: u32, previous_rate: u64, by: pubkey, slot: u64, posted_at: i64, reference_rate: u64, reference_at: i64 }`: A FIX publication: Banxico's rate for `fix_date` as published by `by` (the feeder or the council) at `slot`. Each one can be checked against the DOF. `reference_rate` (MXN per USD × 10^4) and `reference_at` are the market reference at the publication; zero and zero when it was missing (localnet, devnet) or, for the council, unreadable.
 - **`FxFeederSet`** `{ pool: pubkey, fx_feeder: pubkey }`: The zero key means no feeder: only the council publishes.
 - **`FxRealized`** `{ pool: pubkey, line_id: u64, receipt_hash: [u8; 32], cost: u64, received: u64, delta: i64, nav_after: u64 }`: The FX result of one repayment's principal, in USDC base units: `cost` is the pool's cost of the principal repaid (at each pagaré's FIX), `received` the USDC that paid it (its centavos at the FIX of the payment, rounded up), `delta = received - cost`. Emitted by `repay` before `LineRepaid`, with the same `receipt_hash`, whenever principal is applied; the deltas add up to `Pool.fx_realized`.
 - **`GuardianSet`** `{ pool: pubkey, guardian: pubkey }`: The zero key means no guardian.
@@ -791,6 +797,9 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6067 | `CancelGraceTooLong` | The borrower's cancel grace is above the one-year ceiling |
 | 6068 | `ProposalTooFar` | The council's decision is dated more than fifteen days ahead |
 | 6069 | `FixOutOfBounds` | The FIX is outside the pool's bounds |
+| 6070 | `FxReferenceInvalid` | The FX reference account is not RedStone's MXNe price |
+| 6071 | `FxReferenceStale` | The FX reference is too old for the feeder to publish against |
+| 6072 | `FixOffReference` | The FIX is too far from the FX reference for the feeder; the council must publish it |
 
 ## Compute
 
@@ -819,8 +828,9 @@ Measured by `programs/elote_pool/tests/compute.rs` (the program alone) and `test
 | mark_in_collection at 120 installments, 3 missed | 13708 |
 | mark_in_collection at 18 installments | 16715 |
 | pause by a member | 9418 |
-| post_fix, by the council | 12425 |
-| post_fix, by the feeder | 11003 |
+| post_fix, by the council | 12968 |
+| post_fix, by the feeder | 11541 |
+| post_fix, by the feeder against the reference | 11828 |
 | propose_acceleration | 14585 |
 | propose_council through Squads | 34950 |
 | repay after the mark at 120 installments | 57990 |

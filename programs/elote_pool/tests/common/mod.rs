@@ -214,6 +214,9 @@ pub const E_ENTRY_NOT_FOUND: u32 = ERR_BASE + PoolError::EntryNotFound as u32;
 pub const E_TOO_MANY_SIDECARS: u32 = ERR_BASE + PoolError::TooManySidecars as u32;
 pub const E_CANCEL_GRACE_TOO_LONG: u32 = ERR_BASE + PoolError::CancelGraceTooLong as u32;
 pub const E_FIX_OUT_OF_BOUNDS: u32 = ERR_BASE + PoolError::FixOutOfBounds as u32;
+pub const E_FX_REFERENCE_INVALID: u32 = ERR_BASE + PoolError::FxReferenceInvalid as u32;
+pub const E_FX_REFERENCE_STALE: u32 = ERR_BASE + PoolError::FxReferenceStale as u32;
+pub const E_FIX_OFF_REFERENCE: u32 = ERR_BASE + PoolError::FixOffReference as u32;
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
@@ -415,6 +418,28 @@ pub fn procurador_pda(pagare: &Pubkey, procurador: &Pubkey) -> (Pubkey, u8) {
 #[allow(unused_imports)]
 pub use elote_pool::state::{PAGARE_OUTSTANDING, PAGARE_PAID};
 
+/// The bytes of RedStone's `PriceData` account for the MXNe feed (adapter
+/// `redstone-solana-price-adapter`, `state.rs`): discriminator `sha256("account:PriceData")[..8]`,
+/// `feed_id` "MXNe" zero-padded to 32 bytes, `value` as a big-endian u256 (USD per MXNe times
+/// 10^8), `timestamp` in milliseconds, `write_timestamp: Some(ms)`, `write_slot_number`,
+/// `decimals` = 8 and 64 reserved bytes, padded to the 176 bytes the adapter allocates.
+pub fn reference_data(usd_per_mxn_e8: u64, timestamp_ms: u64) -> Vec<u8> {
+    let disc = <sha2::Sha256 as sha2::Digest>::digest(b"account:PriceData");
+    let mut d = disc[..8].to_vec();
+    let mut feed = [0u8; 32];
+    feed[..4].copy_from_slice(b"MXNe");
+    d.extend_from_slice(&feed);
+    d.extend_from_slice(&[0u8; 24]);
+    d.extend_from_slice(&usd_per_mxn_e8.to_be_bytes());
+    d.extend_from_slice(&timestamp_ms.to_le_bytes());
+    d.push(1);
+    d.extend_from_slice(&timestamp_ms.to_le_bytes());
+    d.extend_from_slice(&1u64.to_le_bytes());
+    d.push(8);
+    d.resize(176, 0);
+    d
+}
+
 pub struct Env {
     pub svm: LiteSVM,
     /// Vault 0 of `multisig`: the council of every pool this env creates. It also pays for and
@@ -595,6 +620,22 @@ impl Env {
         let council = self.council.insecure_clone();
         let ix = self.post_fix_ix(k, &council.pubkey(), PARITY_FIX, today);
         self.send(ix, &council, &[]);
+    }
+
+    /// Writes the market reference account `post_fix` reads at `fx::REFERENCE_ACCOUNT`, owned by
+    /// `owner` (RedStone's adapter is `fx::REFERENCE_PROGRAM`; the adapter itself is not loaded).
+    pub fn put_reference(&mut self, data: Vec<u8>, owner: Pubkey) {
+        let lamports = self.svm.minimum_balance_for_rent_exemption(data.len());
+        self.svm
+            .set_account(elote_pool::fx::REFERENCE_ACCOUNT, solana_account::Account { lamports, data, owner, executable: false, rent_epoch: 0 })
+            .expect("set the reference account");
+    }
+
+    /// The reference at `rate` MXN per USD times 10^4 (`10^12 / rate` USD per MXNe times 10^8,
+    /// exact when `rate` divides 10^12), stamped `age` seconds before now.
+    pub fn put_reference_rate(&mut self, rate: u64, age: i64) {
+        let ts = u64::try_from(self.now() - age).expect("a timestamp after 1970") * 1_000;
+        self.put_reference(reference_data(1_000_000_000_000 / rate, ts), elote_pool::fx::REFERENCE_PROGRAM);
     }
 
     /// Stops keeping `k` at `PARITY_FIX`.
@@ -1185,8 +1226,15 @@ impl Env {
         let (event_authority, program) = event_metas();
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::PostFix { poster: *poster, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
-                .to_account_metas(None),
+            accounts: elote_pool::accounts::PostFix {
+                poster: *poster,
+                multisig: self.pool(k).multisig,
+                pool: k.pool,
+                fx_reference: elote_pool::fx::REFERENCE_ACCOUNT,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
             data: elote_pool::instruction::PostFix { fix_rate, fix_date, valid_until: self.valid_until() }.data(),
         }
     }

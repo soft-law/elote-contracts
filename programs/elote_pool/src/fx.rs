@@ -1,6 +1,10 @@
 //! The FIX: Banxico's USD/MXN rate, published on chain by the pool's `fx_feeder` (or the council)
 //! as `Pool::fix_rate` (MXN per USD times `FIX_SCALE`) and `Pool::fix_date` (the date Banxico
 //! determined it, `yyyymmdd`). Lines and pagarés are in centavos of MXN; the vault holds USDC.
+//!
+//! The feeder's FIX is also checked against a market reference, RedStone's MXNe price on Solana
+//! (`REFERENCE_ACCOUNT`); the reference never sets the FIX, it only decides whether the feeder may
+//! publish without the council.
 
 use anchor_lang::prelude::*;
 
@@ -18,6 +22,24 @@ pub const MAX_FIX_AGE_DAYS: i64 = 5;
 pub const MAX_FIX_JUMP_BPS_PER_DAY: u64 = 500;
 /// The days the band counts at most: 15% however long the FIX in force has been.
 pub const MAX_FIX_JUMP_DAYS: i64 = 3;
+/// RedStone's Solana price adapter (`redstone-solana-price-adapter`, the `solanaMultiFeed`
+/// deployment), which verifies the signed RedStone payload when it writes a price.
+pub const REFERENCE_PROGRAM: Pubkey = pubkey!("REDSTBDUecGjwXd6YGPzHSvEUBHQqVRfCcjUVgPiHsr");
+/// The adapter's MXNe price account: the PDA `["price", "MXNe"]`, each seed zero-padded to 32
+/// bytes. Mainnet only; it exists on no other cluster.
+pub const REFERENCE_ACCOUNT: Pubkey = pubkey!("8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2");
+/// Anchor's discriminator of the adapter's `PriceData`: `sha256("account:PriceData")[..8]`.
+const REFERENCE_DISCRIMINATOR: [u8; 8] = [0xe8, 0x71, 0xc1, 0xe7, 0x85, 0xd1, 0xce, 0x9a];
+/// The feed id the account must carry, zero-padded to 32 bytes.
+const REFERENCE_FEED_ID: &[u8] = b"MXNe";
+/// The adapter writes every value with eight decimals.
+const REFERENCE_DECIMALS: u8 = 8;
+/// `10^REFERENCE_DECIMALS * FIX_SCALE`: `rate = REFERENCE_SCALE / value`.
+const REFERENCE_SCALE: u128 = 1_000_000_000_000;
+/// The oldest reference the feeder publishes against: the feed's 24-hour heartbeat and two hours.
+pub const MAX_REFERENCE_AGE_SECONDS: i64 = 26 * 3_600;
+/// The largest gap between the feeder's FIX and the reference, in basis points of the reference.
+pub const MAX_FIX_REFERENCE_GAP_BPS: u64 = 200;
 /// Mexico City is UTC-6 all year since 2022.
 const MEXICO_CITY_OFFSET_SECONDS: i64 = -6 * 3_600;
 
@@ -85,6 +107,43 @@ pub fn within_band(old: u64, new: u64, days: i64) -> bool {
     let days = days.clamp(1, MAX_FIX_JUMP_DAYS) as u128;
     let diff = u128::from(old.abs_diff(new));
     diff * 10_000 <= u128::from(old) * u128::from(MAX_FIX_JUMP_BPS_PER_DAY) * days
+}
+
+/// The reference in FIX terms, MXN per USD times `FIX_SCALE` rounded down, and its timestamp in
+/// seconds, from the bytes of the adapter's `PriceData` account: the discriminator (0..8), the feed
+/// id (8..40), the value as a big-endian u256 of USD per MXNe times 10^8 (40..72), the timestamp in
+/// milliseconds, little-endian (72..80), `write_timestamp: Option<u64>` (from 80), the write slot,
+/// and the decimals. `FxReferenceInvalid` for any other feed, layout or decimals, or for a value
+/// that is zero or does not convert to a positive rate.
+pub fn reference_rate(data: &[u8]) -> Result<(u64, i64)> {
+    require!(data.len() >= 98 && data[..8] == REFERENCE_DISCRIMINATOR, PoolError::FxReferenceInvalid);
+    require!(
+        data[8..12] == *REFERENCE_FEED_ID && data[12..40].iter().all(|b| *b == 0),
+        PoolError::FxReferenceInvalid
+    );
+    // The decimals follow the Option's tag (and its eight bytes when Some) and the write slot.
+    let decimals_at = match data[80] {
+        0 => 89,
+        1 => 97,
+        _ => return err!(PoolError::FxReferenceInvalid),
+    };
+    require!(data[decimals_at] == REFERENCE_DECIMALS, PoolError::FxReferenceInvalid);
+    require!(data[40..64].iter().all(|b| *b == 0), PoolError::FxReferenceInvalid);
+    let mut value = [0u8; 8];
+    value.copy_from_slice(&data[64..72]);
+    let value = u64::from_be_bytes(value);
+    require!(value > 0, PoolError::FxReferenceInvalid);
+    let rate = u64::try_from(REFERENCE_SCALE / u128::from(value)).map_err(|_| PoolError::FxReferenceInvalid)?;
+    require!(rate > 0, PoolError::FxReferenceInvalid);
+    let mut ms = [0u8; 8];
+    ms.copy_from_slice(&data[72..80]);
+    let at = i64::try_from(u64::from_le_bytes(ms) / 1_000).map_err(|_| PoolError::FxReferenceInvalid)?;
+    Ok((rate, at))
+}
+
+/// Whether `value` is within `bps` basis points of `reference`.
+pub fn within_bps(reference: u64, value: u64, bps: u64) -> bool {
+    u128::from(reference.abs_diff(value)) * 10_000 <= u128::from(reference) * u128::from(bps)
 }
 
 /// Whether `min ..= max` is a valid pair of FIX bounds: both zero (no bounds), or `min <= max` with
@@ -161,6 +220,60 @@ mod tests {
             assert!(!within_band(200_000, 169_999, days));
         }
         assert!(within_band(u64::MAX, u64::MAX, 3), "no overflow");
+    }
+
+    /// RedStone's MXNe account on mainnet as read on 2026-11-05 (the first 98 of its 176 bytes;
+    /// the rest is zero): 0.05380741 USD per MXNe at 12:25:10 UTC.
+    const MAINNET_REFERENCE: &str = "e871c1e785d1ce9a4d584e65000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000521a857090ababa1010000014098ababa10100005d16c21b0000000008";
+
+    fn mainnet_reference() -> Vec<u8> {
+        let mut data: Vec<u8> = (0..MAINNET_REFERENCE.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&MAINNET_REFERENCE[i..i + 2], 16).unwrap())
+            .collect();
+        data.resize(176, 0);
+        data
+    }
+
+    #[test]
+    fn the_reference_account_is_redstones_mxne_pda_and_price_data() {
+        let mut price = [0u8; 32];
+        price[..5].copy_from_slice(b"price");
+        let mut feed = [0u8; 32];
+        feed[..4].copy_from_slice(REFERENCE_FEED_ID);
+        assert_eq!(Pubkey::find_program_address(&[&price, &feed], &REFERENCE_PROGRAM).0, REFERENCE_ACCOUNT);
+        assert_eq!(solana_sha256_hasher::hash(b"account:PriceData").to_bytes()[..8], REFERENCE_DISCRIMINATOR);
+    }
+
+    #[test]
+    fn the_reference_reads_as_mxn_per_usd_rounded_down() {
+        // 10^12 / 5_380_741 = 185_848.6: 18.5848 MXN per USD.
+        assert_eq!(reference_rate(&mainnet_reference()).unwrap(), (185_848, 1_793_881_510));
+        let mut none = mainnet_reference();
+        // write_timestamp None: the slot and the decimals move eight bytes back.
+        none.copy_within(89..98, 81);
+        none[80] = 0;
+        assert_eq!(reference_rate(&none).unwrap(), (185_848, 1_793_881_510));
+        for (at, byte) in [(0, 0xe9), (11, b'x'), (12, 1), (39, 1), (40, 1), (63, 1), (80, 2), (97, 6)] {
+            let mut bad = mainnet_reference();
+            bad[at] = byte;
+            assert!(reference_rate(&bad).is_err(), "byte {at}");
+        }
+        let mut zero = mainnet_reference();
+        zero[64..72].fill(0);
+        assert!(reference_rate(&zero).is_err());
+        let mut tiny = mainnet_reference();
+        tiny[64..72].copy_from_slice(&(REFERENCE_SCALE as u64 + 1).to_be_bytes());
+        assert!(reference_rate(&tiny).is_err(), "a rate that rounds to zero");
+        assert!(reference_rate(&mainnet_reference()[..97]).is_err());
+    }
+
+    #[test]
+    fn the_gap_to_the_reference_is_two_percent_either_way() {
+        assert!(within_bps(200_000, 204_000, MAX_FIX_REFERENCE_GAP_BPS));
+        assert!(within_bps(200_000, 196_000, MAX_FIX_REFERENCE_GAP_BPS));
+        assert!(!within_bps(200_000, 204_001, MAX_FIX_REFERENCE_GAP_BPS));
+        assert!(!within_bps(200_000, 195_999, MAX_FIX_REFERENCE_GAP_BPS));
     }
 
     #[test]

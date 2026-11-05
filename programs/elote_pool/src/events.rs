@@ -378,6 +378,11 @@ pub struct FixPosted {
     pub by: Pubkey,
     pub slot: u64,
     pub posted_at: i64,
+    /// The market reference at the publication, MXN per USD times `fx::FIX_SCALE`, and its
+    /// timestamp; zero and zero when it was missing (localnet, devnet) or, for the council,
+    /// unreadable.
+    pub reference_rate: u64,
+    pub reference_at: i64,
 }
 
 /// The zero key means no feeder: only the council publishes.

@@ -50,6 +50,13 @@ export type FixPostedEvent = {
   by: Address;
   slot: bigint;
   postedAt: bigint;
+  /**
+   * The market reference at the publication, MXN per USD times `fx::FIX_SCALE`, and its
+   * timestamp; zero and zero when it was missing (localnet, devnet) or, for the council,
+   * unreadable.
+   */
+  referenceRate: bigint;
+  referenceAt: bigint;
 };
 
 export type FixPostedEventArgs = {
@@ -60,6 +67,13 @@ export type FixPostedEventArgs = {
   by: Address | HasAddress;
   slot: number | bigint;
   postedAt: number | bigint;
+  /**
+   * The market reference at the publication, MXN per USD times `fx::FIX_SCALE`, and its
+   * timestamp; zero and zero when it was missing (localnet, devnet) or, for the council,
+   * unreadable.
+   */
+  referenceRate: number | bigint;
+  referenceAt: number | bigint;
 };
 
 /** Gets the encoder for {@link FixPostedEventArgs} event data. */
@@ -73,6 +87,8 @@ export function getFixPostedEventEncoder(): FixedSizeEncoder<FixPostedEventArgs>
       ["by", getAddressEncoder()],
       ["slot", getU64Encoder()],
       ["postedAt", getI64Encoder()],
+      ["referenceRate", getU64Encoder()],
+      ["referenceAt", getI64Encoder()],
     ]),
     [getConstantEncoder(FIX_POSTED_EVENT_DISCRIMINATOR)],
   );
@@ -89,6 +105,8 @@ export function getFixPostedEventDecoder(): FixedSizeDecoder<FixPostedEvent> {
       ["by", getAddressDecoder()],
       ["slot", getU64Decoder()],
       ["postedAt", getI64Decoder()],
+      ["referenceRate", getU64Decoder()],
+      ["referenceAt", getI64Decoder()],
     ]),
     [getConstantDecoder(FIX_POSTED_EVENT_DISCRIMINATOR)],
   );

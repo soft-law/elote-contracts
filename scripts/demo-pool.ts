@@ -36,6 +36,7 @@ import {
   getMintToInstruction,
 } from "@solana-program/token";
 import {
+  FX_REFERENCE_ACCOUNT,
   LineStatus,
   drawPagareAccounts,
   fetchCreditLine,
@@ -210,6 +211,8 @@ await councilExecute(c, council, `post_fix 18.3740 for ${mexicoCityDate(await ch
     poster: council.signer,
     multisig,
     pool,
+    // RedStone's MXNe account; it does not exist on localnet or devnet, where the check is skipped.
+    fxReference: FX_REFERENCE_ACCOUNT,
     fixRate: FIX,
     fixDate: mexicoCityDate(await chainNow(c)),
     validUntil: (await chainNow(c)) + 86_400n,

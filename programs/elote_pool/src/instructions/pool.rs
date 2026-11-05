@@ -876,6 +876,24 @@ pub struct PostFix<'info> {
         bump = pool.bump,
     )]
     pub pool: Account<'info, Pool>,
+
+    /// RedStone's MXNe price account, the market reference the feeder's FIX is checked against.
+    /// CHECK: the address here; the owner and the layout in `reference`.
+    #[account(address = fx::REFERENCE_ACCOUNT @ PoolError::FxReferenceInvalid)]
+    pub fx_reference: UncheckedAccount<'info>,
+}
+
+/// The market reference, `(rate, at)`: owned by `fx::REFERENCE_PROGRAM` and read by
+/// `fx::reference_rate` (`FxReferenceInvalid` otherwise). On a localnet or devnet build, where the
+/// account does not exist, an empty system account is `None`; a mainnet build always requires it.
+fn reference(account: &AccountInfo) -> Result<Option<(u64, i64)>> {
+    #[cfg(any(feature = "localnet", feature = "devnet"))]
+    if account.data_is_empty() && *account.owner == anchor_lang::system_program::ID {
+        return Ok(None);
+    }
+    require_keys_eq!(*account.owner, fx::REFERENCE_PROGRAM, PoolError::FxReferenceInvalid);
+    let data = account.try_borrow_data()?;
+    fx::reference_rate(&data).map(Some)
 }
 
 /// Publishes Banxico's FIX for `fix_date` (`yyyymmdd`, not after today in Mexico City), within the
@@ -883,26 +901,40 @@ pub struct PostFix<'info> {
 /// `fx::within_band` from the FIX in force: 5% a day between the two dates, counting one to three
 /// days (`FixJump`). The council publishes the first FIX, larger moves and same-day corrections,
 /// dated at most `fx::MAX_FIX_AGE_DAYS` before today. The date never moves back (`FixDateInvalid`).
+/// The feeder also needs the market reference (`fx_reference`) at most
+/// `fx::MAX_REFERENCE_AGE_SECONDS` old (`FxReferenceStale`) and its FIX within
+/// `fx::MAX_FIX_REFERENCE_GAP_BPS` of it (`FixOffReference`); the council publishes without that
+/// check. `FixPosted` records the reference either way.
 pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32, valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
     let now = Clock::get()?;
     let poster = ctx.accounts.poster.key();
+    let reference = reference(&ctx.accounts.fx_reference.to_account_info());
     let pool = &mut ctx.accounts.pool;
     require!(fix_rate > 0, PoolError::WrongAmount);
     let day = fx::fix_day(fix_date)?;
     let today = fx::mexico_city_day(now.unix_timestamp);
     require!(day <= today, PoolError::FixDateInvalid);
-    if poster == pool.council {
+    let (reference_rate, reference_at) = if poster == pool.council {
         council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
         require!(fix_date >= pool.fix_date, PoolError::FixDateInvalid);
         require!(day >= today - fx::MAX_FIX_AGE_DAYS, PoolError::FixDateInvalid);
+        reference.ok().flatten().unwrap_or((0, 0))
     } else {
         require!(pool.fx_feeder != Pubkey::default() && poster == pool.fx_feeder, PoolError::Unauthorized);
         require!(fix_date > pool.fix_date, PoolError::FixDateInvalid);
         require!(pool.fix_rate != 0, PoolError::FixJump);
         let days = day - fx::fix_day(pool.fix_date)?;
         require!(fx::within_band(pool.fix_rate, fix_rate, days), PoolError::FixJump);
-    }
+        match reference? {
+            Some((rate, at)) => {
+                require!(now.unix_timestamp.saturating_sub(at) <= fx::MAX_REFERENCE_AGE_SECONDS, PoolError::FxReferenceStale);
+                require!(fx::within_bps(rate, fix_rate, fx::MAX_FIX_REFERENCE_GAP_BPS), PoolError::FixOffReference);
+                (rate, at)
+            }
+            None => (0, 0),
+        }
+    };
     require!(fx::within_bounds(fix_rate, pool.min_fix_rate, pool.max_fix_rate), PoolError::FixOutOfBounds);
     let previous_rate = pool.fix_rate;
     pool.fix_rate = fix_rate;
@@ -916,6 +948,8 @@ pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32, valid_until
         by: poster,
         slot: now.slot,
         posted_at: now.unix_timestamp,
+        reference_rate,
+        reference_at,
     });
     Ok(())
 }

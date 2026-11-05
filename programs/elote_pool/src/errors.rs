@@ -163,4 +163,10 @@ pub enum PoolError {
     ProposalTooFar,
     #[msg("The FIX is outside the pool's bounds")]
     FixOutOfBounds,
+    #[msg("The FX reference account is not RedStone's MXNe price")]
+    FxReferenceInvalid,
+    #[msg("The FX reference is too old for the feeder to publish against")]
+    FxReferenceStale,
+    #[msg("The FIX is too far from the FX reference for the feeder; the council must publish it")]
+    FixOffReference,
 }

@@ -238,6 +238,99 @@ fn the_fix_bounds_hold_for_the_feeder_and_the_council() {
 }
 
 #[test]
+fn the_feeder_stays_within_two_percent_of_the_market_reference() {
+    // FIX in force 20.0000 dated Nov 2; the reference reads 20.0000 (0.05 USD per MXNe).
+    let (mut env, k, feeder) = feeder_pool(20261102);
+    env.put_reference_rate(200_000, 3_600);
+    for (rate, ok) in [(204_001u64, false), (195_999, false), (204_000, true)] {
+        let ix = env.post_fix_ix(&k, &feeder.pubkey(), rate, 20261103);
+        if ok {
+            let ev: FixPosted = find_event(&env.send(ix, &feeder, &[])).expect("FixPosted");
+            assert_eq!((ev.fix_rate, ev.reference_rate, ev.reference_at), (204_000, 200_000, NOV_3_AFTERNOON - 3_600));
+        } else {
+            env.expect_err(ix, &feeder, &[], E_FIX_OFF_REFERENCE);
+        }
+    }
+}
+
+#[test]
+fn the_feeder_needs_a_reference_at_most_26_hours_old() {
+    let max_age = elote_pool::fx::MAX_REFERENCE_AGE_SECONDS;
+    assert_eq!(max_age, 26 * 3_600);
+    let (mut env, k, feeder) = feeder_pool(20261102);
+    env.put_reference_rate(200_000, max_age + 1);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 200_000, 20261103);
+    env.expect_err(ix, &feeder, &[], E_FX_REFERENCE_STALE);
+    env.put_reference_rate(200_000, max_age);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 200_000, 20261103);
+    env.send(ix, &feeder, &[]);
+}
+
+#[test]
+fn a_reference_with_another_owner_or_layout_is_refused_to_the_feeder() {
+    let now_ms = NOV_3_AFTERNOON as u64 * 1_000;
+    let mut wrong_feed = reference_data(5_000_000, now_ms);
+    wrong_feed[8..12].copy_from_slice(b"MXNt");
+    let mut wrong_disc = reference_data(5_000_000, now_ms);
+    wrong_disc[0] ^= 1;
+    let mut wrong_decimals = reference_data(5_000_000, now_ms);
+    wrong_decimals[97] = 6;
+    let mut huge = reference_data(5_000_000, now_ms);
+    huge[40] = 1;
+    for (data, owner) in [
+        (reference_data(5_000_000, now_ms), solana_pubkey::Pubkey::new_unique()),
+        (reference_data(5_000_000, now_ms), SYSTEM_PROGRAM_ID),
+        (wrong_feed, elote_pool::fx::REFERENCE_PROGRAM),
+        (wrong_disc, elote_pool::fx::REFERENCE_PROGRAM),
+        (wrong_decimals, elote_pool::fx::REFERENCE_PROGRAM),
+        (huge, elote_pool::fx::REFERENCE_PROGRAM),
+        (reference_data(0, now_ms), elote_pool::fx::REFERENCE_PROGRAM),
+        (reference_data(5_000_000, now_ms)[..79].to_vec(), elote_pool::fx::REFERENCE_PROGRAM),
+    ] {
+        let (mut env, k, feeder) = feeder_pool(20261102);
+        env.put_reference(data, owner);
+        let ix = env.post_fix_ix(&k, &feeder.pubkey(), 200_000, 20261103);
+        env.expect_err(ix, &feeder, &[], E_FX_REFERENCE_INVALID);
+    }
+}
+
+#[test]
+fn the_council_publishes_without_the_reference_check_and_records_the_reference() {
+    let (mut env, k, _) = feeder_pool(20261102);
+    let council = env.council.insecure_clone();
+    // A reference 10% away and two days old: the council's FIX lands and carries it.
+    env.put_reference_rate(220_000, 2 * DAY);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 200_000, 20261103);
+    let ev: FixPosted = find_event(&env.send(ix, &council, &[])).expect("FixPosted");
+    assert_eq!((ev.reference_rate, ev.reference_at), (220_000, NOV_3_AFTERNOON - 2 * DAY));
+    // An unreadable reference records zero.
+    env.put_reference(vec![7u8; 176], solana_pubkey::Pubkey::new_unique());
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 200_100, 20261103);
+    let ev: FixPosted = find_event(&env.send(ix, &council, &[])).expect("FixPosted");
+    assert_eq!((ev.fix_rate, ev.reference_rate, ev.reference_at), (200_100, 0, 0));
+}
+
+#[test]
+fn on_localnet_a_missing_reference_skips_the_check() {
+    // RedStone's account does not exist on localnet or devnet: the feeder publishes on the band
+    // alone and the event records no reference. A mainnet build refuses it (FxReferenceInvalid).
+    let (mut env, k, feeder) = feeder_pool(20261102);
+    assert!(env.svm.get_account(&elote_pool::fx::REFERENCE_ACCOUNT).is_none());
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 210_000, 20261103);
+    let ev: FixPosted = find_event(&env.send(ix, &feeder, &[])).expect("FixPosted");
+    assert_eq!((ev.fix_rate, ev.reference_rate, ev.reference_at), (210_000, 0, 0));
+}
+
+#[test]
+fn post_fix_takes_only_the_reference_account() {
+    let (mut env, k, feeder) = feeder_pool(20261102);
+    let mut ix = env.post_fix_ix(&k, &feeder.pubkey(), 200_000, 20261103);
+    let at = ix.accounts.iter().position(|m| m.pubkey == elote_pool::fx::REFERENCE_ACCOUNT).expect("the reference account");
+    ix.accounts[at].pubkey = solana_pubkey::Pubkey::new_unique();
+    env.expect_err(ix, &feeder, &[], E_FX_REFERENCE_INVALID);
+}
+
+#[test]
 fn today_in_mexico_city_starts_six_hours_after_midnight_utc() {
     let (mut env, k, _) = setup();
     let council = env.council.insecure_clone();

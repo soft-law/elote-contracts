@@ -96,7 +96,8 @@ fn draw_stays_under_its_ceiling_at_120_installments() {
     }
 }
 
-/// `post_fix` by the council (multisig check) and by the feeder (band and date checks).
+/// `post_fix` by the council (multisig check) and by the feeder (band and date checks, and the
+/// market reference when it exists).
 #[test]
 fn post_fix_stays_under_the_ceiling() {
     let mut env = Env::new();
@@ -110,9 +111,15 @@ fn post_fix_stays_under_the_ceiling() {
     env.warp(env.now() + 86_400);
     let ix = env.post_fix_ix(&k, &feeder.pubkey(), 184_000, env.today());
     let by_feeder = env.send(ix, &feeder, &[]).compute_units_consumed;
+    // With the market reference present, as on mainnet.
+    env.put_reference_rate(185_000, 3_600);
+    env.warp(env.now() + 86_400);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 185_100, env.today());
+    let with_reference = env.send(ix, &feeder, &[]).compute_units_consumed;
     println!("post_fix, by the council: {by_council} CU");
     println!("post_fix, by the feeder: {by_feeder} CU");
-    assert!(by_council < CEILING && by_feeder < CEILING);
+    println!("post_fix, by the feeder against the reference: {with_reference} CU");
+    assert!(by_council < CEILING && by_feeder < CEILING && with_reference < CEILING);
 }
 
 /// `cancel_pagare` runs no arrears loop: one coverage comparison, the sidecar's mark and the Core

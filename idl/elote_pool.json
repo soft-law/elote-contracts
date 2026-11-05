@@ -1713,6 +1713,13 @@
           }
         },
         {
+          "name": "fx_reference",
+          "docs": [
+            "RedStone's MXNe price account, the market reference the feeder's FIX is checked against."
+          ],
+          "address": "8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2"
+        },
+        {
           "name": "event_authority"
         },
         {
@@ -4471,6 +4478,21 @@
       "code": 6069,
       "name": "FixOutOfBounds",
       "msg": "The FIX is outside the pool's bounds"
+    },
+    {
+      "code": 6070,
+      "name": "FxReferenceInvalid",
+      "msg": "The FX reference account is not RedStone's MXNe price"
+    },
+    {
+      "code": 6071,
+      "name": "FxReferenceStale",
+      "msg": "The FX reference is too old for the feeder to publish against"
+    },
+    {
+      "code": 6072,
+      "name": "FixOffReference",
+      "msg": "The FIX is too far from the FX reference for the feeder; the council must publish it"
     }
   ],
   "types": [
@@ -5009,6 +5031,19 @@
           },
           {
             "name": "posted_at",
+            "type": "i64"
+          },
+          {
+            "name": "reference_rate",
+            "docs": [
+              "The market reference at the publication, MXN per USD times `fx::FIX_SCALE`, and its",
+              "timestamp; zero and zero when it was missing (localnet, devnet) or, for the council,",
+              "unreadable."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "reference_at",
             "type": "i64"
           }
         ]

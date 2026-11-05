@@ -62,6 +62,8 @@ export type PostFixInstruction<
   TAccountPoster extends string | AccountMeta<string> = string,
   TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
+  TAccountFxReference extends string | AccountMeta<string> =
+    "8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2",
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
     "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
@@ -80,6 +82,9 @@ export type PostFixInstruction<
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
+      TAccountFxReference extends string
+        ? ReadonlyAccount<TAccountFxReference>
+        : TAccountFxReference,
       TAccountEventAuthority extends string
         ? ReadonlyAccount<TAccountEventAuthority>
         : TAccountEventAuthority,
@@ -138,6 +143,7 @@ export type PostFixAsyncInput<
   TAccountPoster extends InstructionSignerInput = InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
+  TAccountFxReference extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -146,6 +152,8 @@ export type PostFixAsyncInput<
   poster: TAccountPoster;
   multisig: TAccountMultisig;
   pool: TAccountPool;
+  /** RedStone's MXNe price account, the market reference the feeder's FIX is checked against. */
+  fxReference?: TAccountFxReference;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   fixRate: PostFixInstructionDataArgs["fixRate"];
@@ -157,6 +165,7 @@ export async function getPostFixInstructionAsync<
   TAccountPoster extends InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
+  TAccountFxReference extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
@@ -165,6 +174,7 @@ export async function getPostFixInstructionAsync<
     TAccountPoster,
     TAccountMultisig,
     TAccountPool,
+    TAccountFxReference,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -185,6 +195,10 @@ export async function getPostFixInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountFxReference,
+      InstructionAccountInputAddress<TAccountFxReference>
     >,
     ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
@@ -216,6 +230,11 @@ export async function getPostFixInstructionAsync<
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
+    fxReference: {
+      value: input.fxReference ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -236,6 +255,10 @@ export async function getPostFixInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.fxReference.value) {
+    accounts.fxReference.value =
+      "8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2" as Address<"8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2">;
+  }
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
       programAddress,
@@ -252,6 +275,7 @@ export async function getPostFixInstructionAsync<
       getAccountMeta("poster", accounts.poster),
       getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
+      getAccountMeta("fxReference", accounts.fxReference),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
@@ -274,6 +298,10 @@ export async function getPostFixInstructionAsync<
       InstructionAccountInputAddress<TAccountPool>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountFxReference,
+      InstructionAccountInputAddress<TAccountFxReference>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -288,6 +316,7 @@ export type PostFixInput<
   TAccountPoster extends InstructionSignerInput = InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
+  TAccountFxReference extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -296,6 +325,8 @@ export type PostFixInput<
   poster: TAccountPoster;
   multisig: TAccountMultisig;
   pool: TAccountPool;
+  /** RedStone's MXNe price account, the market reference the feeder's FIX is checked against. */
+  fxReference?: TAccountFxReference;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   fixRate: PostFixInstructionDataArgs["fixRate"];
@@ -307,6 +338,7 @@ export function getPostFixInstruction<
   TAccountPoster extends InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
+  TAccountFxReference extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
@@ -315,6 +347,7 @@ export function getPostFixInstruction<
     TAccountPoster,
     TAccountMultisig,
     TAccountPool,
+    TAccountFxReference,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -334,6 +367,10 @@ export function getPostFixInstruction<
   ResolvedInstructionAccountMeta<
     TAccountPool,
     InstructionAccountInputAddress<TAccountPool>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountFxReference,
+    InstructionAccountInputAddress<TAccountFxReference>
   >,
   ResolvedInstructionAccountMeta<
     TAccountEventAuthority,
@@ -364,6 +401,11 @@ export function getPostFixInstruction<
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
+    fxReference: {
+      value: input.fxReference ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -384,6 +426,10 @@ export function getPostFixInstruction<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.fxReference.value) {
+    accounts.fxReference.value =
+      "8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2" as Address<"8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2">;
+  }
   if (!accounts.program.value) {
     accounts.program.value = programAddress;
     accounts.program.isWritable = false;
@@ -394,6 +440,7 @@ export function getPostFixInstruction<
       getAccountMeta("poster", accounts.poster),
       getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
+      getAccountMeta("fxReference", accounts.fxReference),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
@@ -416,6 +463,10 @@ export function getPostFixInstruction<
       InstructionAccountInputAddress<TAccountPool>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountFxReference,
+      InstructionAccountInputAddress<TAccountFxReference>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -436,8 +487,10 @@ export type ParsedPostFixInstruction<
     poster: TAccountMetas[0];
     multisig: TAccountMetas[1];
     pool: TAccountMetas[2];
-    eventAuthority: TAccountMetas[3];
-    program: TAccountMetas[4];
+    /** RedStone's MXNe price account, the market reference the feeder's FIX is checked against. */
+    fxReference: TAccountMetas[3];
+    eventAuthority: TAccountMetas[4];
+    program: TAccountMetas[5];
   };
   data: PostFixInstructionData;
 };
@@ -450,12 +503,12 @@ export function parsePostFixInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedPostFixInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 5) {
+  if (instruction.accounts.length < 6) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 5,
+        expectedAccountMetas: 6,
       },
     );
   }
@@ -471,6 +524,7 @@ export function parsePostFixInstruction<
       poster: getNextAccount(),
       multisig: getNextAccount(),
       pool: getNextAccount(),
+      fxReference: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },

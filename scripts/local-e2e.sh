@@ -15,6 +15,10 @@
 # three keys made here (`--account`), none of which is a deploy. The RPC must be this machine; the
 # ledger and every key live in a temporary directory removed on exit, so the repository's
 # .demo-keys/ is never read or written.
+#
+# post_fix's market reference (RedStone's MXNe account) exists on mainnet only and is not loaded
+# here: the localnet build skips the reference check when the account is missing. The LiteSVM
+# suite (tests/fx.rs) injects the account and covers the check.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
