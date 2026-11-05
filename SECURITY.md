@@ -37,7 +37,7 @@ Never test with an asset that has real value, not even on a "test mainnet-beta".
 | Line payer | `CreditLine.payer`, the funder of the request's rent (Elote's backend in the product) | Receives the rent back when a request is rejected or withdrawn |
 | Procurador | `Pagare.procurador`, written by `endorse_pagare`, cleared by `revoke_procuracion` and the extinction | `cancel_pagare` on that pagaré alone, while the program signs for the burn delegate `["procurador", pagare, procurador]`. It can never be the pool, the council, the guardian, the pool's creator, the FIX feeder, the line's borrower, rent payer or sponsor, or a multisig member |
 | Depositor | Any signer holding the pool asset | `deposit` and `redeem` at the NAV, subject to the pause and the vault's liquidity |
-| Anyone | No check | `repay` any drawn line (as payer), `mark_in_collection` once a scheduled line has missed `max_missed` installments plus the grace |
+| Anyone | No check | `repay` any drawn line (as payer), `mark_in_collection` once a scheduled line has missed `max_missed` installments, past the due date of the last of them |
 | Upgrade authority | The BPF loader's upgrade authority for the program id | Replace the program |
 
 ## Money flows

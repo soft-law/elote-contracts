@@ -121,7 +121,7 @@ pub enum PoolError {
     NotEnoughMissed,
     #[msg("The term has not ended")]
     TermNotEnded,
-    #[msg("A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace")]
+    #[msg("A line in collection is written off only after its collection period, and after its oldest missed due date or its term")]
     WriteOffTooEarly,
 
     // The FIX.

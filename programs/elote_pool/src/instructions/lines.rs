@@ -762,8 +762,8 @@ pub struct Repay<'info> {
 }
 
 /// Pays an `Active` or `InCollection` line. Anyone may pay, and the pause never blocks it. `amount`
-/// must cover the late interest due (`LateInterestUnpaid`; on a bullet line, from `term_end + grace`
-/// or from its acceleration); the payment
+/// must cover the late interest due (`LateInterestUnpaid`; on a bullet line, from `term_end` or
+/// from its acceleration); the payment
 /// settles late interest, then interest, then principal, and debits the payer only what is due.
 /// What is owed is what was drawn plus the interest fixed at each draw.
 ///
@@ -801,7 +801,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     let remaining = principal_left.checked_add(interest_left).ok_or(PoolError::Overflow)?;
     require!(amount > 0, PoolError::WrongAmount);
 
-    let late_part = line_arrears(line, pool, now)?.late_due;
+    let late_part = line_arrears(line, now)?.late_due;
     require!(amount >= late_part, PoolError::LateInterestUnpaid);
     // While the line can still draw, a zero debt is nothing to pay, and a payment that clears the
     // debt does not close the line; otherwise a third party could pay one unit and
@@ -990,11 +990,11 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
 
 /// The arrears of a line at `now`: the installments repay `drawn + interest_due` on the
 /// contract's calendar, and late interest accrues on the principal share, `drawn`, of what is
-/// overdue.
-fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
+/// overdue, from the first second past each due date (there is no grace period).
+fn line_arrears(line: &CreditLine, now: i64) -> Result<Arrears> {
     // A bullet line is one installment due at the term: late interest runs on its unpaid
-    // principal from `term_end + grace`, or from the mark if it was accelerated before, at the
-    // same rate formula as a schedule.
+    // principal from `term_end`, or from the mark if it was accelerated before, at the same rate
+    // formula as a schedule.
     let (anchor, interval, installments) = match line.schedule() {
         Some(s) => (line.anchor().ok_or(PoolError::Overflow)?, s.interval_seconds, s.installments),
         None => (line.term_end.checked_sub(1).ok_or(PoolError::Overflow)?, 1, 1),
@@ -1005,7 +1005,7 @@ fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
         interval,
         installments,
         late_bps: line.late_bps,
-        grace: pool.grace_period_seconds,
+        grace: 0,
         late_paid_until: line.late_paid_until,
         principal: line.drawn,
         late_collected: line.late_collected,
@@ -1034,9 +1034,9 @@ pub struct MarkInCollection<'info> {
 }
 
 /// Anyone may move an active scheduled line to `InCollection` once `max_missed` installments are
-/// missed and the grace period of the last of them has run: with `covered` installments paid,
-/// `now > anchor + (covered + max_missed) * interval + grace`, where the anchor is one interval
-/// before `first_due_at`. The mark accelerates the balance (vencimiento anticipado):
+/// missed, past the due date of the last of them: with `covered` installments paid,
+/// `now > anchor + (covered + max_missed) * interval`, where the anchor is one interval before
+/// `first_due_at`. The mark accelerates the balance (vencimiento anticipado):
 /// `accelerated_at = now`, from which every installment is due and late interest runs on all
 /// remaining principal, and the ordinary interest of the installments not yet due is forgiven
 /// (`interest_due` shrinks to the share of the installments due, never below what was repaid; no
@@ -1049,17 +1049,12 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     let line = &ctx.accounts.line;
     let s = line.schedule().ok_or(PoolError::NotScheduled)?;
     require!(line.status == LineStatus::Active, PoolError::LineStatus);
-    let a = line_arrears(line, pool, now)?;
+    let a = line_arrears(line, now)?;
     let k = a.covered.checked_add(u16::from(s.max_missed)).ok_or(PoolError::Overflow)?;
     require!(k <= s.installments, PoolError::NotEnoughMissed);
     let anchor = line.anchor().ok_or(PoolError::Overflow)?;
-    let grace_end = s
-        .interval_seconds
-        .checked_mul(i64::from(k))
-        .and_then(|span| anchor.checked_add(span))
-        .and_then(|due| due.checked_add(i64::from(pool.grace_period_seconds)))
-        .ok_or(PoolError::Overflow)?;
-    require!(now > grace_end, PoolError::NotEnoughMissed);
+    let last_missed_due = s.interval_seconds.checked_mul(i64::from(k)).and_then(|span| anchor.checked_add(span)).ok_or(PoolError::Overflow)?;
+    require!(now > last_missed_due, PoolError::NotEnoughMissed);
 
     // The line keeps the ordinary interest of the installments due at the mark, at least the ones
     // that put it in collection.
@@ -1116,29 +1111,26 @@ pub struct WriteOff<'info> {
 /// Recognises the unpaid principal of an overdue line as a loss. Council only; not blocked by the
 /// pause. Allowed when
 ///
-/// - the line is `Active` and `now > term_end + grace` (else `TermNotEnded`), or
+/// - the line is `Active` and `now > term_end` (else `TermNotEnded`), or
 /// - the line is `InCollection`, the collection period has run (`now > accelerated_at +
 ///   collection_period_seconds`), and either a missed installment is still unpaid and
-///   `now > first_missed_due + grace`, or `now > term_end + grace`, or the line is a bullet line
+///   `now > first_missed_due`, or `now > term_end`, or the line is a bullet line
 ///   accelerated by the council (else `WriteOffTooEarly`).
-///
-/// `grace` is the pool's grace period.
 pub fn write_off(ctx: Context<WriteOff>, valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     let line = &ctx.accounts.line;
-    let grace = i64::from(pool.grace_period_seconds);
-    let after_term = now > line.term_end.checked_add(grace).ok_or(PoolError::Overflow)?;
+    let after_term = now > line.term_end;
     match line.status {
         LineStatus::Active => require!(after_term, PoolError::TermNotEnded),
         LineStatus::InCollection => {
             // An accelerated bullet line is wholly due at the mark, which the collection period
             // below already waits for.
             let after_missed = match line.schedule() {
-                Some(_) => match line_arrears(line, pool, now)?.first_missed_due {
-                    Some(due) => now > due.checked_add(grace).ok_or(PoolError::Overflow)?,
+                Some(_) => match line_arrears(line, now)?.first_missed_due {
+                    Some(due) => now > due,
                     None => false, // nothing is missed
                 },
                 None => true,
@@ -1321,7 +1313,7 @@ pub fn accelerate_line(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()
     require!(line.status == LineStatus::Active && line.acceleration_due_at != 0, PoolError::AccelerationState);
     require!(now >= line.acceleration_due_at, PoolError::AccelerationNotDue);
     let due_count = match line.schedule() {
-        Some(_) => line_arrears(line, &ctx.accounts.pool, now)?.due,
+        Some(_) => line_arrears(line, now)?.due,
         None => 0,
     };
     let (kept, interest_forgiven, remaining) = accelerated_balance(line, due_count, now)?;

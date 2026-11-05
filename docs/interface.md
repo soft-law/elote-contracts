@@ -7,6 +7,7 @@ Conventions:
 - **Council instructions** take the Squads multisig account (`multisig`, which must be `Pool.multisig`) and run the multisig check before anything else is written: owner = Squads v4, the council is vault 0 at the stored canonical bump, no config authority, at most ten members, threshold greater than half the voting members (`CouncilInvalid`, `CouncilTooLarge`). The council signs only through Squads `vault_transaction_execute`.
 - **`valid_until: i64`** is the last argument of every council instruction except `pause` (a late pause only protects) and `init_pool` (the council does not sign it). `now > valid_until` is refused with `ProposalExpired`, and `valid_until > now + MAX_PROPOSAL_HORIZON_SECONDS` (15 days) with `ProposalTooFar`; both bounds are inclusive. The check runs first, before the multisig check. The scripts pass `now + 1 day`.
 - Amounts on a line and a pagaré are **centavos of MXN** (`CreditLine.currency = 484`); the vault, deposits, redemptions and repayments are **USDC base units** (6 decimals). Conversions use the FIX (`Pool.fix_rate`, MXN per USD × 10^4).
+- **Late payment has no grace period** (decision 36): late interest runs from the first second past a due date (or `term_end` on a bullet line), `mark_in_collection` is open a second after the due date of the `max_missed`-th missed installment (`max_missed` at least 3), and `write_off` counts from the due dates and the term themselves. `Pool.grace_period_seconds` is reserved and always zero.
 - Every instruction that emits events takes `event_authority` and `program` (Anchor `#[event_cpi]`); they are not listed below.
 - Error codes start at 6000 in the order of `errors.rs`. **Squads also numbers its errors from 6000** (its `NotAMember` is 6005, the same number as `CouncilInvalid`): decode an error by the program that raised it (the invoke stack in the logs), never by number alone. `scripts/lib/cli.ts` does this.
 
@@ -14,7 +15,7 @@ Conventions:
 
 ### `init_pool(params: InitPoolParams)`
 
-Creates the pool, its vault and its dead-shares account around `asset_mint`, the creator's share mint and the series collection. The creator signs and pays; the council is vault 0 of `multisig`, an autonomous Squads v4 multisig of at most ten members with a majority threshold, and does not sign. Fixes the grace period and the line cap (`1..=10_000` bps of the NAV) for the pool's life.
+Creates the pool, its vault and its dead-shares account around `asset_mint`, the creator's share mint and the series collection. The creator signs and pays; the council is vault 0 of `multisig`, an autonomous Squads v4 multisig of at most ten members with a majority threshold, and does not sign. Sets the line cap (`1..=10_000` bps of the NAV), the collection period, the outstanding cap, the acceleration notice and the cancel grace. There is no grace period on late payment: late interest runs from the first day past a due date.
 
 Signers: `creator`.
 
@@ -36,7 +37,6 @@ Signers: `creator`.
 
 | Field | Type | Notes |
 |---|---|---|
-| `grace_period_seconds` | `u32` | Zero means no grace; fixed for the pool's life. |
 | `max_line_bps` | `u16` | `1..=BPS`; fixed for the pool's life. |
 | `collection_period_seconds` | `u32` | At least `MIN_COLLECTION_PERIOD_SECONDS`. |
 | `guardian` | `pubkey` | The zero key for none. |
@@ -342,7 +342,7 @@ Signers: `payer`.
 
 ### `mark_in_collection()`
 
-Moves a scheduled line to collection once `max_missed` installments are missed and the grace period of the last of them has run, accelerating the balance. Anyone may call it, also while paused.
+Moves a scheduled line to collection once `max_missed` installments are missed (past the due date of the last of them), accelerating the balance. Anyone may call it, also while paused.
 
 Signers: none.
 
@@ -431,7 +431,7 @@ Signers: `council`. Council instruction.
 
 ### `write_off(valid_until: i64)`
 
-Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end + grace`, an `InCollection` line after its collection period from the mark and after its oldest missed due date or its term, plus grace. Never paused.
+Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end`, an `InCollection` line after its collection period from the mark and after its oldest missed due date or its term. Never paused.
 
 Signers: `council`. Council instruction.
 
@@ -627,7 +627,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `interest_collected` | `u64` | Ordinary interest repaid on every line; informative. |
 | `written_off` | `u64` | Principal written off on every line; informative. |
 | `line_count` | `u64` |  |
-| `grace_period_seconds` | `u32` | Seconds after a due date (or the term) before late interest accrues and collection or a write-off is allowed; zero means none. Fixed at `init_pool`. |
+| `grace_period_seconds` | `u32` | Reserved, always zero: there is no grace period. Late interest runs from the first second after a due date (or the term), and collection and write-offs count from the due dates themselves. `init_pool` writes zero and nothing reads it; the field stays so the layout does not move. |
 | `collection_period_seconds` | `u32` | Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`. |
 | `max_line_bps` | `u16` | The largest line `approve_line` accepts, as a share of the NAV at the approval, in basis points (`1..=BPS`). Set at `init_pool` and with `set_max_line_bps`. |
 | `asset_controls` | `u8` | `ASSET_CONTROL_*` bits: issuer controls of the asset mint that can stop the vault without the program. Recorded at `init_pool`, never refused. |
@@ -687,7 +687,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`PagareIssued`** `{ pool: pubkey, line_id: u64, draw_index: u16, asset: pubkey, pagare_hash: [u8; 32], amount_mxn: u64, delivery_hash: [u8; 32], due_at: i64, holder: pubkey }`: Emitted by `draw` after `LineDrawn`: the pagaré issued as the Metaplex Core asset `asset`, owned by `holder` (the pool PDA) and frozen. `due_at` is the line's last due date at issuance.
 - **`PagarePayment`** `{ pool: pubkey, line_id: u64, payer: pubkey, receipt_hash: [u8; 32], late_part: u64, interest_part: u64, principal_part: u64, entries: Vec<PaymentEntry> }`: The payment entries of one `repay`: the payer's receipt hash (zero means "receipt to follow"), the payment's split and one `PaymentEntry` per sidecar touched, oldest first. Emitted after the `PagareEntry` of each entry.
 - **`PagareReceiptAnnotated`** `{ pool: pubkey, line_id: u64, draw_index: u16, entry_count: u32, payment_entry_count: u32, receipt_hash: [u8; 32] }`: A `Recibo` entry written by `annotate_payment`: the receipt attached to the payment entry `payment_entry_count` of the pagaré's chain, as entry `entry_count`.
-- **`PoolInitialized`** `{ pool: pubkey, council: pubkey, creator: pubkey, multisig: pubkey, guardian: pubkey, asset_mint: pubkey, share_mint: pubkey, collection: pubkey, grace_period_seconds: u32, collection_period_seconds: u32, max_line_bps: u16, max_outstanding_principal: u64, acceleration_notice_seconds: u32, cancel_grace_seconds: u32, asset_controls: u8, permissioned: bool }`: Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits; `permissioned`: the share mint is frozen by default.
+- **`PoolInitialized`** `{ pool: pubkey, council: pubkey, creator: pubkey, multisig: pubkey, guardian: pubkey, asset_mint: pubkey, share_mint: pubkey, collection: pubkey, collection_period_seconds: u32, max_line_bps: u16, max_outstanding_principal: u64, acceleration_notice_seconds: u32, cancel_grace_seconds: u32, asset_controls: u8, permissioned: bool }`: Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits; `permissioned`: the share mint is frozen by default.
 - **`PoolPaused`** `{ pool: pubkey, by: pubkey }`
 - **`PoolResumed`** `{ pool: pubkey }`
 - **`Redeemed`** `{ pool: pubkey, holder: pubkey, shares: u64, assets: u64, nav_after: u64, supply_after: u64 }`
@@ -749,7 +749,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6049 | `LateInterestUnpaid` | The repayment must cover the late interest due |
 | 6050 | `NotEnoughMissed` | Fewer installments missed than the line allows before collection |
 | 6051 | `TermNotEnded` | The term has not ended |
-| 6052 | `WriteOffTooEarly` | A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace |
+| 6052 | `WriteOffTooEarly` | A line in collection is written off only after its collection period, and after its oldest missed due date or its term |
 | 6053 | `FixDateInvalid` | The FIX date is not a valid date, is in the future, or is older than the published one |
 | 6054 | `FixJump` | The FIX moves more than the feeder may publish; the council must |
 | 6055 | `FixMismatch` | The FIX signed is not the one published now |

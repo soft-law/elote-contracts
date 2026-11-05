@@ -39,21 +39,21 @@ Token-2022's `AccountFrozen`. The devnet demo uses a plain classic share mint an
 `mark_in_collection` is permissionless and never paused. It is the on-chain record of the
 vencimiento anticipado (decision 28): from the mark every installment is due and late interest runs
 on all remaining principal. It records a fact (the line missed
-`max_missed` installments and the grace of the last of them has run); nothing moves. It must be
+`max_missed` installments, past the due date of the last of them; there is no grace period); nothing moves. It must be
 called promptly because `write_off` on a line in collection is only allowed after it, and the
 pool's collection period counts from the mark.
 
 | Item | Value |
 |---|---|
-| Cadence | Once a day at `<hh:mm>` UTC, plus a run within an hour of every `grace_end` crossing (`first_due_at + (covered + max_missed - 1) * interval + grace`) |
+| Cadence | Once a day at `<hh:mm>` UTC, plus a run within an hour of every `last_missed_due` crossing (`first_due_at + (covered + max_missed - 1) * interval`) |
 | Input | Every `Active` scheduled line of every pool, read from the chain; arrears computed with `lineArrears` from `@softlaw/elote-pool-client` |
-| Action | Send `mark_in_collection` for each line whose computed `covered + max_missed <= installments` and `now > grace_end` |
+| Action | Send `mark_in_collection` for each line whose computed `covered + max_missed <= installments` and `now > last_missed_due` |
 | Expected failures | `NotEnoughMissed` when a repayment landed between the read and the send: retry on the next run. `LineStatus` when another caller got there first: ignore |
 | Alert | A line eligible for more than 24 h without a `LineInCollection` event pages `<on-call>` |
 | Record | The `LineInCollection` event (pool, line_id, missed, remaining) is the record; the backend indexes it |
 
 Known limit (SECURITY.md): on a short schedule with `covered + max_missed > installments`
-collection is unreachable and only the write-off after `term_end + grace` remains. The keeper
+collection is unreachable and only the write-off after `term_end` remains. The keeper
 reports those lines separately so the admin can act at the term.
 
 ## 3. Who calls what, and when
@@ -65,7 +65,7 @@ reports those lines separately so the admin can act at the term.
 | Repayment | Anyone (borrower, sponsor, third party) | `repay` | Never paused. The client passes at most five pagaré records per `repay` and splits a larger payment; a payment that lands first can make an in-flight `repay` fail with `PagareAccountsMismatch`, and the client re-reads the line and retries. Screen the `payer` of every `LineRepaid` against sanctions lists (decision 6) |
 | Pagaré paid | Admin (as holder while the asset is in the pool) or the procurador of record, and the attestor; the relayer as `payer` (the procurador's client also passes the program address `["procurador", pagare, procurador]`); if the attestor is unavailable, the admin files `request_cancellation(draw_index, receipt_hash)` and, after the pool's cancel delay (at least 7 days, `set_cancel_delay`), cancels alone with the same receipt | `cancel_pagare(draw_index, receipt_hash)` | The pagaré carries the PAGADO mark a repayment wrote (`PAGARE_PAID_PENDING_CANCEL`), whatever the line's status (`repay` marks the pagarés oldest first as the principal repaid reaches each `drawn_through`; interest paid covers nothing by itself; `repay` needs the touched pagaré records as remaining accounts, see `repaySidecars` in the client). The engine issues the FEA-signed receipt (LGTOC 129), archives the pagaré's registry (its `PagareEntry` events) under NOM-151, then asks for the burn with the receipt's hash; if the payer's receipt hash was zero or wrong, the admin's `annotate_payment` replaces it on the record before the burn; the `Pagare` record stays as the PAGADO mark. In collection or after a write-off only the pagarés a payment covered cancel; the others stay in force for the collection |
 | Three installments missed | Keeper | `mark_in_collection` | Section 2 |
-| Loss recognised | Admin | `write_off` | `Active` and `now > term_end + grace`, or `InCollection`, `now > oldest missed due + grace` and the pool's collection period (at least 30 days, `set_collection_period`) has run from the mark. Out-of-court collection has run its course per the credit policy |
+| Loss recognised | Admin | `write_off` | `Active` and `now > term_end`, or `InCollection`, `now > oldest missed due` and the pool's collection period (at least 30 days, `set_collection_period`) has run from the mark. Out-of-court collection has run its course per the credit policy |
 | Pause | Admin | `set_paused(true)` | Section 5 |
 | Resume | Admin | `set_paused(false)` | After the incident review |
 | Investor leaves | Holder | `redeem` | Paid from the vault balance only; a thin vault means a retry with fewer shares |

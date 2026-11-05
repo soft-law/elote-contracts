@@ -111,7 +111,7 @@ fn n03_the_council_its_curators_the_guardian_and_the_borrower_cannot_be_procurad
     let guardian = env.funded(1);
     let asset = env.create_mint(&a, 6);
     let k = env.pool_keys_for(&asset);
-    let mut params = env.init_params(0, BPS, COLLECTION_PERIOD);
+    let mut params = env.init_params(BPS, COLLECTION_PERIOD);
     params.guardian = guardian.pubkey();
     let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), params);
     env.send(ix, &council, &[]);

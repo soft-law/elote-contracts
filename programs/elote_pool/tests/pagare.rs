@@ -976,7 +976,7 @@ fn the_cancel_grace_is_a_pool_parameter_between_thirty_days_and_a_year() {
     let asset_mint = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset_mint);
     for (seconds, code) in [(CANCEL_GRACE - 1, E_CANCEL_GRACE_TOO_SHORT), (MAX_CANCEL_GRACE_SECONDS + 1, E_CANCEL_GRACE_TOO_LONG)] {
-        let mut params = env.init_params(0, BPS, COLLECTION_PERIOD);
+        let mut params = env.init_params(BPS, COLLECTION_PERIOD);
         params.cancel_grace_seconds = seconds;
         let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), params);
         env.expect_err(ix, &council, &[], code);

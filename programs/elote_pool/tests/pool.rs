@@ -65,7 +65,7 @@ fn init_pool_creates_share_mint_and_vault() {
 
     // A second init for the same council and asset is refused (the pool account already exists).
     let council = env.council.insecure_clone();
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     assert!(env.try_send(ix, &council, &[]).is_err());
 }
 
@@ -303,27 +303,23 @@ fn redeem_rounds_down_and_honours_min_assets_out() {
     assert_eq!(env.redeem(&k, &a, 7).assets, 7);
 }
 
+/// `init_pool` takes no grace period: the pool's field is reserved and always zero, and the
+/// `PoolInitialized` event records the parameters it does take.
 #[test]
-fn init_pool_records_the_grace_period() {
+fn init_pool_records_its_parameters_and_no_grace_period() {
     let mut env = Env::new();
-    let grace: u32 = 5 * 24 * 3600;
-    let (k, meta) = env.setup_pool_with_grace(grace);
+    let (k, meta) = env.setup_pool();
 
     let pool = env.pool(&k);
-    assert_eq!(pool.grace_period_seconds, grace);
+    assert_eq!(pool.grace_period_seconds, 0, "reserved");
     assert_eq!(u64::from(pool.max_line_bps), u64::from(BPS), "the harness default cap of 10,000 bps");
     assert_eq!((pool.asset_controls, pool.permissioned), (0, false));
     assert_eq!((pool.cancel_grace_seconds, pool.collection_period_seconds), (CANCEL_GRACE, COLLECTION_PERIOD));
+    assert_eq!((pool.acceleration_notice_seconds, pool.max_outstanding_principal), (ACCELERATION_NOTICE, u64::MAX));
 
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
-    assert_eq!((ev.pool, ev.grace_period_seconds), (k.pool, grace));
+    assert_eq!((ev.pool, ev.max_line_bps), (k.pool, BPS));
     assert_eq!((ev.collection_period_seconds, ev.cancel_grace_seconds), (COLLECTION_PERIOD, CANCEL_GRACE));
-
-    // The default pool of the other tests has no grace.
-    let (k0, meta0) = env.setup_pool();
-    assert_eq!(env.pool(&k0).grace_period_seconds, 0);
-    let ev: PoolInitialized = find_event(&meta0).expect("PoolInitialized");
-    assert_eq!(ev.grace_period_seconds, 0);
 }
 
 /// `max_line_bps` is fixed at `init_pool` and is
@@ -333,7 +329,7 @@ fn init_pool_records_the_line_cap_and_bounds_it() {
     let mut env = Env::new();
     let council = env.council.insecure_clone();
     let mint = env.create_mint(&council.pubkey(), 6);
-    let (k, ix) = env.init_pool_full(&mint, 0, 1_000);
+    let (k, ix) = env.init_pool_full(&mint, 1_000);
     let meta = env.send(ix, &council, &[]);
 
     let pool = env.pool(&k);
@@ -344,7 +340,7 @@ fn init_pool_records_the_line_cap_and_bounds_it() {
 
     for bad in [0u16, BPS + 1, u16::MAX] {
         let mint = env.create_mint(&council.pubkey(), 6);
-        let (_, ix) = env.init_pool_full(&mint, 0, bad);
+        let (_, ix) = env.init_pool_full(&mint, bad);
         env.expect_err(ix, &council, &[], E_WRONG_AMOUNT);
     }
 }
@@ -556,25 +552,25 @@ fn init_pool_rejects_a_collection_the_pool_does_not_control() {
 
     // A collection whose update authority is the council, not the pool.
     k.collection = env.create_collection(&council.pubkey());
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
     // A Core asset, not a collection.
     k.collection = env.create_core_asset(&k.pool);
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
     // An account the Core program does not own.
     k.collection = k.asset_mint;
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
     // An account that does not exist.
     k.collection = Pubkey::new_unique();
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
     assert!(env.svm.get_account(&k.pool).is_none());
 
     // The right one is accepted.
     k.collection = env.create_collection(&k.pool);
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.send(ix, &council, &[]);
     assert_eq!(env.pool(&k).collection, k.collection);
 }
@@ -642,7 +638,7 @@ fn share_candidate(
 fn expect_share_rejected(env: &mut Env, asset: &Pubkey, share_mint: &Pubkey) {
     let council = env.council.insecure_clone();
     let k = PoolKeys::new(&council.pubkey(), asset, share_mint, TOKEN_PROGRAM_ID, env.mint_program(share_mint));
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.expect_err(ix, &council, &[], E_SHARE_MINT_NOT_ALLOWED);
 }
 
@@ -736,7 +732,7 @@ fn non_transferable_shares_still_deposit_and_redeem() {
     });
     let mut k = PoolKeys::new(&council.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, p);
     k.collection = env.create_collection(&pool);
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.send(ix, &council, &[]);
 
     let a = env.investor(&k, 3 * UNIT);
@@ -792,7 +788,7 @@ fn permissioned_shares_need_a_thaw_before_the_first_deposit() {
     let m = env.create_share_mint(&pool, 6, Some(&gate.pubkey()), true);
     let mut k2 = PoolKeys::new(&council.pubkey(), &asset, &m, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
     k2.collection = env.create_collection(&pool);
-    let init = env.init_pool_ix_for(&k2, 0, BPS);
+    let init = env.init_pool_ix_for(&k2, BPS);
     let thaw = env.thaw_ix(&m, &k2.dead_shares, &gate.pubkey());
     env.send_all(&[init, thaw], &council, &[&gate]);
     assert_eq!(env.token_account(&k2.dead_shares).state, AccountState::Initialized);

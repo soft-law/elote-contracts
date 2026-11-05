@@ -77,8 +77,10 @@ export type Pool = {
   writtenOff: bigint;
   lineCount: bigint;
   /**
-   * Seconds after a due date (or the term) before late interest accrues and collection or a
-   * write-off is allowed; zero means none. Fixed at `init_pool`.
+   * Reserved, always zero: there is no grace period. Late interest runs from the first second
+   * after a due date (or the term), and collection and write-offs count from the due dates
+   * themselves. `init_pool` writes zero and nothing reads it; the field stays so the layout
+   * does not move.
    */
   gracePeriodSeconds: number;
   /**
@@ -172,8 +174,10 @@ export type PoolArgs = {
   writtenOff: number | bigint;
   lineCount: number | bigint;
   /**
-   * Seconds after a due date (or the term) before late interest accrues and collection or a
-   * write-off is allowed; zero means none. Fixed at `init_pool`.
+   * Reserved, always zero: there is no grace period. Late interest runs from the first second
+   * after a due date (or the term), and collection and write-offs count from the due dates
+   * themselves. `init_pool` writes zero and nothing reads it; the field stays so the layout
+   * does not move.
    */
   gracePeriodSeconds: number;
   /**

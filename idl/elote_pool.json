@@ -1352,8 +1352,9 @@
         "Creates the pool, its vault and its dead-shares account around `asset_mint`, the creator's",
         "share mint and the series collection. The creator signs and pays; the council is vault 0 of",
         "`multisig`, an autonomous Squads v4 multisig of at most ten members with a majority",
-        "threshold, and does not sign. Fixes the grace period and the line cap (`1..=10_000` bps of the",
-        "NAV) for the pool's life."
+        "threshold, and does not sign. Sets the line cap (`1..=10_000` bps of the NAV), the collection",
+        "period, the outstanding cap, the acceleration notice and the cancel grace. There is no grace",
+        "period on late payment: late interest runs from the first day past a due date."
       ],
       "discriminator": [
         116,
@@ -1514,9 +1515,8 @@
     {
       "name": "mark_in_collection",
       "docs": [
-        "Moves a scheduled line to collection once `max_missed` installments are missed and the grace",
-        "period of the last of them has run, accelerating the balance. Anyone may call it, also while",
-        "paused."
+        "Moves a scheduled line to collection once `max_missed` installments are missed (past the due",
+        "date of the last of them), accelerating the balance. Anyone may call it, also while paused."
       ],
       "discriminator": [
         188,
@@ -3399,9 +3399,9 @@
     {
       "name": "write_off",
       "docs": [
-        "Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end +",
-        "grace`, an `InCollection` line after its collection period from the mark and after its",
-        "oldest missed due date or its term, plus grace. Never paused."
+        "Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end`, an",
+        "`InCollection` line after its collection period from the mark and after its oldest missed",
+        "due date or its term. Never paused."
       ],
       "discriminator": [
         42,
@@ -4295,7 +4295,7 @@
     {
       "code": 6052,
       "name": "WriteOffTooEarly",
-      "msg": "A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace"
+      "msg": "A line in collection is written off only after its collection period, and after its oldest missed due date or its term"
     },
     {
       "code": 6053,
@@ -4989,13 +4989,6 @@
       "type": {
         "kind": "struct",
         "fields": [
-          {
-            "name": "grace_period_seconds",
-            "docs": [
-              "Zero means no grace; fixed for the pool's life."
-            ],
-            "type": "u32"
-          },
           {
             "name": "max_line_bps",
             "docs": [
@@ -6261,8 +6254,10 @@
           {
             "name": "grace_period_seconds",
             "docs": [
-              "Seconds after a due date (or the term) before late interest accrues and collection or a",
-              "write-off is allowed; zero means none. Fixed at `init_pool`."
+              "Reserved, always zero: there is no grace period. Late interest runs from the first second",
+              "after a due date (or the term), and collection and write-offs count from the due dates",
+              "themselves. `init_pool` writes zero and nothing reads it; the field stays so the layout",
+              "does not move."
             ],
             "type": "u32"
           },
@@ -6479,10 +6474,6 @@
           {
             "name": "collection",
             "type": "pubkey"
-          },
-          {
-            "name": "grace_period_seconds",
-            "type": "u32"
           },
           {
             "name": "collection_period_seconds",

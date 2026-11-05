@@ -58,7 +58,7 @@ const pool = await loadPool(c, poolAddress);
 const { line, data: l } = await loadLine(c, poolAddress, lineId);
 if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) fail(`the line is ${LineStatus[l.status]}: nothing to repay`);
 
-const late = lineLateDue(l, BigInt(pool.gracePeriodSeconds), await chainNow(c));
+const late = lineLateDue(l, await chainNow(c));
 const owed = l.drawn - l.principalRepaid + l.interestDue - l.interestRepaid + late;
 const owedUsdc = usdcCeilForMxn(owed, pool.fixRate);
 // Late interest grows by the second: --all pads it, and the program takes only what is due.

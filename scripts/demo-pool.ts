@@ -6,14 +6,13 @@
 //
 //   npx tsx scripts/demo-pool.ts --cluster local|devnet --multisig <address> [--council-keypairs <a.json,b.json>]
 //        [--agreement-hash <64 hex>] [--sponsor]
-//        [--schedule [--interval-seconds <n>]] [--grace-seconds <n>] [--max-line-bps <n>] [--yes]
+//        [--schedule [--interval-seconds <n>]] [--max-line-bps <n>] [--yes]
 //
 // --agreement-hash    hash of the signed credit agreement recorded on the line (placeholder if absent)
 // --sponsor           the sponsor co-signs the opening and is named on the line
 // --schedule          also open a 6-installment line, miss one installment and repay it with late interest
 // --interval-seconds  seconds between installments (default: one month, 2,592,000; 20 on local, a
 //                     compressed "demo month", since a validator's clock cannot be moved forward)
-// --grace-seconds     the pool's grace period (default 0; 5 with --schedule on local)
 // --max-line-bps      largest line as a share of the NAV, in basis points (default 5000 here, so
 //                     the MXN 60,000 line fits the 15,000 USDC of deposits; production pools use 1000)
 // --multisig          the Squads v4 multisig whose vault 0 is the council; its members' keys come
@@ -80,17 +79,15 @@ import {
 import { approveLine, councilExecute, loadCouncil } from "./lib/council.ts";
 import { ataOf, repayInParts } from "./lib/pool.ts";
 
-checkFlags(["cluster", "multisig", "council-keypairs", "agreement-hash", "sponsor", "schedule", "interval-seconds", "grace-seconds", "max-line-bps", "yes"]);
+checkFlags(["cluster", "multisig", "council-keypairs", "agreement-hash", "sponsor", "schedule", "interval-seconds", "max-line-bps", "yes"]);
 const c = cluster();
 const withSponsor = flag("sponsor");
 const withSchedule = flag("schedule");
 const MONTH_SECONDS = 30n * 86_400n;
 const intervalSeconds = BigInt(arg("interval-seconds") ?? (c.local ? "20" : MONTH_SECONDS.toString()));
-const graceSeconds = Number(arg("grace-seconds") ?? (withSchedule && c.local ? "5" : "0"));
 // The council: vault 0 of an existing autonomous Squads v4 multisig with a majority threshold.
 const multisig = address(arg("multisig") ?? fail("--multisig <address> is required: the Squads v4 multisig whose vault 0 is the council"));
 if (intervalSeconds <= 0n) fail("--interval-seconds must be positive");
-if (!Number.isInteger(graceSeconds) || graceSeconds < 0 || graceSeconds > 0xffffffff) fail("--grace-seconds must fit in a u32");
 // The concentration cap: production pools use 1,000 bps; the demo's MXN 60,000 line is about 22%
 // of its 15,000 USDC of deposits at the FIX, so it defaults to 5,000.
 const maxLineBps = Number(arg("max-line-bps") ?? "5000");
@@ -190,7 +187,6 @@ await send("init_pool", admin, [
     collection,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
     shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
-    gracePeriodSeconds: graceSeconds,
     maxLineBps,
     collectionPeriodSeconds: 30 * 86_400,
     guardian: address("11111111111111111111111111111111"),
@@ -200,7 +196,7 @@ await send("init_pool", admin, [
   }),
 ]);
 console.log(
-  `  pool ${pool}\n  share token ${shareMint}\n  collection ${collection}\n  vault ${vault}\n  grace period ${graceSeconds} s\n  max line ${maxLineBps} bps of the NAV`
+  `  pool ${pool}\n  share token ${shareMint}\n  collection ${collection}\n  vault ${vault}\n  max line ${maxLineBps} bps of the NAV`
 );
 
 // The council publishes the first FIX; draws and repayments are converted at it.
@@ -398,24 +394,23 @@ async function scheduleDemo() {
   await approveLine(c, council, pool, id).catch((e) => fail((e as Error).message));
   await send(`draw: MXN 6,000 to the borrower, pagaré 0 minted`, borrower, [await drawIx(sLine, 0, principal)]);
 
-  const grace = BigInt((await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.gracePeriodSeconds);
   const read = async () => {
     const l = (await fetchCreditLine(c.rpc, sLine, { commitment: "confirmed" })).data;
     const s = lineSchedule(l)!;
     const now = await chainNow(c);
-    return { l, s, now, a: lineArrears(l, s, grace, now) };
+    return { l, s, now, a: lineArrears(l, s, 0n, now) };
   };
   let { l } = await read();
   const installment = (l.drawn + l.interestDue) / BigInt(installments);
   console.log(`  installment MXN ${fmtMxn(installment)}; first due at ${l.firstDueAt} (from the contract, one interval after the opening)`);
 
-  // Let the first installment go unpaid past its due date and the grace period.
-  const target = l.firstDueAt + grace + 10n;
+  // Let the first installment go unpaid past its due date: late interest runs from then on.
+  const target = l.firstDueAt + 10n;
   if (target - (await chainNow(c)) > 600n) {
     console.log(`  the first installment falls due in ${intervalSeconds} s: run with --interval-seconds 20 on a local validator to see arrears`);
     return;
   }
-  console.log(`  waiting until ${target} (due + ${grace} s grace + 10 s) without paying`);
+  console.log(`  waiting until ${target} (due + 10 s) without paying`);
   while ((await chainNow(c)) < target) await sleep(2_000);
   let a;
   ({ l, a } = await read());
@@ -428,5 +423,5 @@ async function scheduleDemo() {
   ({ l, a } = await read());
   console.log(`  late interest collected MXN ${fmtMxn(l.lateCollected - lateBefore)}; missed installments now ${a.missed}`);
   console.log(`  repaid: interest MXN ${fmtMxn(l.interestRepaid)}, principal MXN ${fmtMxn(l.principalRepaid)} (late interest first, then interest, then principal)`);
-  console.log(`  line status ${LineStatus[l.status]}; once 3 installments are missed and the grace period of the third has run, anyone may call mark_in_collection`);
+  console.log(`  line status ${LineStatus[l.status]}; once 3 installments are missed, past the third one's due date, anyone may call mark_in_collection`);
 }

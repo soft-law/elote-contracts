@@ -9,9 +9,9 @@ use elote_pool::events::{LineCancelled, LineDrawsSuspended, PagareIssued};
 use elote_pool::state::LineStatus;
 use solana_signer::Signer;
 
-/// A pool with one investor who deposited `assets` and `grace` seconds of grace.
-fn pool_with(env: &mut Env, assets: u64, grace: u32) -> PoolKeys {
-    let (k, _) = env.setup_pool_with_grace(grace);
+/// A pool with one investor who deposited `assets`.
+fn pool_with(env: &mut Env, assets: u64) -> PoolKeys {
+    let (k, _) = env.setup_pool();
     let a = env.investor(&k, assets);
     env.deposit(&k, &a, assets);
     k
@@ -31,7 +31,7 @@ fn interest(amount: u64, rate_bps: u64, seconds: i64) -> u64 {
 #[test]
 fn two_tranches_sum_to_the_commitment_and_a_third_is_refused() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 0);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -57,7 +57,7 @@ fn two_tranches_sum_to_the_commitment_and_a_third_is_refused() {
 #[test]
 fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -85,7 +85,7 @@ fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
 #[test]
 fn tranche_interest_runs_to_the_last_due_date_not_the_term() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let mut p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     p.term_end += YEAR; // the term outlives the calendar by a year
@@ -104,7 +104,7 @@ fn tranche_interest_runs_to_the_last_due_date_not_the_term() {
 #[test]
 fn a_second_tranche_raises_every_installment() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -138,7 +138,7 @@ fn a_second_tranche_raises_every_installment() {
 #[test]
 fn a_tranche_may_not_leave_the_schedule_unpayable() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(UNIT, 0, 12, 5_000); // 0%: no interest helps the count
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -157,14 +157,13 @@ fn a_tranche_may_not_leave_the_schedule_unpayable() {
 }
 
 /// Weekly, quincenal and monthly calendars each run a full cycle with two tranches,
-/// three partial payments and one installment missed past the grace; `mark_in_collection`
+/// three partial payments and installments missed past their due dates; `mark_in_collection`
 /// behaves as before.
 #[test]
 fn weekly_quincenal_and_monthly_calendars_run_a_full_cycle() {
     for interval in [7 * 86_400i64, 15 * 86_400, 30 * 86_400] {
         let mut env = Env::new();
-        let grace = 86_400u32;
-        let k = pool_with(&mut env, 20 * UNIT, grace);
+        let k = pool_with(&mut env, 20 * UNIT);
         let borrower = env.borrower(&k);
         let n = 6u16;
         let mut p = env.scheduled_params(6 * UNIT, 1_200, n, 5_000);
@@ -197,14 +196,14 @@ fn weekly_quincenal_and_monthly_calendars_run_a_full_cycle() {
         let a = env.arrears(&k, line_id);
         assert_eq!((a.covered, a.missed, a.late_due), (1, 0, 0), "interval {interval}");
 
-        // Then nothing: the second, third and fourth are missed; collection waits for the grace
-        // of the fourth (covered 1 + max_missed 3), as on any scheduled line.
+        // Then nothing: the second, third and fourth are missed; collection waits for the fourth's
+        // due date to pass (covered 1 + max_missed 3), as on any scheduled line.
         let fourth_due = first_due + 3 * interval;
-        env.warp(fourth_due + i64::from(grace));
+        env.warp(fourth_due);
         let keeper = env.funded(1);
         let ix = env.mark_in_collection_ix(&k, line_id);
         env.expect_err(ix, &keeper, &[], E_NOT_ENOUGH_MISSED);
-        env.warp(fourth_due + i64::from(grace) + 1);
+        env.warp(fourth_due + 1);
         let a = env.arrears(&k, line_id);
         assert_eq!(a.missed, 3);
         assert!(a.late_due > 0, "late interest ran on the principal share of the second and third");
@@ -219,7 +218,7 @@ fn weekly_quincenal_and_monthly_calendars_run_a_full_cycle() {
 #[test]
 fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let investor = env.investor(&k, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
@@ -247,7 +246,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 1);
     env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
 
-    // In collection (three installments missed past the grace of the third): no tranche either,
+    // In collection (three installments missed, the third past its due date): no tranche either,
     // and the window check does not even matter.
     env.warp(p.first_due_at() + 2 * p.interval() + 1);
     let keeper = env.funded(1);
@@ -262,7 +261,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
 #[test]
 fn full_repayment_of_a_half_drawn_line_leaves_it_open_while_it_can_draw() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -291,7 +290,7 @@ fn full_repayment_of_a_half_drawn_line_leaves_it_open_while_it_can_draw() {
 #[test]
 fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let council = env.council.insecure_clone();
     let p = env.line_params(4 * UNIT, 1_000);
@@ -323,7 +322,7 @@ fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
 #[test]
 fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let council = env.council.insecure_clone();
     let p = env.line_params(4 * UNIT, 1_000);
@@ -369,7 +368,7 @@ fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
 #[test]
 fn cancel_line_clears_an_undrawn_commitment_only() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let council = env.council.insecure_clone();
     let p = env.line_params(4 * UNIT, 1_000);
@@ -414,7 +413,7 @@ fn cancel_line_clears_an_undrawn_commitment_only() {
 #[test]
 fn a_draw_derives_the_pagare_hash_and_the_delivery_hash() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);

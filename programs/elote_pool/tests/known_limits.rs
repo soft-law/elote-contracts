@@ -43,7 +43,7 @@ fn a_line_for_the_whole_vault_is_refused_under_the_concentration_cap() {
     let mut env = Env::new();
     let council = env.council.insecure_clone();
     let mint = env.create_mint(&council.pubkey(), 6);
-    let (k, ix) = env.init_pool_full(&mint, 0, 1_000);
+    let (k, ix) = env.init_pool_full(&mint, 1_000);
     env.send(ix, &council, &[]);
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
@@ -89,7 +89,7 @@ fn limit_deposit_just_before_a_repayment_shares_the_interest() {
 #[test]
 fn limit_redeem_between_collection_and_write_off_exits_at_par() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(0);
+    let (k, _) = env.setup_pool();
     let quick = env.investor(&k, 10 * UNIT);
     let quick_shares = env.deposit(&k, &quick, 10 * UNIT).shares; // minus the dead shares
     let patient = env.investor(&k, 10 * UNIT);
@@ -177,7 +177,7 @@ fn limit_total_write_off_leaves_a_pool_that_cannot_take_deposits() {
 #[test]
 fn limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installments() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(0);
+    let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
     let borrower = env.borrower(&k);
@@ -236,7 +236,7 @@ fn first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor() {
 #[test]
 fn limit_late_interest_is_settled_at_execution_time_so_clients_must_pad() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(0);
+    let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
     let borrower = env.borrower(&k);
@@ -311,7 +311,7 @@ fn a_repay_takes_at_most_three_pagare_records() {
     const CEILING: u64 = 100_000;
     assert_eq!(MAX_SIDECARS_PER_REPAY, 3);
     fn eight_draws(env: &mut Env) -> (PoolKeys, Keypair, u64) {
-        let (k, _) = env.setup_pool_with_grace(0);
+        let (k, _) = env.setup_pool();
         let investor = env.investor(&k, 200 * UNIT);
         env.deposit(&k, &investor, 200 * UNIT);
         let borrower = env.borrower(&k);

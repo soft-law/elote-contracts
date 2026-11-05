@@ -119,7 +119,7 @@ export const ELOTE_POOL_ERROR__LATE_INTEREST_UNPAID = 0x17a1; // 6049
 export const ELOTE_POOL_ERROR__NOT_ENOUGH_MISSED = 0x17a2; // 6050
 /** TermNotEnded: The term has not ended */
 export const ELOTE_POOL_ERROR__TERM_NOT_ENDED = 0x17a3; // 6051
-/** WriteOffTooEarly: A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace */
+/** WriteOffTooEarly: A line in collection is written off only after its collection period, and after its oldest missed due date or its term */
 export const ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY = 0x17a4; // 6052
 /** FixDateInvalid: The FIX date is not a valid date, is in the future, or is older than the published one */
 export const ELOTE_POOL_ERROR__FIX_DATE_INVALID = 0x17a5; // 6053
@@ -293,7 +293,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__TOO_MANY_SIDECARS]: `A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment`,
     [ELOTE_POOL_ERROR__UNAUTHORIZED]: `This signer may not do this`,
     [ELOTE_POOL_ERROR__WINDOW_CLOSED]: `The line's draw window has already closed`,
-    [ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY]: `A line in collection is written off only after its collection period, and after its oldest missed due date or its term, plus grace`,
+    [ELOTE_POOL_ERROR__WRITE_OFF_TOO_EARLY]: `A line in collection is written off only after its collection period, and after its oldest missed due date or its term`,
     [ELOTE_POOL_ERROR__WRONG_ACCOUNT]: `Wrong mint or token account`,
     [ELOTE_POOL_ERROR__WRONG_AMOUNT]: `Amount is zero or exceeds what is due`,
     [ELOTE_POOL_ERROR__ZERO_SHARES]: `The deposit would mint zero shares`,

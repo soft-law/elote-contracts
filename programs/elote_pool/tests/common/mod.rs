@@ -800,14 +800,13 @@ impl Env {
     }
 
     /// `init_pool` for the pool described by `k`.
-    pub fn init_pool_ix_for(&self, k: &PoolKeys, grace_period_seconds: u32, max_line_bps: u16) -> Instruction {
-        self.init_pool_ix_full(k, grace_period_seconds, max_line_bps, COLLECTION_PERIOD)
+    pub fn init_pool_ix_for(&self, k: &PoolKeys, max_line_bps: u16) -> Instruction {
+        self.init_pool_ix_full(k, max_line_bps, COLLECTION_PERIOD)
     }
 
     /// The `init_pool` parameters the tests use, with the env's council.
-    pub fn init_params(&self, grace_period_seconds: u32, max_line_bps: u16, collection_period_seconds: u32) -> elote_pool::instructions::pool::InitPoolParams {
+    pub fn init_params(&self, max_line_bps: u16, collection_period_seconds: u32) -> elote_pool::instructions::pool::InitPoolParams {
         elote_pool::instructions::pool::InitPoolParams {
-            grace_period_seconds,
             max_line_bps,
             collection_period_seconds,
             guardian: Pubkey::default(),
@@ -846,11 +845,10 @@ impl Env {
     pub fn init_pool_ix_full(
         &self,
         k: &PoolKeys,
-        grace_period_seconds: u32,
         max_line_bps: u16,
         collection_period_seconds: u32,
     ) -> Instruction {
-        let params = self.init_params(grace_period_seconds, max_line_bps, collection_period_seconds);
+        let params = self.init_params(max_line_bps, collection_period_seconds);
         self.init_pool_ix_params(k, &self.multisig.clone(), params)
     }
 
@@ -896,37 +894,31 @@ impl Env {
         }
     }
 
-    /// Keys and `init_pool` instruction for `asset_mint` with the given grace and cap; a fresh
-    /// plain Token-2022 share mint is created for it.
-    pub fn init_pool_full(&mut self, asset_mint: &Pubkey, grace_period_seconds: u32, max_line_bps: u16) -> (PoolKeys, Instruction) {
+    /// Keys and `init_pool` instruction for `asset_mint` with the given cap; a fresh plain
+    /// Token-2022 share mint is created for it.
+    pub fn init_pool_full(&mut self, asset_mint: &Pubkey, max_line_bps: u16) -> (PoolKeys, Instruction) {
         let k = self.pool_keys_for(asset_mint);
-        let ix = self.init_pool_ix_for(&k, grace_period_seconds, max_line_bps);
+        let ix = self.init_pool_ix_for(&k, max_line_bps);
         (k, ix)
     }
 
-    /// As `init_pool_full` with no grace and no effective concentration cap (`max_line_bps` =
-    /// 10,000, the whole NAV), so the tests that open large lines keep working; the cap has its
-    /// own tests.
+    /// As `init_pool_full` with no effective concentration cap (`max_line_bps` = 10,000, the whole
+    /// NAV), so the tests that open large lines keep working; the cap has its own tests.
     pub fn init_pool_plain(&mut self, asset_mint: &Pubkey) -> (PoolKeys, Instruction) {
-        self.init_pool_full(asset_mint, 0, BPS)
+        self.init_pool_full(asset_mint, BPS)
     }
 
     /// Creates a 6-decimal classic test asset mint (authority = council) and a pool for it with a
     /// plain Token-2022 share mint.
     pub fn setup_pool(&mut self) -> (PoolKeys, TransactionMetadata) {
-        self.setup_pool_with_grace(0)
-    }
-
-    /// As `setup_pool`, with a pool grace period of `grace_period_seconds`.
-    pub fn setup_pool_with_grace(&mut self, grace_period_seconds: u32) -> (PoolKeys, TransactionMetadata) {
         let council = self.council.insecure_clone();
         let asset_mint = self.create_mint(&council.pubkey(), 6);
-        let (k, ix) = self.init_pool_full(&asset_mint, grace_period_seconds, BPS);
+        let (k, ix) = self.init_pool_full(&asset_mint, BPS);
         let meta = self.send(ix, &council, &[]);
         (k, meta)
     }
 
-    /// A pool on a plain Token-2022 asset (6 decimals, no extensions, no grace, no effective cap).
+    /// A pool on a plain Token-2022 asset (6 decimals, no extensions, no effective cap).
     pub fn setup_pool_2022(&mut self) -> (PoolKeys, TransactionMetadata) {
         let council = self.council.insecure_clone();
         let asset_mint = self.create_mint_2022(&council.pubkey(), 6);
@@ -944,7 +936,7 @@ impl Env {
         let share_mint = self.create_share_mint(&pool, 6, Some(gate), true);
         let mut k = PoolKeys::new(&council.pubkey(), &asset_mint, &share_mint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
         k.collection = self.create_collection(&pool);
-        let ix = self.init_pool_ix_for(&k, 0, BPS);
+        let ix = self.init_pool_ix_for(&k, BPS);
         let meta = self.send(ix, &council, &[]);
         (k, meta)
     }
@@ -1751,7 +1743,7 @@ impl Env {
             interval,
             installments,
             late_bps: line.late_bps,
-            grace: self.pool(k).grace_period_seconds,
+            grace: 0,
             late_paid_until: line.late_paid_until,
             principal: line.drawn,
             late_collected: line.late_collected,

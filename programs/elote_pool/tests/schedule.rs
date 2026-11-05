@@ -10,9 +10,9 @@ use elote_pool::events::{
 use elote_pool::state::{LineStatus, Schedule, ScheduleParams};
 use solana_signer::Signer;
 
-/// A pool with `grace` seconds of grace and one investor who deposited `assets`.
-fn pool_with(env: &mut Env, assets: u64, grace: u32) -> PoolKeys {
-    let (k, _) = env.setup_pool_with_grace(grace);
+/// A pool with one investor who deposited `assets`.
+fn pool_with(env: &mut Env, assets: u64) -> PoolKeys {
+    let (k, _) = env.setup_pool();
     let a = env.investor(&k, assets);
     env.deposit(&k, &a, assets);
     k
@@ -25,7 +25,7 @@ fn open(env: &mut Env, k: &PoolKeys, borrower: &Keypair, p: &LineParams) -> u64 
 #[test]
 fn open_scheduled_line_records_the_schedule() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
 
     // 6.0 at 12% a year, six installments spanning a year: 6.72 once drawn in full at once; 50%
@@ -77,7 +77,7 @@ fn open_scheduled_line_records_the_schedule() {
 #[test]
 fn open_rejects_invalid_schedules() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let council = env.council.insecure_clone();
     let good = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
@@ -140,7 +140,7 @@ fn open_rejects_invalid_schedules() {
 #[test]
 fn the_draw_window_closes_at_the_first_due_date_exactly() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -186,7 +186,7 @@ fn borrower_balance(env: &Env, k: &PoolKeys, b: &Keypair) -> u64 {
 #[test]
 fn installments_paid_on_their_due_dates_add_up_and_close_the_line() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     // 1_000_003 at 0%: five installments of 166_667 and a last one of 166_668.
     let p = env.scheduled_params(1_000_003, 0, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 0);
@@ -210,7 +210,7 @@ fn installments_paid_on_their_due_dates_add_up_and_close_the_line() {
 #[test]
 fn missed_installments_grow_over_time() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 0);
     let (_, line_id, t0) = drawn(&mut env, &k, &p, 0);
     let mut seen = vec![];
@@ -222,24 +222,26 @@ fn missed_installments_grow_over_time() {
 }
 
 #[test]
-fn late_interest_accrues_after_grace_and_is_collected_first() {
+fn late_interest_accrues_from_the_due_date_and_is_collected_first() {
     let mut env = Env::new();
-    let grace = 5 * 24 * 3600;
-    let k = pool_with(&mut env, 10 * UNIT, grace);
+    let k = pool_with(&mut env, 10 * UNIT);
     // 6.0 at 12%: 6.72 in six installments of 1.12; 100% a year late interest.
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
     let nav0 = env.nav(&k);
 
-    // Within the grace period the installment is missed but accrues nothing.
-    env.warp(t0 + p.interval() + i64::from(grace));
+    // On its due date the installment is missed and accrues nothing yet; there is no grace period,
+    // so a day later a day of late interest has run: 1.0 * 100% / 365 = 0.002739.
+    env.warp(t0 + p.interval());
     let a = env.arrears(&k, line_id);
     assert_eq!((a.missed, a.overdue, a.late_due), (1, 1_120_000, 0));
+    env.warp(t0 + p.interval() + 86_400);
+    assert_eq!(env.arrears(&k, line_id).late_due, 2_739);
 
-    // 1% of a year after grace, on the principal share of the 1.12 installment (1.0;
+    // 1% of a year after the due date, on the principal share of the 1.12 installment (1.0;
     // no interest on overdue interest): 1.0 * 100% * 0.01 = 0.01.
     let year = elote_pool::state::SECONDS_PER_YEAR as i64;
-    env.warp(t0 + p.interval() + i64::from(grace) + year / 100);
+    env.warp(t0 + p.interval() + year / 100);
     assert_eq!(env.arrears(&k, line_id).overdue_principal, UNIT);
     assert_eq!(env.arrears(&k, line_id).late_due, 10_000);
 
@@ -274,7 +276,7 @@ fn late_interest_accrues_after_grace_and_is_collected_first() {
 #[test]
 fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let p = env.scheduled_params(UNIT, 1_000, 3, 10_000);
     let total = 1_100_000;
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 5 * UNIT);
@@ -305,7 +307,7 @@ fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
 #[test]
 fn repayment_order_is_interest_first_and_clamps_overpayment_on_every_line() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let p2 = env.scheduled_params(4 * UNIT, 1_000, 4, 10_000);
     let (b, v2, _) = drawn(&mut env, &k, &p2, UNIT);
     let p1 = env.line_params(4 * UNIT, 1_000);
@@ -331,7 +333,7 @@ fn repayment_order_is_interest_first_and_clamps_overpayment_on_every_line() {
 #[test]
 fn mark_in_collection_after_three_missed_installments() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (_, line_id, t0) = drawn(&mut env, &k, &p, 0);
     let keeper = env.funded(1);
@@ -372,7 +374,7 @@ fn mark_in_collection_after_three_missed_installments() {
 #[test]
 fn a_cure_confirmed_first_wins_over_collection() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 0);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
     env.warp(t0 + 3 * p.interval());
@@ -386,7 +388,7 @@ fn a_cure_confirmed_first_wins_over_collection() {
 #[test]
 fn a_line_in_collection_still_accepts_repayments_and_closes_when_repaid() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
     env.warp(t0 + 3 * p.interval() + 10);
@@ -414,7 +416,7 @@ fn a_line_in_collection_still_accepts_repayments_and_closes_when_repaid() {
 #[test]
 fn late_interest_on_the_maximum_installments_stays_within_the_compute_budget() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let day = 24 * 3600;
     let mut p = env.scheduled_params(UNIT, 0, 120, 10_000);
     p.schedule.as_mut().unwrap().interval_seconds = day;
@@ -436,13 +438,11 @@ fn late_interest_on_the_maximum_installments_stays_within_the_compute_budget() {
 // -----------------------------------------------------------------------------------------------
 
 /// A line in collection is written off only once the pool's collection period has run from the
-/// mark (audit F-03): the grace of the third missed installment implies the grace of the first, so
-/// without the period the write-off was available the instant the keeper marked the line.
+/// mark (audit F-03), on top of the oldest missed due date, which is always past at the mark.
 #[test]
 fn write_off_in_collection_waits_for_the_collection_period_from_the_mark() {
     let mut env = Env::new();
-    let grace: u32 = 15 * 24 * 3600;
-    let k = pool_with(&mut env, 10 * UNIT, grace);
+    let k = pool_with(&mut env, 10 * UNIT);
     let council = env.council.insecure_clone();
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
@@ -453,10 +453,10 @@ fn write_off_in_collection_waits_for_the_collection_period_from_the_mark() {
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     env.expect_err(ix, &council, &[], E_TERM_NOT_ENDED);
 
-    // Collection once the third missed installment's grace has run. The oldest missed installment
-    // fell due at t0 + p.interval(), so its grace has run too; the write-off still waits for the
-    // pool's collection period, counted from the mark.
-    env.warp(t0 + 3 * p.interval() + i64::from(grace) + 1);
+    // Collection once the third missed installment's due date has passed. The oldest missed
+    // installment fell due at t0 + p.interval(); the write-off still waits for the pool's
+    // collection period, counted from the mark.
+    env.warp(t0 + 3 * p.interval() + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
     let marked_at = env.now();
@@ -479,10 +479,9 @@ fn write_off_in_collection_waits_for_the_collection_period_from_the_mark() {
 }
 
 #[test]
-fn collection_waits_for_the_grace_of_the_third_missed_installment() {
+fn collection_waits_for_the_due_date_of_the_third_missed_installment_to_pass() {
     let mut env = Env::new();
-    let grace: u32 = 10 * 24 * 3600;
-    let k = pool_with(&mut env, 10 * UNIT, grace);
+    let k = pool_with(&mut env, 10 * UNIT);
     let council = env.council.insecure_clone();
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
@@ -490,17 +489,18 @@ fn collection_waits_for_the_grace_of_the_third_missed_installment() {
     // One installment paid: the next three fall due at t0 + 2, 3 and 4 months.
     env.warp(t0 + p.interval());
     env.repay(&k, line_id, &b, 1_120_000);
-    env.warp(t0 + 4 * p.interval() + i64::from(grace));
+    // At the third one's due date, to the second, it is missed but the line is not marked yet.
+    env.warp(t0 + 4 * p.interval());
     assert_eq!(env.arrears(&k, line_id).missed, 3);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.expect_err(ix, &b, &[], E_NOT_ENOUGH_MISSED);
-    env.warp(t0 + 4 * p.interval() + i64::from(grace) + 1);
+    env.warp(t0 + 4 * p.interval() + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
 
-    // The oldest missed installment (t0 + 2 months) is past its grace; the write-off is allowed
-    // once the collection period has run from the mark.
+    // The oldest missed installment (t0 + 2 months) is past due; the write-off is allowed once the
+    // collection period has run from the mark.
     env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     env.send(ix, &council, &[]);
@@ -508,17 +508,16 @@ fn collection_waits_for_the_grace_of_the_third_missed_installment() {
 }
 
 /// After the mark there is no cure: the installments not yet due became exigible at the mark, so
-/// paying the pre-mark arrears leaves them missed, and the write-off waits for the grace and for
-/// the pool's collection period, both counted from the mark.
+/// paying the pre-mark arrears leaves them missed, and the write-off waits for the pool's
+/// collection period, counted from the mark.
 #[test]
 fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_collection_period_from_the_mark() {
     let mut env = Env::new();
-    let grace: u32 = 10 * 24 * 3600;
-    let k = pool_with(&mut env, 10 * UNIT, grace);
+    let k = pool_with(&mut env, 10 * UNIT);
     let council = env.council.insecure_clone();
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
-    env.warp(t0 + 3 * p.interval() + i64::from(grace) + 1);
+    env.warp(t0 + 3 * p.interval() + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &b, &[]);
 
@@ -533,8 +532,9 @@ fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_collection_pe
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
 
-    // The grace (10 days) and the collection period (30 days) both run from the mark.
-    env.warp(marked_at + i64::from(grace) + 1);
+    // The collection period (30 days) runs from the mark; the installments exigible at the mark
+    // are past due a second later, which is not enough.
+    env.warp(marked_at + 1);
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     env.expect_err(ix, &council, &[], E_WRITE_OFF_TOO_EARLY);
     env.warp(marked_at + i64::from(COLLECTION_PERIOD));
@@ -547,14 +547,13 @@ fn after_the_mark_there_is_no_cure_and_the_write_off_waits_for_the_collection_pe
 }
 
 #[test]
-fn write_off_after_the_term_waits_for_the_pool_grace() {
+fn write_off_after_the_term_waits_for_the_term_to_pass() {
     let mut env = Env::new();
-    let grace: u32 = 7 * 24 * 3600;
-    let k = pool_with(&mut env, 10 * UNIT, grace);
+    let k = pool_with(&mut env, 10 * UNIT);
     let council = env.council.insecure_clone();
     let b = env.borrower(&k);
 
-    // A single-maturity line in a pool with grace.
+    // A single-maturity line.
     let p1 = env.line_params(4 * UNIT, 1_000);
     let v1 = open(&mut env, &k, &b, &p1);
     env.draw(&k, v1, &b);
@@ -566,10 +565,10 @@ fn write_off_after_the_term_waits_for_the_pool_grace() {
     env.draw(&k, v2, &b);
 
     for (line_id, term_end) in [(v1, p1.term_end), (v2, p2.term_end)] {
-        env.warp(term_end + i64::from(grace));
+        env.warp(term_end);
         let ix = env.write_off_ix(&k, line_id, &council.pubkey());
         env.expect_err(ix, &council, &[], E_TERM_NOT_ENDED);
-        env.warp(term_end + i64::from(grace) + 1);
+        env.warp(term_end + 1);
         let ix = env.write_off_ix(&k, line_id, &b.pubkey());
         env.expect_err(ix, &b, &[], E_UNAUTHORIZED);
         let ix = env.write_off_ix(&k, line_id, &council.pubkey());
@@ -581,7 +580,7 @@ fn write_off_after_the_term_waits_for_the_pool_grace() {
 #[test]
 fn late_interest_over_the_life_of_a_line_never_exceeds_its_principal() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     // 1.0 at 10%: 1.1 in three installments; 50% a year late interest.
     let p = env.scheduled_params(UNIT, 1_000, 3, 5_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 3 * UNIT);
@@ -616,7 +615,7 @@ fn late_interest_over_the_life_of_a_line_never_exceeds_its_principal() {
 #[test]
 fn late_interest_caps_each_overdue_part_separately() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let year = elote_pool::state::SECONDS_PER_YEAR as i64;
     let part: u64 = 3 * UNIT;
     // 9.0 at 0% in three installments every two years; 33.33% a year late interest.
@@ -660,7 +659,7 @@ fn late_interest_caps_each_overdue_part_separately() {
 #[test]
 fn a_repayment_that_settles_no_late_interest_leaves_the_watermark_where_it_was() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     // 6.0 at 12%: six installments of 1.12, of which 1.0 is principal; 50% a year late interest.
     // The overdue principal share accrues 1.0 * 0.5 / 31_536_000 units a second: about 0.016, so
     // 30 s round to 0 and 70 s to 1.
@@ -690,7 +689,7 @@ fn a_repayment_that_settles_no_late_interest_leaves_the_watermark_where_it_was()
 #[test]
 fn the_mark_accelerates_the_balance() {
     let mut env = Env::new();
-    let k = pool_with(&mut env, 10 * UNIT, 0);
+    let k = pool_with(&mut env, 10 * UNIT);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
     let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
     assert_eq!(env.line(&k, line_id).accelerated_at, 0);
@@ -727,4 +726,44 @@ fn the_mark_accelerates_the_balance() {
     env.repay(&k, line_id, &b, 3_180_000 + a.late_due);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     assert_eq!(env.line(&k, line_id).accelerated_at, marked_at, "the record stays");
+}
+
+/// There is no grace period, and the program never reads the reserved `Pool.grace_period_seconds`:
+/// with the field forced to thirty days, a line is still marked a second after its third missed
+/// due date, a payment must still cover the late interest that ran from the first due date, and
+/// an overdue bullet line is written off a second after its term.
+#[test]
+fn the_reserved_grace_field_is_never_read() {
+    use anchor_lang::{AccountDeserialize, AccountSerialize};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let council = env.council.insecure_clone();
+    let mut account = env.svm.get_account(&k.pool).expect("the pool");
+    let mut pool = elote_pool::state::Pool::try_deserialize(&mut account.data.as_slice()).unwrap();
+    pool.grace_period_seconds = 30 * 86_400;
+    let mut data = Vec::new();
+    pool.try_serialize(&mut data).unwrap();
+    account.data[..data.len()].copy_from_slice(&data);
+    env.svm.set_account(k.pool, account).unwrap();
+    assert_eq!(env.pool(&k).grace_period_seconds, 30 * 86_400);
+
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
+    let bullet = env.line_params(UNIT, 1_000);
+    let bullet_id = open(&mut env, &k, &b, &bullet);
+    env.draw(&k, bullet_id, &b);
+
+    env.warp(t0 + 3 * p.interval() + 1);
+    let late = env.arrears(&k, line_id).late_due;
+    assert!(late > 0);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), late - 1);
+    env.expect_err(ix, &b, &[], E_LATE_INTEREST_UNPAID);
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.send(ix, &b, &[]);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
+
+    env.warp(bullet.term_end + 1);
+    let ix = env.write_off_ix(&k, bullet_id, &council.pubkey());
+    env.send(ix, &council, &[]);
+    assert_eq!(env.line(&k, bullet_id).status, LineStatus::WrittenOff);
 }

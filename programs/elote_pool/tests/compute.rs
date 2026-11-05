@@ -20,7 +20,7 @@ const CEILING: u64 = 100_000;
 /// installments, all of them missed, so the arrears loop runs its full length each time.
 fn compute_units(installments: u16) -> [(&'static str, u64); 3] {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(0);
+    let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 200 * UNIT);
     env.deposit(&k, &investor, 200 * UNIT);
     let borrower = env.borrower(&k);
@@ -72,7 +72,7 @@ const DRAW_CEILING: u64 = 90_000;
 #[test]
 fn draw_stays_under_its_ceiling_at_120_installments() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(0);
+    let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 200 * UNIT);
     env.deposit(&k, &investor, 200 * UNIT);
     let borrower = env.borrower(&k);
@@ -102,7 +102,7 @@ fn draw_stays_under_its_ceiling_at_120_installments() {
 #[test]
 fn cancel_pagare_stays_under_the_ceiling() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(0);
+    let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 200 * UNIT);
     env.deposit(&k, &investor, 200 * UNIT);
     let borrower = env.borrower(&k);
@@ -155,7 +155,7 @@ fn cancel_pagare_stays_under_the_ceiling() {
 #[test]
 fn repay_after_the_mark_stays_under_the_ceiling_at_120_installments() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(0);
+    let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 200 * UNIT);
     env.deposit(&k, &investor, 200 * UNIT);
     let borrower = env.borrower(&k);
@@ -184,7 +184,7 @@ fn repay_after_the_mark_stays_under_the_ceiling_at_120_installments() {
 #[test]
 fn procuracion_stays_under_the_ceiling() {
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(0);
+    let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 200 * UNIT);
     env.deposit(&k, &investor, 200 * UNIT);
     let borrower = env.borrower(&k);
@@ -226,7 +226,7 @@ fn arrears_instructions_stay_under_the_ceiling_at_18_and_120_installments() {
 fn a_payment_covering_three_sidecars_stays_under_the_ceiling() {
     use elote_pool::state::MAX_SIDECARS_PER_REPAY;
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(0);
+    let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 200 * UNIT);
     env.deposit(&k, &investor, 200 * UNIT);
     let borrower = env.borrower(&k);

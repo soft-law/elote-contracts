@@ -43,9 +43,10 @@ export function lineSchedule(line: Schedule): Schedule | null {
 }
 
 /**
- * The late interest due on `line` at `now`: a scheduled line's (`lineArrears`), or a bullet
- * line's, which the program treats as one installment due at `termEnd`: late interest runs from
- * `termEnd + grace`, or from the mark if the line was accelerated before.
+ * The late interest due on `line` at `now`, as `repay` charges it: a scheduled line's
+ * (`lineArrears`), or a bullet line's, which the program treats as one installment due at
+ * `termEnd`: late interest runs from `termEnd`, or from the mark if the line was accelerated
+ * before. There is no grace period: late interest runs from the first second past a due date.
  */
 export function lineLateDue(
   line: Schedule & {
@@ -57,15 +58,14 @@ export function lineLateDue(
     acceleratedAt: bigint;
     termEnd: bigint;
   },
-  graceSeconds: bigint,
   now: bigint
 ): bigint {
   const s = lineSchedule(line);
-  if (s) return lineArrears(line, s, graceSeconds, now).lateDue;
-  // A bullet line is one installment due at the term: late interest from `termEnd + grace`, or
-  // from the mark if it was accelerated before (`line_arrears` in the program).
+  if (s) return lineArrears(line, s, 0n, now).lateDue;
+  // A bullet line is one installment due at the term: late interest from `termEnd`, or from the
+  // mark if it was accelerated before (`line_arrears` in the program).
   const bullet: Schedule = { ...line, intervalSeconds: 1n, installments: 1, maxMissed: 0 };
-  return lineArrears({ ...line, firstDueAt: line.termEnd }, bullet, graceSeconds, now).lateDue;
+  return lineArrears({ ...line, firstDueAt: line.termEnd }, bullet, 0n, now).lateDue;
 }
 
 export type Arrears = {
@@ -85,6 +85,8 @@ const max = (a: bigint, b: bigint) => (a > b ? a : b);
 
 /**
  * Arrears of a drawn scheduled line at `now` (unix seconds), as `math::arrears` computes them.
+ * `graceSeconds` is `math::arrears`'s grace term, kept for the pinned vectors: the program passes
+ * zero, so pass `0n` to mirror a line on chain.
  * The installments repay `drawn + interestDue` on the contract's calendar: installment `k` is
  * due at `firstDueAt + (k - 1) * interval` (decision 25), and late interest accrues on the
  * principal share (`drawn`) of what is overdue. Once `acceleratedAt` is set every installment is

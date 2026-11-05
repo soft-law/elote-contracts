@@ -49,7 +49,7 @@ fn init_ix(env: &mut Env, multisig: &Pubkey) -> (PoolKeys, solana_instruction::I
     let council = env.council.insecure_clone();
     let asset = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_by(&creator, &asset);
-    let p = env.init_params(0, BPS, COLLECTION_PERIOD);
+    let p = env.init_params(BPS, COLLECTION_PERIOD);
     (k, env.init_pool_ix_params(&k, multisig, p))
 }
 
@@ -152,7 +152,7 @@ fn init_pool_refuses_params_below_their_floors() {
         let council = env.council.pubkey();
         let asset = env.create_mint(&council, 6);
         let k = env.pool_keys_by(&creator.pubkey(), &asset);
-        let mut p = env.init_params(0, BPS, COLLECTION_PERIOD);
+        let mut p = env.init_params(BPS, COLLECTION_PERIOD);
         edit(&mut p);
         let ix = env.init_pool_ix_params(&k, &multisig, p);
         env.expect_err(ix, &creator, &[], code);
@@ -295,7 +295,7 @@ fn init_pool_refuses_the_share_mint_as_the_asset() {
     let share_mint = mint;
     let mut k = PoolKeys::new(&creator.pubkey(), &share_mint, &share_mint, TOKEN_2022_PROGRAM_ID, TOKEN_2022_PROGRAM_ID);
     k.collection = env.create_collection(&k.pool);
-    let p = env.init_params(0, BPS, COLLECTION_PERIOD);
+    let p = env.init_params(BPS, COLLECTION_PERIOD);
     let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), p);
     env.expect_err(ix, &creator, &[], ERR_BASE + PoolError::AssetIsShareMint as u32);
 }

@@ -115,7 +115,7 @@ fn f02_init_pool_refuses_a_collection_with_plugins_or_minted_assets() {
             PluginAuthorityPair { plugin: Plugin::PermanentBurnDelegate(PermanentBurnDelegate {}), authority: by_stranger },
         ],
     );
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
 
     // A collection with any plugin at all, even a harmless one.
@@ -123,7 +123,7 @@ fn f02_init_pool_refuses_a_collection_with_plugins_or_minted_assets() {
         &k.pool,
         vec![PluginAuthorityPair { plugin: Plugin::ImmutableMetadata(mpl_core::types::ImmutableMetadata {}), authority: Some(PluginAuthority::None) }],
     );
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
 
     // A bare collection that already holds an asset minted by its authority.
@@ -149,20 +149,19 @@ fn f02_init_pool_refuses_a_collection_with_plugins_or_minted_assets() {
         .instruction();
     env.send(ix, &authority, &[]);
     k.collection = minted;
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.expect_err(ix, &council, &[], E_COLLECTION_NOT_ALLOWED);
 
     // A bare, empty collection is accepted.
     k.collection = env.create_collection(&k.pool);
-    let ix = env.init_pool_ix_for(&k, 0, BPS);
+    let ix = env.init_pool_ix_for(&k, BPS);
     env.send(ix, &council, &[]);
     assert_eq!(env.pool(&k).collection, k.collection);
 }
 
-/// F-03: the write-off of a line in collection used to be available the instant the keeper marked
-/// it, since the grace of the third missed installment implies the grace of the first. The pool
-/// now carries a collection period (at least 30 days, set at `init_pool`, changed by the council),
-/// and `write_off` on a line in collection waits for it from the mark, on top of the gates it had.
+/// F-03: the pool carries a collection period (at least 30 days, set at `init_pool`, changed by the
+/// council), and `write_off` on a line in collection waits for it from the mark, on top of the
+/// oldest missed due date (always past at the mark, since the third missed one is).
 #[test]
 fn f03_write_off_waits_for_the_pools_collection_period_from_the_mark() {
     use elote_pool::events::CollectionPeriodSet;
@@ -172,7 +171,7 @@ fn f03_write_off_waits_for_the_pools_collection_period_from_the_mark() {
     // Below the floor, the pool is not created and the period is not changed.
     let asset_mint = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset_mint);
-    let ix = env.init_pool_ix_full(&k, 0, BPS, COLLECTION_PERIOD - 1);
+    let ix = env.init_pool_ix_full(&k, BPS, COLLECTION_PERIOD - 1);
     env.expect_err(ix, &council, &[], E_COLLECTION_PERIOD_TOO_SHORT);
     let (k, meta) = env.setup_pool();
     let ev: elote_pool::events::PoolInitialized = find_event(&meta).expect("PoolInitialized");

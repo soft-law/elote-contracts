@@ -131,8 +131,6 @@ export type InitPoolInstruction<
 
 export type InitPoolInstructionData = {
   discriminator: ReadonlyUint8Array;
-  /** Zero means no grace; fixed for the pool's life. */
-  gracePeriodSeconds: number;
   /** `1..=BPS`; fixed for the pool's life. */
   maxLineBps: number;
   /** At least `MIN_COLLECTION_PERIOD_SECONDS`. */
@@ -148,8 +146,6 @@ export type InitPoolInstructionData = {
 };
 
 export type InitPoolInstructionDataArgs = {
-  /** Zero means no grace; fixed for the pool's life. */
-  gracePeriodSeconds: number;
   /** `1..=BPS`; fixed for the pool's life. */
   maxLineBps: number;
   /** At least `MIN_COLLECTION_PERIOD_SECONDS`. */
@@ -168,7 +164,6 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["gracePeriodSeconds", getU32Encoder()],
       ["maxLineBps", getU16Encoder()],
       ["collectionPeriodSeconds", getU32Encoder()],
       ["guardian", getAddressEncoder()],
@@ -183,7 +178,6 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
 export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["gracePeriodSeconds", getU32Decoder()],
     ["maxLineBps", getU16Decoder()],
     ["collectionPeriodSeconds", getU32Decoder()],
     ["guardian", getAddressDecoder()],
@@ -255,7 +249,6 @@ export type InitPoolAsyncInput<
   systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
   guardian: InitPoolInstructionDataArgs["guardian"];
@@ -616,7 +609,6 @@ export type InitPoolInput<
   systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  gracePeriodSeconds: InitPoolInstructionDataArgs["gracePeriodSeconds"];
   maxLineBps: InitPoolInstructionDataArgs["maxLineBps"];
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
   guardian: InitPoolInstructionDataArgs["guardian"];

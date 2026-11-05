@@ -46,8 +46,8 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
   the borrower's behalf; the payer is recorded in the event.
 - **Installments, arrears and late interest.** A line can instead be repaid in installments
   (see [Installments and collection](#installments-and-collection)). Missed installments are
-  computed from what was repaid, late interest accrues on overdue amounts after the pool's grace
-  period, and a line with three missed installments goes to collection.
+  computed from what was repaid, late interest accrues on overdue amounts from the first day of
+  delay (there is no grace period), and a line with three missed installments goes to collection.
 - **Optional sponsor.** A public support program can be named on a line; it must co-sign the opening and
   may pay the interest. It never touches the pool's money otherwise.
 - **Pause.** Any council member or the guardian can pause deposits, redemptions, requests, approvals and draws; only the council resumes. Repayments, moving a line
@@ -57,7 +57,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 
 | Account | Address | Holds |
 |---|---|---|
-| `Pool` | PDA `["pool", admin, asset_mint]` | admin, asset, vault, share token, outstanding principal, running totals, the attestor, the series' Metaplex Core collection, the grace, collection and cancel-delay periods, the line cap (`max_line_bps`), the asset's issuer controls (`asset_controls`), `permissioned` and the pause flag |
+| `Pool` | PDA `["pool", admin, asset_mint]` | admin, asset, vault, share token, outstanding principal, running totals, the attestor, the series' Metaplex Core collection, the collection and cancel-delay periods, the line cap (`max_line_bps`), the asset's issuer controls (`asset_controls`), `permissioned` and the pause flag |
 | share token | a mint the admin creates and hands to `init_pool` | classic SPL Token or Token-2022 with the asset's decimals, mint authority = the pool PDA, supply 0, no extension that takes or hides value; frozen by default (Token-2022 `DefaultAccountState`) for a permissioned series under Token ACL |
 | collection | a Metaplex Core collection the admin creates and hands to `init_pool` | the series' collection of pagaré assets; its update authority must be the pool PDA, so only the program mints into it |
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
@@ -78,14 +78,14 @@ the 8-byte discriminator the sizes are `Pool` 346, `CreditLine` 375 and `Pagare`
 
 | Instruction | Signers | Effect |
 |---|---|---|
-| `init_pool(grace_period_seconds, max_line_bps, attestor, collection_period_seconds, cancel_delay_seconds)` | admin | creates the pool, its vault and its dead-shares account around an asset mint and an admin-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the attestor (the agreements engine's key, never the zero key or the admin) and the series' Metaplex Core collection (a bare one with the pool PDA as update authority: no plugins, nothing minted); the grace period and the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) are fixed for the life of the pool; the collection period (at least 30 days) and the cancel delay of the backstop (at least 7 days) can be changed by the admin; emits `PoolInitialized` with every parameter |
+| `init_pool(max_line_bps, attestor, collection_period_seconds, cancel_delay_seconds)` | admin | creates the pool, its vault and its dead-shares account around an asset mint and an admin-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the attestor (the agreements engine's key, never the zero key or the admin) and the series' Metaplex Core collection (a bare one with the pool PDA as update authority: no plugins, nothing minted); the concentration cap (largest line as a share of the NAV, in basis points, 1 to 10,000) is fixed for the life of the pool; there is no grace period on late payment (the pool's `grace_period_seconds` is reserved and always zero); the collection period (at least 30 days) and the cancel delay of the backstop (at least 7 days) can be changed by the admin; emits `PoolInitialized` with every parameter |
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit is at least 1.0 and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `open_line(line_id, principal, rate_bps, term_end, agreement_hash, sponsor, sponsor_role, schedule, expediente_root)` | admin, borrower, attestor, sponsor if named | approves the next line as a commitment of `principal` at an annual `rate_bps`; moves no money; refused while paused; the borrower is neither the admin nor the attestor, and `principal <= NAV * max_line_bps / 10_000` (reads the vault); `schedule` (optional, with the contract's `first_due_at`) makes it an installment line; the draw window closes at `first_due_at`, or at `term_end` on a bullet line |
 | `draw(amount, document_hash, asset_bump, pagare_bump, cert_fingerprint, signature_method)` | borrower, attestor, payer | one tranche from the vault to the borrower while the window is open (strictly before it closes), at most what is still available and at most 64 tranches a line, against the signed pagaré's hash; refused while paused; interest on the tranche, at the annual rate to the last due date, is fixed here; mints the pagaré token (a Metaplex Core asset in the series' collection, held frozen by the pool PDA) and its `Pagare` record, whose rent the `payer` (the app's relayer) funds; the client derives the two PDA bumps so the program verifies the addresses without a search; `cert_fingerprint` (the PSC certificate that signed the text) and `signature_method` (0 wallet, 1 PSC + wallet, 2 e.firma + wallet) go into the record and the asset's attributes |
 | `repay(amount, receipt_hash)` | anyone | late interest (which `amount` must cover), then interest, then principal, never more than is due; what is owed is what was drawn plus the interest fixed at each draw. The line closes when nothing is due and nothing can be drawn any more; while it can still draw, a payment that clears the debt leaves it open and a payment on a zero debt is refused. Takes the pagaré records the payment touches as remaining accounts (from the line's cursor `pagares_paid` through the first pagaré left uncovered, or the last draw; `PagareAccountsMismatch` otherwise) and writes an entry only on a pagaré it applies principal to: `Pagado`, with the PAGADO mark, where the principal repaid reaches the pagaré's `drawn_through`; `Abono` on the one left uncovered. An interest-only payment writes no entry and is recorded in `PagarePayment`. `receipt_hash` is the payer's receipt, zero meaning "to follow". Clients send at most five pagaré records per `repay` and split a larger payment. Never paused |
-| `mark_in_collection` | anyone | moves an installment line to `InCollection` once `max_missed` installments are missed and the grace period of the last of them has run. Never paused |
-| `write_off` | admin | an `Active` line after the term plus grace, or a line in collection once the pool's collection period has run from the mark and either its oldest missed due date plus grace or the term plus grace has passed: the unpaid principal is recognised as a loss. Never paused |
+| `mark_in_collection` | anyone | moves an installment line to `InCollection` once `max_missed` installments are missed, past the due date of the last of them. Never paused |
+| `write_off` | admin | an `Active` line after the term, or a line in collection once the pool's collection period has run from the mark and either its oldest missed due date or the term has passed: the unpaid principal is recognised as a loss. Never paused |
 | `suspend_draws` | admin | closes a line's draw window now (a KYC failure, a default event); the undrawn remainder is forfeited, repayment is untouched, the pool is not paused |
 | `cancel_line` | admin | clears an approved commitment nobody drew (status `Cancelled`, terminal); refused once anything was drawn |
 | `endorse_pagare(draw_index, kind, to, endoso_hash)` | holder (the admin while the asset is in the pool), attestor, payer | endoso en procuración of a pagaré to `to` (the only kind the pool makes): appends the entry to the pagaré's registry and lends the power to extinguish it through an owner-managed `BurnDelegate` whose authority is the program address `["procurador", pagare, to]` (added the first time, approved again on later procuraciones), so the procurador can only extinguish it inside `cancel_pagare`; the asset stays with the pool. Refused when `to` is the zero key, the pool, the admin or the attestor (`EndorseeInvalid`), on a written-off line, on a pagaré that is not outstanding, and while a procuración is in force |
@@ -118,10 +118,10 @@ Without it the line is a bullet line (single maturity) and nothing below applies
   drawn after each tranche.
 - **Missed installments** are computed, never stored: installments fallen due minus installments fully
   covered by the principal and interest repaid. At its due second an installment already counts as due.
-  The pool's grace period does not change the count.
+  There is no grace period (decision 36): an installment is late from the second after it falls due.
 - **Late interest** accrues on the **principal share** of each overdue part (decision 11: no
   interest on overdue interest; the share is `part * principal / total`, rounded down) from its due
-  date plus the pool's grace period (or from the last repayment, whichever is later), linear per
+  date (or from the last repayment, whichever is later), linear per
   second at `late_bps` a year (365 days):
   `Σ principal_share(part) * min(seconds, cap) * late_bps / (10_000 * 31_536_000)`, rounded down, in
   `u128`, where `cap = ceil(10_000 * 31_536_000 / late_bps)` seconds. Two caps apply:
@@ -138,16 +138,15 @@ Without it the line is a bullet line (single maturity) and nothing below applies
   `late_collected`, not in the pool's `interest_collected`.
 - **Repayment order** on an installment line: late interest, then interest, then principal.
 - **Collection.** Once `max_missed` installments are missed (at least three, three months of arrears)
-  and the grace period of the last of them has run (`now > first_due_at + (covered + max_missed - 1) * interval
-  + grace`, with `covered` installments paid), anyone may call `mark_in_collection`, which moves the line
+  and the due date of the last of them has passed (`now > first_due_at + (covered + max_missed - 1) * interval`,
+  with `covered` installments paid), anyone may call `mark_in_collection`, which moves the line
   to `InCollection` and records the acceleration (`accelerated_at`): from the mark every installment is
   due and late interest runs on all remaining principal (vencimiento anticipado, decision 28), while the
   ordinary interest of the installments not yet due is forgiven. Repayments are still accepted there;
   there is no cure, and only a full repayment moves the line to `Repaid`.
 - **Write-off policy.** After the third month in arrears the line goes to out-of-court collection and the
   admin records the write-off. The program allows `write_off` only when the pool's collection period has run from the mark and the line is in collection and its
-  oldest missed installment fell due more than the grace period ago, or when the term ended more than the
-  grace period ago. Only the admin may call it.
+  oldest missed installment is past due, or when the term has ended. Only the admin may call it.
 
 ## Events
 
@@ -156,7 +155,7 @@ the order listed for each instruction.
 
 | Event | Emitted by | Fields |
 |---|---|---|
-| `PoolInitialized` | `init_pool`, its only event | pool, admin, attestor, asset_mint, share_mint, collection, grace_period_seconds, collection_period_seconds, cancel_delay_seconds, max_line_bps, asset_controls (bits: 0 freeze authority, 1 `Pausable`), permissioned |
+| `PoolInitialized` | `init_pool`, its only event | pool, admin, attestor, asset_mint, share_mint, collection, collection_period_seconds, cancel_delay_seconds, max_line_bps, asset_controls (bits: 0 freeze authority, 1 `Pausable`), permissioned |
 | `Deposited` | `deposit`, then `NavUpdated` | pool, depositor, assets, shares, nav_after, supply_after |
 | `Redeemed` | `redeem`, then `NavUpdated` | pool, holder, shares, assets, nav_after, supply_after |
 | `LineOpened` | `open_line` | pool, line_id, borrower, sponsor, sponsor_role (0 promoter, 1 guarantor; meaningful only with a sponsor), agreement_hash, expediente_root, principal, rate_bps, term_end, availability_end, first_due_at, interval_seconds, installments, late_bps, max_missed (the last five zero on a bullet line) |
@@ -291,10 +290,9 @@ every signature with an explorer link and a final table of NAV, supply and value
 
 With `--schedule` it then requests a MXN 6,000 line at 12% in six installments with 100% a year late
 interest and collection after three missed installments, has the council approve it, draws it, lets
-the first installment go unpaid past its due date and the grace period, and repays it with the next
+the first installment go unpaid past its due date, and repays it with the next
 one: late interest first, then interest, then principal. A validator's clock cannot be moved forward,
-so on `--cluster local` an installment falls due every 20 seconds (`--interval-seconds`) and the
-pool's grace period is 5 seconds (`--grace-seconds`).
+so on `--cluster local` an installment falls due every 20 seconds (`--interval-seconds`).
 
 Wallets are generated into `.demo-keys/` (ignored by git) unless `ELOTE_ADMIN_KEYPAIR`,
 `ELOTE_INVESTOR_A_KEYPAIR`, `ELOTE_INVESTOR_B_KEYPAIR`, `ELOTE_BORROWER_KEYPAIR` or

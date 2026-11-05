@@ -168,7 +168,8 @@ pub struct ScheduleTerms {
     pub interval: i64,
     pub installments: u16,
     pub late_bps: u16,
-    /// The pool's grace period.
+    /// Seconds after a due date before late interest accrues. The program passes zero (there is
+    /// no grace period); the arithmetic keeps the term so the pinned vectors stay valid.
     pub grace: u32,
     /// Late interest is settled up to this time (zero: never).
     pub late_paid_until: i64,

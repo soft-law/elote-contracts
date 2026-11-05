@@ -115,7 +115,7 @@ fn real_fix_pool_at(env: &mut Env, max_outstanding: u64, rate_bps: u16) -> (Pool
     let council = env.council.insecure_clone();
     let asset = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset);
-    let mut p = env.init_params(0, BPS, COLLECTION_PERIOD);
+    let mut p = env.init_params(BPS, COLLECTION_PERIOD);
     p.max_outstanding_principal = max_outstanding;
     let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), p);
     env.send(ix, &council, &[]);
@@ -193,7 +193,7 @@ fn the_line_cap_is_measured_in_mxn_at_the_fix() {
     let mut env = Env::new();
     let council = env.council.insecure_clone();
     let asset = env.create_mint(&council.pubkey(), 6);
-    let (k, ix) = env.init_pool_full(&asset, 0, 1_000); // 10% of the NAV per line
+    let (k, ix) = env.init_pool_full(&asset, 1_000); // 10% of the NAV per line
     env.send(ix, &council, &[]);
     let ix = env.post_fix_ix(&k, &council.pubkey(), 200_000, env.today()); // 20 MXN per USD
     env.send(ix, &council, &[]);

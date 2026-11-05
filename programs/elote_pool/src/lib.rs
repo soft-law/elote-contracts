@@ -48,8 +48,9 @@ pub mod elote_pool {
     /// Creates the pool, its vault and its dead-shares account around `asset_mint`, the creator's
     /// share mint and the series collection. The creator signs and pays; the council is vault 0 of
     /// `multisig`, an autonomous Squads v4 multisig of at most ten members with a majority
-    /// threshold, and does not sign. Fixes the grace period and the line cap (`1..=10_000` bps of the
-    /// NAV) for the pool's life.
+    /// threshold, and does not sign. Sets the line cap (`1..=10_000` bps of the NAV), the collection
+    /// period, the outstanding cap, the acceleration notice and the cancel grace. There is no grace
+    /// period on late payment: late interest runs from the first day past a due date.
     pub fn init_pool(ctx: Context<InitPool>, params: InitPoolParams) -> Result<()> {
         instructions::pool::init_pool(ctx, params)
     }
@@ -205,16 +206,15 @@ pub mod elote_pool {
         instructions::pagare::annotate_payment(ctx, draw_index, entry_count, receipt_hash, valid_until)
     }
 
-    /// Moves a scheduled line to collection once `max_missed` installments are missed and the grace
-    /// period of the last of them has run, accelerating the balance. Anyone may call it, also while
-    /// paused.
+    /// Moves a scheduled line to collection once `max_missed` installments are missed (past the due
+    /// date of the last of them), accelerating the balance. Anyone may call it, also while paused.
     pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
         instructions::lines::mark_in_collection(ctx)
     }
 
-    /// Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end +
-    /// grace`, an `InCollection` line after its collection period from the mark and after its
-    /// oldest missed due date or its term, plus grace. Never paused.
+    /// Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end`, an
+    /// `InCollection` line after its collection period from the mark and after its oldest missed
+    /// due date or its term. Never paused.
     pub fn write_off(ctx: Context<WriteOff>, valid_until: i64) -> Result<()> {
         instructions::lines::write_off(ctx, valid_until)
     }

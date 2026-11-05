@@ -234,8 +234,6 @@ fn validate_collection(collection: &AccountInfo, pool: &Pubkey) -> Result<()> {
 /// The `init_pool` parameters.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct InitPoolParams {
-    /// Zero means no grace; fixed for the pool's life.
-    pub grace_period_seconds: u32,
     /// `1..=BPS`; fixed for the pool's life.
     pub max_line_bps: u16,
     /// At least `MIN_COLLECTION_PERIOD_SECONDS`.
@@ -282,7 +280,8 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         interest_collected: 0,
         written_off: 0,
         line_count: 0,
-        grace_period_seconds: p.grace_period_seconds,
+        // Reserved: there is no grace period.
+        grace_period_seconds: 0,
         collection_period_seconds: p.collection_period_seconds,
         max_line_bps: p.max_line_bps,
         asset_controls: controls,
@@ -318,7 +317,6 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         asset_mint: pool.asset_mint,
         share_mint: pool.share_mint,
         collection: pool.collection,
-        grace_period_seconds: p.grace_period_seconds,
         collection_period_seconds: p.collection_period_seconds,
         max_line_bps: p.max_line_bps,
         max_outstanding_principal: p.max_outstanding_principal,

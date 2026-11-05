@@ -55,7 +55,6 @@ export type PoolInitializedEvent = {
   assetMint: Address;
   shareMint: Address;
   collection: Address;
-  gracePeriodSeconds: number;
   collectionPeriodSeconds: number;
   maxLineBps: number;
   maxOutstandingPrincipal: bigint;
@@ -74,7 +73,6 @@ export type PoolInitializedEventArgs = {
   assetMint: Address | HasAddress;
   shareMint: Address | HasAddress;
   collection: Address | HasAddress;
-  gracePeriodSeconds: number;
   collectionPeriodSeconds: number;
   maxLineBps: number;
   maxOutstandingPrincipal: number | bigint;
@@ -96,7 +94,6 @@ export function getPoolInitializedEventEncoder(): FixedSizeEncoder<PoolInitializ
       ["assetMint", getAddressEncoder()],
       ["shareMint", getAddressEncoder()],
       ["collection", getAddressEncoder()],
-      ["gracePeriodSeconds", getU32Encoder()],
       ["collectionPeriodSeconds", getU32Encoder()],
       ["maxLineBps", getU16Encoder()],
       ["maxOutstandingPrincipal", getU64Encoder()],
@@ -121,7 +118,6 @@ export function getPoolInitializedEventDecoder(): FixedSizeDecoder<PoolInitializ
       ["assetMint", getAddressDecoder()],
       ["shareMint", getAddressDecoder()],
       ["collection", getAddressDecoder()],
-      ["gracePeriodSeconds", getU32Decoder()],
       ["collectionPeriodSeconds", getU32Decoder()],
       ["maxLineBps", getU16Decoder()],
       ["maxOutstandingPrincipal", getU64Decoder()],

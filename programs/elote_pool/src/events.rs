@@ -14,7 +14,6 @@ pub struct PoolInitialized {
     pub asset_mint: Pubkey,
     pub share_mint: Pubkey,
     pub collection: Pubkey,
-    pub grace_period_seconds: u32,
     pub collection_period_seconds: u32,
     pub max_line_bps: u16,
     pub max_outstanding_principal: u64,

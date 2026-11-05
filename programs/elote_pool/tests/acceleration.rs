@@ -297,16 +297,15 @@ fn an_accelerated_bullet_line_owes_late_interest_from_the_mark_collected_first()
 }
 
 /// A bullet line past its term owes late interest without any acceleration: it is one installment
-/// due at `term_end`, and late interest runs on its unpaid principal from `term_end + grace`, by the
-/// same formula as an accelerated bullet line (anchor `term_end - 1`, interval 1, one installment).
-/// Up to `term_end + grace` nothing accrues and a payment takes none. The line's terms, and so its
-/// `terms_hash`, are what they were.
+/// due at `term_end`, and late interest runs on its unpaid principal from `term_end` (there is no
+/// grace period), by the same formula as an accelerated bullet line (anchor `term_end - 1`,
+/// interval 1, one installment). Up to `term_end` nothing accrues and a payment takes none; from
+/// the next second it runs. The line's terms, and so its `terms_hash`, are what they were.
 #[test]
-fn a_bullet_line_past_its_term_owes_late_interest_from_the_term_end_plus_grace() {
+fn a_bullet_line_past_its_term_owes_late_interest_from_the_term_end() {
     use elote_pool::events::{LateInterestCollected, LineRepaid};
-    let grace = 5 * 86_400u32;
     let mut env = Env::new();
-    let (k, _) = env.setup_pool_with_grace(grace);
+    let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 20 * UNIT);
     env.deposit(&k, &investor, 20 * UNIT);
     let council = env.council.insecure_clone();
@@ -321,10 +320,10 @@ fn a_bullet_line_past_its_term_owes_late_interest_from_the_term_end_plus_grace()
     env.draw(&k, other, &on_time);
     let line = env.line(&k, id);
     assert_eq!((line.installments, line.accelerated_at, line.status, line.interest_due), (0, 0, LineStatus::Active, 400_000));
-    let start = p.term_end + i64::from(grace);
+    let start = p.term_end;
 
-    // Up to the term end plus grace, to the second, nothing accrues.
-    for at in [p.term_end - 1, p.term_end, start] {
+    // Up to the term end, to the second, nothing accrues.
+    for at in [p.term_end - 1, start] {
         env.warp(at);
         assert_eq!(env.arrears(&k, id).late_due, 0, "at {at}");
     }
@@ -336,6 +335,9 @@ fn a_bullet_line_past_its_term_owes_late_interest_from_the_term_end_plus_grace()
     assert!(find_event::<LateInterestCollected>(&meta).is_none());
     let line = env.line(&k, other);
     assert_eq!((line.status, line.late_collected, line.late_paid_until), (LineStatus::Repaid, 0, 0));
+    // A day late, a day of 36.5% on the 4.0 of principal: 0.004.
+    env.warp(start + 86_400);
+    assert_eq!(env.arrears(&k, id).late_due, 4_000);
 
     // One year later, never accelerated: a year of 36.5% on the 4.0 of principal, 1.46.
     env.warp(start + YEAR);
