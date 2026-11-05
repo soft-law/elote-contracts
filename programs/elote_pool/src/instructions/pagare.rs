@@ -80,8 +80,8 @@ pub struct CancelPagare<'info> {
 /// Extinguishes a paid pagaré. Three signers may: the council, as the owner (with the multisig
 /// check); the procurador of record alone (`NotHolder`, `ProcuracionState`), who also passes
 /// `procurador_authority` (`WrongAccount`); or the line's borrower alone once
-/// `now > paid_at + cancel_grace_seconds` (`CancelGraceNotElapsed`), the debtor's exit that does not
-/// depend on the council. Requires the PAGADO mark a repayment wrote, `PAGARE_PAID_PENDING_CANCEL`,
+/// `now > paid_at + Pagare.cancel_grace_seconds` (`CancelGraceNotElapsed`), the grace the repayment
+/// fixed on the pagaré, the debtor's exit that does not depend on the council. Requires the PAGADO mark a repayment wrote, `PAGARE_PAID_PENDING_CANCEL`,
 /// whatever the line's status (`PagareAlreadyPaid`, `PagareNotCovered`), and a non-zero
 /// `receipt_hash` (`DocumentHashRequired`). Writes a `Terminacion` entry, `status = PAGARE_PAID`
 /// and `cancel_receipt_hash` (`paid_at` and `receipt_hash` stay), clears any procuración, then
@@ -108,7 +108,7 @@ pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: 
     require!(receipt_hash != [0u8; 32], PoolError::DocumentHashRequired);
     require!(pagare.status == PAGARE_PAID_PENDING_CANCEL, PoolError::PagareNotCovered);
     if by_borrower {
-        let opens = pagare.paid_at.checked_add(i64::from(pool.cancel_grace_seconds)).ok_or(PoolError::Overflow)?;
+        let opens = pagare.paid_at.checked_add(i64::from(pagare.cancel_grace_seconds)).ok_or(PoolError::Overflow)?;
         require!(now > opens, PoolError::CancelGraceNotElapsed);
     }
     // Derived and compared before any write.

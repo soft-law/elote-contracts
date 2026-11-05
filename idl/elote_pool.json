@@ -510,7 +510,7 @@
         "Extinguishes pagaré `draw_index` once a repayment has marked it paid",
         "(`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry,",
         "then thaws and burns the asset; the record stays. The council (the owner), the procurador of",
-        "record alone, or the line's borrower alone once the cancel grace from the payment has run.",
+        "record alone, or the line's borrower alone once the cancel grace fixed at the payment has run.",
         "Never paused."
       ],
       "discriminator": [
@@ -2734,7 +2734,8 @@
       "name": "set_cancel_grace",
       "docs": [
         "Sets the wait from a pagaré's payment before its borrower may cancel it alone; never below",
-        "30 days. Council only."
+        "30 days nor above 365. Applies to pagarés paid from then on: each keeps the grace in force",
+        "at its payment. Council only."
       ],
       "discriminator": [
         18,
@@ -4362,6 +4363,11 @@
       "code": 6066,
       "name": "TooManySidecars",
       "msg": "A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment"
+    },
+    {
+      "code": 6067,
+      "name": "CancelGraceTooLong",
+      "msg": "The borrower's cancel grace is above the one-year ceiling"
     }
   ],
   "types": [
@@ -5018,7 +5024,7 @@
           {
             "name": "cancel_grace_seconds",
             "docs": [
-              "At least `MIN_CANCEL_GRACE_SECONDS`."
+              "`MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`."
             ],
             "type": "u32"
           }
@@ -5857,6 +5863,15 @@
             }
           },
           {
+            "name": "cancel_grace_seconds",
+            "docs": [
+              "The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then:",
+              "the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool",
+              "sets later. Zero while outstanding."
+            ],
+            "type": "u32"
+          },
+          {
             "name": "reserved",
             "docs": [
               "Zero; for fields added after mainnet."
@@ -5864,7 +5879,7 @@
             "type": {
               "array": [
                 "u8",
-                32
+                28
               ]
             }
           }
@@ -6346,8 +6361,9 @@
           {
             "name": "cancel_grace_seconds",
             "docs": [
-              "Seconds from a pagaré's payment before its borrower may cancel it alone; at least",
-              "`MIN_CANCEL_GRACE_SECONDS`."
+              "Seconds from a pagaré's payment before its borrower may cancel it alone,",
+              "`MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the",
+              "pagarés it marks paid."
             ],
             "type": "u32"
           },

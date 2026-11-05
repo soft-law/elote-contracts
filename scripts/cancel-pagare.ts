@@ -78,7 +78,8 @@ if (before.status === PAGARE_OUTSTANDING) fail(`no repayment has marked pagaré 
   if (branch === "borrower") {
     holder = await loadSigner("borrower", arg("borrower-keypair")!);
     if (l.borrower !== holder.address) fail(`${holder.address} is not the borrower of line ${lineId}`);
-    const opens = before.paidAt + BigInt(pool.cancelGraceSeconds);
+    // The grace the repayment fixed on the pagaré, not the pool's current one.
+    const opens = before.paidAt + BigInt(before.cancelGraceSeconds);
     const now = await chainNow(c);
     if (now <= opens) {
       console.log(`  the cancel grace runs until ${new Date(Number(opens) * 1000).toISOString()}, ${opens - now} s away: the program will refuse (CancelGraceNotElapsed)`);

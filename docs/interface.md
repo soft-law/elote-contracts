@@ -42,7 +42,7 @@ Signers: `creator`.
 | `guardian` | `pubkey` | The zero key for none. |
 | `max_outstanding_principal` | `u64` | At least 1. |
 | `acceleration_notice_seconds` | `u32` | At least `MIN_ACCELERATION_NOTICE_SECONDS`. |
-| `cancel_grace_seconds` | `u32` | At least `MIN_CANCEL_GRACE_SECONDS`. |
+| `cancel_grace_seconds` | `u32` | `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. |
 
 ### `propose_council(new_council: pubkey, kind: u8, valid_until: i64)`
 
@@ -129,7 +129,7 @@ Signers: `council`. Council instruction.
 
 ### `set_cancel_grace(cancel_grace_seconds: u32, valid_until: i64)`
 
-Sets the wait from a pagaré's payment before its borrower may cancel it alone; never below 30 days. Council only.
+Sets the wait from a pagaré's payment before its borrower may cancel it alone; never below 30 days nor above 365. Applies to pagarés paid from then on: each keeps the grace in force at its payment. Council only.
 
 Signers: `council`. Council instruction.
 
@@ -445,9 +445,9 @@ Signers: `council`. Council instruction.
 
 ### `cancel_pagare(draw_index: u16, receipt_hash: [u8; 32], valid_until: i64)`
 
-Extinguishes pagaré `draw_index` once a repayment has marked it paid (`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry, then thaws and burns the asset; the record stays. The council (the owner), the procurador of record alone, or the line's borrower alone once the cancel grace from the payment has run. Never paused.
+Extinguishes pagaré `draw_index` once a repayment has marked it paid (`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry, then thaws and burns the asset; the record stays. The council (the owner), the procurador of record alone, or the line's borrower alone once the cancel grace fixed at the payment has run. Never paused.
 
-Signers: `holder`, `payer`. The signer picks the branch: the council (multisig check), the procurador of record alone, or the line's borrower alone after `cancel_grace_seconds` from the PAGADO mark.
+Signers: `holder`, `payer`. The signer picks the branch: the council (multisig check), the procurador of record alone, or the line's borrower alone after the pagaré's `cancel_grace_seconds` (fixed by the payment) from the PAGADO mark.
 
 | Account | Writable | Signer | Notes |
 |---|---|---|---|
@@ -607,7 +607,8 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `fx_date` | `u32` |  |
 | `usdc_delivered` | `u64` | USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the tranche. |
 | `delivery_hash` | `[u8; 32]` | `sha256(pagare_hash \|\| fx_rate \|\| fx_date \|\| usdc_delivered)`: the delivery the borrower instructed, kept apart from the pagaré, which promises MXN only. |
-| `reserved` | `[u8; 32]` | Zero; for fields added after mainnet. |
+| `cancel_grace_seconds` | `u32` | The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then: the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool sets later. Zero while outstanding. |
+| `reserved` | `[u8; 28]` | Zero; for fields added after mainnet. |
 
 ### `Pool`
 
@@ -639,7 +640,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `guardian` | `pubkey` | A key that may only pause the pool, beside every council member; the zero key when none. |
 | `max_outstanding_principal` | `u64` | The most principal the pool lends at once, in asset units; checked at every draw. |
 | `acceleration_notice_seconds` | `u32` | Seconds from `propose_acceleration` before `accelerate_line`; at least `MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline. |
-| `cancel_grace_seconds` | `u32` | Seconds from a pagaré's payment before its borrower may cancel it alone; at least `MIN_CANCEL_GRACE_SECONDS`. |
+| `cancel_grace_seconds` | `u32` | Seconds from a pagaré's payment before its borrower may cancel it alone, `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the pagarés it marks paid. |
 | `impaired_principal` | `u64` | Principal of the lines in collection, for a provision at the mark; zero, not yet used. |
 | `provision_bps` | `u16` | The provision on `impaired_principal`, in basis points; zero, not yet used. |
 | `fx_feeder` | `pubkey` | The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key when none (the council publishes). Set and rotated by the council. |
@@ -760,6 +761,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6064 | `AnnotationKindInvalid` | This kind is not a court annotation |
 | 6065 | `EntryNotFound` | The referenced registry entry does not exist |
 | 6066 | `TooManySidecars` | A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment |
+| 6067 | `CancelGraceTooLong` | The borrower's cancel grace is above the one-year ceiling |
 
 ## Compute
 

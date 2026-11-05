@@ -76,6 +76,9 @@ pub const MIN_ACCELERATION_NOTICE_SECONDS: u32 = 7 * 86_400;
 /// The shortest wait a pool may set from a pagaré's payment before its borrower may cancel it
 /// alone.
 pub const MIN_CANCEL_GRACE_SECONDS: u32 = 30 * 86_400;
+/// The longest wait a pool may set from a pagaré's payment before its borrower may cancel it
+/// alone: 365 days.
+pub const MAX_CANCEL_GRACE_SECONDS: u32 = 365 * 86_400;
 #[cfg(all(feature = "devnet", feature = "localnet"))]
 compile_error!("the cluster features `devnet` and `localnet` are exclusive");
 
@@ -164,8 +167,9 @@ pub struct Pool {
     /// Seconds from `propose_acceleration` before `accelerate_line`; at least
     /// `MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline.
     pub acceleration_notice_seconds: u32,
-    /// Seconds from a pagaré's payment before its borrower may cancel it alone; at least
-    /// `MIN_CANCEL_GRACE_SECONDS`.
+    /// Seconds from a pagaré's payment before its borrower may cancel it alone,
+    /// `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the
+    /// pagarés it marks paid.
     pub cancel_grace_seconds: u32,
     /// Principal of the lines in collection, for a provision at the mark; zero, not yet used.
     pub impaired_principal: u64,
@@ -412,8 +416,12 @@ pub struct Pagare {
     /// `sha256(pagare_hash || fx_rate || fx_date || usdc_delivered)`: the delivery the borrower
     /// instructed, kept apart from the pagaré, which promises MXN only.
     pub delivery_hash: [u8; 32],
+    /// The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then:
+    /// the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool
+    /// sets later. Zero while outstanding.
+    pub cancel_grace_seconds: u32,
     /// Zero; for fields added after mainnet.
-    pub reserved: [u8; 32],
+    pub reserved: [u8; 28],
 }
 
 /// Installment terms requested by `request_line`; fixed for the life of the line.

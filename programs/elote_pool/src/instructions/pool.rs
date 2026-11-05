@@ -16,7 +16,7 @@ use crate::fx;
 use crate::math;
 use crate::state::{self, 
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
-    COUNCIL_GENERIC, COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_GRACE_SECONDS,
+    COUNCIL_GENERIC, COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_GRACE_SECONDS, MAX_CANCEL_GRACE_SECONDS,
     MIN_COLLECTION_PERIOD_SECONDS,
 };
 
@@ -246,7 +246,7 @@ pub struct InitPoolParams {
     pub max_outstanding_principal: u64,
     /// At least `MIN_ACCELERATION_NOTICE_SECONDS`.
     pub acceleration_notice_seconds: u32,
-    /// At least `MIN_CANCEL_GRACE_SECONDS`.
+    /// `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`.
     pub cancel_grace_seconds: u32,
 }
 
@@ -259,6 +259,7 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
     require!(p.collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
     require!(p.acceleration_notice_seconds >= MIN_ACCELERATION_NOTICE_SECONDS, PoolError::AccelerationNoticeTooShort);
     require!(p.cancel_grace_seconds >= MIN_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooShort);
+    require!(p.cancel_grace_seconds <= MAX_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooLong);
     let multisig = ctx.accounts.multisig.to_account_info();
     let (council, council_vault_bump) = council::canonical_vault(multisig.key);
     council::check(&multisig, &council, council_vault_bump)?;
@@ -720,11 +721,14 @@ pub struct SetCancelGrace<'info> {
     pub pool: Account<'info, Pool>,
 }
 
-/// Council only; refused below `MIN_CANCEL_GRACE_SECONDS`. Applies to every paid pagaré from now
-/// on, so the borrower's exit always waits at least the floor from the payment.
+/// Council only; refused below `MIN_CANCEL_GRACE_SECONDS` (`CancelGraceTooShort`) and above
+/// `MAX_CANCEL_GRACE_SECONDS` (`CancelGraceTooLong`). Applies to pagarés paid from now on: a
+/// repayment fixes the grace in force on each pagaré it marks paid (`Pagare.cancel_grace_seconds`),
+/// so a pagaré already paid keeps its borrower's date.
 pub fn set_cancel_grace(ctx: Context<SetCancelGrace>, cancel_grace_seconds: u32, valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
     require!(cancel_grace_seconds >= MIN_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooShort);
+    require!(cancel_grace_seconds <= MAX_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooLong);
     let pool = &mut ctx.accounts.pool;
     council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     pool.cancel_grace_seconds = cancel_grace_seconds;

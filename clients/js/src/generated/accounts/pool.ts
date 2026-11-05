@@ -127,8 +127,9 @@ export type Pool = {
    */
   accelerationNoticeSeconds: number;
   /**
-   * Seconds from a pagaré's payment before its borrower may cancel it alone; at least
-   * `MIN_CANCEL_GRACE_SECONDS`.
+   * Seconds from a pagaré's payment before its borrower may cancel it alone,
+   * `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the
+   * pagarés it marks paid.
    */
   cancelGraceSeconds: number;
   /** Principal of the lines in collection, for a provision at the mark; zero, not yet used. */
@@ -221,8 +222,9 @@ export type PoolArgs = {
    */
   accelerationNoticeSeconds: number;
   /**
-   * Seconds from a pagaré's payment before its borrower may cancel it alone; at least
-   * `MIN_CANCEL_GRACE_SECONDS`.
+   * Seconds from a pagaré's payment before its borrower may cancel it alone,
+   * `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the
+   * pagarés it marks paid.
    */
   cancelGraceSeconds: number;
   /** Principal of the lines in collection, for a provision at the mark; zero, not yet used. */

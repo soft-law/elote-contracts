@@ -925,23 +925,32 @@ fn the_procurador_extinguishes_the_title_through_the_program_address() {
 }
 
 /// The borrower's exit's parameter: `cancel_grace_seconds` is set at `init_pool` with a 30-day
-/// floor and changed only by the council (with its multisig), with an event.
+/// floor and a one-year ceiling (`MAX_CANCEL_GRACE_SECONDS`), and changed only by the council
+/// (with its multisig), within the same bounds, with an event.
 #[test]
-fn the_cancel_grace_is_a_pool_parameter_with_a_thirty_day_floor() {
+fn the_cancel_grace_is_a_pool_parameter_between_thirty_days_and_a_year() {
     use elote_pool::events::CancelGraceSet;
+    use elote_pool::state::MAX_CANCEL_GRACE_SECONDS;
+    assert_eq!(MAX_CANCEL_GRACE_SECONDS, 365 * 86_400);
     let mut env = Env::new();
     let council = env.council.insecure_clone();
     let asset_mint = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset_mint);
-    let mut params = env.init_params(0, BPS, COLLECTION_PERIOD);
-    params.cancel_grace_seconds = CANCEL_GRACE - 1;
-    let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), params);
-    env.expect_err(ix, &council, &[], E_CANCEL_GRACE_TOO_SHORT);
+    for (seconds, code) in [(CANCEL_GRACE - 1, E_CANCEL_GRACE_TOO_SHORT), (MAX_CANCEL_GRACE_SECONDS + 1, E_CANCEL_GRACE_TOO_LONG)] {
+        let mut params = env.init_params(0, BPS, COLLECTION_PERIOD);
+        params.cancel_grace_seconds = seconds;
+        let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), params);
+        env.expect_err(ix, &council, &[], code);
+    }
     let (k, meta) = env.setup_pool();
     let ev: elote_pool::events::PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((ev.pool, ev.cancel_grace_seconds, env.pool(&k).cancel_grace_seconds), (k.pool, CANCEL_GRACE, CANCEL_GRACE));
     let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), CANCEL_GRACE - 1);
     env.expect_err(ix, &council, &[], E_CANCEL_GRACE_TOO_SHORT);
+    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), MAX_CANCEL_GRACE_SECONDS + 1);
+    env.expect_err(ix, &council, &[], E_CANCEL_GRACE_TOO_LONG);
+    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), u32::MAX);
+    env.expect_err(ix, &council, &[], E_CANCEL_GRACE_TOO_LONG);
     let stranger = env.funded(1);
     let ix = env.set_cancel_grace_ix(&k, &stranger.pubkey(), 2 * CANCEL_GRACE);
     env.expect_err(ix, &stranger, &[], E_UNAUTHORIZED);
@@ -949,6 +958,68 @@ fn the_cancel_grace_is_a_pool_parameter_with_a_thirty_day_floor() {
     let ev: CancelGraceSet = find_event(&env.send(ix, &council, &[])).expect("CancelGraceSet");
     assert_eq!((ev.pool, ev.cancel_grace_seconds), (k.pool, 2 * CANCEL_GRACE));
     assert_eq!(env.pool(&k).cancel_grace_seconds, 2 * CANCEL_GRACE);
+    // The ceiling itself is accepted.
+    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), MAX_CANCEL_GRACE_SECONDS);
+    env.send(ix, &council, &[]);
+    assert_eq!(env.pool(&k).cancel_grace_seconds, MAX_CANCEL_GRACE_SECONDS);
+}
+
+/// The borrower's date is fixed when the pagaré is paid: `repay` copies the pool's
+/// `cancel_grace_seconds` onto each pagaré it marks `PAGARE_PAID_PENDING_CANCEL`, and the
+/// borrower's `cancel_pagare` waits `paid_at + Pagare.cancel_grace_seconds`. A later
+/// `set_cancel_grace`, up or down, applies only to pagarés paid after it.
+#[test]
+fn the_cancel_grace_is_fixed_on_the_pagare_at_payment() {
+    use elote_pool::state::{MAX_CANCEL_GRACE_SECONDS, PAGARE_PAID_PENDING_CANCEL};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let council = env.council.insecure_clone();
+    let grace = i64::from(CANCEL_GRACE);
+    let max = i64::from(MAX_CANCEL_GRACE_SECONDS);
+
+    let borrower = env.borrower(&k);
+    let b = borrower.pubkey();
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    assert_eq!(env.pagare(&k, line_id, 0).cancel_grace_seconds, 0, "nothing is fixed while outstanding");
+    let interest = env.line(&k, line_id).interest_due;
+    env.mint_to(&k.asset_mint, &council, &b, interest + 2 * UNIT);
+    env.repay(&k, line_id, &borrower, UNIT + interest);
+    let p0 = env.pagare(&k, line_id, 0);
+    assert_eq!((p0.status, p0.cancel_grace_seconds), (PAGARE_PAID_PENDING_CANCEL, CANCEL_GRACE));
+    assert_eq!(env.pagare(&k, line_id, 1).cancel_grace_seconds, 0, "the pagaré the payment did not cover");
+
+    // The council raises the grace to the ceiling after the payment: pagaré 0 keeps its date.
+    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), MAX_CANCEL_GRACE_SECONDS);
+    env.send(ix, &council, &[]);
+    assert_eq!(env.pagare(&k, line_id, 0).cancel_grace_seconds, CANCEL_GRACE);
+    env.warp(p0.paid_at + grace);
+    let ix = env.cancel_pagare_ix(&k, line_id, 0, &b, &b, RECEIPT_HASH);
+    env.expect_err(ix, &borrower, &[], E_CANCEL_GRACE_NOT_ELAPSED);
+    env.warp(p0.paid_at + grace + 1);
+    let ix = env.cancel_pagare_ix(&k, line_id, 0, &b, &b, RECEIPT_HASH);
+    env.send(ix, &borrower, &[]);
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
+
+    // Pagaré 1, paid after the change, carries the ceiling; lowering the pool's grace afterwards
+    // does not shorten it.
+    env.repay(&k, line_id, &borrower, 2 * UNIT);
+    let p1 = env.pagare(&k, line_id, 1);
+    assert_eq!((p1.status, p1.cancel_grace_seconds), (PAGARE_PAID_PENDING_CANCEL, MAX_CANCEL_GRACE_SECONDS));
+    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), CANCEL_GRACE);
+    env.send(ix, &council, &[]);
+    for at in [p1.paid_at + grace + 1, p1.paid_at + max] {
+        env.warp(at);
+        let ix = env.cancel_pagare_ix(&k, line_id, 1, &b, &b, RECEIPT_HASH);
+        env.expect_err(ix, &borrower, &[], E_CANCEL_GRACE_NOT_ELAPSED);
+    }
+    env.warp(p1.paid_at + max + 1);
+    let ix = env.cancel_pagare_ix(&k, line_id, 1, &b, &b, RECEIPT_HASH);
+    env.send(ix, &borrower, &[]);
+    let p1 = env.pagare(&k, line_id, 1);
+    assert_eq!((p1.status, p1.cancel_grace_seconds), (PAGARE_PAID, MAX_CANCEL_GRACE_SECONDS), "the grace stays as history");
 }
 
 /// The debtor's exit that does not depend on the council (research's legal review, point 4): once a

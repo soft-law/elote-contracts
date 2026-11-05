@@ -157,4 +157,6 @@ pub enum PoolError {
     // Added after the codes above were published; appended so no existing code moves.
     #[msg("A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment")]
     TooManySidecars,
+    #[msg("The borrower's cancel grace is above the one-year ceiling")]
+    CancelGraceTooLong,
 }

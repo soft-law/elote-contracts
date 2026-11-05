@@ -351,8 +351,8 @@ can never be the pool, the council, a curator, the guardian or the borrower.
 
 `scripts/cancel-pagare.ts --pool <address> --line-id <n> --draw-index <n> --receipt-hash <64 hex>`
 extinguishes a pagaré a repayment marked paid: by default the council as holder (through Squads);
-`--borrower-keypair` cancels as the line's borrower alone once the pool's cancel grace from the
-payment has run (refused before it); `--procurador-keypair` cancels as the procurador of record
+`--borrower-keypair` cancels as the line's borrower alone once the cancel grace the payment fixed
+on the pagaré has run (refused before it); `--procurador-keypair` cancels as the procurador of record
 alone through its program address.
 
 `scripts/key-to-base58.ts <keypair.json>` prints the base58 form of a keypair file's secret bytes,

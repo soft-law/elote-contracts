@@ -649,7 +649,8 @@ pub fn draw(
         fx_date,
         usdc_delivered: usdc,
         delivery_hash: delivery,
-        reserved: [0; 32],
+        cancel_grace_seconds: 0,
+        reserved: [0; 28],
     };
     // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.
     let mut record = record;
@@ -774,8 +775,8 @@ pub struct Repay<'info> {
 /// where `last_touched` is the first one this payment leaves partly unpaid, or the last draw; none
 /// once the cursor has passed the last draw (`PagareAccountsMismatch` otherwise), and never more
 /// than `MAX_SIDECARS_PER_REPAY` (`TooManySidecars`): a larger payment is split. A covered pagaré
-/// gets a `Pagado` entry, status `PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash` (only
-/// the burn waits), and the cursor `pagares_paid` moves past it. The uncovered one gets an `Abono`
+/// gets a `Pagado` entry, status `PAGARE_PAID_PENDING_CANCEL`, `paid_at`, `receipt_hash` and the
+/// pool's `cancel_grace_seconds`, fixed for the borrower's exit (only the burn waits), and the cursor `pagares_paid` moves past it. The uncovered one gets an `Abono`
 /// entry only if the payment applied principal to it. `receipt_hash` is the payer's, unverified and
 /// provisional until the holder annotates the real one (`annotate_payment`); zero means "receipt to
 /// follow".
@@ -911,6 +912,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
     }
 
     // The payment entries, oldest first; the cursor moves past every pagaré marked paid.
+    let cancel_grace = pool.cancel_grace_seconds;
     let payer_key = ctx.accounts.payer.key();
     let pool_key = pool.key();
     let line_id = line.line_id;
@@ -931,6 +933,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
             sidecar.status = PAGARE_PAID_PENDING_CANCEL;
             sidecar.paid_at = now;
             sidecar.receipt_hash = receipt_hash;
+            sidecar.cancel_grace_seconds = cancel_grace;
             line.pagares_paid = sidecar.draw_index.checked_add(1).ok_or(PoolError::Overflow)?;
         }
         emit_cpi!(PagareEntry {

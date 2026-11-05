@@ -364,6 +364,8 @@ and shows the class of the last entry.
 | `MAX_INSTALLMENTS` | 120 | bounds the arrears loop and its compute |
 | `MIN_MAX_MISSED` | 3 | policy: three missed installments before collection |
 | `MIN_COLLECTION_PERIOD_SECONDS` | 2 592 000 | 30 days: the shortest collection period a pool may set |
+| `MIN_CANCEL_GRACE_SECONDS` | 2 592 000 | 30 days: the shortest wait from a pagaré's payment before its borrower may cancel it alone |
+| `MAX_CANCEL_GRACE_SECONDS` | 31 536 000 | 365 days: the longest such wait (`CancelGraceTooLong`); each repayment fixes the pool's value on the pagarés it marks paid (`Pagare.cancel_grace_seconds`) |
 | `MIN_CANCEL_DELAY_SECONDS` | 604 800 | seven days: the shortest wait from a cancellation request to the holder's cancellation alone |
 | `SECONDS_PER_YEAR` | 31 536 000 | 365 days, annualises `late_bps` |
 
@@ -683,8 +685,9 @@ promise it made (`sponsor_role`) and grants no authority afterwards (a sponsor r
   gets no entry. Otherwise the entry goes from the payer to the pool over `receipt_hash` (the
   payer's, unverified; zero means "receipt to follow", repaired by `annotate_payment`): `Pagado`
   where `drawn_through <= principal_repaid` after the payment, which also sets `status =
-  PAGARE_PAID_PENDING_CANCEL`, `paid_at = now` and `receipt_hash` (the PAGADO mark at the moment
-  of payment; only the burn waits for `cancel_pagare`) and moves the cursor `pagares_paid` past
+  PAGARE_PAID_PENDING_CANCEL`, `paid_at = now`, `receipt_hash` and `cancel_grace_seconds` (the
+  pool's, fixed for the borrower's exit) (the PAGADO mark at the moment of payment; only the
+  burn waits for `cancel_pagare`) and moves the cursor `pagares_paid` past
   it; `Abono` on the one the payment reaches without covering. So a covered pagaré is never left
   without its mark, and an interest-only payment writes no entry. `Pool::check` runs on the
   reloaded vault and the share supply.

@@ -32,7 +32,7 @@ Never test with an asset that has real value, not even on a "test mainnet-beta".
 | Guardian | `Pool.guardian`, set by the council (the zero key for none) | `pause` only |
 | FIX feeder | `Pool.fx_feeder`, set by the council (the zero key for none) | `post_fix` for a later date within ±5% of the FIX in force; nothing else |
 | Creator | `Pool.creator`, the payer of `init_pool` and a seed of the pool's address | Nothing after `init_pool` |
-| Borrower | `CreditLine.borrower`, the signer of `request_line` | Request a line, withdraw its request, draw tranches alone at the FIX it signs while the window is open, and cancel a pagaré carrying the PAGADO mark alone once `cancel_grace_seconds` (at least 30 days) have passed since the payment |
+| Borrower | `CreditLine.borrower`, the signer of `request_line` | Request a line, withdraw its request, draw tranches alone at the FIX it signs while the window is open, and cancel a pagaré carrying the PAGADO mark alone once the `cancel_grace_seconds` in force at the payment (30 to 365 days, fixed on the pagaré) have passed since it |
 | Sponsor | `CreditLine.sponsor`, an optional co-signer of `request_line` | Nothing after the request; it is a recorded party |
 | Line payer | `CreditLine.payer`, the funder of the request's rent (Elote's backend in the product) | Receives the rent back when a request is rejected or withdrawn |
 | Procurador | `Pagare.procurador`, written by `endorse_pagare`, cleared by `revoke_procuracion` and the extinction | `cancel_pagare` on that pagaré alone, while the program signs for the burn delegate `["procurador", pagare, procurador]`. It can never be the pool, the council, the guardian, the line's borrower or a multisig member |

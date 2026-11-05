@@ -210,6 +210,7 @@ pub const E_PROCURACION_STATE: u32 = ERR_BASE + PoolError::ProcuracionState as u
 pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + PoolError::AnnotationKindInvalid as u32;
 pub const E_ENTRY_NOT_FOUND: u32 = ERR_BASE + PoolError::EntryNotFound as u32;
 pub const E_TOO_MANY_SIDECARS: u32 = ERR_BASE + PoolError::TooManySidecars as u32;
+pub const E_CANCEL_GRACE_TOO_LONG: u32 = ERR_BASE + PoolError::CancelGraceTooLong as u32;
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
