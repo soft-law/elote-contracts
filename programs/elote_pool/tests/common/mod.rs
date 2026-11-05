@@ -1617,7 +1617,7 @@ impl Env {
         if cursor >= line.draws {
             return vec![];
         }
-        let late = if line.schedule().is_some() || line.accelerated_at != 0 { self.arrears(k, line_id).late_due } else { 0 };
+        let late = self.arrears(k, line_id).late_due;
         let interest_left = line.interest_due - line.interest_repaid;
         let remaining = (line.drawn - line.principal_repaid) + interest_left;
         let rest = amount.saturating_sub(late).min(remaining);
@@ -1727,16 +1727,13 @@ impl Env {
         }
     }
 
-    /// The arrears of a scheduled line, or of an accelerated bullet line (one installment due at the
-    /// term), at the SVM's current time, as the program computes them.
+    /// The arrears of a scheduled line, or of a bullet line (one installment due at the term,
+    /// accelerated or not), at the SVM's current time, as the program computes them.
     pub fn arrears(&self, k: &PoolKeys, line_id: u64) -> elote_pool::math::Arrears {
         let line = self.line(k, line_id);
         let (anchor, interval, installments) = match line.schedule() {
             Some(s) => (line.anchor().expect("anchor"), s.interval_seconds, s.installments),
-            None => {
-                assert!(line.accelerated_at != 0, "a bullet line has arrears only once accelerated");
-                (line.term_end - 1, 1, 1)
-            }
+            None => (line.term_end - 1, 1, 1),
         };
         let terms = elote_pool::math::ScheduleTerms {
             total: line.drawn + line.interest_due,

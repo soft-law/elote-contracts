@@ -43,9 +43,9 @@ export function lineSchedule(line: Schedule): Schedule | null {
 }
 
 /**
- * The late interest due on `line` at `now`: a scheduled line's (`lineArrears`), or an accelerated
- * bullet line's, which the program treats as one installment due at `termEnd` accelerated at the
- * mark; zero on a bullet line not accelerated.
+ * The late interest due on `line` at `now`: a scheduled line's (`lineArrears`), or a bullet
+ * line's, which the program treats as one installment due at `termEnd`: late interest runs from
+ * `termEnd + grace`, or from the mark if the line was accelerated before.
  */
 export function lineLateDue(
   line: Schedule & {
@@ -62,7 +62,8 @@ export function lineLateDue(
 ): bigint {
   const s = lineSchedule(line);
   if (s) return lineArrears(line, s, graceSeconds, now).lateDue;
-  if (line.acceleratedAt === 0n) return 0n;
+  // A bullet line is one installment due at the term: late interest from `termEnd + grace`, or
+  // from the mark if it was accelerated before (`line_arrears` in the program).
   const bullet: Schedule = { ...line, intervalSeconds: 1n, installments: 1, maxMissed: 0 };
   return lineArrears({ ...line, firstDueAt: line.termEnd }, bullet, graceSeconds, now).lateDue;
 }

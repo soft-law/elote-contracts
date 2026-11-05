@@ -653,7 +653,8 @@ promise it made (`sponsor_role`) and grants no authority afterwards (a sponsor r
   computes the set as `clients/js/src/pagare.ts::repaySidecars` does.
 - **Checks, in order:** `status` is `Active` or `InCollection` (`LineStatus`); `remaining =
   (drawn - principal_repaid) + (interest_due - interest_repaid)`; `amount > 0`
-  (`WrongAmount`); `late = arrears(now).late_due` on a scheduled line, 0 on a bullet line;
+  (`WrongAmount`); `late = arrears(now).late_due`, on a bullet line as one installment due at
+  `term_end` (from `term_end + grace`, or from the mark if accelerated before);
   `amount >= late` (`LateInterestUnpaid`); while the line can still draw (`Active`, `now <
   availability_end` and something undrawn), a payment on a zero debt is refused
   (`WrongAmount`); `rest = min(amount - late, remaining)`; `interest_part = min(rest,

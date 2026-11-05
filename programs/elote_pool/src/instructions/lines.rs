@@ -762,7 +762,8 @@ pub struct Repay<'info> {
 }
 
 /// Pays an `Active` or `InCollection` line. Anyone may pay, and the pause never blocks it. `amount`
-/// must cover the late interest due (`LateInterestUnpaid`; zero on a bullet line); the payment
+/// must cover the late interest due (`LateInterestUnpaid`; on a bullet line, from `term_end + grace`
+/// or from its acceleration); the payment
 /// settles late interest, then interest, then principal, and debits the payer only what is due.
 /// What is owed is what was drawn plus the interest fixed at each draw.
 ///
@@ -788,7 +789,6 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
-    let schedule = line.schedule();
     require!(matches!(line.status, LineStatus::Active | LineStatus::InCollection), PoolError::LineStatus);
     // The FIX in force, whatever its age: a payment is never refused for an old FIX.
     require!(pool.fix_rate != 0 && fx_rate == pool.fix_rate && fx_date == pool.fix_date, PoolError::FixMismatch);
@@ -799,10 +799,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
     let remaining = principal_left.checked_add(interest_left).ok_or(PoolError::Overflow)?;
     require!(amount > 0, PoolError::WrongAmount);
 
-    let late_part = match (schedule, line.accelerated_at) {
-        (None, 0) => 0,
-        _ => line_arrears(line, pool, now)?.late_due,
-    };
+    let late_part = line_arrears(line, pool, now)?.late_due;
     require!(amount >= late_part, PoolError::LateInterestUnpaid);
     // While the line can still draw, a zero debt is nothing to pay, and a payment that clears the
     // debt does not close the line; otherwise a third party could pay one unit and
@@ -989,16 +986,16 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
     Ok(())
 }
 
-/// The arrears of a scheduled line at `now`: the installments repay `drawn + interest_due` on the
+/// The arrears of a line at `now`: the installments repay `drawn + interest_due` on the
 /// contract's calendar, and late interest accrues on the principal share, `drawn`, of what is
 /// overdue.
 fn line_arrears(line: &CreditLine, pool: &Pool, now: i64) -> Result<Arrears> {
-    // An accelerated bullet line is one installment due at the term, accelerated at the mark: late
-    // interest runs on its principal from the mark, at the same rate formula as a schedule.
+    // A bullet line is one installment due at the term: late interest runs on its unpaid
+    // principal from `term_end + grace`, or from the mark if it was accelerated before, at the
+    // same rate formula as a schedule.
     let (anchor, interval, installments) = match line.schedule() {
         Some(s) => (line.anchor().ok_or(PoolError::Overflow)?, s.interval_seconds, s.installments),
-        None if line.accelerated_at != 0 => (line.term_end.checked_sub(1).ok_or(PoolError::Overflow)?, 1, 1),
-        None => return err!(PoolError::NotScheduled),
+        None => (line.term_end.checked_sub(1).ok_or(PoolError::Overflow)?, 1, 1),
     };
     let terms = ScheduleTerms {
         total: line.drawn.checked_add(line.interest_due).ok_or(PoolError::Overflow)?,

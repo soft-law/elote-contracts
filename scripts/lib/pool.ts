@@ -76,7 +76,7 @@ export async function repayInParts(
       const fix = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
       const leftMxn = mxnForUsdc(left, fix.fixRate);
       if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) return start - (await balance());
-      // Late interest: a scheduled line's, or an accelerated bullet line's from the mark.
+      // Late interest: a scheduled line's, or a bullet line's from term_end + grace (or the mark).
       // Late interest grows by the second until the part lands: quote it 30 s ahead. The program
       // takes only what is due; the excess falls on principal, and if that moves the records the
       // part touches, the retry below rebuilds it.
