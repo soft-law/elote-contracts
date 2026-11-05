@@ -153,6 +153,8 @@ export const ELOTE_POOL_ERROR__TOO_MANY_SIDECARS = 0x17b2; // 6066
 export const ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_LONG = 0x17b3; // 6067
 /** ProposalTooFar: The council's decision is dated more than fifteen days ahead */
 export const ELOTE_POOL_ERROR__PROPOSAL_TOO_FAR = 0x17b4; // 6068
+/** FixOutOfBounds: The FIX is outside the pool's bounds */
+export const ELOTE_POOL_ERROR__FIX_OUT_OF_BOUNDS = 0x17b5; // 6069
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -185,6 +187,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__FIX_DATE_INVALID
   | typeof ELOTE_POOL_ERROR__FIX_JUMP
   | typeof ELOTE_POOL_ERROR__FIX_MISMATCH
+  | typeof ELOTE_POOL_ERROR__FIX_OUT_OF_BOUNDS
   | typeof ELOTE_POOL_ERROR__FIX_STALE
   | typeof ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY
   | typeof ELOTE_POOL_ERROR__INVALID_SCHEDULE
@@ -258,6 +261,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__FIX_DATE_INVALID]: `The FIX date is not a valid date, is in the future, or is older than the published one`,
     [ELOTE_POOL_ERROR__FIX_JUMP]: `The FIX moves more than the feeder may publish; the council must`,
     [ELOTE_POOL_ERROR__FIX_MISMATCH]: `The FIX signed is not the one published now`,
+    [ELOTE_POOL_ERROR__FIX_OUT_OF_BOUNDS]: `The FIX is outside the pool's bounds`,
     [ELOTE_POOL_ERROR__FIX_STALE]: `No FIX is published, or it is too old for a draw`,
     [ELOTE_POOL_ERROR__INSUFFICIENT_LIQUIDITY]: `Not enough liquidity in the vault`,
     [ELOTE_POOL_ERROR__INVALID_SCHEDULE]: `The installment schedule is not valid`,

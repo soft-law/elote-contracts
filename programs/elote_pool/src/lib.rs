@@ -237,7 +237,9 @@ pub mod elote_pool {
     }
 
     /// Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was
-    /// determined (`yyyymmdd`). The feeder moves forward within 5%; the council publishes the rest.
+    /// determined (`yyyymmdd`), within the pool's FIX bounds. The feeder moves forward within 5% a
+    /// day since the FIX in force, counting one to three days; the council publishes the rest,
+    /// dated at most five days back.
     pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32, valid_until: i64) -> Result<()> {
         instructions::pool::post_fix(ctx, fix_rate, fix_date, valid_until)
     }
@@ -266,6 +268,11 @@ pub mod elote_pool {
     /// Sets the pool-wide cap on the USDC cost lent out. Council only.
     pub fn set_outstanding_cap(ctx: Context<CouncilPool>, max_outstanding_principal: u64, valid_until: i64) -> Result<()> {
         instructions::pool::set_outstanding_cap(ctx, max_outstanding_principal, valid_until)
+    }
+
+    /// Sets the lowest and highest FIX `post_fix` accepts (zero and zero for none). Council only.
+    pub fn set_fix_bounds(ctx: Context<CouncilPool>, min_fix_rate: u64, max_fix_rate: u64, valid_until: i64) -> Result<()> {
+        instructions::pool::set_fix_bounds(ctx, min_fix_rate, max_fix_rate, valid_until)
     }
 
     /// Sets the acceleration notice, at least seven days. Council only.

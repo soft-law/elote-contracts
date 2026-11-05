@@ -213,6 +213,7 @@ pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + PoolError::AnnotationKindI
 pub const E_ENTRY_NOT_FOUND: u32 = ERR_BASE + PoolError::EntryNotFound as u32;
 pub const E_TOO_MANY_SIDECARS: u32 = ERR_BASE + PoolError::TooManySidecars as u32;
 pub const E_CANCEL_GRACE_TOO_LONG: u32 = ERR_BASE + PoolError::CancelGraceTooLong as u32;
+pub const E_FIX_OUT_OF_BOUNDS: u32 = ERR_BASE + PoolError::FixOutOfBounds as u32;
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
@@ -813,6 +814,8 @@ impl Env {
             max_outstanding_principal: u64::MAX,
             acceleration_notice_seconds: ACCELERATION_NOTICE,
             cancel_grace_seconds: CANCEL_GRACE,
+            min_fix_rate: 0,
+            max_fix_rate: 0,
         }
     }
 
@@ -1186,6 +1189,11 @@ impl Env {
                 .to_account_metas(None),
             data: elote_pool::instruction::PostFix { fix_rate, fix_date, valid_until: self.valid_until() }.data(),
         }
+    }
+
+    /// `set_fix_bounds(min, max)` signed by `council`.
+    pub fn set_fix_bounds_ix(&self, k: &PoolKeys, council: &Pubkey, min_fix_rate: u64, max_fix_rate: u64) -> Instruction {
+        self.council_pool_ix(k, council, elote_pool::instruction::SetFixBounds { min_fix_rate, max_fix_rate, valid_until: self.valid_until() }.data())
     }
 
     /// `approve_line` naming `expediente_root` and `terms_hash`, signed by `council`.

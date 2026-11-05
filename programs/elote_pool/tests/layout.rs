@@ -26,7 +26,8 @@ fn account_sizes_are_fixed_and_reserved_starts_zero() {
     let pool = env.pool(&k);
     let line = env.line(&k, line_id);
     let pagare = env.pagare(&k, line_id, 0);
-    assert_eq!(pool.reserved, [0u8; 64]);
+    assert_eq!(pool.reserved, [0u8; 48]);
+    assert_eq!((pool.min_fix_rate, pool.max_fix_rate), (0, 0), "no FIX bounds unless set");
     assert_eq!((pool.impaired_principal, pool.provision_bps), (0, 0), "room for the provision at the mark, unused");
     assert_eq!(line.draw_time_weight, u128::from(UNIT) * env.now() as u128, "amount times draw time");
     assert_eq!((line.acceleration_due_at, line.availability_end_saved), (0, 0));

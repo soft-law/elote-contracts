@@ -73,6 +73,7 @@ import {
   getSetAccelerationNoticeInstructionAsync,
   getSetCancelGraceInstructionAsync,
   getSetCollectionPeriodInstructionAsync,
+  getSetFixBoundsInstructionAsync,
   getSetFxFeederInstructionAsync,
   getSetGuardianInstructionAsync,
   getSetMaxLineBpsInstructionAsync,
@@ -107,6 +108,7 @@ import {
   parseSetAccelerationNoticeInstruction,
   parseSetCancelGraceInstruction,
   parseSetCollectionPeriodInstruction,
+  parseSetFixBoundsInstruction,
   parseSetFxFeederInstruction,
   parseSetGuardianInstruction,
   parseSetMaxLineBpsInstruction,
@@ -153,6 +155,7 @@ import {
   type ParsedSetAccelerationNoticeInstruction,
   type ParsedSetCancelGraceInstruction,
   type ParsedSetCollectionPeriodInstruction,
+  type ParsedSetFixBoundsInstruction,
   type ParsedSetFxFeederInstruction,
   type ParsedSetGuardianInstruction,
   type ParsedSetMaxLineBpsInstruction,
@@ -175,6 +178,7 @@ import {
   type SetAccelerationNoticeAsyncInput,
   type SetCancelGraceAsyncInput,
   type SetCollectionPeriodAsyncInput,
+  type SetFixBoundsAsyncInput,
   type SetFxFeederAsyncInput,
   type SetGuardianAsyncInput,
   type SetMaxLineBpsAsyncInput,
@@ -253,6 +257,7 @@ export enum ElotePoolEvent {
   CouncilAccepted,
   CouncilProposed,
   Deposited,
+  FixBoundsSet,
   FixPosted,
   FxFeederSet,
   FxRealized,
@@ -375,6 +380,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.Deposited;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([55, 67, 9, 225, 7, 99, 182, 245]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.FixBoundsSet;
   }
   if (
     containsBytes(
@@ -727,6 +743,7 @@ export enum ElotePoolInstruction {
   SetAccelerationNotice,
   SetCancelGrace,
   SetCollectionPeriod,
+  SetFixBounds,
   SetFxFeeder,
   SetGuardian,
   SetMaxLineBps,
@@ -1031,6 +1048,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([181, 80, 176, 65, 233, 29, 33, 12]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SetFixBounds;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([223, 206, 6, 217, 13, 173, 118, 211]),
       ),
       0,
@@ -1202,6 +1230,9 @@ export type ParsedElotePoolInstruction<
   | ({
       instructionType: ElotePoolInstruction.SetCollectionPeriod;
     } & ParsedSetCollectionPeriodInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.SetFixBounds;
+    } & ParsedSetFixBoundsInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.SetFxFeeder;
     } & ParsedSetFxFeederInstruction<TProgram>)
@@ -1414,6 +1445,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseSetCollectionPeriodInstruction(instruction),
       };
     }
+    case ElotePoolInstruction.SetFixBounds: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SetFixBounds,
+        ...parseSetFixBoundsInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.SetFxFeeder: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -1621,6 +1659,11 @@ export type ElotePoolPluginInstructions = {
     input: SetCollectionPeriodAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSetCollectionPeriodInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  setFixBounds: (
+    input: SetFixBoundsAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSetFixBoundsInstructionAsync> &
     SelfPlanAndSendFunctions;
   setFxFeeder: (
     input: SetFxFeederAsyncInput,
@@ -1918,6 +1961,14 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getSetCollectionPeriodInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          setFixBounds: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetFixBoundsInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),

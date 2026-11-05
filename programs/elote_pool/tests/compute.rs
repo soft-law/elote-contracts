@@ -96,6 +96,25 @@ fn draw_stays_under_its_ceiling_at_120_installments() {
     }
 }
 
+/// `post_fix` by the council (multisig check) and by the feeder (band and date checks).
+#[test]
+fn post_fix_stays_under_the_ceiling() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let council = env.council.insecure_clone();
+    let feeder = env.funded(1);
+    let ix = env.set_fx_feeder_ix(&k, &council.pubkey(), &feeder.pubkey());
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 183_740, env.today());
+    let by_council = env.send(ix, &council, &[]).compute_units_consumed;
+    env.warp(env.now() + 86_400);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 184_000, env.today());
+    let by_feeder = env.send(ix, &feeder, &[]).compute_units_consumed;
+    println!("post_fix, by the council: {by_council} CU");
+    println!("post_fix, by the feeder: {by_feeder} CU");
+    assert!(by_council < CEILING && by_feeder < CEILING);
+}
+
 /// `cancel_pagare` runs no arrears loop: one coverage comparison, the sidecar's mark and the Core
 /// `BurnV1` CPI. Measured on a 120-installment line repaid in full, the shape of a real
 /// cancellation.

@@ -1660,7 +1660,9 @@
       "name": "post_fix",
       "docs": [
         "Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was",
-        "determined (`yyyymmdd`). The feeder moves forward within 5%; the council publishes the rest."
+        "determined (`yyyymmdd`), within the pool's FIX bounds. The feeder moves forward within 5% a",
+        "day since the FIX in force, counting one to three days; the council publishes the rest,",
+        "dated at most five days back."
       ],
       "discriminator": [
         55,
@@ -2879,6 +2881,81 @@
       ]
     },
     {
+      "name": "set_fix_bounds",
+      "docs": [
+        "Sets the lowest and highest FIX `post_fix` accepts (zero and zero for none). Council only."
+      ],
+      "discriminator": [
+        181,
+        80,
+        176,
+        65,
+        233,
+        29,
+        33,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "min_fix_rate",
+          "type": "u64"
+        },
+        {
+          "name": "max_fix_rate",
+          "type": "u64"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "set_fx_feeder",
       "docs": [
         "Names the key that publishes the FIX (the zero key for none). Council only."
@@ -3654,6 +3731,19 @@
       ]
     },
     {
+      "name": "FixBoundsSet",
+      "discriminator": [
+        55,
+        67,
+        9,
+        225,
+        7,
+        99,
+        182,
+        245
+      ]
+    },
+    {
       "name": "FixPosted",
       "discriminator": [
         88,
@@ -4376,6 +4466,11 @@
       "code": 6068,
       "name": "ProposalTooFar",
       "msg": "The council's decision is dated more than fifteen days ahead"
+    },
+    {
+      "code": 6069,
+      "name": "FixOutOfBounds",
+      "msg": "The FIX is outside the pool's bounds"
     }
   ],
   "types": [
@@ -4856,6 +4951,30 @@
       }
     },
     {
+      "name": "FixBoundsSet",
+      "docs": [
+        "The FIX bounds after `set_fix_bounds`: `post_fix` accepts `min_fix_rate ..= max_fix_rate`, or",
+        "any FIX when both are zero."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "min_fix_rate",
+            "type": "u64"
+          },
+          {
+            "name": "max_fix_rate",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "FixPosted",
       "docs": [
         "A FIX publication: Banxico's rate for `fix_date` as published by `by` (the feeder or the",
@@ -5030,6 +5149,17 @@
               "`MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`."
             ],
             "type": "u32"
+          },
+          {
+            "name": "min_fix_rate",
+            "docs": [
+              "The lowest and highest FIX `post_fix` accepts (`fx::bounds_valid`); zero and zero for none."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_fix_rate",
+            "type": "u64"
           }
         ]
       }
@@ -6389,8 +6519,8 @@
           {
             "name": "fx_feeder",
             "docs": [
-              "The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key",
-              "when none (the council publishes). Set and rotated by the council."
+              "The key that may publish the FIX within the band of `fx::within_band` from the one in force;",
+              "the zero key when none (the council publishes). Set and rotated by the council."
             ],
             "type": "pubkey"
           },
@@ -6420,6 +6550,18 @@
             "type": "i64"
           },
           {
+            "name": "min_fix_rate",
+            "docs": [
+              "The lowest and highest FIX `post_fix` accepts from anyone, feeder or council; zero and zero",
+              "for no bounds. Set at `init_pool` and with `set_fix_bounds`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_fix_rate",
+            "type": "u64"
+          },
+          {
             "name": "reserved",
             "docs": [
               "Zero; for fields added after mainnet."
@@ -6427,7 +6569,7 @@
             "type": {
               "array": [
                 "u8",
-                64
+                48
               ]
             }
           }
@@ -6502,6 +6644,14 @@
           {
             "name": "permissioned",
             "type": "bool"
+          },
+          {
+            "name": "min_fix_rate",
+            "type": "u64"
+          },
+          {
+            "name": "max_fix_rate",
+            "type": "u64"
           }
         ]
       }

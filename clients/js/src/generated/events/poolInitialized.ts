@@ -62,6 +62,8 @@ export type PoolInitializedEvent = {
   cancelGraceSeconds: number;
   assetControls: number;
   permissioned: boolean;
+  minFixRate: bigint;
+  maxFixRate: bigint;
 };
 
 export type PoolInitializedEventArgs = {
@@ -80,6 +82,8 @@ export type PoolInitializedEventArgs = {
   cancelGraceSeconds: number;
   assetControls: number;
   permissioned: boolean;
+  minFixRate: number | bigint;
+  maxFixRate: number | bigint;
 };
 
 /** Gets the encoder for {@link PoolInitializedEventArgs} event data. */
@@ -101,6 +105,8 @@ export function getPoolInitializedEventEncoder(): FixedSizeEncoder<PoolInitializ
       ["cancelGraceSeconds", getU32Encoder()],
       ["assetControls", getU8Encoder()],
       ["permissioned", getBooleanEncoder()],
+      ["minFixRate", getU64Encoder()],
+      ["maxFixRate", getU64Encoder()],
     ]),
     [getConstantEncoder(POOL_INITIALIZED_EVENT_DISCRIMINATOR)],
   );
@@ -125,6 +131,8 @@ export function getPoolInitializedEventDecoder(): FixedSizeDecoder<PoolInitializ
       ["cancelGraceSeconds", getU32Decoder()],
       ["assetControls", getU8Decoder()],
       ["permissioned", getBooleanDecoder()],
+      ["minFixRate", getU64Decoder()],
+      ["maxFixRate", getU64Decoder()],
     ]),
     [getConstantDecoder(POOL_INITIALIZED_EVENT_DISCRIMINATOR)],
   );

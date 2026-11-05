@@ -10,11 +10,14 @@ use crate::errors::PoolError;
 pub const FIX_SCALE: u64 = 10_000;
 /// centavos per peso times USDC base units per dollar, over `FIX_SCALE`: `usdc = mxn * 10^8 / fix`.
 const MXN_USDC: u128 = 100_000_000;
-/// A FIX older than this many days (Mexico City dates) is stale for a draw.
+/// A FIX older than this many days (Mexico City dates) is stale for a draw and an approval, and the
+/// council publishes none older.
 pub const MAX_FIX_AGE_DAYS: i64 = 5;
-/// The largest move from the previous FIX the feeder may publish, in basis points; a larger one
-/// needs the council.
-pub const MAX_FIX_JUMP_BPS: u64 = 500;
+/// The feeder's band: the largest move from the FIX in force it may publish, in basis points per
+/// day between their dates; a larger one needs the council.
+pub const MAX_FIX_JUMP_BPS_PER_DAY: u64 = 500;
+/// The days the band counts at most: 15% however long the FIX in force has been.
+pub const MAX_FIX_JUMP_DAYS: i64 = 3;
 /// Mexico City is UTC-6 all year since 2022.
 const MEXICO_CITY_OFFSET_SECONDS: i64 = -6 * 3_600;
 
@@ -76,10 +79,23 @@ pub fn cost_of(usdc_delivered: u64, amount_mxn: u64, applied: u64) -> Option<u64
     (u128::from(usdc_delivered).checked_mul(u128::from(applied.min(amount_mxn)))? / u128::from(amount_mxn)).try_into().ok()
 }
 
-/// Whether `new` is within `MAX_FIX_JUMP_BPS` of `old`.
-pub fn within_band(old: u64, new: u64) -> bool {
+/// Whether `new` is within the feeder's band of `old` for `days` between their dates:
+/// `MAX_FIX_JUMP_BPS_PER_DAY` a day, counting at least one day and at most `MAX_FIX_JUMP_DAYS`.
+pub fn within_band(old: u64, new: u64, days: i64) -> bool {
+    let days = days.clamp(1, MAX_FIX_JUMP_DAYS) as u128;
     let diff = u128::from(old.abs_diff(new));
-    diff * 10_000 <= u128::from(old) * u128::from(MAX_FIX_JUMP_BPS)
+    diff * 10_000 <= u128::from(old) * u128::from(MAX_FIX_JUMP_BPS_PER_DAY) * days
+}
+
+/// Whether `min ..= max` is a valid pair of FIX bounds: both zero (no bounds), or `min <= max` with
+/// `max` positive.
+pub fn bounds_valid(min: u64, max: u64) -> bool {
+    (min == 0 && max == 0) || (max > 0 && min <= max)
+}
+
+/// Whether `rate` is within the bounds `min ..= max`; zero and zero bound nothing.
+pub fn within_bounds(rate: u64, min: u64, max: u64) -> bool {
+    (min == 0 && max == 0) || (min..=max).contains(&rate)
 }
 
 #[cfg(test)]
@@ -129,10 +145,30 @@ mod tests {
     }
 
     #[test]
-    fn the_band_is_five_percent_either_way() {
-        assert!(within_band(200_000, 210_000));
-        assert!(within_band(200_000, 190_000));
-        assert!(!within_band(200_000, 210_001));
-        assert!(!within_band(200_000, 189_999));
+    fn the_band_is_five_percent_a_day_either_way_for_one_to_three_days() {
+        for days in [-1, 0, 1] {
+            assert!(within_band(200_000, 210_000, days), "at least one day");
+            assert!(within_band(200_000, 190_000, days));
+            assert!(!within_band(200_000, 210_001, days));
+            assert!(!within_band(200_000, 189_999, days));
+        }
+        assert!(within_band(200_000, 220_000, 2));
+        assert!(!within_band(200_000, 220_001, 2));
+        for days in [3, 10, i64::MAX] {
+            assert!(within_band(200_000, 230_000, days), "at most three days");
+            assert!(within_band(200_000, 170_000, days));
+            assert!(!within_band(200_000, 230_001, days));
+            assert!(!within_band(200_000, 169_999, days));
+        }
+        assert!(within_band(u64::MAX, u64::MAX, 3), "no overflow");
+    }
+
+    #[test]
+    fn bounds_of_zero_and_zero_bound_nothing() {
+        assert!(bounds_valid(0, 0) && bounds_valid(0, 1) && bounds_valid(5, 5));
+        assert!(!bounds_valid(6, 5) && !bounds_valid(1, 0));
+        assert!(within_bounds(1, 0, 0) && within_bounds(u64::MAX, 0, 0));
+        assert!(within_bounds(5, 5, 6) && within_bounds(6, 5, 6));
+        assert!(!within_bounds(4, 5, 6) && !within_bounds(7, 5, 6));
     }
 }

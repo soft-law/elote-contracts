@@ -139,8 +139,8 @@ export type Pool = {
   /** The provision on `impaired_principal`, in basis points; zero, not yet used. */
   provisionBps: number;
   /**
-   * The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key
-   * when none (the council publishes). Set and rotated by the council.
+   * The key that may publish the FIX within the band of `fx::within_band` from the one in force;
+   * the zero key when none (the council publishes). Set and rotated by the council.
    */
   fxFeeder: Address;
   /** The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication. */
@@ -150,6 +150,12 @@ export type Pool = {
   fixPostedAt: bigint;
   /** The FX gain (positive) or loss realized by repayments, in USDC base units; informative. */
   fxRealized: bigint;
+  /**
+   * The lowest and highest FIX `post_fix` accepts from anyone, feeder or council; zero and zero
+   * for no bounds. Set at `init_pool` and with `set_fix_bounds`.
+   */
+  minFixRate: bigint;
+  maxFixRate: bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -236,8 +242,8 @@ export type PoolArgs = {
   /** The provision on `impaired_principal`, in basis points; zero, not yet used. */
   provisionBps: number;
   /**
-   * The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key
-   * when none (the council publishes). Set and rotated by the council.
+   * The key that may publish the FIX within the band of `fx::within_band` from the one in force;
+   * the zero key when none (the council publishes). Set and rotated by the council.
    */
   fxFeeder: Address | HasAddress;
   /** The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication. */
@@ -247,6 +253,12 @@ export type PoolArgs = {
   fixPostedAt: number | bigint;
   /** The FX gain (positive) or loss realized by repayments, in USDC base units; informative. */
   fxRealized: number | bigint;
+  /**
+   * The lowest and highest FIX `post_fix` accepts from anyone, feeder or council; zero and zero
+   * for no bounds. Set at `init_pool` and with `set_fix_bounds`.
+   */
+  minFixRate: number | bigint;
+  maxFixRate: number | bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -290,7 +302,9 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["fixDate", getU32Encoder()],
       ["fixPostedAt", getI64Encoder()],
       ["fxRealized", getI64Encoder()],
-      ["reserved", fixEncoderSize(getBytesEncoder(), 64)],
+      ["minFixRate", getU64Encoder()],
+      ["maxFixRate", getU64Encoder()],
+      ["reserved", fixEncoderSize(getBytesEncoder(), 48)],
     ]),
     (value) => ({ ...value, discriminator: POOL_DISCRIMINATOR }),
   );
@@ -334,7 +348,9 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["fixDate", getU32Decoder()],
     ["fixPostedAt", getI64Decoder()],
     ["fxRealized", getI64Decoder()],
-    ["reserved", fixDecoderSize(getBytesDecoder(), 64)],
+    ["minFixRate", getU64Decoder()],
+    ["maxFixRate", getU64Decoder()],
+    ["reserved", fixDecoderSize(getBytesDecoder(), 48)],
   ]);
 }
 

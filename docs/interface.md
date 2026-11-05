@@ -43,6 +43,8 @@ Signers: `creator`.
 | `max_outstanding_principal` | `u64` | At least 1. |
 | `acceleration_notice_seconds` | `u32` | At least `MIN_ACCELERATION_NOTICE_SECONDS`. |
 | `cancel_grace_seconds` | `u32` | `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. |
+| `min_fix_rate` | `u64` | The lowest FIX `post_fix` accepts; zero with `max_fix_rate` zero for no bounds. |
+| `max_fix_rate` | `u64` | The highest FIX `post_fix` accepts; at least `min_fix_rate` unless both are zero (`WrongAmount`). |
 
 ### `propose_council(new_council: pubkey, kind: u8, valid_until: i64)`
 
@@ -106,6 +108,18 @@ Signers: `council`. Council instruction.
 | `multisig` |  |  |  |
 | `pool` | yes |  |  |
 
+### `set_fix_bounds(min_fix_rate: u64, max_fix_rate: u64, valid_until: i64)`
+
+Sets the lowest and highest FIX `post_fix` accepts (zero and zero for none). Council only. `min_fix_rate <= max_fix_rate` with `max_fix_rate` positive, or both zero (`WrongAmount`); the FIX in force is not re-checked. Emits `FixBoundsSet`.
+
+Signers: `council`. Council instruction.
+
+| Account | Writable | Signer | Notes |
+|---|---|---|---|
+| `council` |  | yes |  |
+| `multisig` |  |  |  |
+| `pool` | yes |  |  |
+
 ### `set_acceleration_notice(acceleration_notice_seconds: u32, valid_until: i64)`
 
 Sets the acceleration notice, at least seven days. Council only.
@@ -156,9 +170,16 @@ Signers: `council`. Council instruction.
 
 ### `post_fix(fix_rate: u64, fix_date: u32, valid_until: i64)`
 
-Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was determined (`yyyymmdd`). The feeder moves forward within 5%; the council publishes the rest.
+Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was determined (`yyyymmdd`), within the pool's FIX bounds. The feeder moves forward within 5% a day since the FIX in force, counting one to three days; the council publishes the rest, dated at most five days back.
 
 Signers: `poster`. Signed by `Pool.fx_feeder` or by the council; the council path runs the multisig check.
+
+Rules, in order:
+
+- `fix_date` is a real date, not after today in Mexico City (`FixDateInvalid`).
+- The feeder: a date later than `Pool.fix_date` (`FixDateInvalid`), and `|fix_rate − Pool.fix_rate| ≤ Pool.fix_rate × 5% × days`, where `days = fix_date − Pool.fix_date` in calendar days, at least 1 and at most 3 (`fx::MAX_FIX_JUMP_BPS_PER_DAY`, `fx::MAX_FIX_JUMP_DAYS`): a jump of more than 15% always needs the council (`FixJump`). The first FIX is the council's (`FixJump`).
+- The council: a date not before `Pool.fix_date` (same-day corrections allowed) and not more than `fx::MAX_FIX_AGE_DAYS` (5) days before today in Mexico City (`FixDateInvalid`); no band.
+- Both: `Pool.min_fix_rate ≤ fix_rate ≤ Pool.max_fix_rate` unless both bounds are zero (`FixOutOfBounds`).
 
 | Account | Writable | Signer | Notes |
 |---|---|---|---|
@@ -646,12 +667,14 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `cancel_grace_seconds` | `u32` | Seconds from a pagaré's payment before its borrower may cancel it alone, `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the pagarés it marks paid. |
 | `impaired_principal` | `u64` | Principal of the lines in collection, for a provision at the mark; zero, not yet used. |
 | `provision_bps` | `u16` | The provision on `impaired_principal`, in basis points; zero, not yet used. |
-| `fx_feeder` | `pubkey` | The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key when none (the council publishes). Set and rotated by the council. |
+| `fx_feeder` | `pubkey` | The key that may publish the FIX within the band of `fx::within_band` from the one in force; the zero key when none (the council publishes). Set and rotated by the council. |
 | `fix_rate` | `u64` | The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication. |
 | `fix_date` | `u32` | The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back. |
 | `fix_posted_at` | `i64` |  |
 | `fx_realized` | `i64` | The FX gain (positive) or loss realized by repayments, in USDC base units; informative. |
-| `reserved` | `[u8; 64]` | Zero; for fields added after mainnet. |
+| `min_fix_rate` | `u64` | The lowest and highest FIX `post_fix` accepts from anyone, feeder or council; zero and zero for no bounds. Set at `init_pool` and with `set_fix_bounds`. |
+| `max_fix_rate` | `u64` |  |
+| `reserved` | `[u8; 48]` | Zero; for fields added after mainnet. |
 
 ## Events
 
@@ -663,6 +686,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`CouncilAccepted`** `{ pool: pubkey, old: pubkey, new: pubkey, kind: u8 }`
 - **`CouncilProposed`** `{ pool: pubkey, council: pubkey, kind: u8 }`: `council` must sign `accept_council` before it becomes the pool's council.
 - **`Deposited`** `{ pool: pubkey, depositor: pubkey, assets: u64, shares: u64, nav_after: u64, supply_after: u64 }`
+- **`FixBoundsSet`** `{ pool: pubkey, min_fix_rate: u64, max_fix_rate: u64 }`: The FIX bounds after `set_fix_bounds`: `post_fix` accepts `min_fix_rate ..= max_fix_rate`, or any FIX when both are zero.
 - **`FixPosted`** `{ pool: pubkey, fix_rate: u64, fix_date: u32, previous_rate: u64, by: pubkey, slot: u64, posted_at: i64 }`: A FIX publication: Banxico's rate for `fix_date` as published by `by` (the feeder or the council) at `slot`. Each one can be checked against the DOF.
 - **`FxFeederSet`** `{ pool: pubkey, fx_feeder: pubkey }`: The zero key means no feeder: only the council publishes.
 - **`FxRealized`** `{ pool: pubkey, line_id: u64, receipt_hash: [u8; 32], cost: u64, received: u64, delta: i64, nav_after: u64 }`: The FX result of one repayment's principal, in USDC base units: `cost` is the pool's cost of the principal repaid (at each pagaré's FIX), `received` the USDC that paid it (its centavos at the FIX of the payment, rounded up), `delta = received - cost`. Emitted by `repay` before `LineRepaid`, with the same `receipt_hash`, whenever principal is applied; the deltas add up to `Pool.fx_realized`.
@@ -687,7 +711,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`PagareIssued`** `{ pool: pubkey, line_id: u64, draw_index: u16, asset: pubkey, pagare_hash: [u8; 32], amount_mxn: u64, delivery_hash: [u8; 32], due_at: i64, holder: pubkey }`: Emitted by `draw` after `LineDrawn`: the pagaré issued as the Metaplex Core asset `asset`, owned by `holder` (the pool PDA) and frozen. `due_at` is the line's last due date at issuance.
 - **`PagarePayment`** `{ pool: pubkey, line_id: u64, payer: pubkey, receipt_hash: [u8; 32], late_part: u64, interest_part: u64, principal_part: u64, entries: Vec<PaymentEntry> }`: The payment entries of one `repay`: the payer's receipt hash (zero means "receipt to follow"), the payment's split and one `PaymentEntry` per sidecar touched, oldest first. Emitted after the `PagareEntry` of each entry.
 - **`PagareReceiptAnnotated`** `{ pool: pubkey, line_id: u64, draw_index: u16, entry_count: u32, payment_entry_count: u32, receipt_hash: [u8; 32] }`: A `Recibo` entry written by `annotate_payment`: the receipt attached to the payment entry `payment_entry_count` of the pagaré's chain, as entry `entry_count`.
-- **`PoolInitialized`** `{ pool: pubkey, council: pubkey, creator: pubkey, multisig: pubkey, guardian: pubkey, asset_mint: pubkey, share_mint: pubkey, collection: pubkey, collection_period_seconds: u32, max_line_bps: u16, max_outstanding_principal: u64, acceleration_notice_seconds: u32, cancel_grace_seconds: u32, asset_controls: u8, permissioned: bool }`: Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits; `permissioned`: the share mint is frozen by default.
+- **`PoolInitialized`** `{ pool: pubkey, council: pubkey, creator: pubkey, multisig: pubkey, guardian: pubkey, asset_mint: pubkey, share_mint: pubkey, collection: pubkey, collection_period_seconds: u32, max_line_bps: u16, max_outstanding_principal: u64, acceleration_notice_seconds: u32, cancel_grace_seconds: u32, asset_controls: u8, permissioned: bool, min_fix_rate: u64, max_fix_rate: u64 }`: Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits; `permissioned`: the share mint is frozen by default.
 - **`PoolPaused`** `{ pool: pubkey, by: pubkey }`
 - **`PoolResumed`** `{ pool: pubkey }`
 - **`Redeemed`** `{ pool: pubkey, holder: pubkey, shares: u64, assets: u64, nav_after: u64, supply_after: u64 }`
@@ -766,6 +790,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6066 | `TooManySidecars` | A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment |
 | 6067 | `CancelGraceTooLong` | The borrower's cancel grace is above the one-year ceiling |
 | 6068 | `ProposalTooFar` | The council's decision is dated more than fifteen days ahead |
+| 6069 | `FixOutOfBounds` | The FIX is outside the pool's bounds |
 
 ## Compute
 
@@ -794,6 +819,8 @@ Measured by `programs/elote_pool/tests/compute.rs` (the program alone) and `test
 | mark_in_collection at 120 installments, 3 missed | 13708 |
 | mark_in_collection at 18 installments | 16715 |
 | pause by a member | 9418 |
+| post_fix, by the council | 12425 |
+| post_fix, by the feeder | 11003 |
 | propose_acceleration | 14585 |
 | propose_council through Squads | 34950 |
 | repay after the mark at 120 installments | 57990 |

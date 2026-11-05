@@ -161,4 +161,6 @@ pub enum PoolError {
     CancelGraceTooLong,
     #[msg("The council's decision is dated more than fifteen days ahead")]
     ProposalTooFar,
+    #[msg("The FIX is outside the pool's bounds")]
+    FixOutOfBounds,
 }

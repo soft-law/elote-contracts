@@ -32,6 +32,7 @@ export * from "./revokeProcuracion";
 export * from "./setAccelerationNotice";
 export * from "./setCancelGrace";
 export * from "./setCollectionPeriod";
+export * from "./setFixBounds";
 export * from "./setFxFeeder";
 export * from "./setGuardian";
 export * from "./setMaxLineBps";

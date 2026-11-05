@@ -8,7 +8,7 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    AccelerationNoticeSet, CancelGraceSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, FixPosted, FxFeederSet,
+    AccelerationNoticeSet, CancelGraceSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, FixBoundsSet, FixPosted, FxFeederSet,
     GuardianSet, MaxLineBpsSet, NavUpdated, OutstandingCapSet, PoolInitialized, PoolPaused, PoolResumed, Redeemed,
 };
 use crate::council;
@@ -246,6 +246,9 @@ pub struct InitPoolParams {
     pub acceleration_notice_seconds: u32,
     /// `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`.
     pub cancel_grace_seconds: u32,
+    /// The lowest and highest FIX `post_fix` accepts (`fx::bounds_valid`); zero and zero for none.
+    pub min_fix_rate: u64,
+    pub max_fix_rate: u64,
 }
 
 /// The council is vault 0 of `multisig`, checked by `council::check`; it does not sign, since
@@ -258,6 +261,7 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
     require!(p.acceleration_notice_seconds >= MIN_ACCELERATION_NOTICE_SECONDS, PoolError::AccelerationNoticeTooShort);
     require!(p.cancel_grace_seconds >= MIN_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooShort);
     require!(p.cancel_grace_seconds <= MAX_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooLong);
+    require!(fx::bounds_valid(p.min_fix_rate, p.max_fix_rate), PoolError::WrongAmount);
     let multisig = ctx.accounts.multisig.to_account_info();
     let (council, council_vault_bump) = council::canonical_vault(multisig.key);
     council::check(&multisig, &council, council_vault_bump)?;
@@ -305,7 +309,9 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         fix_date: 0,
         fix_posted_at: 0,
         fx_realized: 0,
-        reserved: [0; 64],
+        min_fix_rate: p.min_fix_rate,
+        max_fix_rate: p.max_fix_rate,
+        reserved: [0; 48],
     });
 
     emit_cpi!(PoolInitialized {
@@ -324,6 +330,8 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         cancel_grace_seconds: p.cancel_grace_seconds,
         asset_controls: controls,
         permissioned,
+        min_fix_rate: p.min_fix_rate,
+        max_fix_rate: p.max_fix_rate,
     });
     Ok(())
 }
@@ -690,6 +698,20 @@ pub fn set_outstanding_cap(ctx: Context<CouncilPool>, max_outstanding_principal:
     Ok(())
 }
 
+/// Council only: the lowest and highest FIX `post_fix` accepts from the feeder and the council
+/// (`fx::bounds_valid`, `WrongAmount` otherwise); zero and zero remove the bounds. The FIX in force
+/// is not re-checked.
+pub fn set_fix_bounds(ctx: Context<CouncilPool>, min_fix_rate: u64, max_fix_rate: u64, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
+    require!(fx::bounds_valid(min_fix_rate, max_fix_rate), PoolError::WrongAmount);
+    ctx.accounts.check_council()?;
+    let pool = &mut ctx.accounts.pool;
+    pool.min_fix_rate = min_fix_rate;
+    pool.max_fix_rate = max_fix_rate;
+    emit_cpi!(FixBoundsSet { pool: pool.key(), min_fix_rate, max_fix_rate });
+    Ok(())
+}
+
 /// Council only: the notice between `propose_acceleration` and `accelerate_line`, at least
 /// `MIN_ACCELERATION_NOTICE_SECONDS`; a pending proposal keeps its own deadline.
 pub fn set_acceleration_notice(ctx: Context<CouncilPool>, acceleration_notice_seconds: u32, valid_until: i64) -> Result<()> {
@@ -856,25 +878,32 @@ pub struct PostFix<'info> {
     pub pool: Account<'info, Pool>,
 }
 
-/// Publishes Banxico's FIX for `fix_date` (`yyyymmdd`, not after today in Mexico City). The feeder
-/// publishes a later date within `fx::MAX_FIX_JUMP_BPS` of the FIX in force (`FixJump`); the
-/// council publishes the first FIX, larger moves and same-day corrections. The date never moves
-/// back (`FixDateInvalid`).
+/// Publishes Banxico's FIX for `fix_date` (`yyyymmdd`, not after today in Mexico City), within the
+/// pool's bounds (`FixOutOfBounds`). The feeder publishes a later date within the band of
+/// `fx::within_band` from the FIX in force: 5% a day between the two dates, counting one to three
+/// days (`FixJump`). The council publishes the first FIX, larger moves and same-day corrections,
+/// dated at most `fx::MAX_FIX_AGE_DAYS` before today. The date never moves back (`FixDateInvalid`).
 pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32, valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
     let now = Clock::get()?;
     let poster = ctx.accounts.poster.key();
     let pool = &mut ctx.accounts.pool;
     require!(fix_rate > 0, PoolError::WrongAmount);
-    require!(fx::fix_day(fix_date)? <= fx::mexico_city_day(now.unix_timestamp), PoolError::FixDateInvalid);
+    let day = fx::fix_day(fix_date)?;
+    let today = fx::mexico_city_day(now.unix_timestamp);
+    require!(day <= today, PoolError::FixDateInvalid);
     if poster == pool.council {
         council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
         require!(fix_date >= pool.fix_date, PoolError::FixDateInvalid);
+        require!(day >= today - fx::MAX_FIX_AGE_DAYS, PoolError::FixDateInvalid);
     } else {
         require!(pool.fx_feeder != Pubkey::default() && poster == pool.fx_feeder, PoolError::Unauthorized);
         require!(fix_date > pool.fix_date, PoolError::FixDateInvalid);
-        require!(pool.fix_rate != 0 && fx::within_band(pool.fix_rate, fix_rate), PoolError::FixJump);
+        require!(pool.fix_rate != 0, PoolError::FixJump);
+        let days = day - fx::fix_day(pool.fix_date)?;
+        require!(fx::within_band(pool.fix_rate, fix_rate, days), PoolError::FixJump);
     }
+    require!(fx::within_bounds(fix_rate, pool.min_fix_rate, pool.max_fix_rate), PoolError::FixOutOfBounds);
     let previous_rate = pool.fix_rate;
     pool.fix_rate = fix_rate;
     pool.fix_date = fix_date;

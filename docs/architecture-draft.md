@@ -26,7 +26,7 @@ programs/elote_pool/src/
 ├── lib.rs        declare_id!, security.txt, the #[program] module: 34 thin entry points
 ├── state.rs      Pool, CreditLine and Pagare layouts, LineStatus, PDA seeds, constants, allow-list
 ├── council.rs    the Squads v4 council: fresh (valid_until), check, is_member, vault address
-├── fx.rs         the FIX: dates, the 5% band, MXN⇄USDC conversions and their rounding
+├── fx.rs         the FIX: dates, the feeder's band (5% a day, up to 15%), the bounds, MXN⇄USDC conversions and their rounding
 ├── terms.rs      LineTerms and the terms hash the council approves
 ├── math.rs       pure arithmetic: share pricing, tranche interest, installments, arrears
 ├── registry.rs   the pagaré registry: entry hashes and the record's hash chain
@@ -110,7 +110,7 @@ and `write_off` pass the supply; `draw` checks the NAV leg only.
 | council | `Pool.council`: vault 0 of `Pool.multisig`, a Squads v4 multisig (`council_kind = COUNCIL_SQUADS`) | every council instruction (§4, marked **C**): approve, reject and limit lines, suspend, resume and accelerate draws, write off, publish the FIX and name the feeder, the pool parameters, rotate itself, and, as the holder of the pagarés in the pool, cancel, endorse en procuración, revoke, annotate court acts and receipts |
 | council member | a key in the multisig's member list | `pause` alone; cannot be a borrower (`BorrowerIsCurator` at `approve_line`) or a procurador (`EndorseeInvalid`) |
 | guardian | `Pool.guardian` (zero key for none), set at `init_pool` and by `set_guardian` | `pause` only |
-| fx_feeder | `Pool.fx_feeder` (zero key for none), set by `set_fx_feeder` | `post_fix` for a later date within 5% of the FIX in force |
+| fx_feeder | `Pool.fx_feeder` (zero key for none), set by `set_fx_feeder` | `post_fix` for a later date within 5% a day (up to 15%) of the FIX in force, within the pool's FIX bounds |
 | creator | `Pool.creator`: signer and payer of `init_pool`, part of the pool's seeds | nothing after `init_pool` |
 | borrower | `CreditLine.borrower` | `request_line`, `withdraw_request`, `draw` its approved line (signing the FIX and the derived pagaré hash), `cancel_pagare` alone on its own paid pagaré once `cancel_grace_seconds` have run from the payment |
 | payer (relayer) | any signer passed as `payer` | funds the rent of a request (gets it back on reject or withdraw), of the pagaré asset and its record at `draw`, and of a plugin at `endorse_pagare`; receives the asset's rent at `cancel_pagare`. Any signer can also `repay` (the `payer` of `repay` is the one whose USDC moves) |
@@ -366,7 +366,7 @@ and nothing personal and is never closed: after `cancel_pagare` it stays as the 
 | `MIN_CANCEL_GRACE_SECONDS` | 2 592 000 (30 d) | `state.rs:73` | |
 | `FIX_SCALE` | 10 000 | `fx.rs:10` | FIX × 10⁴ |
 | `MAX_FIX_AGE_DAYS` | 5 | `fx.rs:14` | oldest FIX a draw accepts |
-| `MAX_FIX_JUMP_BPS` | 500 | `fx.rs:17` | the feeder's band |
+| `MAX_FIX_JUMP_BPS_PER_DAY`, `MAX_FIX_JUMP_DAYS` | 500, 3 | `fx.rs` | the feeder's band: 5% a day between the FIX dates, one to three days |
 | `TERMS_DOMAIN` | `"elote_pool:terms:v1"` | `terms.rs:10` | |
 
 ## 4. Instructions
@@ -941,7 +941,7 @@ The FIX is Banxico's USD/MXN rate, stored as `Pool.fix_rate` = MXN per USD × 10
 - **Writes:** `fix_rate`, `fix_date`, `fix_posted_at = now`.
 - **Events:** `FixPosted { fix_rate, fix_date, previous_rate, by, slot, posted_at }`.
 
-**Band** (`fx::within_band`, `fx.rs:80`): `|new − old| × 10 000 <= old × 500`, 5% either way.
+**Band** (`fx::within_band`): `|new − old| × 10 000 <= old × 500 × days`, with `days` the calendar days between the two FIX dates clamped to `1..=3`: 5% a day either way, 15% at most.
 
 ### 6.2 Where the FIX is used
 

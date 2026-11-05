@@ -21,6 +21,8 @@ pub struct PoolInitialized {
     pub cancel_grace_seconds: u32,
     pub asset_controls: u8,
     pub permissioned: bool,
+    pub min_fix_rate: u64,
+    pub max_fix_rate: u64,
 }
 
 /// The pool's collection period after `set_collection_period`: seconds from the mark before a
@@ -383,6 +385,15 @@ pub struct FixPosted {
 pub struct FxFeederSet {
     pub pool: Pubkey,
     pub fx_feeder: Pubkey,
+}
+
+/// The FIX bounds after `set_fix_bounds`: `post_fix` accepts `min_fix_rate ..= max_fix_rate`, or
+/// any FIX when both are zero.
+#[event]
+pub struct FixBoundsSet {
+    pub pool: Pubkey,
+    pub min_fix_rate: u64,
+    pub max_fix_rate: u64,
 }
 
 /// The FX result of one repayment's principal, in USDC base units: `cost` is the pool's cost of the

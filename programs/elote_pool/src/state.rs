@@ -180,8 +180,8 @@ pub struct Pool {
     pub impaired_principal: u64,
     /// The provision on `impaired_principal`, in basis points; zero, not yet used.
     pub provision_bps: u16,
-    /// The key that may publish the FIX within `fx::MAX_FIX_JUMP_BPS` of the last one; the zero key
-    /// when none (the council publishes). Set and rotated by the council.
+    /// The key that may publish the FIX within the band of `fx::within_band` from the one in force;
+    /// the zero key when none (the council publishes). Set and rotated by the council.
     pub fx_feeder: Pubkey,
     /// The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication.
     pub fix_rate: u64,
@@ -190,8 +190,12 @@ pub struct Pool {
     pub fix_posted_at: i64,
     /// The FX gain (positive) or loss realized by repayments, in USDC base units; informative.
     pub fx_realized: i64,
+    /// The lowest and highest FIX `post_fix` accepts from anyone, feeder or council; zero and zero
+    /// for no bounds. Set at `init_pool` and with `set_fix_bounds`.
+    pub min_fix_rate: u64,
+    pub max_fix_rate: u64,
     /// Zero; for fields added after mainnet.
-    pub reserved: [u8; 64],
+    pub reserved: [u8; 48],
 }
 
 impl Pool {
@@ -527,7 +531,9 @@ mod tests {
             fix_date: 0,
             fix_posted_at: 0,
             fx_realized: 0,
-            reserved: [0; 64],
+            min_fix_rate: 0,
+            max_fix_rate: 0,
+            reserved: [0; 48],
         }
     }
 

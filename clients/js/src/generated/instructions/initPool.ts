@@ -143,6 +143,9 @@ export type InitPoolInstructionData = {
   accelerationNoticeSeconds: number;
   /** `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. */
   cancelGraceSeconds: number;
+  /** The lowest and highest FIX `post_fix` accepts (`fx::bounds_valid`); zero and zero for none. */
+  minFixRate: bigint;
+  maxFixRate: bigint;
 };
 
 export type InitPoolInstructionDataArgs = {
@@ -158,6 +161,9 @@ export type InitPoolInstructionDataArgs = {
   accelerationNoticeSeconds: number;
   /** `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. */
   cancelGraceSeconds: number;
+  /** The lowest and highest FIX `post_fix` accepts (`fx::bounds_valid`); zero and zero for none. */
+  minFixRate: number | bigint;
+  maxFixRate: number | bigint;
 };
 
 export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolInstructionDataArgs> {
@@ -170,6 +176,8 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
       ["maxOutstandingPrincipal", getU64Encoder()],
       ["accelerationNoticeSeconds", getU32Encoder()],
       ["cancelGraceSeconds", getU32Encoder()],
+      ["minFixRate", getU64Encoder()],
+      ["maxFixRate", getU64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: INIT_POOL_DISCRIMINATOR }),
   );
@@ -184,6 +192,8 @@ export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolIn
     ["maxOutstandingPrincipal", getU64Decoder()],
     ["accelerationNoticeSeconds", getU32Decoder()],
     ["cancelGraceSeconds", getU32Decoder()],
+    ["minFixRate", getU64Decoder()],
+    ["maxFixRate", getU64Decoder()],
   ]);
 }
 
@@ -255,6 +265,8 @@ export type InitPoolAsyncInput<
   maxOutstandingPrincipal: InitPoolInstructionDataArgs["maxOutstandingPrincipal"];
   accelerationNoticeSeconds: InitPoolInstructionDataArgs["accelerationNoticeSeconds"];
   cancelGraceSeconds: InitPoolInstructionDataArgs["cancelGraceSeconds"];
+  minFixRate: InitPoolInstructionDataArgs["minFixRate"];
+  maxFixRate: InitPoolInstructionDataArgs["maxFixRate"];
 };
 
 export async function getInitPoolInstructionAsync<
@@ -615,6 +627,8 @@ export type InitPoolInput<
   maxOutstandingPrincipal: InitPoolInstructionDataArgs["maxOutstandingPrincipal"];
   accelerationNoticeSeconds: InitPoolInstructionDataArgs["accelerationNoticeSeconds"];
   cancelGraceSeconds: InitPoolInstructionDataArgs["cancelGraceSeconds"];
+  minFixRate: InitPoolInstructionDataArgs["minFixRate"];
+  maxFixRate: InitPoolInstructionDataArgs["maxFixRate"];
 };
 
 export function getInitPoolInstruction<

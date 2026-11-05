@@ -92,6 +92,151 @@ fn the_feeder_moves_forward_within_five_percent() {
     env.expect_err(ix, &feeder, &[], E_UNAUTHORIZED);
 }
 
+/// A pool with a feeder and a council FIX of 20.0000 dated `fix_date`.
+fn feeder_pool(fix_date: u32) -> (Env, PoolKeys, Keypair) {
+    let (mut env, k, feeder) = setup();
+    let council = env.council.insecure_clone();
+    let ix = env.set_fx_feeder_ix(&k, &council.pubkey(), &feeder.pubkey());
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 200_000, fix_date);
+    env.send(ix, &council, &[]);
+    (env, k, feeder)
+}
+
+#[test]
+fn the_feeders_band_is_five_percent_a_day_since_the_fix_in_force_up_to_three_days() {
+    // The FIX in force is dated Oct 31; today is Nov 3.
+    for (rate, date, ok) in [
+        (210_000u64, 20261101, true),  // one day: 5%
+        (210_001, 20261101, false),
+        (220_000, 20261102, true),     // two days: 10%
+        (220_001, 20261102, false),
+        (230_000, 20261103, true),     // three days: 15%
+        (230_001, 20261103, false),
+        (170_000, 20261103, true),     // either way
+        (169_999, 20261103, false),
+    ] {
+        let (mut env, k, feeder) = feeder_pool(20261031);
+        let ix = env.post_fix_ix(&k, &feeder.pubkey(), rate, date);
+        if ok {
+            env.send(ix, &feeder, &[]);
+            assert_eq!((env.pool(&k).fix_rate, env.pool(&k).fix_date), (rate, date));
+        } else {
+            env.expect_err(ix, &feeder, &[], code(PoolError::FixJump));
+        }
+    }
+}
+
+#[test]
+fn after_ten_days_without_a_fix_the_band_is_fifteen_percent() {
+    let (mut env, k, feeder) = feeder_pool(20261103);
+    env.warp(NOV_3_AFTERNOON + 10 * DAY);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 230_001, 20261113);
+    env.expect_err(ix, &feeder, &[], code(PoolError::FixJump));
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 300_000, 20261113);
+    env.expect_err(ix, &feeder, &[], code(PoolError::FixJump));
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 230_000, 20261113);
+    env.send(ix, &feeder, &[]);
+}
+
+#[test]
+fn a_burst_of_dates_in_one_block_takes_one_days_band_per_date() {
+    // Oct 31 is three days old: one publication dated Nov 3 may move 15%. Three publications in one
+    // transaction, dated Nov 1, 2 and 3, each count their days from the FIX before them: one day,
+    // 5%, each.
+    let (mut env, k, feeder) = feeder_pool(20261031);
+    let burst = |env: &Env, third: u64| {
+        vec![
+            env.post_fix_ix(&k, &feeder.pubkey(), 210_000, 20261101),
+            env.post_fix_ix(&k, &feeder.pubkey(), 220_500, 20261102),
+            env.post_fix_ix(&k, &feeder.pubkey(), third, 20261103),
+        ]
+    };
+    let ixs = burst(&env, 231_526);
+    match env.try_send_all(&ixs, &feeder, &[]) {
+        Ok(_) => panic!("the third publication exceeds its one-day band"),
+        Err(e) => assert_eq!(custom_error_code(&e.err), Some(code(PoolError::FixJump))),
+    }
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 220_001, 20261101);
+    env.expect_err(ix, &feeder, &[], code(PoolError::FixJump));
+    let ixs = burst(&env, 231_525);
+    env.send_all(&ixs, &feeder, &[]);
+    assert_eq!((env.pool(&k).fix_rate, env.pool(&k).fix_date), (231_525, 20261103), "three one-day bands");
+    // The dates are spent: nothing more until tomorrow.
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 231_525, 20261103);
+    env.expect_err(ix, &feeder, &[], code(PoolError::FixDateInvalid));
+}
+
+#[test]
+fn the_council_publishes_a_fix_at_most_five_days_old() {
+    let (mut env, k, _) = setup();
+    let council = env.council.insecure_clone();
+    // Nov 3: Oct 4 is 30 days old, Oct 28 six, Oct 29 five.
+    for date in [20261004u32, 20261028] {
+        let ix = env.post_fix_ix(&k, &council.pubkey(), 183_740, date);
+        env.expect_err(ix, &council, &[], code(PoolError::FixDateInvalid));
+    }
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 183_740, 20261029);
+    env.send(ix, &council, &[]);
+}
+
+#[test]
+fn the_fix_bounds_hold_for_the_feeder_and_the_council() {
+    use elote_pool::events::FixBoundsSet;
+    let mut env = Env::new();
+    env.warp(NOV_3_AFTERNOON);
+    let council = env.council.insecure_clone();
+    let asset = env.create_mint(&council.pubkey(), 6);
+    let k = env.pool_keys_for(&asset);
+    let multisig = env.multisig;
+    for (min, max) in [(250_001u64, 250_000u64), (150_000, 0)] {
+        let mut p = env.init_params(BPS, COLLECTION_PERIOD);
+        (p.min_fix_rate, p.max_fix_rate) = (min, max);
+        let ix = env.init_pool_ix_params(&k, &multisig, p);
+        env.expect_err(ix, &council, &[], E_WRONG_AMOUNT);
+    }
+    let mut p = env.init_params(BPS, COLLECTION_PERIOD);
+    (p.min_fix_rate, p.max_fix_rate) = (150_000, 250_000);
+    let ix = env.init_pool_ix_params(&k, &multisig, p);
+    env.send(ix, &council, &[]);
+    assert_eq!((env.pool(&k).min_fix_rate, env.pool(&k).max_fix_rate), (150_000, 250_000));
+    let feeder = env.funded(1);
+    let ix = env.set_fx_feeder_ix(&k, &council.pubkey(), &feeder.pubkey());
+    env.send(ix, &council, &[]);
+
+    for rate in [250_001u64, 149_999] {
+        let ix = env.post_fix_ix(&k, &council.pubkey(), rate, 20261102);
+        env.expect_err(ix, &council, &[], E_FIX_OUT_OF_BOUNDS);
+    }
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 240_000, 20261102);
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 250_001, 20261103);
+    env.expect_err(ix, &feeder, &[], E_FIX_OUT_OF_BOUNDS);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 250_000, 20261103);
+    env.send(ix, &feeder, &[]);
+
+    // The council moves the bounds; only the council, and never min above max.
+    let ix = env.set_fix_bounds_ix(&k, &feeder.pubkey(), 100_000, 240_000);
+    env.expect_err(ix, &feeder, &[], E_UNAUTHORIZED);
+    for (min, max) in [(240_001u64, 240_000u64), (100_000, 0)] {
+        let ix = env.set_fix_bounds_ix(&k, &council.pubkey(), min, max);
+        env.expect_err(ix, &council, &[], E_WRONG_AMOUNT);
+    }
+    let ix = env.set_fix_bounds_ix(&k, &council.pubkey(), 100_000, 240_000);
+    let ev: FixBoundsSet = find_event(&env.send(ix, &council, &[])).expect("FixBoundsSet");
+    assert_eq!((ev.pool, ev.min_fix_rate, ev.max_fix_rate), (k.pool, 100_000, 240_000));
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 245_000, 20261103);
+    env.expect_err(ix, &council, &[], E_FIX_OUT_OF_BOUNDS);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 239_000, 20261103);
+    env.send(ix, &council, &[]);
+
+    // Zero and zero: no bounds.
+    let ix = env.set_fix_bounds_ix(&k, &council.pubkey(), 0, 0);
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 400_000, 20261103);
+    env.send(ix, &council, &[]);
+}
+
 #[test]
 fn today_in_mexico_city_starts_six_hours_after_midnight_utc() {
     let (mut env, k, _) = setup();
