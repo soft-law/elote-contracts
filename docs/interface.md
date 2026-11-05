@@ -769,39 +769,41 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 
 ## Compute
 
-Measured by `programs/elote_pool/tests/compute.rs` (the program alone) and `tests/squads.rs` (the whole Squads `vault_transaction_execute` transaction). The rule is 100,000 CU per transaction, Squads included. `init_pool` and `draw` vary with the PDA bump searches (1,500 CU per failed try); `compute.rs` pins `init_pool` under 70,000.
+Measured by `programs/elote_pool/tests/compute.rs` (the program alone) and `tests/squads.rs` (the whole Squads `vault_transaction_execute` transaction). The rule is 100,000 CU per transaction, Squads included. `init_pool` and `draw` vary with the PDA bump searches (1,500 CU per failed try); `compute.rs` pins `init_pool` under 70,000 and `draw` at or below 90,000 (`DRAW_CEILING`, 10,000 below the general ceiling: the Metaplex Core CPI is fixed by the plugin set).
 
 | Case | CU |
 |---|---|
-| accelerate_line at 120 installments, all due | 46727 |
-| annotate_payment at 120 installments | 19791 |
-| approve_line (with the multisig check) | 14322 |
-| approve_line through Squads | 40400 |
-| cancel_pagare (council) through Squads | 82799 |
-| cancel_pagare at 120 installments | 50682 |
-| cancel_pagare by the borrower at 120 installments | 50249 |
-| cancel_pagare by the procurador at 120 installments | 53818 |
-| court_annotation at 120 installments | 17207 |
-| draw, first tranche at 120 installments | 80174 |
-| draw, second tranche at 120 installments | 80348 |
-| endorse_pagare (procuracion, plugin added) at 120 installments | 37506 |
-| endorse_pagare (procuracion, plugin approved) at 120 installments | 44089 |
-| endorse_pagare through Squads | 69299 |
-| init_pool, classic asset and permissioned shares | 44163 |
-| init_pool, classic asset and plain shares | 40048 |
-| mark_in_collection at 120 installments, 3 missed | 13331 |
-| mark_in_collection at 120 installments | 35764 |
-| mark_in_collection at 18 installments | 16264 |
-| pause by a member | 8986 |
-| propose_acceleration | 14111 |
-| repay after the mark at 120 installments | 56338 |
-| repay at 120 installments | 65182 |
-| repay at 18 installments | 38134 |
-| repay covering three sidecars at 120 installments, all missed | 89669 |
-| request_line at 120 installments | 21540 |
-| resume_draws | 13490 |
-| revoke_procuracion at 120 installments | 39259 |
-| suspend_draws | 14095 |
-| write_off after the mark at 120 installments | 52631 |
-| write_off at 120 installments | 52630 |
-| write_off at 18 installments | 25702 |
+| accelerate_line at 120 installments, all due | 49251 |
+| annotate_payment at 120 installments | 20364 |
+| approve_line (with the multisig check) | 14798 |
+| approve_line through Squads | 40938 |
+| cancel_pagare (council) through Squads | 83924 |
+| cancel_pagare at 120 installments | 51805 |
+| cancel_pagare by the borrower at 120 installments | 51398 |
+| cancel_pagare by the procurador at 120 installments | 53516 |
+| court_annotation at 120 installments | 17686 |
+| draw, first tranche at 120 installments | 82055 |
+| draw, second tranche at 120 installments | 82229 |
+| draw, tranche 10 at 120 installments | 82242 |
+| endorse_pagare (procuracion, plugin added) at 120 installments | 38403 |
+| endorse_pagare (procuracion, plugin approved) at 120 installments | 44988 |
+| endorse_pagare through Squads | 70198 |
+| init_pool, classic asset and permissioned shares | 40921 |
+| init_pool, classic asset and plain shares | 36887 |
+| mark_in_collection at 120 installments | 36725 |
+| mark_in_collection at 120 installments, 3 missed | 13708 |
+| mark_in_collection at 18 installments | 16715 |
+| pause by a member | 9418 |
+| propose_acceleration | 14585 |
+| propose_council through Squads | 34950 |
+| repay after the mark at 120 installments | 57990 |
+| repay at 120 installments | 68364 |
+| repay at 18 installments | 39480 |
+| repay covering three sidecars at 120 installments, all missed | 89946 |
+| request_line at 120 installments | 20798 |
+| resume_draws | 13888 |
+| revoke_procuracion at 120 installments | 40088 |
+| suspend_draws | 14571 |
+| write_off after the mark at 120 installments | 55323 |
+| write_off at 120 installments | 55322 |
+| write_off at 18 installments | 26558 |
