@@ -239,8 +239,8 @@ pub mod elote_pool {
 
     /// Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was
     /// determined (`yyyymmdd`), within the pool's FIX bounds. The feeder moves forward within 5% a
-    /// day since the FIX in force, counting one to three days; the council publishes the rest,
-    /// dated at most five days back.
+    /// day since the FIX in force, counting one to three days, once per Mexico City day; the
+    /// council publishes the rest, dated at most five days back.
     pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32, valid_until: i64) -> Result<()> {
         instructions::pool::post_fix(ctx, fix_rate, fix_date, valid_until)
     }

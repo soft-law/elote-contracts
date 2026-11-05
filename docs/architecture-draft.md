@@ -936,7 +936,8 @@ The FIX is Banxico's USD/MXN rate, stored as `Pool.fix_rate` = MXN per USD × 10
   - **council** (`poster == pool.council`): `council::check`; `fix_date >= pool.fix_date`
     (`FixDateInvalid`). The council publishes the first FIX, moves of any size and same-day
     corrections.
-  - **feeder**: `poster == pool.fx_feeder`, non-zero (`Unauthorized`); `fix_date > pool.fix_date`
+  - **feeder**: `poster == pool.fx_feeder`, non-zero (`Unauthorized`); once per Mexico City day,
+    `mexico_city_day(now) > mexico_city_day(pool.fix_posted_at)` (`FixAlreadyPostedToday`); `fix_date > pool.fix_date`
     (`FixDateInvalid`); a FIX already published and the new one within the band (`FixJump`).
 - **Writes:** `fix_rate`, `fix_date`, `fix_posted_at = now`.
 - **Events:** `FixPosted { fix_rate, fix_date, previous_rate, by, slot, posted_at }`.

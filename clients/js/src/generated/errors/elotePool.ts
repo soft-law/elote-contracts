@@ -161,6 +161,8 @@ export const ELOTE_POOL_ERROR__FX_REFERENCE_INVALID = 0x17b6; // 6070
 export const ELOTE_POOL_ERROR__FX_REFERENCE_STALE = 0x17b7; // 6071
 /** FixOffReference: The FIX is too far from the FX reference for the feeder; the council must publish it */
 export const ELOTE_POOL_ERROR__FIX_OFF_REFERENCE = 0x17b8; // 6072
+/** FixAlreadyPostedToday: A FIX was already published today in Mexico City; the feeder publishes once a day */
+export const ELOTE_POOL_ERROR__FIX_ALREADY_POSTED_TODAY = 0x17b9; // 6073
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -190,6 +192,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__EXPEDIENTE_MISMATCH
   | typeof ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED
   | typeof ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL
+  | typeof ELOTE_POOL_ERROR__FIX_ALREADY_POSTED_TODAY
   | typeof ELOTE_POOL_ERROR__FIX_DATE_INVALID
   | typeof ELOTE_POOL_ERROR__FIX_JUMP
   | typeof ELOTE_POOL_ERROR__FIX_MISMATCH
@@ -267,6 +270,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__EXPEDIENTE_MISMATCH]: `The expediente root or the terms hash is not the one the borrower requested`,
     [ELOTE_POOL_ERROR__EXPEDIENTE_ROOT_REQUIRED]: `The expediente root is required`,
     [ELOTE_POOL_ERROR__FIRST_DEPOSIT_TOO_SMALL]: `First deposit below the minimum`,
+    [ELOTE_POOL_ERROR__FIX_ALREADY_POSTED_TODAY]: `A FIX was already published today in Mexico City; the feeder publishes once a day`,
     [ELOTE_POOL_ERROR__FIX_DATE_INVALID]: `The FIX date is not a valid date, is in the future, or is older than the published one`,
     [ELOTE_POOL_ERROR__FIX_JUMP]: `The FIX moves more than the feeder may publish; the council must`,
     [ELOTE_POOL_ERROR__FIX_MISMATCH]: `The FIX signed is not the one published now`,

@@ -217,6 +217,7 @@ pub const E_FIX_OUT_OF_BOUNDS: u32 = ERR_BASE + PoolError::FixOutOfBounds as u32
 pub const E_FX_REFERENCE_INVALID: u32 = ERR_BASE + PoolError::FxReferenceInvalid as u32;
 pub const E_FX_REFERENCE_STALE: u32 = ERR_BASE + PoolError::FxReferenceStale as u32;
 pub const E_FIX_OFF_REFERENCE: u32 = ERR_BASE + PoolError::FixOffReference as u32;
+pub const E_FIX_ALREADY_POSTED_TODAY: u32 = ERR_BASE + PoolError::FixAlreadyPostedToday as u32;
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 

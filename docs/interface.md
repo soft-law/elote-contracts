@@ -170,13 +170,14 @@ Signers: `council`. Council instruction.
 
 ### `post_fix(fix_rate: u64, fix_date: u32, valid_until: i64)`
 
-Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was determined (`yyyymmdd`), within the pool's FIX bounds. The feeder moves forward within 5% a day since the FIX in force, counting one to three days; the council publishes the rest, dated at most five days back.
+Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was determined (`yyyymmdd`), within the pool's FIX bounds. The feeder moves forward within 5% a day since the FIX in force, counting one to three days, once per Mexico City day; the council publishes the rest, dated at most five days back.
 
 Signers: `poster`. Signed by `Pool.fx_feeder` or by the council; the council path runs the multisig check.
 
 Rules, in order:
 
 - `fix_date` is a real date, not after today in Mexico City (`FixDateInvalid`).
+- The feeder: once per Mexico City day, never on the day of `Pool.fix_posted_at`, whether the feeder or the council published then (`FixAlreadyPostedToday`). Several dates in one block are refused from the second; a feeder that fell behind publishes today's date alone, within the band of the days elapsed, and the dates in between stay unpublished.
 - The feeder: a date later than `Pool.fix_date` (`FixDateInvalid`), and `|fix_rate − Pool.fix_rate| ≤ Pool.fix_rate × 5% × days`, where `days = fix_date − Pool.fix_date` in calendar days, at least 1 and at most 3 (`fx::MAX_FIX_JUMP_BPS_PER_DAY`, `fx::MAX_FIX_JUMP_DAYS`): a jump of more than 15% always needs the council (`FixJump`). The first FIX is the council's (`FixJump`).
 - The council: a date not before `Pool.fix_date` (same-day corrections allowed) and not more than `fx::MAX_FIX_AGE_DAYS` (5) days before today in Mexico City (`FixDateInvalid`); no band.
 - The feeder, against the market reference `fx_reference` (RedStone's MXNe price, below): the reference at most `fx::MAX_REFERENCE_AGE_SECONDS` (26 h) old (`FxReferenceStale`) and `|fix_rate − reference| ≤ reference × 2%` (`fx::MAX_FIX_REFERENCE_GAP_BPS`, `FixOffReference`). The council publishes without this check.
@@ -680,7 +681,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `fx_feeder` | `pubkey` | The key that may publish the FIX within the band of `fx::within_band` from the one in force; the zero key when none (the council publishes). Set and rotated by the council. |
 | `fix_rate` | `u64` | The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication. |
 | `fix_date` | `u32` | The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back. |
-| `fix_posted_at` | `i64` |  |
+| `fix_posted_at` | `i64` | When `fix_rate` was published, by the feeder or the council; the feeder publishes at most once per Mexico City day of it. |
 | `fx_realized` | `i64` | The FX gain (positive) or loss realized by repayments, in USDC base units; informative. |
 | `min_fix_rate` | `u64` | The lowest and highest FIX `post_fix` accepts from anyone, feeder or council; zero and zero for no bounds. Set at `init_pool` and with `set_fix_bounds`. |
 | `max_fix_rate` | `u64` |  |
@@ -804,6 +805,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6070 | `FxReferenceInvalid` | The FX reference account is not RedStone's MXNe price |
 | 6071 | `FxReferenceStale` | The FX reference is too old for the feeder to publish against |
 | 6072 | `FixOffReference` | The FIX is too far from the FX reference for the feeder; the council must publish it |
+| 6073 | `FixAlreadyPostedToday` | A FIX was already published today in Mexico City; the feeder publishes once a day |
 
 ## Compute
 
@@ -811,40 +813,40 @@ Measured by `programs/elote_pool/tests/compute.rs` (the program alone) and `test
 
 | Case | CU |
 |---|---|
-| accelerate_line at 120 installments, all due | 49251 |
-| annotate_payment at 120 installments | 20364 |
+| accelerate_line at 120 installments, all due | 49255 |
+| annotate_payment at 120 installments | 20368 |
 | approve_line (with the multisig check) | 15271 |
 | approve_line through Squads | 41411 |
-| cancel_pagare (council) through Squads | 83924 |
-| cancel_pagare at 120 installments | 51805 |
-| cancel_pagare by the borrower at 120 installments | 51398 |
-| cancel_pagare by the procurador at 120 installments | 53516 |
-| court_annotation at 120 installments | 17686 |
+| cancel_pagare (council) through Squads | 83864 |
+| cancel_pagare at 120 installments | 51807 |
+| cancel_pagare by the borrower at 120 installments | 51400 |
+| cancel_pagare by the procurador at 120 installments | 53518 |
+| court_annotation at 120 installments | 17690 |
 | draw, first tranche at 120 installments | 82336 |
 | draw, second tranche at 120 installments | 82510 |
 | draw, tranche 10 at 120 installments | 82523 |
-| endorse_pagare (procuracion, plugin added) at 120 installments | 38403 |
-| endorse_pagare (procuracion, plugin approved) at 120 installments | 44988 |
-| endorse_pagare through Squads | 70198 |
-| init_pool, classic asset and permissioned shares | 40921 |
-| init_pool, classic asset and plain shares | 36887 |
-| mark_in_collection at 120 installments | 36725 |
-| mark_in_collection at 120 installments, 3 missed | 13708 |
-| mark_in_collection at 18 installments | 16715 |
-| pause by a member | 9418 |
-| post_fix, by the council | 12968 |
-| post_fix, by the feeder | 11541 |
-| post_fix, by the feeder against the reference | 11828 |
-| propose_acceleration | 14585 |
-| propose_council through Squads | 34950 |
-| repay after the mark at 120 installments | 57990 |
-| repay at 120 installments | 68364 |
-| repay at 18 installments | 39480 |
-| repay covering three sidecars at 120 installments, all missed | 89946 |
-| request_line at 120 installments | 20798 |
-| resume_draws | 13888 |
-| revoke_procuracion at 120 installments | 40088 |
-| suspend_draws | 14571 |
-| write_off after the mark at 120 installments | 55323 |
-| write_off at 120 installments | 55322 |
-| write_off at 18 installments | 26558 |
+| endorse_pagare (procuracion, plugin added) at 120 installments | 38407 |
+| endorse_pagare (procuracion, plugin approved) at 120 installments | 44992 |
+| endorse_pagare through Squads | 70140 |
+| init_pool, classic asset and permissioned shares | 38173 |
+| init_pool, classic asset and plain shares | 38639 |
+| mark_in_collection at 120 installments | 36729 |
+| mark_in_collection at 120 installments, 3 missed | 13712 |
+| mark_in_collection at 18 installments | 16719 |
+| pause by a member | 9492 |
+| post_fix, by the council | 12966 |
+| post_fix, by the feeder | 11794 |
+| post_fix, by the feeder against the reference | 12081 |
+| propose_acceleration | 14587 |
+| propose_council through Squads | 34972 |
+| repay after the mark at 120 installments | 58047 |
+| repay at 120 installments | 68421 |
+| repay at 18 installments | 39537 |
+| repay covering three sidecars at 120 installments, all missed | 90003 |
+| request_line at 120 installments | 22390 |
+| resume_draws | 13892 |
+| revoke_procuracion at 120 installments | 40092 |
+| suspend_draws | 14577 |
+| write_off after the mark at 120 installments | 55350 |
+| write_off at 120 installments | 55348 |
+| write_off at 18 installments | 26584 |

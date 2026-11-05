@@ -189,6 +189,8 @@ pub struct Pool {
     pub fix_rate: u64,
     /// The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back.
     pub fix_date: u32,
+    /// When `fix_rate` was published, by the feeder or the council; the feeder publishes at most
+    /// once per Mexico City day of it.
     pub fix_posted_at: i64,
     /// The FX gain (positive) or loss realized by repayments, in USDC base units; informative.
     pub fx_realized: i64,

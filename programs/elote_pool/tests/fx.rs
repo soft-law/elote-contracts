@@ -50,12 +50,8 @@ fn the_council_publishes_the_first_fix_and_names_the_feeder() {
 
 #[test]
 fn the_feeder_moves_forward_within_five_percent() {
-    let (mut env, k, feeder) = setup();
+    let (mut env, k, feeder) = feeder_pool(20261102);
     let council = env.council.insecure_clone();
-    let ix = env.set_fx_feeder_ix(&k, &council.pubkey(), &feeder.pubkey());
-    env.send(ix, &council, &[]);
-    let ix = env.post_fix_ix(&k, &council.pubkey(), 200_000, 20261102);
-    env.send(ix, &council, &[]);
 
     let ix = env.post_fix_ix(&k, &feeder.pubkey(), 200_100, 20261102);
     env.expect_err(ix, &feeder, &[], code(PoolError::FixDateInvalid));
@@ -92,14 +88,19 @@ fn the_feeder_moves_forward_within_five_percent() {
     env.expect_err(ix, &feeder, &[], E_UNAUTHORIZED);
 }
 
-/// A pool with a feeder and a council FIX of 20.0000 dated `fix_date`.
+/// A pool with a feeder and a council FIX of 20.0000 dated `fix_date` (Nov 2 at the latest),
+/// published on Nov 2; the clock is then at `NOV_3_AFTERNOON`, the feeder's first day.
 fn feeder_pool(fix_date: u32) -> (Env, PoolKeys, Keypair) {
-    let (mut env, k, feeder) = setup();
+    let mut env = Env::new();
+    env.warp(NOV_3_AFTERNOON - DAY);
+    let (k, _) = env.setup_pool();
+    let feeder = env.funded(1);
     let council = env.council.insecure_clone();
     let ix = env.set_fx_feeder_ix(&k, &council.pubkey(), &feeder.pubkey());
     env.send(ix, &council, &[]);
     let ix = env.post_fix_ix(&k, &council.pubkey(), 200_000, fix_date);
     env.send(ix, &council, &[]);
+    env.warp(NOV_3_AFTERNOON);
     (env, k, feeder)
 }
 
@@ -129,42 +130,70 @@ fn the_feeders_band_is_five_percent_a_day_since_the_fix_in_force_up_to_three_day
 
 #[test]
 fn after_ten_days_without_a_fix_the_band_is_fifteen_percent() {
-    let (mut env, k, feeder) = feeder_pool(20261103);
+    let (mut env, k, feeder) = feeder_pool(20261102);
     env.warp(NOV_3_AFTERNOON + 10 * DAY);
     let ix = env.post_fix_ix(&k, &feeder.pubkey(), 230_001, 20261113);
     env.expect_err(ix, &feeder, &[], code(PoolError::FixJump));
     let ix = env.post_fix_ix(&k, &feeder.pubkey(), 300_000, 20261113);
     env.expect_err(ix, &feeder, &[], code(PoolError::FixJump));
+    // Today's date alone: the days in between are not published.
     let ix = env.post_fix_ix(&k, &feeder.pubkey(), 230_000, 20261113);
     env.send(ix, &feeder, &[]);
+    assert_eq!((env.pool(&k).fix_rate, env.pool(&k).fix_date), (230_000, 20261113));
 }
 
 #[test]
-fn a_burst_of_dates_in_one_block_takes_one_days_band_per_date() {
-    // Oct 31 is three days old: one publication dated Nov 3 may move 15%. Three publications in one
-    // transaction, dated Nov 1, 2 and 3, each count their days from the FIX before them: one day,
-    // 5%, each.
+fn a_burst_of_dates_in_one_block_stops_at_the_second_publication() {
+    // The FIX in force is dated Oct 31; today is Nov 3. Three publications in one transaction,
+    // dated Nov 1, 2 and 3 and each within one day's band of the one before: the second is
+    // refused, since the feeder publishes once per Mexico City day.
     let (mut env, k, feeder) = feeder_pool(20261031);
-    let burst = |env: &Env, third: u64| {
-        vec![
-            env.post_fix_ix(&k, &feeder.pubkey(), 210_000, 20261101),
-            env.post_fix_ix(&k, &feeder.pubkey(), 220_500, 20261102),
-            env.post_fix_ix(&k, &feeder.pubkey(), third, 20261103),
-        ]
-    };
-    let ixs = burst(&env, 231_526);
+    let ixs = vec![
+        env.post_fix_ix(&k, &feeder.pubkey(), 210_000, 20261101),
+        env.post_fix_ix(&k, &feeder.pubkey(), 220_500, 20261102),
+        env.post_fix_ix(&k, &feeder.pubkey(), 231_525, 20261103),
+    ];
     match env.try_send_all(&ixs, &feeder, &[]) {
-        Ok(_) => panic!("the third publication exceeds its one-day band"),
-        Err(e) => assert_eq!(custom_error_code(&e.err), Some(code(PoolError::FixJump))),
+        Ok(_) => panic!("the second publication of the day"),
+        Err(e) => assert_eq!(custom_error_code(&e.err), Some(E_FIX_ALREADY_POSTED_TODAY)),
     }
-    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 220_001, 20261101);
-    env.expect_err(ix, &feeder, &[], code(PoolError::FixJump));
-    let ixs = burst(&env, 231_525);
-    env.send_all(&ixs, &feeder, &[]);
-    assert_eq!((env.pool(&k).fix_rate, env.pool(&k).fix_date), (231_525, 20261103), "three one-day bands");
-    // The dates are spent: nothing more until tomorrow.
-    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 231_525, 20261103);
-    env.expect_err(ix, &feeder, &[], code(PoolError::FixDateInvalid));
+    assert_eq!((env.pool(&k).fix_rate, env.pool(&k).fix_date), (200_000, 20261031), "nothing landed");
+    // Behind by three days, the feeder publishes today's date alone, within three days' band.
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 230_000, 20261103);
+    env.send(ix, &feeder, &[]);
+    assert_eq!((env.pool(&k).fix_rate, env.pool(&k).fix_date), (230_000, 20261103));
+}
+
+#[test]
+fn the_feeder_publishes_once_per_mexico_city_day() {
+    let (mut env, k, feeder) = feeder_pool(20261102);
+    let council = env.council.insecure_clone();
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 201_000, 20261103);
+    env.send(ix, &feeder, &[]);
+    // A second publication the same day, even a correction of today's FIX, is the council's.
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 201_500, 20261103);
+    env.expect_err(ix, &feeder, &[], E_FIX_ALREADY_POSTED_TODAY);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 201_500, 20261103);
+    env.send(ix, &council, &[]);
+    assert_eq!(env.pool(&k).fix_rate, 201_500);
+
+    // 2026-11-04T05:59:59Z is still Nov 3 in Mexico City; 06:00Z is Nov 4.
+    env.warp(1_793_707_200 + 18 * 3_600 - 1);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 202_000, 20261103);
+    env.expect_err(ix, &feeder, &[], E_FIX_ALREADY_POSTED_TODAY);
+    env.warp(1_793_707_200 + 18 * 3_600);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 202_000, 20261104);
+    env.send(ix, &feeder, &[]);
+
+    // A day the council publishes first is spent for the feeder too.
+    env.warp(NOV_3_AFTERNOON + 2 * DAY);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 202_500, 20261105);
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 202_600, 20261105);
+    env.expect_err(ix, &feeder, &[], E_FIX_ALREADY_POSTED_TODAY);
+    env.warp(NOV_3_AFTERNOON + 3 * DAY);
+    let ix = env.post_fix_ix(&k, &feeder.pubkey(), 202_600, 20261106);
+    env.send(ix, &feeder, &[]);
 }
 
 #[test]
@@ -184,7 +213,7 @@ fn the_council_publishes_a_fix_at_most_five_days_old() {
 fn the_fix_bounds_hold_for_the_feeder_and_the_council() {
     use elote_pool::events::FixBoundsSet;
     let mut env = Env::new();
-    env.warp(NOV_3_AFTERNOON);
+    env.warp(NOV_3_AFTERNOON - DAY);
     let council = env.council.insecure_clone();
     let asset = env.create_mint(&council.pubkey(), 6);
     let k = env.pool_keys_for(&asset);
@@ -210,6 +239,7 @@ fn the_fix_bounds_hold_for_the_feeder_and_the_council() {
     }
     let ix = env.post_fix_ix(&k, &council.pubkey(), 240_000, 20261102);
     env.send(ix, &council, &[]);
+    env.warp(NOV_3_AFTERNOON);
     let ix = env.post_fix_ix(&k, &feeder.pubkey(), 250_001, 20261103);
     env.expect_err(ix, &feeder, &[], E_FIX_OUT_OF_BOUNDS);
     let ix = env.post_fix_ix(&k, &feeder.pubkey(), 250_000, 20261103);

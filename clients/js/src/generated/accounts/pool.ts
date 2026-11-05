@@ -149,6 +149,10 @@ export type Pool = {
   fixRate: bigint;
   /** The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back. */
   fixDate: number;
+  /**
+   * When `fix_rate` was published, by the feeder or the council; the feeder publishes at most
+   * once per Mexico City day of it.
+   */
   fixPostedAt: bigint;
   /** The FX gain (positive) or loss realized by repayments, in USDC base units; informative. */
   fxRealized: bigint;
@@ -254,6 +258,10 @@ export type PoolArgs = {
   fixRate: number | bigint;
   /** The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back. */
   fixDate: number;
+  /**
+   * When `fix_rate` was published, by the feeder or the council; the feeder publishes at most
+   * once per Mexico City day of it.
+   */
   fixPostedAt: number | bigint;
   /** The FX gain (positive) or loss realized by repayments, in USDC base units; informative. */
   fxRealized: number | bigint;

@@ -1662,8 +1662,8 @@
       "docs": [
         "Publishes Banxico's FIX: `fix_rate` is MXN per USD times 10^4, `fix_date` the date it was",
         "determined (`yyyymmdd`), within the pool's FIX bounds. The feeder moves forward within 5% a",
-        "day since the FIX in force, counting one to three days; the council publishes the rest,",
-        "dated at most five days back."
+        "day since the FIX in force, counting one to three days, once per Mexico City day; the",
+        "council publishes the rest, dated at most five days back."
       ],
       "discriminator": [
         55,
@@ -4495,6 +4495,11 @@
       "code": 6072,
       "name": "FixOffReference",
       "msg": "The FIX is too far from the FX reference for the feeder; the council must publish it"
+    },
+    {
+      "code": 6073,
+      "name": "FixAlreadyPostedToday",
+      "msg": "A FIX was already published today in Mexico City; the feeder publishes once a day"
     }
   ],
   "types": [
@@ -6579,6 +6584,10 @@
           },
           {
             "name": "fix_posted_at",
+            "docs": [
+              "When `fix_rate` was published, by the feeder or the council; the feeder publishes at most",
+              "once per Mexico City day of it."
+            ],
             "type": "i64"
           },
           {

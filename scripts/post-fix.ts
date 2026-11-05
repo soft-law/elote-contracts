@@ -9,6 +9,9 @@
 // --fix-date        the date Banxico determined it (default: today in Mexico City, by the chain clock)
 // --feeder-keypair  the pool's fx_feeder signs; without it the council publishes
 //
+// The feeder publishes once per Mexico City day, and not on a day the council already published:
+// after a gap it publishes today's date alone (5% a day since the FIX in force, at most 15%).
+//
 // post_fix takes RedStone's MXNe price account as the market reference. The feeder's FIX must be
 // within 2% of it and the reference at most 26 hours old; the council publishes without that check.
 // The account exists on mainnet only: a localnet or devnet build skips the check when it is missing.
@@ -67,6 +70,8 @@ const label = `post_fix ${fixRate} (x10^4 MXN per USD) for ${fixDate}`;
 if (arg("feeder-keypair")) {
   const feeder = await loadSigner("feeder", arg("feeder-keypair")!);
   if (pool.fxFeeder !== feeder.address) fail(`${feeder.address} is not this pool's fx_feeder (${pool.fxFeeder})`);
+  if (mexicoCityDate(pool.fixPostedAt) === mexicoCityDate(now))
+    fail(`a FIX was already published today in Mexico City (${pool.fixDate}); the feeder publishes again tomorrow, the council can correct it today`);
   await sendOrFail(c, label, feeder, [await getPostFixInstructionAsync({ poster: feeder, multisig: pool.multisig, pool: poolAddress, fxReference: FX_REFERENCE_ACCOUNT, fixRate, fixDate, validUntil })]);
 } else {
   const council = await loadCouncil(c, pool.multisig);

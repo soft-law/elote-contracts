@@ -169,4 +169,6 @@ pub enum PoolError {
     FxReferenceStale,
     #[msg("The FIX is too far from the FX reference for the feeder; the council must publish it")]
     FixOffReference,
+    #[msg("A FIX was already published today in Mexico City; the feeder publishes once a day")]
+    FixAlreadyPostedToday,
 }

@@ -899,9 +899,11 @@ fn reference(account: &AccountInfo) -> Result<Option<(u64, i64)>> {
 /// Publishes Banxico's FIX for `fix_date` (`yyyymmdd`, not after today in Mexico City), within the
 /// pool's bounds (`FixOutOfBounds`). The feeder publishes a later date within the band of
 /// `fx::within_band` from the FIX in force: 5% a day between the two dates, counting one to three
-/// days (`FixJump`). The council publishes the first FIX, larger moves and same-day corrections,
-/// dated at most `fx::MAX_FIX_AGE_DAYS` before today. The date never moves back (`FixDateInvalid`).
-/// The feeder also needs the market reference (`fx_reference`) at most
+/// days (`FixJump`), once per Mexico City day: not on a day a FIX was already published, by the
+/// feeder or the council (`FixAlreadyPostedToday`). A feeder that fell behind publishes today's
+/// date alone, within the band of the days elapsed; anything else is the council's. The council
+/// publishes the first FIX, larger moves and same-day corrections, dated at most
+/// `fx::MAX_FIX_AGE_DAYS` before today. The date never moves back (`FixDateInvalid`). The feeder also needs the market reference (`fx_reference`) at most
 /// `fx::MAX_REFERENCE_AGE_SECONDS` old (`FxReferenceStale`) and its FIX within
 /// `fx::MAX_FIX_REFERENCE_GAP_BPS` of it (`FixOffReference`); the council publishes without that
 /// check. `FixPosted` records the reference either way.
@@ -922,6 +924,7 @@ pub fn post_fix(ctx: Context<PostFix>, fix_rate: u64, fix_date: u32, valid_until
         reference.ok().flatten().unwrap_or((0, 0))
     } else {
         require!(pool.fx_feeder != Pubkey::default() && poster == pool.fx_feeder, PoolError::Unauthorized);
+        require!(today > fx::mexico_city_day(pool.fix_posted_at), PoolError::FixAlreadyPostedToday);
         require!(fix_date > pool.fix_date, PoolError::FixDateInvalid);
         require!(pool.fix_rate != 0, PoolError::FixJump);
         let days = day - fx::fix_day(pool.fix_date)?;
