@@ -170,7 +170,7 @@ Signers: `poster`. Signed by `Pool.fx_feeder` or by the council; the council pat
 
 Pauses deposits, redemptions, requests, approvals and draws. Any member of the council'"'"'s multisig alone, the guardian or the council; repayments and everything else go on.
 
-Signers: `signer`. Signed by any member of the council multisig (voter or not), the guardian, or the council; no `valid_until`.
+Signers: `signer`. Signed by any member of the council multisig (voter or not), the guardian, or the council; no `valid_until`. A member is read from `multisig` only while Squads v4 owns the account (`CouncilInvalid` otherwise); the guardian and the council do not need it.
 
 | Account | Writable | Signer | Notes |
 |---|---|---|---|

@@ -71,8 +71,10 @@ pub fn check(multisig: &AccountInfo, council: &Pubkey, vault_bump: u8) -> Result
     Ok(())
 }
 
-/// Whether `key` is a member of `multisig` (read the same way as `check`).
+/// Whether `key` is a member of `multisig` (read the same way as `check`, owner included:
+/// `CouncilInvalid` for an account Squads does not own).
 pub fn is_member(multisig: &AccountInfo, key: &Pubkey) -> Result<bool> {
+    require_keys_eq!(*multisig.owner, SQUADS_PROGRAM_ID, PoolError::CouncilInvalid);
     let data = multisig.try_borrow_data()?;
     let (_, list) = members(&data)?;
     Ok(list.chunks_exact(MEMBER_LEN).any(|m| m[..32] == key.as_ref()[..]))

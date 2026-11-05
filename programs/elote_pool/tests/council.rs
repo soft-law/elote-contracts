@@ -299,3 +299,25 @@ fn init_pool_refuses_the_share_mint_as_the_asset() {
     let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), p);
     env.expect_err(ix, &creator, &[], ERR_BASE + PoolError::AssetIsShareMint as u32);
 }
+
+/// A member pauses alone only through the Squads multisig the pool names: the same bytes under
+/// another owner are not a multisig, so the member list is not read (`CouncilInvalid`). The
+/// guardian and the council pause without reading it.
+#[test]
+fn a_member_pauses_only_through_a_squads_owned_multisig() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let curator = env.curators[0].insecure_clone();
+    env.svm.airdrop(&curator.pubkey(), 1_000_000_000).unwrap();
+    let multisig = env.multisig;
+    let mut account = env.svm.get_account(&multisig).expect("the multisig");
+    account.owner = Pubkey::new_unique();
+    env.svm.set_account(multisig, account).unwrap();
+    let ix = env.pause_ix(&k, &curator.pubkey());
+    env.expect_err(ix, &curator, &[], E_COUNCIL_INVALID);
+    assert!(!env.pool(&k).paused);
+    let council = env.council.insecure_clone();
+    let ix = env.pause_ix(&k, &council.pubkey());
+    env.send(ix, &council, &[]);
+    assert!(env.pool(&k).paused);
+}
