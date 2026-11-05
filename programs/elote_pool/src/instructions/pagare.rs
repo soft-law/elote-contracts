@@ -242,8 +242,9 @@ pub struct EndorsePagare<'info> {
 /// power to extinguish the pagaré through an owner-managed `BurnDelegate` whose authority is the
 /// program address `["procurador", pagare, to]`. Nobody holds its key, so the burn can only happen
 /// inside `cancel_pagare`. Refused: `kind != KIND_PROCURACION` (`EndosoKindInvalid`); `to` the zero
-/// key, the pool, the council, the guardian, the line's borrower or a member of the council's
-/// multisig (`EndorseeInvalid`); a zero `endoso_hash`
+/// key, the pool, the council, the guardian, the pool's creator, the FIX feeder, the line's
+/// borrower, rent payer or sponsor, or a member of the council's multisig (`EndorseeInvalid`); a
+/// zero `endoso_hash`
 /// (`DocumentHashRequired`); a `WrittenOff` line (`LineStatus`); a pagaré not outstanding
 /// (`PagareAlreadyPaid`); a procuración in force (`ProcuracionState`). The plugin is added at the
 /// first procuración and approved afterwards (Core refuses a second `AddPluginV1`); a flag
@@ -257,12 +258,17 @@ pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to
     require!(kind == KIND_PROCURACION, PoolError::EndosoKindInvalid);
     let multisig = ctx.accounts.multisig.to_account_info();
     council::check(&multisig, &pool.council, pool.council_vault_bump)?;
+    let line = &ctx.accounts.line;
     require!(
         to != Pubkey::default()
             && to != pool_key
             && to != pool.council
             && to != pool.guardian
-            && to != ctx.accounts.line.borrower
+            && to != pool.creator
+            && to != pool.fx_feeder
+            && to != line.borrower
+            && to != line.payer
+            && line.sponsor != Some(to)
             && !council::is_member(&multisig, &to)?,
         PoolError::EndorseeInvalid
     );

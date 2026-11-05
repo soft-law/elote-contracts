@@ -676,6 +676,45 @@ fn endorse_pagare_refuses_other_kinds_bad_endorsees_and_the_wrong_signers() {
     env.expect_err(ix, &council, &[], E_LINE_STATUS);
 }
 
+/// The endorsee is a third party to the pool and the line: neither the pool's creator, nor its FIX
+/// feeder, nor the line's rent payer, nor its sponsor (`EndorseeInvalid`). A stranger is accepted.
+#[test]
+fn endorse_pagare_refuses_the_creator_the_feeder_the_payer_and_the_sponsor() {
+    use elote_pool::state::{KIND_PROCURACION, SPONSOR_GUARANTOR};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let council = env.council.insecure_clone();
+    let a = council.pubkey();
+    let feeder = env.funded(1);
+    let ix = env.set_fx_feeder_ix(&k, &a, &feeder.pubkey());
+    env.send(ix, &council, &[]);
+    let borrower = env.borrower(&k);
+    let sponsor = env.funded(1);
+    let mut p = env.line_params(4 * UNIT, 1_000);
+    p.sponsor = Some(sponsor.pubkey());
+    p.sponsor_role = SPONSOR_GUARANTOR;
+    // The rent payer is a key of its own, as the backend's would be.
+    let payer = env.funded(1);
+    env.ensure_fix(&k);
+    let line_id = env.pool(&k).line_count;
+    let ix = env.request_line_ix(&k, &payer.pubkey(), line_id, &borrower.pubkey(), &p, Some(sponsor.pubkey()));
+    env.send(ix, &payer, &[&borrower, &sponsor]);
+    env.approve_line(&k, line_id, &borrower.pubkey(), &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    let line = env.line(&k, line_id);
+    let creator = env.pool(&k).creator;
+    assert_eq!(line.payer, payer.pubkey());
+    for to in [creator, feeder.pubkey(), line.payer, sponsor.pubkey()] {
+        let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, to, ENDOSO_HASH);
+        env.expect_err(ix, &council, &[], E_ENDORSEE_INVALID);
+    }
+    assert_eq!(env.pagare(&k, line_id, 0).entry_count, 1, "nothing was appended");
+    let procurador = env.funded(1);
+    let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, procurador.pubkey(), ENDOSO_HASH);
+    env.send(ix, &council, &[]);
+    assert_eq!(env.pagare(&k, line_id, 0).procurador, procurador.pubkey());
+}
+
 /// The revocation of a procuración (LGTOC 41): the owner alone appends the revocation entry and
 /// takes the burn delegate back to `Owner`; the in-force flag clears, the plugin flag stays, and a
 /// later procuración approves the existing plugin instead of adding it.

@@ -468,7 +468,7 @@ Signers: `holder`, `payer`. The signer picks the branch: the council (multisig c
 
 ### `endorse_pagare(draw_index: u16, kind: u8, to: pubkey, endoso_hash: [u8; 32], valid_until: i64)`
 
-Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets the program address `["procurador", pagare, to]` burn the asset through an owner-managed `BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused with `to` the zero key, the pool, the council, a curator, the guardian or the borrower, or a procuración in force.
+Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets the program address `["procurador", pagare, to]` burn the asset through an owner-managed `BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused with `to` the zero key, the pool, the council, a curator, the guardian, the pool's creator, the FIX feeder, or the line's borrower, rent payer or sponsor, or a procuración in force.
 
 Signers: `holder`, `payer`. Council instruction.
 
@@ -715,7 +715,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6015 | `PagareAccountsMismatch` | The pagaré records passed are not the ones this payment touches, oldest first |
 | 6016 | `BorrowerIsCouncil` | The council cannot be the borrower |
 | 6017 | `BorrowerIsCurator` | A member of the council cannot be the borrower |
-| 6018 | `EndorseeInvalid` | The endorsee is missing, or is the pool, the council, a curator, the guardian or the borrower |
+| 6018 | `EndorseeInvalid` | The endorsee is missing, or is the pool, the council, a curator, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor |
 | 6019 | `WrongAmount` | Amount is zero or exceeds what is due |
 | 6020 | `Overflow` | Arithmetic overflow |
 | 6021 | `InvariantBroken` | A pool invariant does not hold after this instruction; the transaction is refused |

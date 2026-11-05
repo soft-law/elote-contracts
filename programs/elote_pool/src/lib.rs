@@ -168,8 +168,8 @@ pub mod elote_pool {
     /// Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets
     /// the program address `["procurador", pagare, to]` burn the asset through an owner-managed
     /// `BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused
-    /// with `to` the zero key, the pool, the council, a curator, the guardian or the borrower, or a
-    /// procuración in force.
+    /// with `to` the zero key, the pool, the council, a curator, the guardian, the pool's creator,
+    /// the FIX feeder, or the line's borrower, rent payer or sponsor, or a procuración in force.
     pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32], valid_until: i64) -> Result<()> {
         instructions::pagare::endorse_pagare(ctx, draw_index, kind, to, endoso_hash, valid_until)
     }

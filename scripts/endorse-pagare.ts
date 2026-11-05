@@ -6,7 +6,8 @@
 //        --draw-index <n> ([--procurador <address>] [--endoso-hash <64 hex>] | --revoke [--revocation-hash <64 hex>])
 //        [--council-keypairs <a.json,b.json>] [--yes]
 //
-// --procurador       the endorsee: never the pool, the council, a curator, the guardian or the borrower
+// --procurador       the endorsee: never the pool, the council, a curator, the guardian, the creator,
+//                    the FIX feeder, or the line's borrower, payer or sponsor
 //                    (the program refuses them). Without it the script creates a key for this case,
 //                    .demo-keys/procuradores/<pool>-<line>-<draw>.json, to hand to the collection
 //                    agency: one key per case, never reused, or anyone could list the lines in
@@ -75,7 +76,7 @@ const pool = await loadPool(c, poolAddress);
 const council = await loadCouncil(c, pool.multisig);
 const payer = council.members[0];
 const validUntil = (await chainNow(c)) + 86_400n;
-const { line } = await loadLine(c, poolAddress, lineId);
+const { line, data: lineData } = await loadLine(c, poolAddress, lineId);
 const [record] = await findPagarePda({ line, drawIndex });
 const before = (await fetchPagare(c.rpc, record, { commitment: "confirmed" })).data;
 const inForce = (before.flags & PAGARE_FLAG_PROCURACION) !== 0;
@@ -114,8 +115,10 @@ if (revoke) {
     procurador = (await loadSigner("procurador", file)).address;
     console.log(`  a new procurador key for this case, ${procurador}, is in ${file}: hand it to the collection agency`);
   }
-  if (procurador === poolAddress || procurador === pool.council || procurador === pool.guardian) {
-    fail("the procurador cannot be the pool, the council or the guardian");
+  const sponsor = lineData.sponsor.__option === "Some" ? lineData.sponsor.value : undefined;
+  const refused = [poolAddress, pool.council, pool.guardian, pool.creator, pool.fxFeeder, lineData.borrower, lineData.payer, sponsor];
+  if (refused.includes(procurador) || council.members.some((m) => m.address === procurador)) {
+    fail("the procurador cannot be the pool, the council, a curator, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor");
   }
   const endosoHash = hash32("endoso-hash", "elote.fun demo endoso en procuración");
   await councilExecute(c, council, `endorse_pagare ${drawIndex} en procuración`, [

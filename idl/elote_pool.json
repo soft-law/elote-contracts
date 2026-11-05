@@ -1179,8 +1179,8 @@
         "Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets",
         "the program address `[\"procurador\", pagare, to]` burn the asset through an owner-managed",
         "`BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused",
-        "with `to` the zero key, the pool, the council, a curator, the guardian or the borrower, or a",
-        "procuración in force."
+        "with `to` the zero key, the pool, the council, a curator, the guardian, the pool's creator,",
+        "the FIX feeder, or the line's borrower, rent payer or sponsor, or a procuración in force."
       ],
       "discriminator": [
         108,
@@ -4125,7 +4125,7 @@
     {
       "code": 6018,
       "name": "EndorseeInvalid",
-      "msg": "The endorsee is missing, or is the pool, the council, a curator, the guardian or the borrower"
+      "msg": "The endorsee is missing, or is the pool, the council, a curator, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor"
     },
     {
       "code": 6019,
