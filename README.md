@@ -338,7 +338,8 @@ delivers before asking; the borrower signs alone (a FIX published in between fai
 `scripts/repay.ts --pool <address> --line-id <n> --amount <tUSDC> | --all` pays on a line (the
 borrower by default, `--payer-keypair` for anyone else; `--receipt-hash` or `--receipt-file` with
 `--receipt-salt`, zero meaning "to follow"), credited in MXN at the FIX in force. A payment that would
-touch more than four pagaré records is split into several `repay` calls (`MAX_SIDECARS_PER_REPAY`).
+touch more than three pagaré records is split into several `repay` calls (`MAX_SIDECARS_PER_REPAY`; the
+program refuses more with `TooManySidecars`).
 
 `scripts/endorse-pagare.ts --pool <address> --line-id <n> --draw-index <n>` endorses an outstanding
 pagaré en procuración through the council. By default it makes a procurador key for the case,

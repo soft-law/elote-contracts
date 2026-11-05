@@ -356,6 +356,7 @@ and shows the class of the last entry.
 | constant | value | role |
 |---|---|---|
 | `MAX_DRAWS` | 64 | tranches per line (`TooManyDraws`); bounds a line's pagaré index space |
+| `MAX_SIDECARS_PER_REPAY` | 3 | pagaré records one `repay` takes (`TooManySidecars`); bounds its compute |
 | `min_first_deposit(decimals)` | `max(10^decimals, 1 000 × DEAD_SHARES)` | floor on the first deposit: one whole unit of the asset, never below 1 000 000 base units |
 | `DEAD_SHARES` | 1 000 | shares locked forever by the first deposit |
 | `MIN_FIRST_DEPOSIT_DEAD_RATIO` | 1 000 | the first deposit is at least this many dead shares, whatever the decimals |
@@ -694,10 +695,11 @@ promise it made (`sponsor_role`) and grants no authority afterwards (a sponsor r
   with `remaining` after this payment (without late interest) and `nav_after`; `NavUpdated`.
 - **Compute:** at 120 installments with every installment missed, 62 015 CU; after an early
   mark, 53 169; a payment covering five sidecars with every installment missed, 91 455; at 18
-  installments, 34 967 (`tests/compute.rs`). Client rule: at
-  most five sidecars per `repay` (`MAX_SIDECARS_PER_REPAY` in `clients/js/src/pagare.ts`); a
-  payment that would touch more is split into several `repay` calls (§9). The program refuses
-  nothing on that count beyond the compute limit itself.
+  installments, 34 967 (`tests/compute.rs`). At most three sidecars per `repay`
+  (`state::MAX_SIDECARS_PER_REPAY`, mirrored in `clients/js/src/pagare.ts`); the program refuses
+  more with `TooManySidecars`, and a payment that would touch more is split into several `repay`
+  calls (§9). Three sidecars with every installment missed stay at least 5 000 CU under the
+  ceiling.
 
 Because `late_due` is computed at execution time, a client that quotes it a few seconds
 earlier can be short by a few units and hit `LateInterestUnpaid`; clients pad the quote
@@ -1128,7 +1130,7 @@ or a limit it accepts.
 | `limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installments` | a line with `installments < covered + max_missed` can never enter collection; only the term releases it |
 | `limit_late_interest_is_settled_at_execution_time_so_clients_must_pad` | see §5.6 |
 | `limit_draw_accepts_a_valid_non_canonical_pagare_bump` | `draw` verifies the pagaré PDAs with the bumps the client passes (one `create_program_address` each, deterministic compute); a valid bump that is not the canonical one is accepted too, and the asset then sits where `find_program_address` never looks. Proving a bump canonical costs the search the client's bump avoids. The attestor derives the canonical bump and co-signs every draw, and `PagareIssued` and the sidecar carry the asset's address, so indexers never derive it |
-| `limit_a_repay_touching_more_than_five_pagare_records_must_be_split` | nothing in the program bounds how many pagaré records one `repay` touches (up to `MAX_DRAWS`), and each costs compute: a payment that marks eight paid runs over the 100 000 CU ceiling. The client splits such a payment (the amount is free) and passes at most five records per `repay` (`MAX_SIDECARS_PER_REPAY`) |
+| `a_repay_takes_at_most_three_pagare_records` (inverted 2026-11-05) | `repay` takes at most `MAX_SIDECARS_PER_REPAY` (3) pagaré records and refuses more with `TooManySidecars`; the client splits a larger payment (the amount is free) into parts of at most three records, each under the 100 000 CU ceiling |
 | `limit_a_payment_landing_first_makes_an_in_flight_repay_retry` | `repay` takes exactly the records `[pagares_paid ..= last_touched]`, computed by the client when it builds the transaction. Another payment landing first can change that set, and the transaction fails with `PagareAccountsMismatch` with nothing moved; the client re-reads the line and retries |
 
 Other points outside the test file:
@@ -1240,7 +1242,7 @@ every typed field of the accounts and events; `lineSchedule(line)` returns a lin
 `null` for a bullet line, and anything a UI shows about arrears or late interest comes from
 `schedule.ts`, which must change in step with `math.rs`. `repaySidecars` computes the exact
 remaining accounts of a `repay`, and a payment that would touch more than
-`MAX_SIDECARS_PER_REPAY` (5) records is split.
+`MAX_SIDECARS_PER_REPAY` (3) records is split; the program refuses more (`TooManySidecars`).
 
 ## 12. Deployment
 

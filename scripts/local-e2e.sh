@@ -2,7 +2,7 @@
 # The scripts end to end on a local validator, with the council a real Squads v4 multisig:
 # the demo (pool, the council's FIX, deposits, a MXN line approved by the council, drawn as USDC and
 # repaid, a redemption), then request-line.ts and approve-line.ts, six draws with draw.ts, one payoff
-# with repay.ts (split into parts of at most four pagaré records), the council's settings and FIX,
+# with repay.ts (split into parts of at most three pagaré records), the council's settings and FIX,
 # and every cancel-pagare.ts branch that does not need the clock moved forward. A third line covers
 # endorse-pagare.ts (an endoso en procuración to a key made for the case, a revocation) and the
 # procurador's cancellation. The borrower's own cancellation needs the 30-day cancel grace to pass;

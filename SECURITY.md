@@ -105,7 +105,6 @@ Documented limits, not open vulnerabilities; most are pinned by `programs/elote_
 - **Late interest is computed at the second of the repayment**, so clients pad a payment meant to settle it.
 - **Exact-second gates on a leader-set clock** can move by a few seconds.
 - **A concurrent payment makes an in-flight repayment retry** (`PagareAccountsMismatch`); the client re-reads and retries.
-- **Four pagaré records per repayment.** Nothing bounds the records one `repay` touches; the client splits a payment so each touches at most four (`MAX_SIDECARS_PER_REPAY`); five reach about 100,000 CU once the payment is converted at the FIX.
 - **`init_pool` and `draw` compute vary with PDA bump searches** (1,500 CU per failed try); `init_pool` is pinned under 70,000.
 - **`propose_council` does not run the per-instruction multisig check** that every other council instruction runs; the signer must still be `Pool.council`, and `accept_council` checks the new multisig.
 
@@ -115,6 +114,7 @@ Documented limits, not open vulnerabilities; most are pinned by `programs/elote_
 - Every money instruction ends with `Pool::check()`: the NAV fits a `u64` and the share supply is zero or at least the dead shares (`InvariantBroken`).
 - All arithmetic is checked; products go through `u128`; share accounting rounds in the pool's favour; FX conversions round down, and a repayment takes USDC rounded up so the pool never credits more MXN than it received.
 - The first deposit locks dead shares and must meet a minimum.
+- A repayment takes at most three pagaré records (`MAX_SIDECARS_PER_REPAY`, `TooManySidecars`), which keeps its heaviest shape under 100,000 CU; the client splits a larger payment.
 - Events are emitted through `emit_cpi!`, with `nav_after` on every movement of the NAV and `NavUpdated` last.
 
 ## Not final

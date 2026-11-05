@@ -6,7 +6,7 @@
 //! recovery instruction...), the matching test here must be inverted or deleted in the same
 //! change, so the suite always states what the program does, not what it should do. Inverted
 //! tests stay in this file, marked "Inverted <date>" in their doc comment, so the history of
-//! what used to be a limit is readable next to what still is (three so far, 2026-10-31).
+//! what used to be a limit is readable next to what still is (four so far, 2026-11-05).
 
 mod common;
 
@@ -300,14 +300,16 @@ fn limit_draw_accepts_a_valid_non_canonical_pagare_bump() {
     assert!(env.svm.get_account(&canonical).is_none(), "nothing at the canonical address");
 }
 
-/// Nothing in the program bounds how many pagaré records one `repay` touches (up to `MAX_DRAWS`),
-/// and each costs compute: a payment that marks eight of them paid runs over the project's
-/// 100 000 CU ceiling. The client splits such a payment (the amount is free); two payments of
-/// at most four records each stay under it. The client rule is at most four records per `repay`
-/// (`MAX_SIDECARS_PER_REPAY`; `tests/compute.rs` pins four under the ceiling with a margin).
+/// Inverted 2026-11-05. `repay` takes at most `MAX_SIDECARS_PER_REPAY` (3) pagaré records, on
+/// chain: four or more are refused with `TooManySidecars` before anything moves, whatever the
+/// amount. The client splits a larger payment (the amount is free) into parts of at most three
+/// records, each under the project's 100 000 CU ceiling (`tests/compute.rs` pins three with a
+/// margin).
 #[test]
-fn limit_a_repay_touching_more_than_four_pagare_records_must_be_split() {
+fn a_repay_takes_at_most_three_pagare_records() {
+    use elote_pool::state::MAX_SIDECARS_PER_REPAY;
     const CEILING: u64 = 100_000;
+    assert_eq!(MAX_SIDECARS_PER_REPAY, 3);
     fn eight_draws(env: &mut Env) -> (PoolKeys, Keypair, u64) {
         let (k, _) = env.setup_pool_with_grace(0);
         let investor = env.investor(&k, 200 * UNIT);
@@ -327,34 +329,39 @@ fn limit_a_repay_touching_more_than_four_pagare_records_must_be_split() {
         (k, borrower, line_id)
     }
 
-    // One payment for everything: eight records, over the ceiling.
+    // One payment for everything needs eight records, and one covering three pagarés needs four:
+    // both refused, nothing moved.
     let mut env = Env::new();
     let (k, borrower, line_id) = eight_draws(&mut env);
-    let line = env.line(&k, line_id);
-    let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
+    let before = env.line(&k, line_id);
+    let owed = before.drawn + before.interest_due - before.principal_repaid - before.interest_repaid + env.arrears(&k, line_id).late_due;
     assert_eq!(env.payment_sidecars(&k, line_id, owed).len(), 8);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), owed);
-    let cu = env.send(ix, &borrower, &[]).compute_units_consumed;
-    assert!(cu > CEILING, "eight records used {cu} CU");
+    env.expect_err(ix, &borrower, &[], E_TOO_MANY_SIDECARS);
+    let four = env.arrears(&k, line_id).late_due + before.interest_due - before.interest_repaid + 30 * UNIT;
+    assert_eq!(env.payment_sidecars(&k, line_id, four).len(), 4);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), four);
+    env.expect_err(ix, &borrower, &[], E_TOO_MANY_SIDECARS);
+    let after = env.line(&k, line_id);
+    assert_eq!((after.principal_repaid, after.interest_repaid, after.pagares_paid), (0, 0, 0));
 
-    // Split in three: records 0..=3 (3 untouched by principal), then 3..=6, then 6..=7.
-    let mut env = Env::new();
-    let (k, borrower, line_id) = eight_draws(&mut env);
-    let line = env.line(&k, line_id);
-    let first = env.arrears(&k, line_id).late_due + line.interest_due - line.interest_repaid + 30 * UNIT;
-    assert_eq!(env.payment_sidecars(&k, line_id, first).len(), 4);
+    // Split in four: records 0..=2 (2 untouched by principal), then 2..=4, 4..=6 and 6..=7.
+    let first = env.arrears(&k, line_id).late_due + before.interest_due - before.interest_repaid + 20 * UNIT;
+    assert_eq!(env.payment_sidecars(&k, line_id, first).len(), 3);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), first);
-    let cu1 = env.send(ix, &borrower, &[]).compute_units_consumed;
-    let second = env.arrears(&k, line_id).late_due + 30 * UNIT;
-    assert_eq!(env.payment_sidecars(&k, line_id, second).len(), 4);
-    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), second);
-    let cu2 = env.send(ix, &borrower, &[]).compute_units_consumed;
+    let mut cus = vec![env.send(ix, &borrower, &[]).compute_units_consumed];
+    for _ in 0..2 {
+        let part = env.arrears(&k, line_id).late_due + 20 * UNIT;
+        assert_eq!(env.payment_sidecars(&k, line_id, part).len(), 3);
+        let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), part);
+        cus.push(env.send(ix, &borrower, &[]).compute_units_consumed);
+    }
     let line = env.line(&k, line_id);
     let rest = line.drawn - line.principal_repaid + line.interest_due - line.interest_repaid + env.arrears(&k, line_id).late_due;
     assert_eq!(env.payment_sidecars(&k, line_id, rest).len(), 2);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), rest);
-    let cu3 = env.send(ix, &borrower, &[]).compute_units_consumed;
-    assert!(cu1 < CEILING && cu2 < CEILING && cu3 < CEILING, "split: {cu1}, {cu2} and {cu3} CU");
+    cus.push(env.send(ix, &borrower, &[]).compute_units_consumed);
+    assert!(cus.iter().all(|cu| *cu < CEILING), "split: {cus:?} CU");
     let line = env.line(&k, line_id);
     assert_eq!((line.status, line.pagares_paid), (LineStatus::Repaid, 8));
 }

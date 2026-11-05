@@ -23,7 +23,7 @@ use crate::registry;
 use crate::terms::{self, LineTerms};
 use crate::state::{
     seeds, CreditLine, LineStatus, Pagare, Pool, ScheduleParams, BPS, KIND_ABONO, KIND_EMISION, KIND_PAGADO,
-    CURRENCY_MXN, MAX_DRAWS, MAX_INSTALLMENTS, MIN_MAX_MISSED, REQUEST_TTL_SECONDS, PAGARE_OUTSTANDING, PAGARE_PAID_PENDING_CANCEL,
+    CURRENCY_MXN, MAX_DRAWS, MAX_INSTALLMENTS, MAX_SIDECARS_PER_REPAY, MIN_MAX_MISSED, REQUEST_TTL_SECONDS, PAGARE_OUTSTANDING, PAGARE_PAID_PENDING_CANCEL,
     SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
 };
 
@@ -772,7 +772,8 @@ pub struct Repay<'info> {
 ///
 /// Remaining accounts: exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first,
 /// where `last_touched` is the first one this payment leaves partly unpaid, or the last draw; none
-/// once the cursor has passed the last draw (`PagareAccountsMismatch` otherwise). A covered pagaré
+/// once the cursor has passed the last draw (`PagareAccountsMismatch` otherwise), and never more
+/// than `MAX_SIDECARS_PER_REPAY` (`TooManySidecars`): a larger payment is split. A covered pagaré
 /// gets a `Pagado` entry, status `PAGARE_PAID_PENDING_CANCEL`, `paid_at` and `receipt_hash` (only
 /// the burn waits), and the cursor `pagares_paid` moves past it. The uncovered one gets an `Abono`
 /// entry only if the payment applied principal to it. `receipt_hash` is the payer's, unverified and
@@ -830,6 +831,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
     let cursor = line.pagares_paid;
     let draws = line.draws;
     let sidecars = ctx.remaining_accounts;
+    require!(sidecars.len() <= MAX_SIDECARS_PER_REPAY, PoolError::TooManySidecars);
     if cursor >= draws {
         require!(sidecars.is_empty(), PoolError::PagareAccountsMismatch);
     } else {

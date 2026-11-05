@@ -68,11 +68,13 @@ export async function drawPagareAccounts(
 }
 
 /**
- * The most pagaré records one `repay` should touch: four stay at least 5,000 CU under the
- * 100,000 CU ceiling once the payment is converted at the FIX (five reach about 100k). Split a payment whose `repaySidecars` returns more into several `repay`
- * calls; the amount is free.
+ * The most pagaré records one `repay` takes: the program's `state::MAX_SIDECARS_PER_REPAY`, and
+ * it refuses more with `TooManySidecars` (`test/pagare.test.ts` reads the constant from
+ * `programs/elote_pool/src/state.rs`). Three stay at least 5,000 CU under the 100,000 CU ceiling.
+ * Split a payment whose `repaySidecars` returns more into several `repay` calls
+ * (`repayPrincipalCap`); the amount is free.
  */
-export const MAX_SIDECARS_PER_REPAY = 4;
+export const MAX_SIDECARS_PER_REPAY = 3;
 
 /**
  * The pagaré records a `repay` must pass as remaining accounts, `[pagaresPaid ..= lastTouched]`,

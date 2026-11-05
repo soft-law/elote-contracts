@@ -153,4 +153,8 @@ pub enum PoolError {
     AnnotationKindInvalid,
     #[msg("The referenced registry entry does not exist")]
     EntryNotFound,
+
+    // Added after the codes above were published; appended so no existing code moves.
+    #[msg("A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment")]
+    TooManySidecars,
 }

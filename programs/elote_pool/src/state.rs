@@ -37,6 +37,11 @@ pub fn min_first_deposit(decimals: u8) -> Option<u64> {
 pub const BPS: u64 = 10_000;
 /// Upper bound on the tranches of one line.
 pub const MAX_DRAWS: u16 = 64;
+/// The most pagaré records one `repay` takes as remaining accounts (`TooManySidecars` above it):
+/// three keep the heaviest payment, every installment of a 120-installment line missed, at least
+/// 5 000 CU under the 100 000 CU ceiling. A payment that would touch more is split by the client
+/// into several `repay` calls; the amount is free.
+pub const MAX_SIDECARS_PER_REPAY: usize = 3;
 /// `CreditLine::sponsor_role`: a sponsor that refers, trains and shares data, with no payment
 /// obligation.
 pub const SPONSOR_PROMOTER: u8 = 0;

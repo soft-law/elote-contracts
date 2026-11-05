@@ -322,7 +322,7 @@ Signers: `borrower`, `payer`.
 
 ### `repay(max_usdc: u64, fx_rate: u64, fx_date: u32, receipt_hash: [u8; 32])`
 
-Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in force (`fx_rate`, `fx_date`, whatever its age): late interest (which the credit must cover), then interest, then principal, never more than is due; the USDC taken is rounded up. The remaining accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first; each one covered is marked paid with the payer's provisional `receipt_hash`. The line becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a payment on a zero debt is refused. Never paused.
+Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in force (`fx_rate`, `fx_date`, whatever its age): late interest (which the credit must cover), then interest, then principal, never more than is due; the USDC taken is rounded up. The remaining accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at most `MAX_SIDECARS_PER_REPAY` of them; each one covered is marked paid with the payer's provisional `receipt_hash`. The line becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a payment on a zero debt is refused. Never paused.
 
 Signers: `payer`.
 
@@ -759,6 +759,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6063 | `ProcuracionState` | The pagaré has no procuración in force, or already has one |
 | 6064 | `AnnotationKindInvalid` | This kind is not a court annotation |
 | 6065 | `EntryNotFound` | The referenced registry entry does not exist |
+| 6066 | `TooManySidecars` | A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment |
 
 ## Compute
 
@@ -790,7 +791,7 @@ Measured by `programs/elote_pool/tests/compute.rs` (the program alone) and `test
 | repay after the mark at 120 installments | 56338 |
 | repay at 120 installments | 65182 |
 | repay at 18 installments | 38134 |
-| repay covering four sidecars at 120 installments, all missed | 92772 |
+| repay covering three sidecars at 120 installments, all missed | 89669 |
 | request_line at 120 installments | 21540 |
 | resume_draws | 13490 |
 | revoke_procuracion at 120 installments | 39259 |
