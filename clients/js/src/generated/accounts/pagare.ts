@@ -107,15 +107,15 @@ export type Pagare = {
   lastKind: number;
   bump: number;
   /** The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date. */
-  fxRate: bigint;
-  fxDate: number;
+  fixRate: bigint;
+  fixDate: number;
   /**
-   * USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the
+   * USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fix_rate)`. The pool's cost of the
    * tranche.
    */
   usdcDelivered: bigint;
   /**
-   * `sha256(pagare_hash || fx_rate || fx_date || usdc_delivered)`: the delivery the borrower
+   * `sha256(pagare_hash || fix_rate || fix_date || usdc_delivered)`: the delivery the borrower
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
@@ -181,15 +181,15 @@ export type PagareArgs = {
   lastKind: number;
   bump: number;
   /** The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date. */
-  fxRate: number | bigint;
-  fxDate: number;
+  fixRate: number | bigint;
+  fixDate: number;
   /**
-   * USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the
+   * USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fix_rate)`. The pool's cost of the
    * tranche.
    */
   usdcDelivered: number | bigint;
   /**
-   * `sha256(pagare_hash || fx_rate || fx_date || usdc_delivered)`: the delivery the borrower
+   * `sha256(pagare_hash || fix_rate || fix_date || usdc_delivered)`: the delivery the borrower
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
@@ -228,8 +228,8 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["entryCount", getU32Encoder()],
       ["lastKind", getU8Encoder()],
       ["bump", getU8Encoder()],
-      ["fxRate", getU64Encoder()],
-      ["fxDate", getU32Encoder()],
+      ["fixRate", getU64Encoder()],
+      ["fixDate", getU32Encoder()],
       ["usdcDelivered", getU64Encoder()],
       ["deliveryHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["cancelGraceSeconds", getU32Encoder()],
@@ -263,8 +263,8 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["entryCount", getU32Decoder()],
     ["lastKind", getU8Decoder()],
     ["bump", getU8Decoder()],
-    ["fxRate", getU64Decoder()],
-    ["fxDate", getU32Decoder()],
+    ["fixRate", getU64Decoder()],
+    ["fixDate", getU32Decoder()],
     ["usdcDelivered", getU64Decoder()],
     ["deliveryHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["cancelGraceSeconds", getU32Decoder()],

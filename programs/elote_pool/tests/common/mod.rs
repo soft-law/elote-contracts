@@ -1428,7 +1428,7 @@ impl Env {
             .to_account_metas(None),
             data: {
                 let pool = self.pool(k);
-                elote_pool::instruction::Draw { amount_mxn: amount, fx_rate: pool.fix_rate, fx_date: pool.fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method }.data()
+                elote_pool::instruction::Draw { amount_mxn: amount, fix_rate: pool.fix_rate, fix_date: pool.fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method }.data()
             },
         }
     }
@@ -1666,7 +1666,7 @@ impl Env {
         accounts.extend(sidecars.iter().map(|s| anchor_lang::solana_program::instruction::AccountMeta::new(*s, false)));
         Instruction { program_id: PROGRAM_ID, accounts, data: {
             let pool = self.pool(k);
-            elote_pool::instruction::Repay { max_usdc: amount, fx_rate: pool.fix_rate, fx_date: pool.fix_date, receipt_hash }.data()
+            elote_pool::instruction::Repay { max_usdc: amount, fix_rate: pool.fix_rate, fix_date: pool.fix_date, receipt_hash }.data()
         } }
     }
     /// `annotate_payment(draw_index, entry_count, receipt_hash)` by `annotator`.

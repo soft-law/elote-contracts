@@ -140,9 +140,9 @@ fn a_draw_delivers_usdc_at_the_fix_the_borrower_signed() {
     let usdc = 2_721_236_529; // floor(5_000_000 * 10^8 / 183_740)
     assert_eq!(env.token_balance(&k.asset_ata(&borrower.pubkey())), usdc);
     let ev: elote_pool::events::LineDrawn = find_event(&meta).expect("LineDrawn");
-    assert_eq!((ev.amount_mxn, ev.fx_rate, ev.fx_date, ev.usdc_delivered), (5_000_000, 183_740, env.today(), usdc));
+    assert_eq!((ev.amount_mxn, ev.fix_rate, ev.fix_date, ev.usdc_delivered), (5_000_000, 183_740, env.today(), usdc));
     let record = env.pagare(&k, id, 0);
-    assert_eq!((record.amount_mxn, record.fx_rate, record.fx_date, record.usdc_delivered), (5_000_000, 183_740, env.today(), usdc));
+    assert_eq!((record.amount_mxn, record.fix_rate, record.fix_date, record.usdc_delivered), (5_000_000, 183_740, env.today(), usdc));
     let line = env.line(&k, id);
     assert_eq!((line.drawn, line.usdc_drawn), (5_000_000, usdc), "the line counts MXN; its cost is in USDC");
     assert_eq!(env.pool(&k).outstanding_principal, usdc, "the pool's outstanding is the USDC cost");
@@ -161,7 +161,7 @@ fn a_changed_fix_fails_the_draw_and_the_borrower_confirms_again() {
     env.expect_err(shown, &borrower, &[], code(PoolError::FixMismatch));
     let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT);
     env.send(ix, &borrower, &[]);
-    assert_eq!(env.pagare(&k, id, 0).fx_rate, 183_750);
+    assert_eq!(env.pagare(&k, id, 0).fix_rate, 183_750);
 }
 
 #[test]
@@ -254,7 +254,7 @@ fn a_repayment_in_usdc_is_credited_in_mxn_at_the_fix_of_the_day_and_realizes_the
     let repaid: LineRepaid = find_event(&meta).expect("LineRepaid");
     let loss = delivered as i64 - (2_500 * UNIT) as i64;
     assert_eq!((fx.line_id, fx.cost, fx.received, fx.delta), (id, delivered, 2_500 * UNIT, -loss));
-    assert_eq!((fx.receipt_hash, repaid.receipt_hash, repaid.usdc_received, repaid.fx_rate), (RECEIPT_HASH, RECEIPT_HASH, 2_500 * UNIT, 200_000));
+    assert_eq!((fx.receipt_hash, repaid.receipt_hash, repaid.usdc_received, repaid.fix_rate), (RECEIPT_HASH, RECEIPT_HASH, 2_500 * UNIT, 200_000));
     assert_eq!((fx.nav_after, repaid.nav_after), (nav_before - loss as u64, nav_before - loss as u64));
     let pool = env.pool(&k);
     assert_eq!((pool.outstanding_principal, pool.fx_realized), (0, -loss));

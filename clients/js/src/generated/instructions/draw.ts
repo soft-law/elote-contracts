@@ -138,8 +138,8 @@ export type DrawInstruction<
 export type DrawInstructionData = {
   discriminator: ReadonlyUint8Array;
   amountMxn: bigint;
-  fxRate: bigint;
-  fxDate: number;
+  fixRate: bigint;
+  fixDate: number;
   assetBump: number;
   pagareBump: number;
   certFingerprint: ReadonlyUint8Array;
@@ -148,8 +148,8 @@ export type DrawInstructionData = {
 
 export type DrawInstructionDataArgs = {
   amountMxn: number | bigint;
-  fxRate: number | bigint;
-  fxDate: number;
+  fixRate: number | bigint;
+  fixDate: number;
   assetBump: number;
   pagareBump: number;
   certFingerprint: ReadonlyUint8Array;
@@ -161,8 +161,8 @@ export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructio
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["amountMxn", getU64Encoder()],
-      ["fxRate", getU64Encoder()],
-      ["fxDate", getU32Encoder()],
+      ["fixRate", getU64Encoder()],
+      ["fixDate", getU32Encoder()],
       ["assetBump", getU8Encoder()],
       ["pagareBump", getU8Encoder()],
       ["certFingerprint", fixEncoderSize(getBytesEncoder(), 32)],
@@ -176,8 +176,8 @@ export function getDrawInstructionDataDecoder(): FixedSizeDecoder<DrawInstructio
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["amountMxn", getU64Decoder()],
-    ["fxRate", getU64Decoder()],
-    ["fxDate", getU32Decoder()],
+    ["fixRate", getU64Decoder()],
+    ["fixDate", getU32Decoder()],
     ["assetBump", getU8Decoder()],
     ["pagareBump", getU8Decoder()],
     ["certFingerprint", fixDecoderSize(getBytesDecoder(), 32)],
@@ -242,8 +242,8 @@ export type DrawAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   amountMxn: DrawInstructionDataArgs["amountMxn"];
-  fxRate: DrawInstructionDataArgs["fxRate"];
-  fxDate: DrawInstructionDataArgs["fxDate"];
+  fixRate: DrawInstructionDataArgs["fixRate"];
+  fixDate: DrawInstructionDataArgs["fixDate"];
   assetBump: DrawInstructionDataArgs["assetBump"];
   pagareBump: DrawInstructionDataArgs["pagareBump"];
   certFingerprint: DrawInstructionDataArgs["certFingerprint"];
@@ -584,8 +584,8 @@ export type DrawInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   amountMxn: DrawInstructionDataArgs["amountMxn"];
-  fxRate: DrawInstructionDataArgs["fxRate"];
-  fxDate: DrawInstructionDataArgs["fxDate"];
+  fixRate: DrawInstructionDataArgs["fixRate"];
+  fixDate: DrawInstructionDataArgs["fixDate"];
   assetBump: DrawInstructionDataArgs["assetBump"];
   pagareBump: DrawInstructionDataArgs["pagareBump"];
   certFingerprint: DrawInstructionDataArgs["certFingerprint"];

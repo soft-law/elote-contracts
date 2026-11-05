@@ -430,7 +430,7 @@ fn a_draw_derives_the_pagare_hash_and_the_delivery_hash() {
     assert_eq!(ev.pagare_hash[..], manual[..]);
     let record = env.pagare(&k, line_id, 0);
     let delivery = <sha2::Sha256 as sha2::Digest>::digest(
-        [&ev.pagare_hash[..], &record.fx_rate.to_le_bytes(), &record.fx_date.to_le_bytes(), &record.usdc_delivered.to_le_bytes()].concat(),
+        [&ev.pagare_hash[..], &record.fix_rate.to_le_bytes(), &record.fix_date.to_le_bytes(), &record.usdc_delivered.to_le_bytes()].concat(),
     );
     assert_eq!((ev.delivery_hash[..] == delivery[..], record.delivery_hash), (true, ev.delivery_hash));
 

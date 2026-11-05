@@ -49,8 +49,8 @@ export type LineDrawnEvent = {
   lineId: bigint;
   drawIndex: number;
   amountMxn: bigint;
-  fxRate: bigint;
-  fxDate: number;
+  fixRate: bigint;
+  fixDate: number;
   usdcDelivered: bigint;
   drawn: bigint;
   available: bigint;
@@ -64,8 +64,8 @@ export type LineDrawnEventArgs = {
   lineId: number | bigint;
   drawIndex: number;
   amountMxn: number | bigint;
-  fxRate: number | bigint;
-  fxDate: number;
+  fixRate: number | bigint;
+  fixDate: number;
   usdcDelivered: number | bigint;
   drawn: number | bigint;
   available: number | bigint;
@@ -82,8 +82,8 @@ export function getLineDrawnEventEncoder(): FixedSizeEncoder<LineDrawnEventArgs>
       ["lineId", getU64Encoder()],
       ["drawIndex", getU16Encoder()],
       ["amountMxn", getU64Encoder()],
-      ["fxRate", getU64Encoder()],
-      ["fxDate", getU32Encoder()],
+      ["fixRate", getU64Encoder()],
+      ["fixDate", getU32Encoder()],
       ["usdcDelivered", getU64Encoder()],
       ["drawn", getU64Encoder()],
       ["available", getU64Encoder()],
@@ -103,8 +103,8 @@ export function getLineDrawnEventDecoder(): FixedSizeDecoder<LineDrawnEvent> {
       ["lineId", getU64Decoder()],
       ["drawIndex", getU16Decoder()],
       ["amountMxn", getU64Decoder()],
-      ["fxRate", getU64Decoder()],
-      ["fxDate", getU32Decoder()],
+      ["fixRate", getU64Decoder()],
+      ["fixDate", getU32Decoder()],
       ["usdcDelivered", getU64Decoder()],
       ["drawn", getU64Decoder()],
       ["available", getU64Decoder()],

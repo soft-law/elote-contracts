@@ -137,7 +137,7 @@ pub mod elote_pool {
     }
 
     /// Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the
-    /// borrower signs as `fx_rate` and `fx_date`, and mints the pagaré (its hash derived on chain
+    /// borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain
     /// from the approved template and terms) as a frozen Core asset owned by the pool, with its
     /// `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw
     /// window has closed, on a changed or stale FIX, or above what the line, the vault or the pool cap
@@ -146,14 +146,14 @@ pub mod elote_pool {
     pub fn draw(
         ctx: Context<Draw>,
         amount_mxn: u64,
-        fx_rate: u64,
-        fx_date: u32,
+        fix_rate: u64,
+        fix_date: u32,
         asset_bump: u8,
         pagare_bump: u8,
         cert_fingerprint: [u8; 32],
         signature_method: u8,
     ) -> Result<()> {
-        instructions::lines::draw(ctx, amount_mxn, fx_rate, fx_date, asset_bump, pagare_bump, cert_fingerprint, signature_method)
+        instructions::lines::draw(ctx, amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
     /// Extinguishes pagaré `draw_index` once a repayment has marked it paid
@@ -189,14 +189,14 @@ pub mod elote_pool {
     }
 
     /// Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in
-    /// force (`fx_rate`, `fx_date`, whatever its age): late interest (which the credit must cover),
+    /// force (`fix_rate`, `fix_date`, whatever its age): late interest (which the credit must cover),
     /// then interest, then principal, never more than is due; the USDC taken is rounded up. The remaining
     /// accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at
     /// most `MAX_SIDECARS_PER_REPAY` of them; each one covered is marked paid with the payer's provisional `receipt_hash`. The line
     /// becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a
     /// payment on a zero debt is refused. Never paused.
-    pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u64, fx_date: u32, receipt_hash: [u8; 32]) -> Result<()> {
-        instructions::lines::repay(ctx, max_usdc, fx_rate, fx_date, receipt_hash)
+    pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: u64, fix_date: u32, receipt_hash: [u8; 32]) -> Result<()> {
+        instructions::lines::repay(ctx, max_usdc, fix_rate, fix_date, receipt_hash)
     }
 
     /// The council (the holder) attaches a receipt to payment entry `entry_count` of pagaré

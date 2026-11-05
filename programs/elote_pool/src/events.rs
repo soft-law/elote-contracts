@@ -122,16 +122,16 @@ pub struct LineCancelled {
     pub line_id: u64,
 }
 
-/// One tranche of `amount_mxn` centavos delivered as `usdc_delivered` at the FIX (`fx_rate`,
-/// `fx_date`), and the line after it; `outstanding_after` is the pool's cost in USDC.
+/// One tranche of `amount_mxn` centavos delivered as `usdc_delivered` at the FIX (`fix_rate`,
+/// `fix_date`), and the line after it; `outstanding_after` is the pool's cost in USDC.
 #[event]
 pub struct LineDrawn {
     pub pool: Pubkey,
     pub line_id: u64,
     pub draw_index: u16,
     pub amount_mxn: u64,
-    pub fx_rate: u64,
-    pub fx_date: u32,
+    pub fix_rate: u64,
+    pub fix_date: u32,
     pub usdc_delivered: u64,
     pub drawn: u64,
     pub available: u64,
@@ -141,7 +141,7 @@ pub struct LineDrawn {
 }
 
 /// A repayment: `principal_part` and `interest_part` in centavos of MXN, `usdc_received` the USDC
-/// taken at `fx_rate`, `remaining` the MXN still due. Emitted after `FxRealized`, with the same
+/// taken at `fix_rate`, `remaining` the MXN still due. Emitted after `FxRealized`, with the same
 /// `receipt_hash`.
 #[event]
 pub struct LineRepaid {
@@ -150,7 +150,7 @@ pub struct LineRepaid {
     pub payer: Pubkey,
     pub receipt_hash: [u8; 32],
     pub usdc_received: u64,
-    pub fx_rate: u64,
+    pub fix_rate: u64,
     pub principal_part: u64,
     pub interest_part: u64,
     pub remaining: u64,

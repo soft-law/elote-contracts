@@ -411,12 +411,12 @@ pub struct Pagare {
     pub last_kind: u8,
     pub bump: u8,
     /// The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date.
-    pub fx_rate: u64,
-    pub fx_date: u32,
-    /// USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the
+    pub fix_rate: u64,
+    pub fix_date: u32,
+    /// USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fix_rate)`. The pool's cost of the
     /// tranche.
     pub usdc_delivered: u64,
-    /// `sha256(pagare_hash || fx_rate || fx_date || usdc_delivered)`: the delivery the borrower
+    /// `sha256(pagare_hash || fix_rate || fix_date || usdc_delivered)`: the delivery the borrower
     /// instructed, kept apart from the pagaré, which promises MXN only.
     pub delivery_hash: [u8; 32],
     /// The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then:

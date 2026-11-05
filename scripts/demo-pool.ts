@@ -309,8 +309,8 @@ async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
     ...(await drawPagareAccounts({ line: lineAddress, drawIndex, collection })),
     systemProgram: SYSTEM_PROGRAM_ADDRESS,
     amountMxn: amount,
-    fxRate: (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.fixRate,
-    fxDate: (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.fixDate,
+    fixRate: (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.fixRate,
+    fixDate: (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.fixDate,
     certFingerprint: new Uint8Array(32), // wallet-only signature in the demo: no certificate
     signatureMethod: 0,
   });

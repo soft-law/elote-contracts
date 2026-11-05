@@ -301,9 +301,9 @@ Signers: `borrower`.
 | `line` | yes |  |  |
 | `payer` | yes |  |  |
 
-### `draw(amount_mxn: u64, fx_rate: u64, fx_date: u32, asset_bump: u8, pagare_bump: u8, cert_fingerprint: [u8; 32], signature_method: u8)`
+### `draw(amount_mxn: u64, fix_rate: u64, fix_date: u32, asset_bump: u8, pagare_bump: u8, cert_fingerprint: [u8; 32], signature_method: u8)`
 
-Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the borrower signs as `fx_rate` and `fx_date`, and mints the pagaré (its hash derived on chain from the approved template and terms) as a frozen Core asset owned by the pool, with its `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw window has closed, on a changed or stale FIX, or above what the line, the vault or the pool cap allows.
+Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain from the approved template and terms) as a frozen Core asset owned by the pool, with its `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw window has closed, on a changed or stale FIX, or above what the line, the vault or the pool cap allows.
 
 Signers: `borrower`, `payer`.
 
@@ -323,9 +323,9 @@ Signers: `borrower`, `payer`.
 | `mpl_core_program` |  |  | Fixed address `CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d`. |
 | `system_program` |  |  | Fixed address `11111111111111111111111111111111`. |
 
-### `repay(max_usdc: u64, fx_rate: u64, fx_date: u32, receipt_hash: [u8; 32])`
+### `repay(max_usdc: u64, fix_rate: u64, fix_date: u32, receipt_hash: [u8; 32])`
 
-Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in force (`fx_rate`, `fx_date`, whatever its age): late interest (which the credit must cover), then interest, then principal, never more than is due; the USDC taken is rounded up. The remaining accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at most `MAX_SIDECARS_PER_REPAY` of them; each one covered is marked paid with the payer's provisional `receipt_hash`. The line becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a payment on a zero debt is refused. Never paused.
+Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in force (`fix_rate`, `fix_date`, whatever its age): late interest (which the credit must cover), then interest, then principal, never more than is due; the USDC taken is rounded up. The remaining accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at most `MAX_SIDECARS_PER_REPAY` of them; each one covered is marked paid with the payer's provisional `receipt_hash`. The line becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a payment on a zero debt is refused. Never paused.
 
 Signers: `payer`.
 
@@ -606,10 +606,10 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `entry_count` | `u32` | Entries in the chain; the issuance entry is 1. |
 | `last_kind` | `u8` | `KIND_*` of the last entry. |
 | `bump` | `u8` |  |
-| `fx_rate` | `u64` | The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date. |
-| `fx_date` | `u32` |  |
-| `usdc_delivered` | `u64` | USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the tranche. |
-| `delivery_hash` | `[u8; 32]` | `sha256(pagare_hash \|\| fx_rate \|\| fx_date \|\| usdc_delivered)`: the delivery the borrower instructed, kept apart from the pagaré, which promises MXN only. |
+| `fix_rate` | `u64` | The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date. |
+| `fix_date` | `u32` |  |
+| `usdc_delivered` | `u64` | USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fix_rate)`. The pool's cost of the tranche. |
+| `delivery_hash` | `[u8; 32]` | `sha256(pagare_hash \|\| fix_rate \|\| fix_date \|\| usdc_delivered)`: the delivery the borrower instructed, kept apart from the pagaré, which promises MXN only. |
 | `cancel_grace_seconds` | `u32` | The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then: the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool sets later. Zero while outstanding. |
 | `reserved` | `[u8; 28]` | Zero; for fields added after mainnet. |
 
@@ -671,12 +671,12 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`LineAccelerated`** `{ pool: pubkey, line_id: u64, remaining: u64, interest_forgiven: u64 }`: The council accelerated the line after the notice: the same effect as `LineInCollection`, without missed installments.
 - **`LineApproved`** `{ pool: pubkey, line_id: u64, expediente_root: [u8; 32], terms_hash: [u8; 32], availability_end: i64 }`: The council approved exactly this expediente and these terms.
 - **`LineCancelled`** `{ pool: pubkey, line_id: u64 }`
-- **`LineDrawn`** `{ pool: pubkey, line_id: u64, draw_index: u16, amount_mxn: u64, fx_rate: u64, fx_date: u32, usdc_delivered: u64, drawn: u64, available: u64, interest_due: u64, availability_end: i64, outstanding_after: u64 }`: One tranche of `amount_mxn` centavos delivered as `usdc_delivered` at the FIX (`fx_rate`, `fx_date`), and the line after it; `outstanding_after` is the pool's cost in USDC.
+- **`LineDrawn`** `{ pool: pubkey, line_id: u64, draw_index: u16, amount_mxn: u64, fix_rate: u64, fix_date: u32, usdc_delivered: u64, drawn: u64, available: u64, interest_due: u64, availability_end: i64, outstanding_after: u64 }`: One tranche of `amount_mxn` centavos delivered as `usdc_delivered` at the FIX (`fix_rate`, `fix_date`), and the line after it; `outstanding_after` is the pool's cost in USDC.
 - **`LineDrawsResumed`** `{ pool: pubkey, line_id: u64, availability_end: i64 }`: Draws resumed with the window they had before the suspension.
 - **`LineDrawsSuspended`** `{ pool: pubkey, line_id: u64, available_forfeited: u64 }`: `available_forfeited` is the undrawn remainder.
 - **`LineInCollection`** `{ pool: pubkey, line_id: u64, missed: u16, remaining: u64, interest_forgiven: u64 }`: A scheduled line moved to collection and its balance accelerated. `remaining` is the principal and interest still due after the acceleration, without late interest; `interest_forgiven` is the ordinary interest of the installments not yet due at the mark, which the line no longer owes.
 - **`LineRejected`** `{ pool: pubkey, line_id: u64 }`
-- **`LineRepaid`** `{ pool: pubkey, line_id: u64, payer: pubkey, receipt_hash: [u8; 32], usdc_received: u64, fx_rate: u64, principal_part: u64, interest_part: u64, remaining: u64, nav_after: u64 }`: A repayment: `principal_part` and `interest_part` in centavos of MXN, `usdc_received` the USDC taken at `fx_rate`, `remaining` the MXN still due. Emitted after `FxRealized`, with the same `receipt_hash`.
+- **`LineRepaid`** `{ pool: pubkey, line_id: u64, payer: pubkey, receipt_hash: [u8; 32], usdc_received: u64, fix_rate: u64, principal_part: u64, interest_part: u64, remaining: u64, nav_after: u64 }`: A repayment: `principal_part` and `interest_part` in centavos of MXN, `usdc_received` the USDC taken at `fix_rate`, `remaining` the MXN still due. Emitted after `FxRealized`, with the same `receipt_hash`.
 - **`LineRequested`** `{ pool: pubkey, line_id: u64, borrower: pubkey, payer: pubkey, sponsor: Option<pubkey>, sponsor_role: u8, agreement_hash: [u8; 32], expediente_root: [u8; 32], pagare_template_hash: [u8; 32], terms_hash: [u8; 32], currency: u16, principal: u64, rate_bps: u16, term_end: i64, first_due_at: i64, interval_seconds: i64, installments: u16, late_bps: u16, max_missed: u8 }`: Every term `request_line` stored, with the hash of their fixed encoding. On a bullet line the schedule fields other than `late_bps` are zero; `payer` funded the request and gets its rent back.
 - **`LineWrittenOff`** `{ pool: pubkey, line_id: u64, loss: u64, loss_usdc: u64, nav_after: u64 }`: The principal left in MXN (`loss`) and its cost in USDC (`loss_usdc`), which leaves the NAV.
 - **`MaxLineBpsSet`** `{ pool: pubkey, max_line_bps: u16 }`

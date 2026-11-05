@@ -112,15 +112,15 @@ export type RepayInstruction<
 export type RepayInstructionData = {
   discriminator: ReadonlyUint8Array;
   maxUsdc: bigint;
-  fxRate: bigint;
-  fxDate: number;
+  fixRate: bigint;
+  fixDate: number;
   receiptHash: ReadonlyUint8Array;
 };
 
 export type RepayInstructionDataArgs = {
   maxUsdc: number | bigint;
-  fxRate: number | bigint;
-  fxDate: number;
+  fixRate: number | bigint;
+  fixDate: number;
   receiptHash: ReadonlyUint8Array;
 };
 
@@ -129,8 +129,8 @@ export function getRepayInstructionDataEncoder(): FixedSizeEncoder<RepayInstruct
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["maxUsdc", getU64Encoder()],
-      ["fxRate", getU64Encoder()],
-      ["fxDate", getU32Encoder()],
+      ["fixRate", getU64Encoder()],
+      ["fixDate", getU32Encoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: REPAY_DISCRIMINATOR }),
@@ -141,8 +141,8 @@ export function getRepayInstructionDataDecoder(): FixedSizeDecoder<RepayInstruct
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["maxUsdc", getU64Decoder()],
-    ["fxRate", getU64Decoder()],
-    ["fxDate", getU32Decoder()],
+    ["fixRate", getU64Decoder()],
+    ["fixDate", getU32Decoder()],
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
@@ -186,8 +186,8 @@ export type RepayAsyncInput<
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
   maxUsdc: RepayInstructionDataArgs["maxUsdc"];
-  fxRate: RepayInstructionDataArgs["fxRate"];
-  fxDate: RepayInstructionDataArgs["fxDate"];
+  fixRate: RepayInstructionDataArgs["fixRate"];
+  fixDate: RepayInstructionDataArgs["fixDate"];
   receiptHash: RepayInstructionDataArgs["receiptHash"];
 };
 
@@ -427,8 +427,8 @@ export type RepayInput<
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
   maxUsdc: RepayInstructionDataArgs["maxUsdc"];
-  fxRate: RepayInstructionDataArgs["fxRate"];
-  fxDate: RepayInstructionDataArgs["fxDate"];
+  fixRate: RepayInstructionDataArgs["fixRate"];
+  fixDate: RepayInstructionDataArgs["fixDate"];
   receiptHash: RepayInstructionDataArgs["receiptHash"];
 };
 

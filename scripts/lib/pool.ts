@@ -107,8 +107,8 @@ export async function repayInParts(
               payerAssetAccount: payerAsset,
               tokenProgram: TOKEN_PROGRAM_ADDRESS,
               maxUsdc: usdcCeilForMxn(piece, fix.fixRate),
-              fxRate: fix.fixRate,
-              fxDate: fix.fixDate,
+              fixRate: fix.fixRate,
+              fixDate: fix.fixDate,
               receiptHash,
             }),
             records

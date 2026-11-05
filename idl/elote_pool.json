@@ -938,7 +938,7 @@
       "name": "draw",
       "docs": [
         "Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the",
-        "borrower signs as `fx_rate` and `fx_date`, and mints the pagaré (its hash derived on chain",
+        "borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain",
         "from the approved template and terms) as a frozen Core asset owned by the pool, with its",
         "`Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw",
         "window has closed, on a changed or stale FIX, or above what the line, the vault or the pool cap",
@@ -1143,11 +1143,11 @@
           "type": "u64"
         },
         {
-          "name": "fx_rate",
+          "name": "fix_rate",
           "type": "u64"
         },
         {
-          "name": "fx_date",
+          "name": "fix_date",
           "type": "u32"
         },
         {
@@ -2087,7 +2087,7 @@
       "name": "repay",
       "docs": [
         "Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in",
-        "force (`fx_rate`, `fx_date`, whatever its age): late interest (which the credit must cover),",
+        "force (`fix_rate`, `fix_date`, whatever its age): late interest (which the credit must cover),",
         "then interest, then principal, never more than is due; the USDC taken is rounded up. The remaining",
         "accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at",
         "most `MAX_SIDECARS_PER_REPAY` of them; each one covered is marked paid with the payer's provisional `receipt_hash`. The line",
@@ -2204,11 +2204,11 @@
           "type": "u64"
         },
         {
-          "name": "fx_rate",
+          "name": "fix_rate",
           "type": "u64"
         },
         {
-          "name": "fx_date",
+          "name": "fix_date",
           "type": "u32"
         },
         {
@@ -5153,8 +5153,8 @@
     {
       "name": "LineDrawn",
       "docs": [
-        "One tranche of `amount_mxn` centavos delivered as `usdc_delivered` at the FIX (`fx_rate`,",
-        "`fx_date`), and the line after it; `outstanding_after` is the pool's cost in USDC."
+        "One tranche of `amount_mxn` centavos delivered as `usdc_delivered` at the FIX (`fix_rate`,",
+        "`fix_date`), and the line after it; `outstanding_after` is the pool's cost in USDC."
       ],
       "type": {
         "kind": "struct",
@@ -5176,11 +5176,11 @@
             "type": "u64"
           },
           {
-            "name": "fx_rate",
+            "name": "fix_rate",
             "type": "u64"
           },
           {
-            "name": "fx_date",
+            "name": "fix_date",
             "type": "u32"
           },
           {
@@ -5310,7 +5310,7 @@
       "name": "LineRepaid",
       "docs": [
         "A repayment: `principal_part` and `interest_part` in centavos of MXN, `usdc_received` the USDC",
-        "taken at `fx_rate`, `remaining` the MXN still due. Emitted after `FxRealized`, with the same",
+        "taken at `fix_rate`, `remaining` the MXN still due. Emitted after `FxRealized`, with the same",
         "`receipt_hash`."
       ],
       "type": {
@@ -5342,7 +5342,7 @@
             "type": "u64"
           },
           {
-            "name": "fx_rate",
+            "name": "fix_rate",
             "type": "u64"
           },
           {
@@ -5841,20 +5841,20 @@
             "type": "u8"
           },
           {
-            "name": "fx_rate",
+            "name": "fix_rate",
             "docs": [
               "The FIX the borrower signed for this draw (`Pool::fix_rate` then) and its date."
             ],
             "type": "u64"
           },
           {
-            "name": "fx_date",
+            "name": "fix_date",
             "type": "u32"
           },
           {
             "name": "usdc_delivered",
             "docs": [
-              "USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fx_rate)`. The pool's cost of the",
+              "USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fix_rate)`. The pool's cost of the",
               "tranche."
             ],
             "type": "u64"
@@ -5862,7 +5862,7 @@
           {
             "name": "delivery_hash",
             "docs": [
-              "`sha256(pagare_hash || fx_rate || fx_date || usdc_delivered)`: the delivery the borrower",
+              "`sha256(pagare_hash || fix_rate || fix_date || usdc_delivered)`: the delivery the borrower",
               "instructed, kept apart from the pagaré, which promises MXN only."
             ],
             "type": {

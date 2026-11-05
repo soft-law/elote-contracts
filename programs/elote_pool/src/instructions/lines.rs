@@ -312,7 +312,7 @@ fn last_due_of(s: &ScheduleParams) -> Result<i64> {
 
 #[event_cpi]
 #[derive(Accounts)]
-#[instruction(amount_mxn: u64, fx_rate: u64, fx_date: u32, asset_bump: u8, pagare_bump: u8)]
+#[instruction(amount_mxn: u64, fix_rate: u64, fix_date: u32, asset_bump: u8, pagare_bump: u8)]
 pub struct Draw<'info> {
     /// Signs alone: the signature covers the pagaré hash the program derives and the FIX.
     pub borrower: Signer<'info>,
@@ -548,14 +548,14 @@ pub fn pagare_hash(line: &CreditLine, line_key: &Pubkey, draw_index: u16, amount
     .to_bytes()
 }
 
-/// `sha256(pagare_hash || fx_rate u64 || fx_date u32 || usdc_delivered u64)`: the delivery the
+/// `sha256(pagare_hash || fix_rate u64 || fix_date u32 || usdc_delivered u64)`: the delivery the
 /// borrower instructed, in USDC at the FIX.
-pub fn delivery_hash(pagare_hash: &[u8; 32], fx_rate: u64, fx_date: u32, usdc_delivered: u64) -> [u8; 32] {
-    solana_sha256_hasher::hashv(&[pagare_hash, &fx_rate.to_le_bytes(), &fx_date.to_le_bytes(), &usdc_delivered.to_le_bytes()]).to_bytes()
+pub fn delivery_hash(pagare_hash: &[u8; 32], fix_rate: u64, fix_date: u32, usdc_delivered: u64) -> [u8; 32] {
+    solana_sha256_hasher::hashv(&[pagare_hash, &fix_rate.to_le_bytes(), &fix_date.to_le_bytes(), &usdc_delivered.to_le_bytes()]).to_bytes()
 }
 
 /// One tranche of `amount_mxn` centavos, signed by the borrower alone, delivered as USDC at the FIX
-/// in force, which the borrower signs as `fx_rate` and `fx_date` (`FixMismatch` if it changed,
+/// in force, which the borrower signs as `fix_rate` and `fix_date` (`FixMismatch` if it changed,
 /// `FixStale` if older than `fx::MAX_FIX_AGE_DAYS`). Every check runs before anything is written:
 /// not paused; `Approved` or `Active`; `0 < amount_mxn <= principal - drawn`; `now <
 /// availability_end`, strictly; on a scheduled line every installment keeps at least one centavo;
@@ -567,8 +567,8 @@ pub fn delivery_hash(pagare_hash: &[u8; 32], fx_rate: u64, fx_date: u32, usdc_de
 pub fn draw(
     ctx: Context<Draw>,
     amount_mxn: u64,
-    fx_rate: u64,
-    fx_date: u32,
+    fix_rate: u64,
+    fix_date: u32,
     asset_bump: u8,
     pagare_bump: u8,
     cert_fingerprint: [u8; 32],
@@ -582,7 +582,7 @@ pub fn draw(
     require!(amount_mxn > 0 && amount_mxn <= available, PoolError::WrongAmount);
     let now = Clock::get()?.unix_timestamp;
     require!(now < line.availability_end, PoolError::AvailabilityEnded);
-    require!(pool.fix_rate != 0 && fx_rate == pool.fix_rate && fx_date == pool.fix_date, PoolError::FixMismatch);
+    require!(pool.fix_rate != 0 && fix_rate == pool.fix_rate && fix_date == pool.fix_date, PoolError::FixMismatch);
     let age = fx::mexico_city_day(now).checked_sub(fx::fix_day(pool.fix_date)?).ok_or(PoolError::Overflow)?;
     require!(age <= fx::MAX_FIX_AGE_DAYS, PoolError::FixStale);
     let last_due = line.last_due().ok_or(PoolError::Overflow)?;
@@ -595,7 +595,7 @@ pub fn draw(
         require!(total_after >= u64::from(s.installments), PoolError::InvalidSchedule);
     }
     require!(line.draws < MAX_DRAWS, PoolError::TooManyDraws);
-    let usdc = fx::usdc_for_mxn(amount_mxn, fx_rate).ok_or(PoolError::Overflow)?;
+    let usdc = fx::usdc_for_mxn(amount_mxn, fix_rate).ok_or(PoolError::Overflow)?;
     require!(usdc > 0, PoolError::WrongAmount);
     require!(usdc <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
     let outstanding_after = pool.outstanding_principal.checked_add(usdc).ok_or(PoolError::Overflow)?;
@@ -607,7 +607,7 @@ pub fn draw(
     );
     let draw_index = line.draws;
     let document_hash = pagare_hash(line, &line.key(), draw_index, amount_mxn, now);
-    let delivery = delivery_hash(&document_hash, fx_rate, fx_date, usdc);
+    let delivery = delivery_hash(&document_hash, fix_rate, fix_date, usdc);
 
     token::transfer_checked(
         CpiContext::new_with_signer(
@@ -645,8 +645,8 @@ pub fn draw(
         entry_count: 0,
         last_kind: 0,
         bump: pagare_bump,
-        fx_rate,
-        fx_date,
+        fix_rate,
+        fix_date,
         usdc_delivered: usdc,
         delivery_hash: delivery,
         cancel_grace_seconds: 0,
@@ -683,8 +683,8 @@ pub fn draw(
         line_id: line.line_id,
         draw_index,
         amount_mxn,
-        fx_rate,
-        fx_date,
+        fix_rate,
+        fix_date,
         usdc_delivered: usdc,
         drawn: line.drawn,
         available: line.available().ok_or(PoolError::Overflow)?,
@@ -787,14 +787,14 @@ pub struct Repay<'info> {
 /// own FIX; the difference with the USDC that paid it (the principal's centavos at today's FIX,
 /// rounded up; the rounding of the rest stays with the charges) is `FxRealized`, emitted whenever
 /// principal is applied or the difference is not zero.
-pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u64, fx_date: u32, receipt_hash: [u8; 32]) -> Result<()> {
+pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: u64, fix_date: u32, receipt_hash: [u8; 32]) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
     require!(matches!(line.status, LineStatus::Active | LineStatus::InCollection), PoolError::LineStatus);
     // The FIX in force, whatever its age: a payment is never refused for an old FIX.
-    require!(pool.fix_rate != 0 && fx_rate == pool.fix_rate && fx_date == pool.fix_date, PoolError::FixMismatch);
-    let amount = fx::mxn_for_usdc(max_usdc, fx_rate).ok_or(PoolError::Overflow)?;
+    require!(pool.fix_rate != 0 && fix_rate == pool.fix_rate && fix_date == pool.fix_date, PoolError::FixMismatch);
+    let amount = fx::mxn_for_usdc(max_usdc, fix_rate).ok_or(PoolError::Overflow)?;
 
     let principal_left = line.drawn.checked_sub(line.principal_repaid).ok_or(PoolError::Overflow)?;
     let interest_left = line.interest_due.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
@@ -823,8 +823,8 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
     // centavos cost at the FIX, rounded up. The rest, at least the charges rounded down, is the
     // charges', so their rounding never reaches `fx_realized` and a payment without principal
     // realizes nothing.
-    let usdc_in = fx::usdc_ceil_for_mxn(transfer, fx_rate).ok_or(PoolError::Overflow)?;
-    let usdc_principal = fx::usdc_ceil_for_mxn(principal_part, fx_rate).ok_or(PoolError::Overflow)?;
+    let usdc_in = fx::usdc_ceil_for_mxn(transfer, fix_rate).ok_or(PoolError::Overflow)?;
+    let usdc_principal = fx::usdc_ceil_for_mxn(principal_part, fix_rate).ok_or(PoolError::Overflow)?;
 
     // The records, exactly `[pagares_paid ..= last_touched]`, are verified before any write.
     let line_key = line.key();
@@ -887,7 +887,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
 
     let pool = &mut ctx.accounts.pool;
     pool.outstanding_principal = pool.outstanding_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
-    let usdc_interest = fx::usdc_for_mxn(interest_part, fx_rate).ok_or(PoolError::Overflow)?;
+    let usdc_interest = fx::usdc_for_mxn(interest_part, fix_rate).ok_or(PoolError::Overflow)?;
     pool.interest_collected = pool.interest_collected.checked_add(usdc_interest).ok_or(PoolError::Overflow)?;
     pool.fx_realized = pool.fx_realized.checked_add(fx_delta).ok_or(PoolError::Overflow)?;
 
@@ -978,7 +978,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fx_rate: u
         payer: ctx.accounts.payer.key(),
         receipt_hash,
         usdc_received: usdc_in,
-        fx_rate,
+        fix_rate,
         principal_part,
         interest_part,
         remaining: remaining_after,
