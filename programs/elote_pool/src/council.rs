@@ -4,7 +4,7 @@
 use anchor_lang::prelude::*;
 
 use crate::errors::PoolError;
-use crate::state::{MAX_COUNCIL_MEMBERS, SQUADS_PROGRAM_ID};
+use crate::state::{MAX_COUNCIL_MEMBERS, MAX_PROPOSAL_HORIZON_SECONDS, SQUADS_PROGRAM_ID};
 
 /// `sha256("account:Multisig")[..8]`, Squads v4's account discriminator.
 const MULTISIG_DISCRIMINATOR: [u8; 8] = [224, 116, 121, 186, 68, 161, 79, 236];
@@ -18,9 +18,13 @@ const MEMBER_LEN: usize = 33;
 
 /// A council decision carries `valid_until`: Squads proposals never expire and execute even when
 /// stale after a config change, so the program refuses one past its date (`ProposalExpired`; equal
-/// is accepted).
+/// is accepted) and one dated more than `MAX_PROPOSAL_HORIZON_SECONDS` ahead (`ProposalTooFar`;
+/// equal is accepted).
 pub fn fresh(valid_until: i64) -> Result<()> {
-    require!(Clock::get()?.unix_timestamp <= valid_until, PoolError::ProposalExpired);
+    let now = Clock::get()?.unix_timestamp;
+    require!(now <= valid_until, PoolError::ProposalExpired);
+    let horizon = now.checked_add(MAX_PROPOSAL_HORIZON_SECONDS).ok_or(PoolError::Overflow)?;
+    require!(valid_until <= horizon, PoolError::ProposalTooFar);
     Ok(())
 }
 

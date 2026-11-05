@@ -4371,6 +4371,11 @@
       "code": 6067,
       "name": "CancelGraceTooLong",
       "msg": "The borrower's cancel grace is above the one-year ceiling"
+    },
+    {
+      "code": 6068,
+      "name": "ProposalTooFar",
+      "msg": "The council's decision is dated more than fifteen days ahead"
     }
   ],
   "types": [

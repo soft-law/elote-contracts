@@ -157,6 +157,8 @@ pub const ATA_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTN
 pub const SYSTEM_PROGRAM_ID: Pubkey = pubkey!("11111111111111111111111111111111");
 
 pub const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
+/// One day, the `valid_until` horizon the harness and the scripts give a council instruction.
+pub const DAY_SECONDS: i64 = 86_400;
 
 /// Anchor's `#[error_code]` numbering: the first variant of the program's error enum is 6000, so
 /// each code below follows the enum's order.
@@ -425,8 +427,9 @@ pub struct Env {
     pub curators: Vec<Keypair>,
     /// Pools whose FIX the harness keeps current at `PARITY_FIX` (see `ensure_fix`).
     pub parity_pools: Vec<PoolKeys>,
-    /// The `valid_until` every council builder passes; `i64::MAX` unless a test sets it.
-    pub valid_until: i64,
+    /// The `valid_until` every council builder passes when a test sets it; otherwise
+    /// `valid_until()` is one day from the SVM's clock at the time the instruction is built.
+    pub valid_until: Option<i64>,
 }
 
 fn event_metas() -> (Pubkey, Pubkey) {
@@ -476,7 +479,7 @@ impl Env {
         let mut clock = svm.get_sysvar::<anchor_lang::prelude::Clock>();
         clock.unix_timestamp = START_TIME;
         svm.set_sysvar(&clock);
-        Self { svm, council, creator, multisig, council_vault_bump, curators, parity_pools: Vec::new(), valid_until: i64::MAX }
+        Self { svm, council, creator, multisig, council_vault_bump, curators, parity_pools: Vec::new(), valid_until: None }
     }
 
     pub fn funded(&mut self, sol: u64) -> Keypair {
@@ -548,6 +551,12 @@ impl Env {
     pub fn anchor_account<T: AccountDeserialize>(&self, key: &Pubkey) -> T {
         let acc = self.account(key);
         T::try_deserialize(&mut acc.data.as_slice()).expect("anchor deserialize")
+    }
+
+    /// The `valid_until` a council builder passes: the one a test set, or one day from now, as
+    /// the scripts do.
+    pub fn valid_until(&self) -> i64 {
+        self.valid_until.unwrap_or_else(|| self.now() + DAY_SECONDS)
     }
 
     /// The SVM's current `Clock::unix_timestamp`, what the program reads as `now`.
@@ -852,7 +861,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::ProposeCouncil { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
-            data: elote_pool::instruction::ProposeCouncil { new_council: *new_council, kind, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::ProposeCouncil { new_council: *new_council, kind, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -863,7 +872,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::AcceptCouncil { new_council: *new_council, multisig: *multisig, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
-            data: elote_pool::instruction::AcceptCouncil { valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::AcceptCouncil { valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -873,7 +882,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::SetCancelGrace { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
-            data: elote_pool::instruction::SetCancelGrace { cancel_grace_seconds: seconds, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::SetCancelGrace { cancel_grace_seconds: seconds, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -883,7 +892,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::SetCollectionPeriod { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
-            data: elote_pool::instruction::SetCollectionPeriod { collection_period_seconds: seconds, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::SetCollectionPeriod { collection_period_seconds: seconds, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1070,7 +1079,7 @@ impl Env {
 
     /// `pause` signed by `signer` when `paused`, else `resume` signed by `signer` as the council.
     pub fn set_paused_ix(&self, k: &PoolKeys, signer: &Pubkey, paused: bool) -> Instruction {
-        if paused { self.pause_ix(k, signer) } else { self.council_pool_ix(k, signer, elote_pool::instruction::Resume { valid_until: self.valid_until }.data()) }
+        if paused { self.pause_ix(k, signer) } else { self.council_pool_ix(k, signer, elote_pool::instruction::Resume { valid_until: self.valid_until() }.data()) }
     }
 
     pub fn pause_ix(&self, k: &PoolKeys, signer: &Pubkey) -> Instruction {
@@ -1173,7 +1182,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::SetFxFeeder { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
-            data: elote_pool::instruction::SetFxFeeder { fx_feeder: *fx_feeder, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::SetFxFeeder { fx_feeder: *fx_feeder, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1183,7 +1192,7 @@ impl Env {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::PostFix { poster: *poster, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
-            data: elote_pool::instruction::PostFix { fix_rate, fix_date, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::PostFix { fix_rate, fix_date, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1202,7 +1211,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::ApproveLine { expediente_root, terms_hash, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::ApproveLine { expediente_root, terms_hash, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1220,7 +1229,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::RejectLine { valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::RejectLine { valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1474,7 +1483,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::CancelPagare { draw_index, receipt_hash, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::CancelPagare { draw_index, receipt_hash, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1500,7 +1509,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::EndorsePagare { draw_index, kind, to, endoso_hash, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::EndorsePagare { draw_index, kind, to, endoso_hash, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1525,7 +1534,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::RevokeProcuracion { draw_index, entry_hash, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::RevokeProcuracion { draw_index, entry_hash, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1545,7 +1554,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::CourtAnnotation { draw_index, kind, document_hash, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::CourtAnnotation { draw_index, kind, document_hash, valid_until: self.valid_until() }.data(),
         }
     }
     /// A court annotation of pagaré `draw_index`, signed by the council.
@@ -1676,7 +1685,7 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::AnnotatePayment { draw_index, entry_count, receipt_hash, valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::AnnotatePayment { draw_index, entry_count, receipt_hash, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1701,16 +1710,16 @@ impl Env {
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::WriteOff { valid_until: self.valid_until }.data(),
+            data: elote_pool::instruction::WriteOff { valid_until: self.valid_until() }.data(),
         }
     }
 
     pub fn suspend_draws_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey) -> Instruction {
-        self.council_line_ix(k, line_id, council, elote_pool::instruction::SuspendDraws { valid_until: self.valid_until }.data())
+        self.council_line_ix(k, line_id, council, elote_pool::instruction::SuspendDraws { valid_until: self.valid_until() }.data())
     }
 
     pub fn cancel_line_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey) -> Instruction {
-        self.council_line_ix(k, line_id, council, elote_pool::instruction::CancelLine { valid_until: self.valid_until }.data())
+        self.council_line_ix(k, line_id, council, elote_pool::instruction::CancelLine { valid_until: self.valid_until() }.data())
     }
 
     pub fn mark_in_collection_ix(&self, k: &PoolKeys, line_id: u64) -> Instruction {

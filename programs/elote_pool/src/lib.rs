@@ -7,8 +7,8 @@
 //! principal`. Interest counts when it is collected; nothing accrues.
 //!
 //! Every council instruction takes `valid_until` as its last argument and is refused past it
-//! (`ProposalExpired`): Squads proposals never expire. `pause` (a late pause only protects) and
-//! `init_pool` (no council signature) do not.
+//! (`ProposalExpired`) or when it lies more than 15 days ahead (`ProposalTooFar`): Squads proposals
+//! never expire. `pause` (a late pause only protects) and `init_pool` (no council signature) do not.
 
 use anchor_lang::prelude::*;
 

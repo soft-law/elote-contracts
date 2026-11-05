@@ -151,6 +151,8 @@ export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x17b1; // 6065
 export const ELOTE_POOL_ERROR__TOO_MANY_SIDECARS = 0x17b2; // 6066
 /** CancelGraceTooLong: The borrower's cancel grace is above the one-year ceiling */
 export const ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_LONG = 0x17b3; // 6067
+/** ProposalTooFar: The council's decision is dated more than fifteen days ahead */
+export const ELOTE_POOL_ERROR__PROPOSAL_TOO_FAR = 0x17b4; // 6068
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -204,6 +206,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__PAUSED
   | typeof ELOTE_POOL_ERROR__PROCURACION_STATE
   | typeof ELOTE_POOL_ERROR__PROPOSAL_EXPIRED
+  | typeof ELOTE_POOL_ERROR__PROPOSAL_TOO_FAR
   | typeof ELOTE_POOL_ERROR__REQUEST_EXPIRED
   | typeof ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM
   | typeof ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED
@@ -276,6 +279,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,
     [ELOTE_POOL_ERROR__PROCURACION_STATE]: `The pagaré has no procuración in force, or already has one`,
     [ELOTE_POOL_ERROR__PROPOSAL_EXPIRED]: `The council's decision is past its valid_until`,
+    [ELOTE_POOL_ERROR__PROPOSAL_TOO_FAR]: `The council's decision is dated more than fifteen days ahead`,
     [ELOTE_POOL_ERROR__REQUEST_EXPIRED]: `The request is older than the council's review window`,
     [ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM]: `The last installment would fall due after the term`,
     [ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED]: `The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions`,

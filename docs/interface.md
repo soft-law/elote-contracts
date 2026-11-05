@@ -5,7 +5,7 @@ Generated from `idl/elote_pool.json` by the PR 4 docs commit; the instruction an
 Conventions:
 
 - **Council instructions** take the Squads multisig account (`multisig`, which must be `Pool.multisig`) and run the multisig check before anything else is written: owner = Squads v4, the council is vault 0 at the stored canonical bump, no config authority, at most ten members, threshold greater than half the voting members (`CouncilInvalid`, `CouncilTooLarge`). The council signs only through Squads `vault_transaction_execute`.
-- **`valid_until: i64`** is the last argument of every council instruction except `pause` (a late pause only protects) and `init_pool` (the council does not sign it). `now > valid_until` is refused with `ProposalExpired`; `now == valid_until` is accepted. The check runs first, before the multisig check.
+- **`valid_until: i64`** is the last argument of every council instruction except `pause` (a late pause only protects) and `init_pool` (the council does not sign it). `now > valid_until` is refused with `ProposalExpired`, and `valid_until > now + MAX_PROPOSAL_HORIZON_SECONDS` (15 days) with `ProposalTooFar`; both bounds are inclusive. The check runs first, before the multisig check. The scripts pass `now + 1 day`.
 - Amounts on a line and a pagaré are **centavos of MXN** (`CreditLine.currency = 484`); the vault, deposits, redemptions and repayments are **USDC base units** (6 decimals). Conversions use the FIX (`Pool.fix_rate`, MXN per USD × 10^4).
 - Every instruction that emits events takes `event_authority` and `program` (Anchor `#[event_cpi]`); they are not listed below.
 - Error codes start at 6000 in the order of `errors.rs`. **Squads also numbers its errors from 6000** (its `NotAMember` is 6005, the same number as `CouncilInvalid`): decode an error by the program that raised it (the invoke stack in the logs), never by number alone. `scripts/lib/cli.ts` does this.
@@ -56,7 +56,7 @@ Signers: `council`. Council instruction: runs the multisig check on the current 
 | `multisig` |  |  |  |
 | `pool` | yes |  |  |
 
-Errors: `ProposalExpired` (`valid_until` passed), `CouncilKindInvalid` (`kind` other than `COUNCIL_SQUADS`), `CouncilInvalid` (`multisig` is not `Pool.multisig`, or fails the multisig check), `CouncilTooLarge`, `Unauthorized` (the signer is not `Pool.council`).
+Errors: `ProposalExpired` (`valid_until` passed), `ProposalTooFar` (`valid_until` more than 15 days ahead), `CouncilKindInvalid` (`kind` other than `COUNCIL_SQUADS`), `CouncilInvalid` (`multisig` is not `Pool.multisig`, or fails the multisig check), `CouncilTooLarge`, `Unauthorized` (the signer is not `Pool.council`).
 
 ### `accept_council(valid_until: i64)`
 
@@ -765,6 +765,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6065 | `EntryNotFound` | The referenced registry entry does not exist |
 | 6066 | `TooManySidecars` | A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment |
 | 6067 | `CancelGraceTooLong` | The borrower's cancel grace is above the one-year ceiling |
+| 6068 | `ProposalTooFar` | The council's decision is dated more than fifteen days ahead |
 
 ## Compute
 

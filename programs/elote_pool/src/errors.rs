@@ -159,4 +159,6 @@ pub enum PoolError {
     TooManySidecars,
     #[msg("The borrower's cancel grace is above the one-year ceiling")]
     CancelGraceTooLong,
+    #[msg("The council's decision is dated more than fifteen days ahead")]
+    ProposalTooFar,
 }

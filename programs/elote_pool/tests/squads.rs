@@ -198,9 +198,9 @@ fn a_stale_proposal_fails_through_squads() {
     let (k, borrower, id, p) = pool_with_line(&mut env);
     let council = env.council.pubkey();
     let hash = env.terms_hash(&k, id, &borrower.pubkey(), &p);
-    env.valid_until = env.now() + 86_400;
+    env.valid_until = Some(env.now() + 86_400);
     let ix = env.approve_line_ix(&k, &council, id, p.expediente_root, hash);
-    env.valid_until = i64::MAX;
+    env.valid_until = None;
     env.warp(env.now() + 2 * 86_400);
     refused(&mut env, 1, ix, PoolError::ProposalExpired);
 }

@@ -24,9 +24,10 @@ fn pool_with(env: &mut Env, assets: u64) -> PoolKeys {
     k
 }
 
-fn expect_line(env: &mut Env, k: &PoolKeys, line_id: u64, data: Vec<u8>, e: PoolError) {
+/// `data` is built with the harness's `valid_until`.
+fn expect_line(env: &mut Env, k: &PoolKeys, line_id: u64, data: impl FnOnce(i64) -> Vec<u8>, e: PoolError) {
     let council = env.council.insecure_clone();
-    let i = env.council_line_ix(k, line_id, &council.pubkey(), data);
+    let i = env.council_line_ix(k, line_id, &council.pubkey(), data(env.valid_until()));
     env.expect_err(i, &council, &[], code(e));
 }
 
@@ -40,21 +41,21 @@ fn suspension_keeps_the_original_window_and_resumption_restores_it() {
     let original = env.line(&k, id).availability_end;
     assert_eq!(env.line(&k, id).availability_end_saved, 0, "not suspended");
 
-    env.council_line(&k, id, ix::SuspendDraws { valid_until: i64::MAX }.data());
+    env.council_line(&k, id, ix::SuspendDraws { valid_until: env.valid_until() }.data());
     let line = env.line(&k, id);
     assert_eq!((line.availability_end, line.availability_end_saved), (env.now(), original), "suspended: saved != 0");
     let i = env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT);
     env.expect_err(i, &borrower, &[], E_AVAILABILITY_ENDED);
     env.warp(env.now() + 100);
-    expect_line(&mut env, &k, id, ix::SuspendDraws { valid_until: i64::MAX }.data(), PoolError::WindowClosed);
+    expect_line(&mut env, &k, id, |vu| ix::SuspendDraws { valid_until: vu }.data(), PoolError::WindowClosed);
     assert_eq!(env.line(&k, id).availability_end_saved, original, "the original end is kept");
 
-    let ev: LineDrawsResumed = find_event(&env.council_line(&k, id, ix::ResumeDraws { valid_until: i64::MAX }.data())).expect("LineDrawsResumed");
+    let ev: LineDrawsResumed = find_event(&env.council_line(&k, id, ix::ResumeDraws { valid_until: env.valid_until() }.data())).expect("LineDrawsResumed");
     assert_eq!(ev.availability_end, original);
     let line = env.line(&k, id);
     assert_eq!((line.availability_end, line.availability_end_saved), (original, 0));
     env.draw_amount(&k, id, &borrower, UNIT);
-    expect_line(&mut env, &k, id, ix::ResumeDraws { valid_until: i64::MAX }.data(), PoolError::DrawsNotSuspended);
+    expect_line(&mut env, &k, id, |vu| ix::ResumeDraws { valid_until: vu }.data(), PoolError::DrawsNotSuspended);
 }
 
 #[test]
@@ -64,27 +65,27 @@ fn a_proposal_suspends_draws_and_withdrawing_it_does_not_resume_them() {
     let borrower = env.borrower(&k);
     let p = env.line_params(4 * UNIT, 1_000);
     let (undrawn, _) = env.open_line_with(&k, &borrower, &p, None);
-    expect_line(&mut env, &k, undrawn, ix::ProposeAcceleration { valid_until: i64::MAX }.data(), PoolError::LineStatus);
+    expect_line(&mut env, &k, undrawn, |vu| ix::ProposeAcceleration { valid_until: vu }.data(), PoolError::LineStatus);
 
     let (id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw_amount(&k, id, &borrower, UNIT);
     let original = env.line(&k, id).availability_end;
-    let ev: AccelerationProposed = find_event(&env.council_line(&k, id, ix::ProposeAcceleration { valid_until: i64::MAX }.data())).expect("AccelerationProposed");
+    let ev: AccelerationProposed = find_event(&env.council_line(&k, id, ix::ProposeAcceleration { valid_until: env.valid_until() }.data())).expect("AccelerationProposed");
     let due_at = env.now() + i64::from(ACCELERATION_NOTICE);
     assert_eq!((ev.line_id, ev.due_at), (id, due_at));
     let line = env.line(&k, id);
     assert_eq!((line.acceleration_due_at, line.availability_end_saved), (due_at, original));
     let i = env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT);
     env.expect_err(i, &borrower, &[], E_AVAILABILITY_ENDED);
-    expect_line(&mut env, &k, id, ix::ProposeAcceleration { valid_until: i64::MAX }.data(), PoolError::AccelerationState);
-    expect_line(&mut env, &k, id, ix::ResumeDraws { valid_until: i64::MAX }.data(), PoolError::AccelerationState);
+    expect_line(&mut env, &k, id, |vu| ix::ProposeAcceleration { valid_until: vu }.data(), PoolError::AccelerationState);
+    expect_line(&mut env, &k, id, |vu| ix::ResumeDraws { valid_until: vu }.data(), PoolError::AccelerationState);
 
-    let meta = env.council_line(&k, id, ix::WithdrawAcceleration { valid_until: i64::MAX }.data());
+    let meta = env.council_line(&k, id, ix::WithdrawAcceleration { valid_until: env.valid_until() }.data());
     assert!(find_event::<AccelerationWithdrawn>(&meta).is_some());
     let line = env.line(&k, id);
     assert_eq!((line.acceleration_due_at, line.availability_end_saved), (0, original), "still suspended");
-    expect_line(&mut env, &k, id, ix::WithdrawAcceleration { valid_until: i64::MAX }.data(), PoolError::AccelerationState);
-    env.council_line(&k, id, ix::ResumeDraws { valid_until: i64::MAX }.data());
+    expect_line(&mut env, &k, id, |vu| ix::WithdrawAcceleration { valid_until: vu }.data(), PoolError::AccelerationState);
+    env.council_line(&k, id, ix::ResumeDraws { valid_until: env.valid_until() }.data());
     env.draw_amount(&k, id, &borrower, UNIT);
 }
 
@@ -100,11 +101,11 @@ fn a_bullet_line_accelerated_keeps_the_interest_accrued_to_the_mark() {
     assert_eq!(env.line(&k, id).interest_due, 400_000);
 
     env.warp(t0 + YEAR / 4 - i64::from(ACCELERATION_NOTICE));
-    env.council_line(&k, id, ix::ProposeAcceleration { valid_until: i64::MAX }.data());
+    env.council_line(&k, id, ix::ProposeAcceleration { valid_until: env.valid_until() }.data());
     env.warp(t0 + YEAR / 4 - 1);
-    expect_line(&mut env, &k, id, ix::AccelerateLine { valid_until: i64::MAX }.data(), PoolError::AccelerationNotDue);
+    expect_line(&mut env, &k, id, |vu| ix::AccelerateLine { valid_until: vu }.data(), PoolError::AccelerationNotDue);
     env.warp(t0 + YEAR / 4);
-    let ev: LineAccelerated = find_event(&env.council_line(&k, id, ix::AccelerateLine { valid_until: i64::MAX }.data())).expect("LineAccelerated");
+    let ev: LineAccelerated = find_event(&env.council_line(&k, id, ix::AccelerateLine { valid_until: env.valid_until() }.data())).expect("LineAccelerated");
     // A quarter of a year of 10% on 4.0: 0.1 kept, 0.3 forgiven.
     assert_eq!((ev.interest_forgiven, ev.remaining), (300_000, 4 * UNIT + 100_000));
     let line = env.line(&k, id);
@@ -134,18 +135,18 @@ fn a_scheduled_line_accelerated_keeps_the_interest_of_the_installments_due() {
     env.draw(&k, late, &borrower);
 
     // Accelerated before any installment is due: only what was repaid (nothing) is kept.
-    env.council_line(&k, early, ix::ProposeAcceleration { valid_until: i64::MAX }.data());
+    env.council_line(&k, early, ix::ProposeAcceleration { valid_until: env.valid_until() }.data());
     env.warp(env.now() + i64::from(ACCELERATION_NOTICE));
-    let ev: LineAccelerated = find_event(&env.council_line(&k, early, ix::AccelerateLine { valid_until: i64::MAX }.data())).expect("LineAccelerated");
+    let ev: LineAccelerated = find_event(&env.council_line(&k, early, ix::AccelerateLine { valid_until: env.valid_until() }.data())).expect("LineAccelerated");
     let line = env.line(&k, early);
     assert_eq!((line.interest_due, ev.remaining), (0, 6 * UNIT));
 
     // Three installments due at the mark: their share of the interest is kept.
     let before = env.line(&k, late).interest_due;
     env.warp(p.first_due_at() + 2 * p.interval() - i64::from(ACCELERATION_NOTICE));
-    env.council_line(&k, late, ix::ProposeAcceleration { valid_until: i64::MAX }.data());
+    env.council_line(&k, late, ix::ProposeAcceleration { valid_until: env.valid_until() }.data());
     env.warp(p.first_due_at() + 2 * p.interval());
-    env.council_line(&k, late, ix::AccelerateLine { valid_until: i64::MAX }.data());
+    env.council_line(&k, late, ix::AccelerateLine { valid_until: env.valid_until() }.data());
     let (kept, _) = elote_pool::math::accelerated_interest(before, 3, 12).unwrap();
     assert_eq!(env.line(&k, late).interest_due, kept);
 }
@@ -159,7 +160,7 @@ fn the_objective_mark_supersedes_a_pending_proposal() {
     let (id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, id, &borrower);
     env.warp(p.first_due_at() + 2 * p.interval() + 1);
-    env.council_line(&k, id, ix::ProposeAcceleration { valid_until: i64::MAX }.data());
+    env.council_line(&k, id, ix::ProposeAcceleration { valid_until: env.valid_until() }.data());
     let saved = env.line(&k, id).availability_end_saved;
     let keeper = env.funded(1);
     let i = env.mark_in_collection_ix(&k, id);
@@ -186,15 +187,15 @@ fn any_member_or_the_guardian_pauses_and_only_the_council_resumes() {
     let i = env.pause_ix(&k, &curator.pubkey());
     let ev: PoolPaused = find_event(&env.send(i, &curator, &[])).expect("PoolPaused");
     assert_eq!((ev.by, env.pool(&k).paused), (curator.pubkey(), true));
-    let i = env.council_pool_ix(&k, &curator.pubkey(), ix::Resume { valid_until: i64::MAX }.data());
+    let i = env.council_pool_ix(&k, &curator.pubkey(), ix::Resume { valid_until: env.valid_until() }.data());
     env.expect_err(i, &curator, &[], E_UNAUTHORIZED);
-    let i = env.council_pool_ix(&k, &council.pubkey(), ix::Resume { valid_until: i64::MAX }.data());
+    let i = env.council_pool_ix(&k, &council.pubkey(), ix::Resume { valid_until: env.valid_until() }.data());
     assert!(find_event::<PoolResumed>(&env.send(i, &council, &[])).is_some());
     assert!(!env.pool(&k).paused);
 
     let i = env.pause_ix(&k, &guardian.pubkey());
     env.expect_err(i, &guardian, &[], E_UNAUTHORIZED);
-    let i = env.council_pool_ix(&k, &council.pubkey(), ix::SetGuardian { guardian: guardian.pubkey(), valid_until: i64::MAX }.data());
+    let i = env.council_pool_ix(&k, &council.pubkey(), ix::SetGuardian { guardian: guardian.pubkey(), valid_until: env.valid_until() }.data());
     let ev: GuardianSet = find_event(&env.send(i, &council, &[])).expect("GuardianSet");
     assert_eq!(ev.guardian, guardian.pubkey());
     let i = env.pause_ix(&k, &guardian.pubkey());
@@ -209,21 +210,21 @@ fn the_pool_limits_and_the_notice_are_the_councils_with_their_floors() {
     let council = env.council.insecure_clone();
     let stranger = env.funded(1);
     let cases: Vec<(Vec<u8>, u32)> = vec![
-        (ix::SetMaxLineBps { max_line_bps: 0, valid_until: i64::MAX }.data(), E_WRONG_AMOUNT),
-        (ix::SetMaxLineBps { max_line_bps: BPS + 1, valid_until: i64::MAX }.data(), E_WRONG_AMOUNT),
-        (ix::SetOutstandingCap { max_outstanding_principal: 0, valid_until: i64::MAX }.data(), E_WRONG_AMOUNT),
-        (ix::SetAccelerationNotice { acceleration_notice_seconds: ACCELERATION_NOTICE - 1, valid_until: i64::MAX }.data(), code(PoolError::AccelerationNoticeTooShort)),
+        (ix::SetMaxLineBps { max_line_bps: 0, valid_until: env.valid_until() }.data(), E_WRONG_AMOUNT),
+        (ix::SetMaxLineBps { max_line_bps: BPS + 1, valid_until: env.valid_until() }.data(), E_WRONG_AMOUNT),
+        (ix::SetOutstandingCap { max_outstanding_principal: 0, valid_until: env.valid_until() }.data(), E_WRONG_AMOUNT),
+        (ix::SetAccelerationNotice { acceleration_notice_seconds: ACCELERATION_NOTICE - 1, valid_until: env.valid_until() }.data(), code(PoolError::AccelerationNoticeTooShort)),
     ];
     for (data, e) in cases {
         let i = env.council_pool_ix(&k, &council.pubkey(), data);
         env.expect_err(i, &council, &[], e);
     }
-    let i = env.council_pool_ix(&k, &stranger.pubkey(), ix::SetMaxLineBps { max_line_bps: 500, valid_until: i64::MAX }.data());
+    let i = env.council_pool_ix(&k, &stranger.pubkey(), ix::SetMaxLineBps { max_line_bps: 500, valid_until: env.valid_until() }.data());
     env.expect_err(i, &stranger, &[], E_UNAUTHORIZED);
     for data in [
-        ix::SetMaxLineBps { max_line_bps: 500, valid_until: i64::MAX }.data(),
-        ix::SetOutstandingCap { max_outstanding_principal: 7 * UNIT, valid_until: i64::MAX }.data(),
-        ix::SetAccelerationNotice { acceleration_notice_seconds: 2 * ACCELERATION_NOTICE, valid_until: i64::MAX }.data(),
+        ix::SetMaxLineBps { max_line_bps: 500, valid_until: env.valid_until() }.data(),
+        ix::SetOutstandingCap { max_outstanding_principal: 7 * UNIT, valid_until: env.valid_until() }.data(),
+        ix::SetAccelerationNotice { acceleration_notice_seconds: 2 * ACCELERATION_NOTICE, valid_until: env.valid_until() }.data(),
     ] {
         let i = env.council_pool_ix(&k, &council.pubkey(), data);
         env.send(i, &council, &[]);
@@ -242,7 +243,7 @@ fn a_council_line_instruction_refuses_a_multisig_weakened_below_a_majority() {
     let members: Vec<(solana_pubkey::Pubkey, u8)> = env.curators.iter().map(|c| (c.pubkey(), PERM_ALL)).collect();
     let multisig = env.multisig;
     put_squads_account(&mut env.svm, &multisig, multisig_data(&solana_pubkey::Pubkey::new_unique(), &solana_pubkey::Pubkey::default(), 1, None, &members));
-    expect_line(&mut env, &k, id, ix::SuspendDraws { valid_until: i64::MAX }.data(), PoolError::CouncilInvalid);
+    expect_line(&mut env, &k, id, |vu| ix::SuspendDraws { valid_until: vu }.data(), PoolError::CouncilInvalid);
 }
 
 #[test]
@@ -254,9 +255,9 @@ fn a_window_closed_by_date_is_not_suspended() {
     let (id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw_amount(&k, id, &borrower, UNIT);
     env.warp(p.term_end);
-    expect_line(&mut env, &k, id, ix::SuspendDraws { valid_until: i64::MAX }.data(), PoolError::WindowClosed);
+    expect_line(&mut env, &k, id, |vu| ix::SuspendDraws { valid_until: vu }.data(), PoolError::WindowClosed);
     // A proposal on a line whose window closed by date sets only its deadline.
-    env.council_line(&k, id, ix::ProposeAcceleration { valid_until: i64::MAX }.data());
+    env.council_line(&k, id, ix::ProposeAcceleration { valid_until: env.valid_until() }.data());
     let line = env.line(&k, id);
     assert_eq!((line.availability_end, line.availability_end_saved), (p.term_end, 0), "not suspended");
     assert_eq!(line.acceleration_due_at, env.now() + i64::from(ACCELERATION_NOTICE));
@@ -273,9 +274,9 @@ fn an_accelerated_bullet_line_owes_late_interest_from_the_mark_collected_first()
     let (id, _) = env.open_line_with(&k, &borrower, &p, None);
     assert_eq!(env.line(&k, id).late_bps, 3_650, "a bullet line carries its late rate");
     env.draw(&k, id, &borrower);
-    env.council_line(&k, id, ix::ProposeAcceleration { valid_until: i64::MAX }.data());
+    env.council_line(&k, id, ix::ProposeAcceleration { valid_until: env.valid_until() }.data());
     env.warp(env.now() + i64::from(ACCELERATION_NOTICE));
-    env.council_line(&k, id, ix::AccelerateLine { valid_until: i64::MAX }.data());
+    env.council_line(&k, id, ix::AccelerateLine { valid_until: env.valid_until() }.data());
     let mark = env.line(&k, id).accelerated_at;
     assert_eq!(env.arrears(&k, id).late_due, 0, "nothing at the mark itself");
 

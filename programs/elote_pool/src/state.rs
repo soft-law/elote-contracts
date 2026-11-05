@@ -71,6 +71,9 @@ pub const MAX_COUNCIL_MEMBERS: usize = 10;
 /// How long a requested line waits for the council: `approve_line` refuses after
 /// `requested_at + REQUEST_TTL_SECONDS`.
 pub const REQUEST_TTL_SECONDS: i64 = 15 * 86_400;
+/// The furthest a council decision's `valid_until` may lie ahead of the clock when it executes:
+/// `council::fresh` refuses `valid_until > now + MAX_PROPOSAL_HORIZON_SECONDS` (`ProposalTooFar`).
+pub const MAX_PROPOSAL_HORIZON_SECONDS: i64 = 15 * 86_400;
 /// The shortest notice a pool may set between `propose_acceleration` and `accelerate_line`.
 pub const MIN_ACCELERATION_NOTICE_SECONDS: u32 = 7 * 86_400;
 /// The shortest wait a pool may set from a pagaré's payment before its borrower may cancel it
