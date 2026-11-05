@@ -219,3 +219,30 @@ fn a_multisig_lowered_below_a_majority_is_refused_on_the_next_council_instructio
     let ix = env.approve_line_ix(&k, &council, id, p.expediente_root, hash);
     refused(&mut env, 1, ix, PoolError::CouncilInvalid);
 }
+
+#[test]
+fn the_council_proposes_its_successor_through_squads() {
+    let mut env = squads_env();
+    let (k, _) = env.setup_pool();
+    let council = env.council.pubkey();
+    let next = squads_vault_pda(&multisig_pda(&Pubkey::new_unique()).0).0;
+    let ix = env.propose_council_ix(&k, &council, &next, elote_pool::state::COUNCIL_SQUADS);
+    ok(&mut env, 1, ix, "propose_council");
+    let pool = env.pool(&k);
+    assert_eq!((pool.pending_council, pool.pending_council_kind), (next, elote_pool::state::COUNCIL_SQUADS));
+}
+
+#[test]
+fn a_multisig_lowered_below_a_majority_cannot_propose_a_successor_through_squads() {
+    let mut env = squads_env();
+    let (k, _) = env.setup_pool();
+    let council = env.council.pubkey();
+    let mut account = env.account(&env.multisig.clone());
+    account.data[72..74].copy_from_slice(&1u16.to_le_bytes());
+    let multisig = env.multisig;
+    env.svm.set_account(multisig, account).unwrap();
+    let next = squads_vault_pda(&multisig_pda(&Pubkey::new_unique()).0).0;
+    let ix = env.propose_council_ix(&k, &council, &next, elote_pool::state::COUNCIL_SQUADS);
+    refused(&mut env, 1, ix, PoolError::CouncilInvalid);
+    assert_eq!(env.pool(&k).pending_council, Pubkey::default());
+}
