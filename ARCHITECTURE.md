@@ -1708,7 +1708,7 @@ off.
 
 | cluster | program id | upgrade authority | build |
 |---|---|---|---|
-| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) | `main` @ `d8d94a9`, 2026-11-08; hash `30e36d3720fa9ab7a77311990a362e9190bd41110cf5d0b534a70c15aa571fca` matches the `--features devnet --arch v0 --tools-version v1.54` build of that commit |
+| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) | `main` @ `ce0b1b2`, 2026-11-08; hash `d2b24a8e51648300d747fba7c9308713dd2fe5768bc6a4a8ca1c679bc37ab61a` matches the `--features devnet --arch v0 --tools-version v1.54` build of that commit |
 | mainnet-beta | not deployed | | |
 
 The devnet council is vault 0 (`6s6aBtkG6Wm9N6Gx1igKnc3Q3fcJt2r1WtyyLSQrnS6x`) of the Squads v4
