@@ -178,4 +178,6 @@ pub enum PoolError {
     PagareAlreadyDelivered,
     #[msg("A court act holds this título; a ConstanciaJudicial must lift it before the delivery")]
     DeliveryHeld,
+    #[msg("Deposits wait while lines in collection are provisioned; redemptions stay open")]
+    PoolImpaired,
 }

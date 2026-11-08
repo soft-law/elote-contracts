@@ -12,8 +12,11 @@
 //                     devnet USDC and the Etherfuse sandbox mints); the wallets are funded by
 //                     transfer from the admin's balance instead of a fresh mint, so the admin must
 //                     hold enough of it (the faucet)
-// --scale             divide every demo amount by this (default 1; 1000 fits a 16-USDC faucet
-//                     balance: deposits of 10 and 5, a line of MXN 60)
+// --scale             divide every demo amount by this (default 1, at most 1000, which fits a
+//                     16-USDC faucet balance: deposits of 10 and 5, a line of MXN 60)
+//                     NOTE: the pool address is ["pool", creator, asset_mint], so one admin key
+//                     gets ONE pool per asset mint: a second --asset-mint run with the same admin
+//                     fails at init_pool on the existing account
 //
 // --agreement-hash    hash of the signed credit agreement recorded on the line (placeholder if absent)
 // --sponsor           the sponsor co-signs the opening and is named on the line
@@ -153,7 +156,7 @@ await send(
 );
 
 // The demo's amounts, divided by --scale so a faucet-funded devnet run fits.
-const scale = BigInt(integer("scale", 1, 1, 1_000_000)!);
+const scale = BigInt(integer("scale", 1, 1, 1_000)!);
 const S = (n: bigint) => (n < scale ? 1n : n / scale);
 
 // The test asset: an existing mint with --asset-mint (funded by transfer from the admin), or a

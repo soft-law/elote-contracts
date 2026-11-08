@@ -13,7 +13,7 @@ use crate::pool_signer;
 use crate::registry;
 use crate::state::{
     seeds, CreditLine, LineStatus, Pagare, Pool, KIND_ANOTACION_JUDICIAL, KIND_CONSTANCIA_JUDICIAL, KIND_ENTREGA,
-    KIND_PROCURACION, KIND_RECIBO, KIND_REVOCACION, KIND_TERMINACION, PAGARE_FLAG_DELIVERED, PAGARE_FLAG_JUDICIAL_HOLD,
+    KIND_PROCURACION, KIND_RECIBO, KIND_REVOCACION, KIND_TERMINACION, PAGARE_FLAG_DELIVERED,
     PAGARE_FLAG_PAID_BY_AVAL, PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING, PAGARE_PAID,
 };
 use crate::events::{PagareEntry, PagareReceiptAnnotated};
@@ -82,7 +82,7 @@ pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()
     let pagare = &ctx.accounts.pagare;
     require!(pagare.status == PAGARE_PAID, PoolError::PagareNotCovered);
     require!(pagare.flags & PAGARE_FLAG_DELIVERED == 0, PoolError::PagareAlreadyDelivered);
-    require!(pagare.flags & PAGARE_FLAG_JUDICIAL_HOLD == 0, PoolError::DeliveryHeld);
+    require!(pagare.judicial_holds == 0, PoolError::DeliveryHeld);
     let line = &ctx.accounts.line;
     let to = if pagare.flags & PAGARE_FLAG_PAID_BY_AVAL != 0 {
         line.sponsor.ok_or(PoolError::WrongAccount)?
@@ -212,13 +212,21 @@ pub struct BurnPagare<'info> {
 /// The delivered título's owner — the suscriptor, or the aval who settled it — burns the asset,
 /// optionally and only after the delivery (`PagareNotCovered` before it). A `Terminacion` entry
 /// over `document_hash` (zero for none: the burn is the owner's unilateral act) precedes the
-/// `BurnV1`, whose authority is the signer: the Core program itself refuses anyone but the
-/// asset's owner, so the program checks nothing more. The record stays, as always.
+/// `BurnV1`, whose authority is the signer, who must be the asset's owner read from the Core
+/// account (`NotHolder`): a delegate Core would accept cannot write the owner's Terminacion. The
+/// record stays, as always.
 pub fn burn_pagare(ctx: Context<BurnPagare>, draw_index: u16, document_hash: [u8; 32]) -> Result<()> {
     let pagare = &ctx.accounts.pagare;
     require!(pagare.status == PAGARE_PAID && pagare.flags & PAGARE_FLAG_DELIVERED != 0, PoolError::PagareNotCovered);
-    let now = Clock::get()?.unix_timestamp;
     let owner = ctx.accounts.owner.key();
+    // The owner himself, never a delegate Core would also accept: the Terminacion entry is the
+    // owner's act, and it must name who ended the título.
+    {
+        let data = ctx.accounts.asset.try_borrow_data()?;
+        let base = mpl_core::accounts::BaseAssetV1::from_bytes(&data).map_err(|_| PoolError::WrongAccount)?;
+        require_keys_eq!(base.owner, owner, PoolError::NotHolder);
+    }
+    let now = Clock::get()?.unix_timestamp;
     let pool_key = ctx.accounts.pool.key();
     let pagare = &mut ctx.accounts.pagare;
     let hash = registry::append(pagare, KIND_TERMINACION, &owner, &owner, &document_hash, now).ok_or(PoolError::Overflow)?;
@@ -524,8 +532,8 @@ pub struct CourtAnnotation<'info> {
 /// A court's act on the title, `AnotacionJudicial` or `ConstanciaJudicial` (`AnnotationKindInvalid`),
 /// over the court document's hash; the council signs. Appends the entry
 /// (from and to the pool: there is no counterparty); an `AnotacionJudicial` also holds the título
-/// (an embargo must comprise it, LGTOC 20: `deliver_pagare` refuses while the hold is set) and a
-/// `ConstanciaJudicial` lifts the hold. Allowed on any line status, beside a procuración and on a
+/// (an embargo must comprise it, LGTOC 20: `deliver_pagare` waits for every hold to lift) and a
+/// `ConstanciaJudicial` releases one hold. Allowed on any line status, beside a procuración and on a
 /// paid título whose delivery is pending; refused only once the título was delivered
 /// (`PagareAlreadyPaid`): from then on it is the owner's.
 pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
@@ -543,9 +551,10 @@ pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8
     let pool_key = ctx.accounts.pool.key();
     let hash = registry::append(pagare, kind, &pool_key, &pool_key, &document_hash, now).ok_or(PoolError::Overflow)?;
     if kind == KIND_ANOTACION_JUDICIAL {
-        pagare.flags |= PAGARE_FLAG_JUDICIAL_HOLD;
+        pagare.judicial_holds = pagare.judicial_holds.checked_add(1).ok_or(PoolError::Overflow)?;
     } else {
-        pagare.flags &= !PAGARE_FLAG_JUDICIAL_HOLD;
+        // A constancia that lifts nothing (any court certificate) releases nothing.
+        pagare.judicial_holds = pagare.judicial_holds.saturating_sub(1);
     }
     emit_cpi!(PagareEntry {
         pool: pool_key,

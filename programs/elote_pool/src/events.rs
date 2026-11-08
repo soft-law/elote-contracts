@@ -227,7 +227,7 @@ pub struct LineWrittenOff {
 #[event]
 pub struct PoolPaused {
     pub pool: Pubkey,
-    /// The member, guardian or council that paused.
+    /// The council (decision 39: nobody pauses alone).
     pub by: Pubkey,
 }
 

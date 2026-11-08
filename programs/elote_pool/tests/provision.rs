@@ -86,6 +86,30 @@ fn a_redemption_after_the_mark_prices_at_the_provisioned_nav() {
     assert!(shares > 0);
 }
 
+/// While anything is provisioned, deposits wait (the review's sandwich finding): a newcomer could
+/// otherwise mint shares at the provisioned NAV and take the recovery — flash-amplified — from the
+/// holders who bore the mark. Redemptions stay open; the gate lifts itself when the impairment
+/// clears, by recovery or by write-off.
+#[test]
+fn deposits_wait_while_anything_is_provisioned() {
+    let mut env = Env::new();
+    let (k, line_id, _, borrower) = marked(&mut env);
+    let newcomer = env.investor(&k, 2 * UNIT);
+    let ix = env.deposit_ix(&k, &newcomer.pubkey(), UNIT);
+    env.expect_err(ix, &newcomer, &[], ERR_BASE + elote_pool::errors::PoolError::PoolImpaired as u32);
+
+    // The borrower pays the line off; the impairment clears and deposits reopen.
+    let line = env.line(&k, line_id);
+    let owed = line.drawn - line.principal_repaid + line.interest_due - line.interest_repaid;
+    let late = env.arrears(&k, line_id).late_due;
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed + late);
+    env.repay(&k, line_id, &borrower, owed + late);
+    assert_eq!(env.pool(&k).impaired_principal, 0);
+    let ix = env.deposit_ix(&k, &newcomer.pubkey(), UNIT);
+    env.send(ix, &newcomer, &[]);
+}
+
 #[test]
 fn a_recovery_reverses_its_share_of_the_provision() {
     let mut env = Env::new();
@@ -180,7 +204,7 @@ fn a_fully_impaired_pool_prices_like_a_written_off_one() {
 
     let newcomer = env.investor(&k, UNIT);
     let i = env.deposit_ix(&k, &newcomer.pubkey(), UNIT);
-    env.expect_err(i, &newcomer, &[], E_OVERFLOW);
+    env.expect_err(i, &newcomer, &[], ERR_BASE + elote_pool::errors::PoolError::PoolImpaired as u32);
     let i = env.redeem_ix(&k, &investor.pubkey(), UNIT);
     env.expect_err(i, &investor, &[], E_WRONG_AMOUNT);
     // The borrower's repayment still lands, and what it recovers reopens the pool.

@@ -37,7 +37,6 @@ import { loadLine, loadPool } from "./lib/pool.ts";
 const PAGARE_PAID = 1; // state::PAGARE_*
 const PAGARE_FLAG_DELIVERED = 1 << 2; // state::PAGARE_FLAG_*
 const PAGARE_FLAG_PAID_BY_AVAL = 1 << 3;
-const PAGARE_FLAG_JUDICIAL_HOLD = 1 << 4;
 
 checkFlags(["cluster", "pool", "line-id", "draw-index", "burn", "owner-keypair", "yes"]);
 const c = cluster();
@@ -75,7 +74,7 @@ if (burn) {
   console.log(`  pagaré ${drawIndex}: asset burnt by its owner; the record stays (${after.entryCount} registry entries)`);
 } else {
   if ((before.flags & PAGARE_FLAG_DELIVERED) !== 0) fail(`pagaré ${drawIndex} is already delivered`);
-  if ((before.flags & PAGARE_FLAG_JUDICIAL_HOLD) !== 0) fail(`a court act holds pagaré ${drawIndex}; a ConstanciaJudicial must lift it first`);
+  if (before.judicialHolds > 0) fail(`${before.judicialHolds} court act(s) hold pagaré ${drawIndex}; a ConstanciaJudicial must lift each one first`);
   const byAval = (before.flags & PAGARE_FLAG_PAID_BY_AVAL) !== 0;
   const sponsor = l.sponsor.__option === "Some" ? l.sponsor.value : undefined;
   const recipient = byAval ? (sponsor ?? fail("the aval paid but the line names no sponsor")) : l.borrower;

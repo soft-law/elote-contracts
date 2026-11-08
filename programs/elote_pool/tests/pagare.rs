@@ -536,12 +536,20 @@ fn deliver_pagare_requires_the_mark_the_recipient_and_the_right_accounts() {
     let ix = env.deliver_pagare_ix_raw(&k, line_id, 0, &a, &borrower.pubkey(), pagare_asset_pda(&line_key, 0).0, other);
     env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
 
-    // An embargo holds the delivery (LGTOC 20); the constancia lifting it reopens it.
+    // An embargo holds the delivery (LGTOC 20). Holds count: two courts' anotaciones need two
+    // constancias — one release never frees the other court's embargo.
     let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_ANOTACION_JUDICIAL, [0x66; 32]);
     env.send(ix, &council, &[]);
     env.expect_deliver_err(&k, line_id, 0, ERR_BASE + elote_pool::errors::PoolError::DeliveryHeld as u32);
+    let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_ANOTACION_JUDICIAL, [0x68; 32]);
+    env.send(ix, &council, &[]);
+    assert_eq!(env.pagare(&k, line_id, 0).judicial_holds, 2);
     let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_CONSTANCIA_JUDICIAL, [0x67; 32]);
     env.send(ix, &council, &[]);
+    env.expect_deliver_err(&k, line_id, 0, ERR_BASE + elote_pool::errors::PoolError::DeliveryHeld as u32);
+    let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_CONSTANCIA_JUDICIAL, [0x69; 32]);
+    env.send(ix, &council, &[]);
+    assert_eq!(env.pagare(&k, line_id, 0).judicial_holds, 0);
 
     // Nothing happened yet: the title keeps the repayment's mark and its asset; now it delivers,
     // a stranger sending, to the borrower.
@@ -551,11 +559,25 @@ fn deliver_pagare_requires_the_mark_the_recipient_and_the_right_accounts() {
     env.send(ix, &stranger, &[]);
     assert_eq!(env.asset_state(&pagare_asset_pda(&line_key, 0).0).base.owner, borrower.pubkey());
 
-    // The burn: only after the delivery, and the Core program refuses anyone but the owner.
+    // The burn: only after the delivery, and only by the owner — a burn delegate the owner
+    // approved through Core can burn there, but the Terminacion entry is the owner's act, so the
+    // program refuses the delegate before any CPI (the entry would lie about who ended the título).
     let ix = env.burn_pagare_ix(&k, line_id, 1, &borrower.pubkey(), [0; 32]);
     env.expect_err(ix, &borrower, &[], E_PAGARE_NOT_COVERED);
     let ix = env.burn_pagare_ix(&k, line_id, 0, &stranger.pubkey(), [0; 32]);
-    env.expect_err(ix, &stranger, &[], 26); // Core's NoApprovals: only the owner burns
+    env.expect_err(ix, &stranger, &[], E_NOT_HOLDER);
+    let delegate = env.funded(1);
+    let asset0 = pagare_asset_pda(&line_key, 0).0;
+    let add = mpl_core::instructions::AddPluginV1Builder::new()
+        .asset(asset0)
+        .collection(Some(k.collection))
+        .payer(borrower.pubkey())
+        .plugin(mpl_core::types::Plugin::BurnDelegate(mpl_core::types::BurnDelegate {}))
+        .init_authority(mpl_core::types::PluginAuthority::Address { address: delegate.pubkey() })
+        .instruction();
+    env.send(add, &borrower, &[]);
+    let ix = env.burn_pagare_ix(&k, line_id, 0, &delegate.pubkey(), [0; 32]);
+    env.expect_err(ix, &delegate, &[], E_NOT_HOLDER);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -838,7 +860,7 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     let expected = entry_hash(&after.asset, KIND_ANOTACION_JUDICIAL, &k.pool, &k.pool, &embargo, now, 2);
     assert_eq!((after.entry_count, after.last_kind), (2, KIND_ANOTACION_JUDICIAL));
     assert_eq!(after.log_root, chain(&before.log_root, &expected));
-    assert_eq!(after.flags, elote_pool::state::PAGARE_FLAG_JUDICIAL_HOLD, "the anotación holds the delivery");
+    assert_eq!((after.flags, after.judicial_holds), (before.flags, 1), "the anotación holds the delivery");
     assert_eq!(
         (after.status, after.procurador, after.paid_at, after.receipt_hash, after.amount_mxn, after.due_at),
         (before.status, before.procurador, before.paid_at, before.receipt_hash, before.amount_mxn, before.due_at),
@@ -856,7 +878,7 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     // The constancia (art. 28) chains on — and lifts the hold — and both coexist with a
     // procuración in force.
     env.court_annotation(&k, line_id, 0, KIND_CONSTANCIA_JUDICIAL, [0x6b; 32]);
-    assert_eq!(env.pagare(&k, line_id, 0).flags & elote_pool::state::PAGARE_FLAG_JUDICIAL_HOLD, 0, "the constancia lifted the hold");
+    assert_eq!(env.pagare(&k, line_id, 0).judicial_holds, 0, "the constancia lifted the hold");
     let procurador = env.funded(1);
     env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
     env.court_annotation(&k, line_id, 0, KIND_ANOTACION_JUDICIAL, [0x6c; 32]);
@@ -919,9 +941,14 @@ fn the_payment_ends_the_procuracion_and_the_procurador_keeps_no_record() {
         (PAGARE_PAID, KIND_TERMINACION, 4, 0, solana_pubkey::Pubkey::default()),
         "the procuración ends with the payment"
     );
-    let entries: Vec<_> = find_events::<PagareEntry>(&meta).into_iter().map(|e| (e.draw_index, e.kind, e.from, e.to)).collect();
-    assert!(entries.contains(&(0, KIND_PAGADO, borrower.pubkey(), k.pool)));
-    assert!(entries.contains(&(0, KIND_TERMINACION, k.pool, pr)));
+    let entries: Vec<_> = find_events::<PagareEntry>(&meta).into_iter().map(|e| (e.draw_index, e.kind, e.from, e.to, e.entry_count)).collect();
+    assert!(entries.contains(&(0, KIND_PAGADO, borrower.pubkey(), k.pool, 3)), "the Pagado is entry 3");
+    assert!(entries.contains(&(0, KIND_TERMINACION, k.pool, pr, 4)), "the Terminacion chains after it");
+    // The PaymentEntry names the Pagado entry, not the Terminacion that chained after it: the
+    // annotation preimages must replay, and annotate_payment follows this number.
+    let payment: elote_pool::events::PagarePayment = find_event(&meta).expect("PagarePayment");
+    let pagado: Vec<_> = payment.entries.iter().map(|e| (e.draw_index, e.kind, e.entry_count)).collect();
+    assert_eq!(pagado, vec![(0, KIND_PAGADO, 3)]);
     assert_eq!(env.pagare(&k, line_id, 1).procurador, pr, "the sibling's procuración stands");
 
     // The delivery goes to the borrower as always; the ex-procurador has no claim on the asset.

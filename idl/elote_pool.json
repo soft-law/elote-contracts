@@ -4670,6 +4670,11 @@
       "code": 6075,
       "name": "DeliveryHeld",
       "msg": "A court act holds this título; a ConstanciaJudicial must lift it before the delivery"
+    },
+    {
+      "code": 6076,
+      "name": "PoolImpaired",
+      "msg": "Deposits wait while lines in collection are provisioned; redemptions stay open"
     }
   ],
   "types": [
@@ -6160,6 +6165,15 @@
                 32
               ]
             }
+          },
+          {
+            "name": "judicial_holds",
+            "docs": [
+              "Court acts holding the título (LGTOC 20): each `AnotacionJudicial` adds one, each",
+              "`ConstanciaJudicial` releases one, and `deliver_pagare` waits for zero — one court's",
+              "release never frees another court's embargo."
+            ],
+            "type": "u8"
           },
           {
             "name": "reserved",

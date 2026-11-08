@@ -12,7 +12,7 @@ use elote_pool::state::{CreditLine, Pagare, Pool};
 fn account_sizes_are_fixed_and_reserved_starts_zero() {
     assert_eq!(8 + Pool::INIT_SPACE, 491);
     assert_eq!(8 + CreditLine::INIT_SPACE, 529);
-    assert_eq!(8 + Pagare::INIT_SPACE, 363);
+    assert_eq!(8 + Pagare::INIT_SPACE, 364);
 
     let mut env = Env::new();
     let (k, _) = env.setup_pool();

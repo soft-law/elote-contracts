@@ -117,6 +117,12 @@ export type Pagare = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
+  /**
+   * Court acts holding the título (LGTOC 20): each `AnotacionJudicial` adds one, each
+   * `ConstanciaJudicial` releases one, and `deliver_pagare` waits for zero — one court's
+   * release never frees another court's embargo.
+   */
+  judicialHolds: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -183,6 +189,12 @@ export type PagareArgs = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
+  /**
+   * Court acts holding the título (LGTOC 20): each `AnotacionJudicial` adds one, each
+   * `ConstanciaJudicial` releases one, and `deliver_pagare` waits for zero — one court's
+   * release never frees another court's embargo.
+   */
+  judicialHolds: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -215,6 +227,7 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["fixDate", getU32Encoder()],
       ["usdcDelivered", getU64Encoder()],
       ["deliveryHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["judicialHolds", getU8Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 28)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
@@ -248,6 +261,7 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["fixDate", getU32Decoder()],
     ["usdcDelivered", getU64Decoder()],
     ["deliveryHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["judicialHolds", getU8Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 28)],
   ]);
 }
@@ -319,5 +333,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 363;
+  return 364;
 }

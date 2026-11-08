@@ -5,7 +5,7 @@ Generated from `idl/elote_pool.json` by the PR 4 docs commit; the instruction an
 Conventions:
 
 - **Council instructions** take the Squads multisig account (`multisig`, which must be `Pool.multisig`) and run the multisig check before anything else is written: owner = Squads v4, the council is vault 0 at the stored canonical bump, no config authority, at most ten members, threshold greater than half the voting members (`CouncilInvalid`, `CouncilTooLarge`). The council signs only through Squads `vault_transaction_execute`.
-- **`valid_until: i64`** is the last argument of every council instruction except `pause` (a late pause only protects) and `init_pool` (the council does not sign it). `now > valid_until` is refused with `ProposalExpired`, and `valid_until > now + MAX_PROPOSAL_HORIZON_SECONDS` (15 days) with `ProposalTooFar`; both bounds are inclusive. The check runs first, before the multisig check. The scripts pass `now + 1 day`.
+- **`valid_until: i64`** is the last argument of every council instruction except `init_pool` (the council does not sign it). `now > valid_until` is refused with `ProposalExpired`, and `valid_until > now + MAX_PROPOSAL_HORIZON_SECONDS` (15 days) with `ProposalTooFar`; both bounds are inclusive. The check runs first, before the multisig check. The scripts pass `now + 1 day`.
 - Amounts on a line and a pagaré are **centavos of MXN** (`CreditLine.currency = 484`); the vault, deposits, redemptions and repayments are **USDC base units** (6 decimals). Conversions use the FIX (`Pool.fix_rate`, MXN per USD × 10^4).
 - **Late payment has no grace period** (decision 36): late interest runs from the first second past a due date (or `term_end` on a bullet line), `mark_in_collection` is open a second after the due date of the `max_missed`-th missed installment (`max_missed` at least 3), and `write_off` counts from the due dates and the term themselves. `Pool.grace_period_seconds` is reserved and always zero.
 - Every instruction that emits events takes `event_authority` and `program` (Anchor `#[event_cpi]`); they are not listed below.
@@ -41,7 +41,6 @@ Signers: `creator`.
 | `collection_period_seconds` | `u32` | At least `MIN_COLLECTION_PERIOD_SECONDS`. |
 | `max_outstanding_principal` | `u64` | At least 1. |
 | `acceleration_notice_seconds` | `u32` | At least `MIN_ACCELERATION_NOTICE_SECONDS`. |
-| `cancel_grace_seconds` | `u32` | `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. |
 | `min_fix_rate` | `u64` | The lowest FIX `post_fix` accepts; zero with `max_fix_rate` zero for no bounds. |
 | `max_fix_rate` | `u64` | The highest FIX `post_fix` accepts; at least `min_fix_rate` unless both are zero (`WrongAmount`). |
 
@@ -558,7 +557,7 @@ Signers: `holder`. Council instruction.
 
 ### `annotate_payment(draw_index: u16, entry_count: u32, receipt_hash: [u8; 32], valid_until: i64)`
 
-The council (the holder) attaches a receipt to payment entry `entry_count` of pagaré `draw_index`, as a `Recibo` entry over `receipt_hash`. The annotation also replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`).
+The council (the holder) attaches a receipt to payment entry `entry_count` of pagaré `draw_index`, as a `Recibo` entry over `receipt_hash`. The correction is the entry; no field is rewritten (LGTOC 41).
 
 Signers: `annotator`. Council instruction.
 
@@ -634,7 +633,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `drawn_through` | `u64` | The line's `drawn` after this tranche. Pagarés are covered oldest first, so pagaré k is paid once the line's `principal_repaid` reaches it. |
 | `cert_fingerprint` | `[u8; 32]` | `sha256(salt \|\| fingerprint)` of the PSC or e.firma certificate that signed the pagaré text, with the salt kept in the expediente: a bare fingerprint can be looked up to the signer's RFC. Zero only when `signature_method` is `SIGNATURE_WALLET`. |
 | `signature_method` | `u8` | `SIGNATURE_*`. |
-| `status` | `u8` | `PAGARE_OUTSTANDING`, `PAGARE_PAID_PENDING_CANCEL` or `PAGARE_PAID`; never reverts. |
+| `status` | `u8` | `PAGARE_OUTSTANDING` or `PAGARE_PAID`; never reverts. |
 | `paid_at` | `i64` | When the repayment that covered it landed; zero while outstanding. |
 | `receipt_hash` | `[u8; 32]` | The receipt hash of that repayment: the payer's, until the holder annotates the real one (`annotate_payment`, before the burn). |
 | `procurador` | `pubkey` | The procurador of the endoso en procuración in force; the zero key when none. Cleared by `revoke_procuracion` and by the extinction. |
@@ -647,7 +646,6 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `fix_date` | `u32` |  |
 | `usdc_delivered` | `u64` | USDC base units delivered: `fx::usdc_for_mxn(amount_mxn, fix_rate)`. The pool's cost of the tranche. |
 | `delivery_hash` | `[u8; 32]` | `sha256(pagare_hash \|\| fix_rate \|\| fix_date \|\| usdc_delivered)`: the delivery the borrower instructed, kept apart from the pagaré, which promises MXN only. |
-| `cancel_grace_seconds` | `u32` | The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then: the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool sets later. Zero while outstanding. |
 | `reserved` | `[u8; 28]` | Zero; for fields added after mainnet. |
 
 ### `Pool`
@@ -679,7 +677,6 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `pending_council_kind` | `u8` |  |
 | `max_outstanding_principal` | `u64` | The most principal the pool lends at once, in asset units; checked at every draw. |
 | `acceleration_notice_seconds` | `u32` | Seconds from `propose_acceleration` before `accelerate_line`; at least `MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline. |
-| `cancel_grace_seconds` | `u32` | Seconds from a pagaré's payment before its borrower may cancel it alone, `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the pagarés it marks paid. |
 | `impaired_principal` | `u64` | The outstanding USDC cost of the lines in collection: the mark and the council's acceleration add it, recoveries subtract, the write-off removes the rest (decision 40). |
 | `provision_bps` | `u16` | The provision the NAV takes on `impaired_principal`, in basis points; 10,000 at `init_pool`, council-set (`set_provision_bps`). |
 | `fx_feeder` | `pubkey` | The key that may publish the FIX within the band of `fx::within_band` from the one in force; the zero key when none (the council publishes). Set and rotated by the council. |
@@ -696,7 +693,6 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`AccelerationNoticeSet`** `{ pool: pubkey, acceleration_notice_seconds: u32 }`
 - **`AccelerationProposed`** `{ pool: pubkey, line_id: u64, due_at: i64 }`: The council proposed to collect the line early; draws are suspended at once, and `accelerate_line` may fire from `due_at`. The notice is addressed to the borrower.
 - **`AccelerationWithdrawn`** `{ pool: pubkey, line_id: u64 }`: The proposal is withdrawn; draws stay suspended until `resume_draws`.
-- **`CancelGraceSet`** `{ pool: pubkey, cancel_grace_seconds: u32 }`
 - **`CollectionPeriodSet`** `{ pool: pubkey, collection_period_seconds: u32 }`: The pool's collection period after `set_collection_period`: seconds from the mark before a line in collection can be written off.
 - **`CouncilAccepted`** `{ pool: pubkey, old: pubkey, new: pubkey, kind: u8 }`
 - **`CouncilProposed`** `{ pool: pubkey, council: pubkey, kind: u8 }`: `council` must sign `accept_council` before it becomes the pool's council.
@@ -728,7 +724,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`PagareIssued`** `{ pool: pubkey, line_id: u64, draw_index: u16, asset: pubkey, pagare_hash: [u8; 32], amount_mxn: u64, delivery_hash: [u8; 32], due_at: i64, holder: pubkey }`: Emitted by `draw` after `LineDrawn`: the pagaré issued as the Metaplex Core asset `asset`, owned by `holder` (the pool PDA) and frozen. `due_at` is the line's last due date at issuance.
 - **`PagarePayment`** `{ pool: pubkey, line_id: u64, payer: pubkey, receipt_hash: [u8; 32], late_part: u64, interest_part: u64, principal_part: u64, entries: Vec<PaymentEntry> }`: The payment entries of one `repay`: the payer's receipt hash (zero means "receipt to follow"), the payment's split and one `PaymentEntry` per sidecar touched, oldest first. Emitted after the `PagareEntry` of each entry.
 - **`PagareReceiptAnnotated`** `{ pool: pubkey, line_id: u64, draw_index: u16, entry_count: u32, payment_entry_count: u32, receipt_hash: [u8; 32] }`: A `Recibo` entry written by `annotate_payment`: the receipt attached to the payment entry `payment_entry_count` of the pagaré's chain, as entry `entry_count`.
-- **`PoolInitialized`** `{ pool: pubkey, council: pubkey, creator: pubkey, multisig: pubkey, asset_mint: pubkey, share_mint: pubkey, collection: pubkey, collection_period_seconds: u32, max_line_bps: u16, max_outstanding_principal: u64, acceleration_notice_seconds: u32, cancel_grace_seconds: u32, asset_controls: u8, permissioned: bool, min_fix_rate: u64, max_fix_rate: u64 }`: Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits; `permissioned`: the share mint is frozen by default.
+- **`PoolInitialized`** `{ pool: pubkey, council: pubkey, creator: pubkey, multisig: pubkey, asset_mint: pubkey, share_mint: pubkey, collection: pubkey, collection_period_seconds: u32, max_line_bps: u16, max_outstanding_principal: u64, acceleration_notice_seconds: u32, asset_controls: u8, permissioned: bool, min_fix_rate: u64, max_fix_rate: u64 }`: Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits; `permissioned`: the share mint is frozen by default.
 - **`PoolPaused`** `{ pool: pubkey, by: pubkey }`
 - **`PoolResumed`** `{ pool: pubkey }`
 - **`Redeemed`** `{ pool: pubkey, holder: pubkey, shares: u64, assets: u64, nav_after: u64, supply_after: u64 }`

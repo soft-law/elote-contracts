@@ -251,7 +251,7 @@ pub mod elote_pool {
     }
 
     /// Pauses deposits, redemptions, requests, approvals and draws. Any member of the council'"'"'s multisig alone,
-    /// the guardian or the council; repayments and everything else go on.
+    /// repayments and everything else go on.
     pub fn pause(ctx: Context<CouncilPool>, valid_until: i64) -> Result<()> {
         instructions::pool::pause(ctx, valid_until)
     }

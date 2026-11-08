@@ -431,14 +431,14 @@ fn dec_u(mut m: u64) -> String {
 /// Mints the pagaré: a Core asset in the pool's collection, owned by the pool PDA, named
 /// `PAGARE <line_id>-<draw_index>`, with an empty URI and nothing personal. Plugins at creation:
 /// - `PermanentFreezeDelegate`, frozen, authority `UpdateAuthority` (the collection's, the pool
-///   PDA): the asset cannot move, and only the program can thaw it, which `cancel_pagare` does
-///   right before the burn.
+///   PDA): the asset cannot move, and only the program can thaw it, which `deliver_pagare` does
+///   right before renouncing the freeze and transferring the título to its debtor.
 /// - `ImmutableMetadata` and `Attributes` (the eight facts, 32-byte values as hex; the certificate commitment stays in the record only), authority
 ///   `None`: name, URI and facts never change.
 /// - `AddBlocker`, authority `None`: no authority-managed plugin can be added later.
 ///
-/// No transfer or burn delegate: the pool owns the asset and only the program signs for it. The
-/// only plugin added later is the owner-managed `BurnDelegate` of a procuración (`endorse_pagare`).
+/// No transfer or burn delegate: the pool owns the asset, only the program signs for it, and a
+/// procuración lends no power over it (decision 38).
 /// `init_pool` admits only a bare collection, so no collection plugin reaches the asset. No AppData:
 /// the registry lives in the `Pagare` record.
 #[allow(clippy::too_many_arguments)]
@@ -659,6 +659,7 @@ pub fn draw(
         fix_date,
         usdc_delivered: usdc,
         delivery_hash: delivery,
+        judicial_holds: 0,
         reserved: [0; 28],
     };
     // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.
@@ -965,6 +966,9 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         let principal_balance = sidecar.amount_mxn.min(sidecar.drawn_through.saturating_sub(principal_after));
         let annotation = registry::annotation_hash(&receipt_hash, principal_applied, accessory_applied, principal_balance, by_borrower);
         let hash = registry::append(sidecar, kind, &payer_key, &pool_key, &annotation, now).ok_or(PoolError::Overflow)?;
+        // The payment entry's own number: a Terminacion may chain right after it, and the
+        // PaymentEntry must name the entry whose preimages it carries.
+        let payment_entry_count = sidecar.entry_count;
         emit_cpi!(PagareEntry {
             pool: pool_key,
             line_id,
@@ -1013,7 +1017,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         entries.push(PaymentEntry {
             draw_index: sidecar.draw_index,
             kind,
-            entry_count: sidecar.entry_count,
+            entry_count: payment_entry_count,
             principal_applied,
             accessory_applied,
             principal_balance,

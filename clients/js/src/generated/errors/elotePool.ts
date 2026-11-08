@@ -167,6 +167,8 @@ export const ELOTE_POOL_ERROR__FIX_ALREADY_POSTED_TODAY = 0x17b9; // 6073
 export const ELOTE_POOL_ERROR__PAGARE_ALREADY_DELIVERED = 0x17ba; // 6074
 /** DeliveryHeld: A court act holds this título; a ConstanciaJudicial must lift it before the delivery */
 export const ELOTE_POOL_ERROR__DELIVERY_HELD = 0x17bb; // 6075
+/** PoolImpaired: Deposits wait while lines in collection are provisioned; redemptions stay open */
+export const ELOTE_POOL_ERROR__POOL_IMPAIRED = 0x17bc; // 6076
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -225,6 +227,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__PAGARE_NOT_COVERED
   | typeof ELOTE_POOL_ERROR__PAGARE_TEMPLATE_HASH_REQUIRED
   | typeof ELOTE_POOL_ERROR__PAUSED
+  | typeof ELOTE_POOL_ERROR__POOL_IMPAIRED
   | typeof ELOTE_POOL_ERROR__PROCURACION_STATE
   | typeof ELOTE_POOL_ERROR__PROPOSAL_EXPIRED
   | typeof ELOTE_POOL_ERROR__PROPOSAL_TOO_FAR
@@ -305,6 +308,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__PAGARE_NOT_COVERED]: `No repayment has marked this pagaré paid`,
     [ELOTE_POOL_ERROR__PAGARE_TEMPLATE_HASH_REQUIRED]: `The pagaré template's hash is required`,
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,
+    [ELOTE_POOL_ERROR__POOL_IMPAIRED]: `Deposits wait while lines in collection are provisioned; redemptions stay open`,
     [ELOTE_POOL_ERROR__PROCURACION_STATE]: `The pagaré has no procuración in force, or already has one`,
     [ELOTE_POOL_ERROR__PROPOSAL_EXPIRED]: `The council's decision is past its valid_until`,
     [ELOTE_POOL_ERROR__PROPOSAL_TOO_FAR]: `The council's decision is dated more than fifteen days ahead`,

@@ -401,10 +401,16 @@ pub struct Deposit<'info> {
 }
 
 /// The first deposit locks `DEAD_SHARES` of its shares in the pool-owned dead account; the
-/// depositor receives the rest. `min_shares_out` is the depositor's slippage floor.
+/// depositor receives the rest. `min_shares_out` is the depositor's slippage floor. Refused while
+/// any line in collection is provisioned (`PoolImpaired`): the gate keeps recoveries with the
+/// holders who bore the mark.
 pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Result<()> {
     let pool = &ctx.accounts.pool;
     require!(!pool.paused, PoolError::Paused);
+    // While anything is provisioned, nobody mints shares: a newcomer at the provisioned NAV would
+    // take the recoveries — flash-amplified — from the holders who bore the mark (decision 40).
+    // Redemptions stay open; the gate lifts itself when the impairment clears.
+    require!(pool.impaired_principal == 0, PoolError::PoolImpaired);
     require!(assets > 0, PoolError::WrongAmount);
 
     // Price the deposit before any token moves.
