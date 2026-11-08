@@ -177,6 +177,15 @@ pub struct LineInCollection {
     pub missed: u16,
     pub remaining: u64,
     pub interest_forgiven: u64,
+    /// The pool's whole impairment after this mark (decision 40).
+    pub impaired_principal: u64,
+}
+
+/// The council moved the provision rate the NAV takes on the lines in collection.
+#[event]
+pub struct ProvisionSet {
+    pub pool: Pubkey,
+    pub provision_bps: u16,
 }
 
 /// The principal left in MXN (`loss`) and its cost in USDC (`loss_usdc`), which leaves the NAV.
@@ -304,6 +313,8 @@ pub struct LineAccelerated {
     pub line_id: u64,
     pub remaining: u64,
     pub interest_forgiven: u64,
+    /// The pool's whole impairment after this acceleration (decision 40).
+    pub impaired_principal: u64,
 }
 
 /// Draws resumed with the window they had before the suspension.

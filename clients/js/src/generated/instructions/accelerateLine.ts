@@ -77,7 +77,7 @@ export type AccelerateLineInstruction<
         ? ReadonlyAccount<TAccountMultisig>
         : TAccountMultisig,
       TAccountPool extends string
-        ? ReadonlyAccount<TAccountPool>
+        ? WritableAccount<TAccountPool>
         : TAccountPool,
       TAccountLine extends string
         ? WritableAccount<TAccountLine>
@@ -216,7 +216,7 @@ export async function getAccelerateLineInstructionAsync<
       isSigner: false,
       isWritable: false,
     },
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -379,7 +379,7 @@ export function getAccelerateLineInstruction<
       isSigner: false,
       isWritable: false,
     },
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,

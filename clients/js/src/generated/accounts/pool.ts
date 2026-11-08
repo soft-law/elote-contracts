@@ -134,9 +134,16 @@ export type Pool = {
    * pagarés it marks paid.
    */
   cancelGraceSeconds: number;
-  /** Principal of the lines in collection, for a provision at the mark; zero, not yet used. */
+  /**
+   * The outstanding USDC cost of the lines in collection: the mark and the council's
+   * acceleration add a line's cost, each recovery subtracts what it recovered, and the
+   * write-off removes the rest as the loss (decision 40).
+   */
   impairedPrincipal: bigint;
-  /** The provision on `impaired_principal`, in basis points; zero, not yet used. */
+  /**
+   * The provision the NAV takes on `impaired_principal`, in basis points: `init_pool` writes
+   * `BPS` (100%), and only the council moves it (`set_provision_bps`).
+   */
   provisionBps: number;
   /**
    * The key that may publish the FIX within the band of `fx::within_band` from the one in force;
@@ -241,9 +248,16 @@ export type PoolArgs = {
    * pagarés it marks paid.
    */
   cancelGraceSeconds: number;
-  /** Principal of the lines in collection, for a provision at the mark; zero, not yet used. */
+  /**
+   * The outstanding USDC cost of the lines in collection: the mark and the council's
+   * acceleration add a line's cost, each recovery subtracts what it recovered, and the
+   * write-off removes the rest as the loss (decision 40).
+   */
   impairedPrincipal: number | bigint;
-  /** The provision on `impaired_principal`, in basis points; zero, not yet used. */
+  /**
+   * The provision the NAV takes on `impaired_principal`, in basis points: `init_pool` writes
+   * `BPS` (100%), and only the council moves it (`set_provision_bps`).
+   */
   provisionBps: number;
   /**
    * The key that may publish the FIX within the band of `fx::within_band` from the one in force;

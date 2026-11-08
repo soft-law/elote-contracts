@@ -41,5 +41,6 @@ export * from "./pagareReceiptAnnotated";
 export * from "./poolInitialized";
 export * from "./poolPaused";
 export * from "./poolResumed";
+export * from "./provisionSet";
 export * from "./redeemed";
 export * from "./requestWithdrawn";

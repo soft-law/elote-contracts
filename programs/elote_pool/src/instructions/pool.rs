@@ -9,7 +9,7 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 use crate::errors::PoolError;
 use crate::events::{
     AccelerationNoticeSet, CancelGraceSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, FixBoundsSet, FixPosted, FxFeederSet,
-    MaxLineBpsSet, NavUpdated, OutstandingCapSet, PoolInitialized, PoolPaused, PoolResumed, Redeemed,
+    MaxLineBpsSet, NavUpdated, ProvisionSet, OutstandingCapSet, PoolInitialized, PoolPaused, PoolResumed, Redeemed,
 };
 use crate::council;
 use crate::fx;
@@ -300,7 +300,7 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         acceleration_notice_seconds: p.acceleration_notice_seconds,
         cancel_grace_seconds: p.cancel_grace_seconds,
         impaired_principal: 0,
-        provision_bps: 0,
+        provision_bps: BPS as u16,
         fx_feeder: Pubkey::default(),
         fix_rate: 0,
         fix_date: 0,
@@ -415,7 +415,7 @@ pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Resul
 
     // Price the deposit before any token moves.
     let supply = ctx.accounts.share_mint.supply;
-    let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
+    let nav = pool.nav(ctx.accounts.vault.amount).ok_or(PoolError::Overflow)?;
     if supply == 0 {
         // The share mint has the asset's decimals (fixed at `init_pool`), so it stands in for
         // the asset mint here.
@@ -538,7 +538,7 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
 
     // Price the redemption against the pre-burn supply.
     let supply = ctx.accounts.share_mint.supply;
-    let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
+    let nav = pool.nav(ctx.accounts.vault.amount).ok_or(PoolError::Overflow)?;
     let assets = math::assets_for_redeem(shares, supply, nav).ok_or(PoolError::Overflow)?;
     require!(assets > 0, PoolError::WrongAmount);
     require!(assets >= min_assets_out, PoolError::SlippageExceeded);
@@ -634,6 +634,18 @@ pub fn resume(ctx: Context<CouncilPool>, valid_until: i64) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     pool.paused = false;
     emit_cpi!(PoolResumed { pool: pool.key() });
+    Ok(())
+}
+
+/// Council only: the provision the NAV takes on the lines in collection, `0..=BPS` of their
+/// outstanding cost (decision 40); `init_pool` starts it at `BPS`, a full provision.
+pub fn set_provision_bps(ctx: Context<CouncilPool>, provision_bps: u16, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
+    require!(u64::from(provision_bps) <= BPS, PoolError::WrongAmount);
+    ctx.accounts.check_council()?;
+    let pool = &mut ctx.accounts.pool;
+    pool.provision_bps = provision_bps;
+    emit_cpi!(ProvisionSet { pool: pool.key(), provision_bps });
     Ok(())
 }
 

@@ -200,7 +200,7 @@ pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_
     require!(now <= expires, PoolError::RequestExpired);
     require!(expediente_root == line.expediente_root && terms_hash == line.terms_hash, PoolError::ExpedienteMismatch);
     require!(!council::is_member(&multisig, &line.borrower)?, PoolError::BorrowerIsCurator);
-    let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
+    let nav = pool.nav(ctx.accounts.vault.amount).ok_or(PoolError::Overflow)?;
     // The NAV is in USDC and the principal in MXN: the cap is converted at the FIX in force, as
     // fresh as a draw needs it.
     require!(pool.fix_rate != 0, PoolError::FixStale);
@@ -605,7 +605,7 @@ pub fn draw(
     require!(usdc > 0, PoolError::WrongAmount);
     require!(usdc <= ctx.accounts.vault.amount, PoolError::InsufficientLiquidity);
     // The concentration cap in USDC, against the NAV now (the one a deposit prices at).
-    let nav = math::nav(ctx.accounts.vault.amount, pool.outstanding_principal).ok_or(PoolError::Overflow)?;
+    let nav = pool.nav(ctx.accounts.vault.amount).ok_or(PoolError::Overflow)?;
     let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
     require!(line.usdc_drawn.checked_add(usdc).ok_or(PoolError::Overflow)? <= cap, PoolError::LineTooLarge);
     let outstanding_after = pool.outstanding_principal.checked_add(usdc).ok_or(PoolError::Overflow)?;
@@ -897,6 +897,10 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
 
     let pool = &mut ctx.accounts.pool;
     pool.outstanding_principal = pool.outstanding_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
+    // A recovery on a line in collection takes its cost out of the provision (decision 40).
+    if ctx.accounts.line.status == LineStatus::InCollection {
+        pool.impaired_principal = pool.impaired_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
+    }
     let usdc_interest = fx::usdc_for_mxn(interest_part, fix_rate).ok_or(PoolError::Overflow)?;
     pool.interest_collected = pool.interest_collected.checked_add(usdc_interest).ok_or(PoolError::Overflow)?;
     pool.fx_realized = pool.fx_realized.checked_add(fx_delta).ok_or(PoolError::Overflow)?;
@@ -1029,6 +1033,7 @@ fn line_arrears(line: &CreditLine, now: i64) -> Result<Arrears> {
 #[derive(Accounts)]
 pub struct MarkInCollection<'info> {
     #[account(
+        mut,
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
     )]
@@ -1076,6 +1081,8 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     // that put it in collection.
     let (kept, interest_forgiven, remaining) = accelerated_balance(line, a.due.max(k), now)?;
     let pool_key = pool.key();
+    // The mark provisions the line's outstanding cost (decision 40).
+    let cost_outstanding = line.usdc_drawn.checked_sub(line.usdc_cost_repaid).ok_or(PoolError::Overflow)?;
     let line = &mut ctx.accounts.line;
     line.status = LineStatus::InCollection;
     line.accelerated_at = now;
@@ -1083,7 +1090,10 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     // The objective route supersedes a council proposal still in its notice; draws stay suspended.
     let superseded = line.acceleration_due_at != 0;
     line.acceleration_due_at = 0;
-    emit_cpi!(LineInCollection { pool: pool_key, line_id: line.line_id, missed: a.missed, remaining, interest_forgiven });
+    let pool = &mut ctx.accounts.pool;
+    pool.impaired_principal = pool.impaired_principal.checked_add(cost_outstanding).ok_or(PoolError::Overflow)?;
+    let impaired_principal = pool.impaired_principal;
+    emit_cpi!(LineInCollection { pool: pool_key, line_id: line.line_id, missed: a.missed, remaining, interest_forgiven, impaired_principal });
     if superseded {
         emit_cpi!(AccelerationWithdrawn { pool: pool_key, line_id: line.line_id });
     }
@@ -1165,9 +1175,14 @@ pub fn write_off(ctx: Context<WriteOff>, valid_until: i64) -> Result<()> {
 
     let loss = line.drawn.checked_sub(line.principal_repaid).ok_or(PoolError::Overflow)?;
     let loss_usdc = line.usdc_drawn.checked_sub(line.usdc_cost_repaid).ok_or(PoolError::Overflow)?;
+    let was_in_collection = line.status == LineStatus::InCollection;
     let pool = &mut ctx.accounts.pool;
     pool.outstanding_principal = pool.outstanding_principal.checked_sub(loss_usdc).ok_or(PoolError::Overflow)?;
     pool.written_off = pool.written_off.checked_add(loss_usdc).ok_or(PoolError::Overflow)?;
+    // What the provision anticipated becomes the loss (decision 40).
+    if was_in_collection {
+        pool.impaired_principal = pool.impaired_principal.checked_sub(loss_usdc).ok_or(PoolError::Overflow)?;
+    }
     line.status = LineStatus::WrittenOff;
     line.closed_at = now;
 
@@ -1195,6 +1210,7 @@ pub struct CouncilLine<'info> {
     pub multisig: UncheckedAccount<'info>,
 
     #[account(
+        mut,
         seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
         bump = pool.bump,
         has_one = council @ PoolError::Unauthorized,
@@ -1333,11 +1349,17 @@ pub fn accelerate_line(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()
         None => 0,
     };
     let (kept, interest_forgiven, remaining) = accelerated_balance(line, due_count, now)?;
+    // The council's acceleration provisions the line's outstanding cost, like the mark
+    // (decision 40).
+    let cost_outstanding = line.usdc_drawn.checked_sub(line.usdc_cost_repaid).ok_or(PoolError::Overflow)?;
     let line = &mut ctx.accounts.line;
     line.status = LineStatus::InCollection;
     line.accelerated_at = now;
     line.interest_due = kept;
-    emit_cpi!(LineAccelerated { pool: pool_key, line_id: line.line_id, remaining, interest_forgiven });
+    let pool = &mut ctx.accounts.pool;
+    pool.impaired_principal = pool.impaired_principal.checked_add(cost_outstanding).ok_or(PoolError::Overflow)?;
+    let impaired_principal = pool.impaired_principal;
+    emit_cpi!(LineAccelerated { pool: pool_key, line_id: line.line_id, remaining, interest_forgiven, impaired_principal });
     Ok(())
 }
 

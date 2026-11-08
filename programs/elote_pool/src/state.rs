@@ -176,9 +176,12 @@ pub struct Pool {
     /// `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the
     /// pagarés it marks paid.
     pub cancel_grace_seconds: u32,
-    /// Principal of the lines in collection, for a provision at the mark; zero, not yet used.
+    /// The outstanding USDC cost of the lines in collection: the mark and the council's
+    /// acceleration add a line's cost, each recovery subtracts what it recovered, and the
+    /// write-off removes the rest as the loss (decision 40).
     pub impaired_principal: u64,
-    /// The provision on `impaired_principal`, in basis points; zero, not yet used.
+    /// The provision the NAV takes on `impaired_principal`, in basis points: `init_pool` writes
+    /// `BPS` (100%), and only the council moves it (`set_provision_bps`).
     pub provision_bps: u16,
     /// The key that may publish the FIX within the band of `fx::within_band` from the one in force;
     /// the zero key when none (the council publishes). Set and rotated by the council.
@@ -219,13 +222,24 @@ impl Pool {
             .and_then(|v| u64::try_from(v).ok())
     }
 
+    /// Net asset value at `vault_amount`: the vault plus the principal lent out, minus the
+    /// provision on the lines in collection, `impaired_principal * provision_bps / BPS` rounded
+    /// down (decision 40). `None` on overflow, or when the provision exceeds what the pool holds.
+    pub fn nav(&self, vault_amount: u64) -> Option<u64> {
+        let provision = (self.impaired_principal as u128)
+            .checked_mul(self.provision_bps as u128)?
+            .checked_div(BPS as u128)
+            .and_then(|v| u64::try_from(v).ok())?;
+        vault_amount.checked_add(self.outstanding_principal)?.checked_sub(provision)
+    }
+
     /// Invariants every money instruction re-checks on balances reloaded after its CPIs: the NAV
-    /// fits a `u64`, and a given share supply is zero or at least `DEAD_SHARES` (the dead shares
-    /// never move). `InvariantBroken` otherwise. Returns the NAV it checked.
+    /// (provision included) fits a `u64`, the provision never exceeds the pool, and a given share
+    /// supply is zero or at least `DEAD_SHARES` (the dead shares never move). `InvariantBroken`
+    /// otherwise. Returns the NAV it checked.
     pub fn check(&self, vault_amount: u64, share_supply: Option<u64>) -> Result<u64> {
-        let nav = vault_amount
-            .checked_add(self.outstanding_principal)
-            .ok_or(crate::errors::PoolError::InvariantBroken)?;
+        let nav = self.nav(vault_amount).ok_or(crate::errors::PoolError::InvariantBroken)?;
+        require!(self.impaired_principal <= self.outstanding_principal, crate::errors::PoolError::InvariantBroken);
         if let Some(supply) = share_supply {
             require!(supply == 0 || supply >= DEAD_SHARES, crate::errors::PoolError::InvariantBroken);
         }
@@ -549,6 +563,23 @@ mod tests {
         assert!(p.check(10, Some(1)).is_err());
         assert!(p.check(u64::MAX, None).is_err(), "vault + outstanding overflows");
         assert!(pool(0).check(u64::MAX, Some(DEAD_SHARES)).is_ok(), "the maximum NAV itself is fine");
+    }
+
+    #[test]
+    fn nav_takes_the_provision_and_check_bounds_the_impairment() {
+        let mut p = pool(100);
+        p.impaired_principal = 40;
+        p.provision_bps = BPS as u16;
+        assert_eq!(p.nav(10), Some(70), "a full provision removes the whole impairment");
+        p.provision_bps = (BPS / 2) as u16;
+        assert_eq!(p.nav(10), Some(90));
+        p.provision_bps = 0;
+        assert_eq!(p.nav(10), Some(110), "no provision, the old NAV");
+        p.provision_bps = BPS as u16;
+        assert!(p.check(10, None).is_ok());
+        p.impaired_principal = 101;
+        assert!(p.check(10, None).is_err(), "more impaired than outstanding is impossible");
+        assert_eq!(pool(0).nav(u64::MAX), Some(u64::MAX));
     }
 
     #[test]

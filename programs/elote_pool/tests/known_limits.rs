@@ -83,11 +83,12 @@ fn limit_deposit_just_before_a_repayment_shares_the_interest() {
     assert_eq!(out.assets, 10 * UNIT + 200_000);
 }
 
-/// A loss counts only at `write_off`. `mark_in_collection` is public and leaves the NAV at par,
-/// so a holder who redeems between the two steps exits at the pre-loss value and the loss falls
-/// on whoever stays (roadmap: "Losses count when written off").
+/// Inverted 2026-11-08 (decision 40). A loss used to count only at `write_off`: the mark left the
+/// NAV at par, so a holder who redeemed between the two steps exited at the pre-loss value and
+/// the loss fell on whoever stayed. The mark now provisions the line's outstanding cost in full,
+/// so the quick and the patient redeem at the same provisioned price.
 #[test]
-fn limit_redeem_between_collection_and_write_off_exits_at_par() {
+fn redeem_between_collection_and_write_off_prices_the_provision() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let quick = env.investor(&k, 10 * UNIT);
@@ -99,24 +100,28 @@ fn limit_redeem_between_collection_and_write_off_exits_at_par() {
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, line_id, &borrower);
 
-    // Three installments missed: anyone moves the line to collection. NAV is still 20.0.
+    // Three installments missed: anyone moves the line to collection, and the NAV provisions the
+    // 6.0 outstanding at once.
     env.warp(env.now() + 3 * p.interval() + 1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &quick, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
-    assert_eq!(env.nav(&k), 20 * UNIT);
+    assert_eq!(env.nav(&k), 14 * UNIT);
 
+    let supply = env.supply(&k);
     let out = env.redeem(&k, &quick, quick_shares);
-    assert_eq!(out.assets, quick_shares, "one unit per share: the par value");
+    let quick_assets = out.assets;
+    assert!(quick_assets < quick_shares, "below par: the provision already counts");
+    assert_eq!(quick_assets, (u128::from(quick_shares) * u128::from(14 * UNIT) / u128::from(supply)) as u64);
 
-    // The collection period runs from the mark; the NAV does not move while it runs.
     env.warp(env.now() + i64::from(COLLECTION_PERIOD) + 1);
-    assert_eq!(env.nav(&k), 20 * UNIT - quick_shares);
     let council = env.council.insecure_clone();
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     env.send(ix, &council, &[]);
+    // The write-off moves nothing more, and the patient holder leaves at the same price.
     let out = env.redeem(&k, &patient, patient_shares);
-    assert!(out.assets < 5 * UNIT, "the whole 6.0 loss lands on the holder who stayed: {}", out.assets);
+    let per_share = |assets: u64, shares: u64| u128::from(assets) * 1_000_000 / u128::from(shares);
+    assert_eq!(per_share(out.assets, patient_shares), per_share(quick_assets, quick_shares), "the loss was shared the moment of the mark");
 }
 
 /// The pause blocks redemptions but not repayments: depositors cannot leave while paused, and

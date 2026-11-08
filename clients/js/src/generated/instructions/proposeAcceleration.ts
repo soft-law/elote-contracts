@@ -76,7 +76,7 @@ export type ProposeAccelerationInstruction<
         ? ReadonlyAccount<TAccountMultisig>
         : TAccountMultisig,
       TAccountPool extends string
-        ? ReadonlyAccount<TAccountPool>
+        ? WritableAccount<TAccountPool>
         : TAccountPool,
       TAccountLine extends string
         ? WritableAccount<TAccountLine>
@@ -220,7 +220,7 @@ export async function getProposeAccelerationInstructionAsync<
       isSigner: false,
       isWritable: false,
     },
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -383,7 +383,7 @@ export function getProposeAccelerationInstruction<
       isSigner: false,
       isWritable: false,
     },
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,

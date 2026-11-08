@@ -4,11 +4,6 @@
 
 use crate::state::{BPS, SECONDS_PER_YEAR};
 
-/// Net asset value: vault balance plus principal lent out and not yet repaid or written off.
-pub fn nav(vault_balance: u64, outstanding_principal: u64) -> Option<u64> {
-    vault_balance.checked_add(outstanding_principal)
-}
-
 /// Shares created for `assets` at the current `supply` and `nav`; one-to-one while `supply == 0`.
 pub fn shares_for_deposit(assets: u64, supply: u64, nav: u64) -> Option<u64> {
     if supply == 0 {
@@ -324,7 +319,6 @@ mod tests {
         assert_eq!(shares_for_deposit(u64::MAX, u64::MAX, u64::MAX), Some(u64::MAX));
         assert_eq!(assets_for_redeem(u64::MAX, u64::MAX, u64::MAX), Some(u64::MAX));
         assert_eq!(shares_for_deposit(u64::MAX, u64::MAX, 1), None, "result above u64");
-        assert_eq!(nav(u64::MAX, 1), None);
     }
 
     // -- installments ----------------------------------------------------------------------------

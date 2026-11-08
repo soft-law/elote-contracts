@@ -35,6 +35,7 @@
         },
         {
           "name": "pool",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -438,6 +439,7 @@
         },
         {
           "name": "pool",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1532,6 +1534,7 @@
       "accounts": [
         {
           "name": "pool",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1776,6 +1779,7 @@
         },
         {
           "name": "pool",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -2450,6 +2454,7 @@
         },
         {
           "name": "pool",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -3183,6 +3188,78 @@
       ]
     },
     {
+      "name": "set_provision_bps",
+      "docs": [
+        "Sets the provision the NAV takes on the lines in collection, `0..=10_000` bps of their",
+        "outstanding cost (decision 40). Council only."
+      ],
+      "discriminator": [
+        212,
+        41,
+        39,
+        107,
+        225,
+        255,
+        111,
+        94
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "provision_bps",
+          "type": "u16"
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "suspend_draws",
       "docs": [
         "Closes the draw window of an `Approved` or `Active` line now, forfeiting the undrawn",
@@ -3211,6 +3288,7 @@
         },
         {
           "name": "pool",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -3306,6 +3384,7 @@
         },
         {
           "name": "pool",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -4022,6 +4101,19 @@
         217,
         110,
         149
+      ]
+    },
+    {
+      "name": "ProvisionSet",
+      "discriminator": [
+        3,
+        57,
+        143,
+        62,
+        202,
+        98,
+        71,
+        182
       ]
     },
     {
@@ -5149,6 +5241,13 @@
           {
             "name": "interest_forgiven",
             "type": "u64"
+          },
+          {
+            "name": "impaired_principal",
+            "docs": [
+              "The pool's whole impairment after this acceleration (decision 40)."
+            ],
+            "type": "u64"
           }
         ]
       }
@@ -5345,6 +5444,13 @@
           },
           {
             "name": "interest_forgiven",
+            "type": "u64"
+          },
+          {
+            "name": "impaired_principal",
+            "docs": [
+              "The pool's whole impairment after this mark (decision 40)."
+            ],
             "type": "u64"
           }
         ]
@@ -6437,14 +6543,17 @@
           {
             "name": "impaired_principal",
             "docs": [
-              "Principal of the lines in collection, for a provision at the mark; zero, not yet used."
+              "The outstanding USDC cost of the lines in collection: the mark and the council's",
+              "acceleration add a line's cost, each recovery subtracts what it recovered, and the",
+              "write-off removes the rest as the loss (decision 40)."
             ],
             "type": "u64"
           },
           {
             "name": "provision_bps",
             "docs": [
-              "The provision on `impaired_principal`, in basis points; zero, not yet used."
+              "The provision the NAV takes on `impaired_principal`, in basis points: `init_pool` writes",
+              "`BPS` (100%), and only the council moves it (`set_provision_bps`)."
             ],
             "type": "u16"
           },
@@ -6615,6 +6724,25 @@
           {
             "name": "pool",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProvisionSet",
+      "docs": [
+        "The council moved the provision rate the NAV takes on the lines in collection."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "provision_bps",
+            "type": "u16"
           }
         ]
       }

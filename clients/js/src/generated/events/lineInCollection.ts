@@ -46,6 +46,8 @@ export type LineInCollectionEvent = {
   missed: number;
   remaining: bigint;
   interestForgiven: bigint;
+  /** The pool's whole impairment after this mark (decision 40). */
+  impairedPrincipal: bigint;
 };
 
 export type LineInCollectionEventArgs = {
@@ -54,6 +56,8 @@ export type LineInCollectionEventArgs = {
   missed: number;
   remaining: number | bigint;
   interestForgiven: number | bigint;
+  /** The pool's whole impairment after this mark (decision 40). */
+  impairedPrincipal: number | bigint;
 };
 
 /** Gets the encoder for {@link LineInCollectionEventArgs} event data. */
@@ -65,6 +69,7 @@ export function getLineInCollectionEventEncoder(): FixedSizeEncoder<LineInCollec
       ["missed", getU16Encoder()],
       ["remaining", getU64Encoder()],
       ["interestForgiven", getU64Encoder()],
+      ["impairedPrincipal", getU64Encoder()],
     ]),
     [getConstantEncoder(LINE_IN_COLLECTION_EVENT_DISCRIMINATOR)],
   );
@@ -79,6 +84,7 @@ export function getLineInCollectionEventDecoder(): FixedSizeDecoder<LineInCollec
       ["missed", getU16Decoder()],
       ["remaining", getU64Decoder()],
       ["interestForgiven", getU64Decoder()],
+      ["impairedPrincipal", getU64Decoder()],
     ]),
     [getConstantDecoder(LINE_IN_COLLECTION_EVENT_DISCRIMINATOR)],
   );

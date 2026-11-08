@@ -83,6 +83,18 @@ Signers: `council`. Council instruction.
 | `multisig` |  |  |  |
 | `pool` | yes |  |  |
 
+### `set_provision_bps(provision_bps: u16, valid_until: i64)`
+
+Sets the provision the NAV takes on the lines in collection, `0..=10_000` bps of their outstanding cost (decision 40); `init_pool` starts it at `10_000`. Council only.
+
+Signers: `council`. Council instruction.
+
+| Account | Writable | Signer | Notes |
+|---|---|---|---|
+| `council` |  | yes |  |
+| `multisig` |  |  |  |
+| `pool` | yes |  |  |
+
 ### `set_outstanding_cap(max_outstanding_principal: u64, valid_until: i64)`
 
 Sets the pool-wide cap on the USDC cost lent out. Council only.
@@ -662,8 +674,8 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `max_outstanding_principal` | `u64` | The most principal the pool lends at once, in asset units; checked at every draw. |
 | `acceleration_notice_seconds` | `u32` | Seconds from `propose_acceleration` before `accelerate_line`; at least `MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline. |
 | `cancel_grace_seconds` | `u32` | Seconds from a pagaré's payment before its borrower may cancel it alone, `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the pagarés it marks paid. |
-| `impaired_principal` | `u64` | Principal of the lines in collection, for a provision at the mark; zero, not yet used. |
-| `provision_bps` | `u16` | The provision on `impaired_principal`, in basis points; zero, not yet used. |
+| `impaired_principal` | `u64` | The outstanding USDC cost of the lines in collection: the mark and the council's acceleration add it, recoveries subtract, the write-off removes the rest (decision 40). |
+| `provision_bps` | `u16` | The provision the NAV takes on `impaired_principal`, in basis points; 10,000 at `init_pool`, council-set (`set_provision_bps`). |
 | `fx_feeder` | `pubkey` | The key that may publish the FIX within the band of `fx::within_band` from the one in force; the zero key when none (the council publishes). Set and rotated by the council. |
 | `fix_rate` | `u64` | The FIX in force: MXN per USD times `fx::FIX_SCALE`; zero before the first publication. |
 | `fix_date` | `u32` | The date Banxico determined `fix_rate`, `yyyymmdd`; never moves back. |
@@ -688,18 +700,19 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`FxFeederSet`** `{ pool: pubkey, fx_feeder: pubkey }`: The zero key means no feeder: only the council publishes.
 - **`FxRealized`** `{ pool: pubkey, line_id: u64, receipt_hash: [u8; 32], cost: u64, received: u64, delta: i64, nav_after: u64 }`: The FX result of one repayment's principal, in USDC base units: `cost` is the pool's cost of the principal repaid (at each pagaré's FIX), `received` the USDC that paid it (its centavos at the FIX of the payment, rounded up), `delta = received - cost`. Emitted by `repay` before `LineRepaid`, with the same `receipt_hash`, whenever principal is applied; the deltas add up to `Pool.fx_realized`.
 - **`LateInterestCollected`** `{ pool: pubkey, line_id: u64, amount: u64 }`: Late interest collected by a repayment of a scheduled line; it stays in the pool and raises the NAV like interest. Emitted before the `LineRepaid` of the same repayment.
-- **`LineAccelerated`** `{ pool: pubkey, line_id: u64, remaining: u64, interest_forgiven: u64 }`: The council accelerated the line after the notice: the same effect as `LineInCollection`, without missed installments.
+- **`LineAccelerated`** `{ pool: pubkey, line_id: u64, remaining: u64, interest_forgiven: u64, impaired_principal: u64 }`: The council accelerated the line after the notice: the same effect as `LineInCollection`, without missed installments.
 - **`LineApproved`** `{ pool: pubkey, line_id: u64, expediente_root: [u8; 32], terms_hash: [u8; 32], availability_end: i64 }`: The council approved exactly this expediente and these terms.
 - **`LineCancelled`** `{ pool: pubkey, line_id: u64 }`
 - **`LineDrawn`** `{ pool: pubkey, line_id: u64, draw_index: u16, amount_mxn: u64, fix_rate: u64, fix_date: u32, usdc_delivered: u64, drawn: u64, available: u64, interest_due: u64, availability_end: i64, outstanding_after: u64 }`: One tranche of `amount_mxn` centavos delivered as `usdc_delivered` at the FIX (`fix_rate`, `fix_date`), and the line after it; `outstanding_after` is the pool's cost in USDC.
 - **`LineDrawsResumed`** `{ pool: pubkey, line_id: u64, availability_end: i64 }`: Draws resumed with the window they had before the suspension.
 - **`LineDrawsSuspended`** `{ pool: pubkey, line_id: u64, available_forfeited: u64 }`: `available_forfeited` is the undrawn remainder.
-- **`LineInCollection`** `{ pool: pubkey, line_id: u64, missed: u16, remaining: u64, interest_forgiven: u64 }`: A scheduled line moved to collection and its balance accelerated. `remaining` is the principal and interest still due after the acceleration, without late interest; `interest_forgiven` is the ordinary interest of the installments not yet due at the mark, which the line no longer owes.
+- **`LineInCollection`** `{ pool: pubkey, line_id: u64, missed: u16, remaining: u64, interest_forgiven: u64, impaired_principal: u64 }`: A scheduled line moved to collection and its balance accelerated. `remaining` is the principal and interest still due after the acceleration, without late interest; `interest_forgiven` is the ordinary interest of the installments not yet due at the mark, which the line no longer owes.
 - **`LineRejected`** `{ pool: pubkey, line_id: u64 }`
 - **`LineRepaid`** `{ pool: pubkey, line_id: u64, payer: pubkey, receipt_hash: [u8; 32], usdc_received: u64, fix_rate: u64, principal_part: u64, interest_part: u64, remaining: u64, nav_after: u64 }`: A repayment: `principal_part` and `interest_part` in centavos of MXN, `usdc_received` the USDC taken at `fix_rate`, `remaining` the MXN still due. Emitted after `FxRealized`, with the same `receipt_hash`.
 - **`LineRequested`** `{ pool: pubkey, line_id: u64, borrower: pubkey, payer: pubkey, sponsor: Option<pubkey>, sponsor_role: u8, agreement_hash: [u8; 32], expediente_root: [u8; 32], pagare_template_hash: [u8; 32], terms_hash: [u8; 32], currency: u16, principal: u64, rate_bps: u16, term_end: i64, first_due_at: i64, interval_seconds: i64, installments: u16, late_bps: u16, max_missed: u8 }`: Every term `request_line` stored, with the hash of their fixed encoding. On a bullet line the schedule fields other than `late_bps` are zero; `payer` funded the request and gets its rent back.
 - **`LineWrittenOff`** `{ pool: pubkey, line_id: u64, loss: u64, loss_usdc: u64, nav_after: u64 }`: The principal left in MXN (`loss`) and its cost in USDC (`loss_usdc`), which leaves the NAV.
 - **`MaxLineBpsSet`** `{ pool: pubkey, max_line_bps: u16 }`
+- **`ProvisionSet`** `{ pool: pubkey, provision_bps: u16 }`: The provision the NAV takes on the lines in collection (decision 40).
 - **`NavUpdated`** `{ pool: pubkey, total_assets: u64, share_supply: u64 }`: The NAV and the share supply after every instruction that moves either (`deposit`, `redeem`, `repay`, `write_off`), read back after the CPIs: `price per share = total_assets / share_supply`.
 - **`OutstandingCapSet`** `{ pool: pubkey, max_outstanding_principal: u64 }`
 - **`PagareCancelled`** `{ pool: pubkey, line_id: u64, draw_index: u16, asset: pubkey, receipt_hash: [u8; 32], holder: pubkey, by_borrower: bool }`: Emitted by `cancel_pagare`, before the burn. `holder` is the key that extinguished the pagaré (the council, the procurador or the borrower); the sidecar stays as the PAGADO mark.

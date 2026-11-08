@@ -77,6 +77,7 @@ import {
   getSetFxFeederInstructionAsync,
   getSetMaxLineBpsInstructionAsync,
   getSetOutstandingCapInstructionAsync,
+  getSetProvisionBpsInstructionAsync,
   getSuspendDrawsInstructionAsync,
   getWithdrawAccelerationInstructionAsync,
   getWithdrawRequestInstructionAsync,
@@ -111,6 +112,7 @@ import {
   parseSetFxFeederInstruction,
   parseSetMaxLineBpsInstruction,
   parseSetOutstandingCapInstruction,
+  parseSetProvisionBpsInstruction,
   parseSuspendDrawsInstruction,
   parseWithdrawAccelerationInstruction,
   parseWithdrawRequestInstruction,
@@ -157,6 +159,7 @@ import {
   type ParsedSetFxFeederInstruction,
   type ParsedSetMaxLineBpsInstruction,
   type ParsedSetOutstandingCapInstruction,
+  type ParsedSetProvisionBpsInstruction,
   type ParsedSuspendDrawsInstruction,
   type ParsedWithdrawAccelerationInstruction,
   type ParsedWithdrawRequestInstruction,
@@ -179,6 +182,7 @@ import {
   type SetFxFeederAsyncInput,
   type SetMaxLineBpsAsyncInput,
   type SetOutstandingCapAsyncInput,
+  type SetProvisionBpsAsyncInput,
   type SuspendDrawsAsyncInput,
   type WithdrawAccelerationAsyncInput,
   type WithdrawRequestAsyncInput,
@@ -280,6 +284,7 @@ export enum ElotePoolEvent {
   PoolInitialized,
   PoolPaused,
   PoolResumed,
+  ProvisionSet,
   Redeemed,
   RequestWithdrawn,
 }
@@ -677,6 +682,17 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([3, 57, 143, 62, 202, 98, 71, 182]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.ProvisionSet;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([14, 29, 183, 71, 31, 165, 107, 38]),
       ),
       0,
@@ -731,6 +747,7 @@ export enum ElotePoolInstruction {
   SetFxFeeder,
   SetMaxLineBps,
   SetOutstandingCap,
+  SetProvisionBps,
   SuspendDraws,
   WithdrawAcceleration,
   WithdrawRequest,
@@ -1075,6 +1092,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([212, 41, 39, 107, 225, 255, 111, 94]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SetProvisionBps;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([126, 141, 160, 9, 245, 206, 250, 213]),
       ),
       0,
@@ -1214,6 +1242,9 @@ export type ParsedElotePoolInstruction<
   | ({
       instructionType: ElotePoolInstruction.SetOutstandingCap;
     } & ParsedSetOutstandingCapInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.SetProvisionBps;
+    } & ParsedSetProvisionBpsInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.SuspendDraws;
     } & ParsedSuspendDrawsInstruction<TProgram>)
@@ -1442,6 +1473,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseSetOutstandingCapInstruction(instruction),
       };
     }
+    case ElotePoolInstruction.SetProvisionBps: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SetProvisionBps,
+        ...parseSetProvisionBpsInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.SuspendDraws: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -1641,6 +1679,11 @@ export type ElotePoolPluginInstructions = {
     input: SetOutstandingCapAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSetOutstandingCapInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  setProvisionBps: (
+    input: SetProvisionBpsAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSetProvisionBpsInstructionAsync> &
     SelfPlanAndSendFunctions;
   suspendDraws: (
     input: SuspendDrawsAsyncInput,
@@ -1950,6 +1993,14 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getSetOutstandingCapInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          setProvisionBps: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetProvisionBpsInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),

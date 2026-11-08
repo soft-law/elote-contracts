@@ -31,7 +31,8 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 
 - **Shares that appreciate.** Accounting follows ERC-4626:
   `shares = assets * supply / NAV` on deposit, `assets = shares * NAV / supply` on redemption,
-  with `NAV = vault balance + outstanding principal`. Both legs round down, in favour of the pool.
+  with `NAV = vault balance + outstanding principal - the provision on the lines in collection`
+  (decision 40). Both legs round down, in favour of the pool.
   Interest counts when it is collected; nothing accrues.
 - **A council, not an admin.** Every privileged action — approving a line, a draw's limits, pausing,
   writing off, publishing the exchange rate — is taken by a council that is vault 0 of an autonomous
@@ -112,10 +113,10 @@ more than 15 days ahead (`ProposalTooFar`). `pause` and `init_pool` do not.
 | `suspend_draws(valid_until)` | council | closes a line's draw window now (a KYC failure, a default event); the undrawn remainder is forfeited, repayment is untouched |
 | `resume_draws(valid_until)` | council | reopens a suspended line's window to its original end; refused while an acceleration is pending |
 | `repay(max_usdc, fix_rate, fix_date, receipt_hash)` | anyone | pays up to `max_usdc`, credited in MXN at the FIX in force: late interest (which the credit must cover), then interest, then principal, never more than is due; the USDC taken is rounded up. The line becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a payment on a zero debt is refused. Takes the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at most `MAX_SIDECARS_PER_REPAY` (3) of them (`PagareAccountsMismatch` / `TooManySidecars` otherwise); writes `Pagado` on each pagaré the principal fully covers and `Abono` on the one left uncovered. An interest-only payment writes no entry. `receipt_hash` is the payer's receipt, zero meaning "to follow". Clients split a larger payment. Never paused |
-| `mark_in_collection()` | anyone | moves a scheduled line to `InCollection` once `max_missed` installments are missed, past the due date of the last of them, accelerating the balance. Never paused |
+| `mark_in_collection()` | anyone | moves a scheduled line to `InCollection` once `max_missed` installments are missed — or every remaining one, when fewer remain (decision 41) — past the due date of the last of them, accelerating the balance and provisioning the line's outstanding cost in the NAV (decision 40). Never paused |
 | `propose_acceleration(valid_until)` | council | proposes to collect a drawn line early: draws are suspended at once, and `accelerate_line` may fire after the pool's notice |
 | `withdraw_acceleration(valid_until)` | council | withdraws a pending acceleration; draws stay suspended until `resume_draws` |
-| `accelerate_line(valid_until)` | council | fires a pending acceleration once its notice has run: the line moves to collection, as `mark_in_collection`, without missed installments |
+| `accelerate_line(valid_until)` | council | fires a pending acceleration once its notice has run: the line moves to collection, as `mark_in_collection` (the provision included), without missed installments |
 | `write_off(valid_until)` | council | books a line's unpaid principal as a loss: an `Active` line after the term, or a line in collection once the pool's collection period has run from the mark and either its oldest missed due date or the term has passed. Never paused |
 | `endorse_pagare(draw_index, kind, to, endoso_hash, valid_until)` | council | endoso en procuración of a pagaré to `to` (`KIND_PROCURACION`, the only kind the pool makes): appends the entry and lends the power to extinguish it through an owner-managed `BurnDelegate` whose authority is the program address `["procurador", pagare, to]`, so the procurador can only extinguish it inside `cancel_pagare`; the asset stays with the pool. Refused when `to` is the zero key, the pool, the council, a member of it, the creator, the FIX feeder, or the line's borrower, payer or sponsor (`EndorseeInvalid`), on a written-off line, on a pagaré not outstanding, or while a procuración is in force |
 | `revoke_procuracion(draw_index, entry_hash, valid_until)` | council | revokes the procuración in force over the signed revocation's hash: appends the `Revocacion` entry and returns the burn delegate's authority to the owner; refused when none is in force |
@@ -129,6 +130,7 @@ more than 15 days ahead (`ProposalTooFar`). `pause` and `init_pool` do not.
 | `post_fix(fix_rate, fix_date, valid_until)` | the FIX feeder or the council | publishes Banxico's FIX (`fix_rate` is MXN per USD × 10⁴, `fix_date` is `yyyymmdd`), within the pool's bounds; the feeder moves within 5% a day (one to three days) and against RedStone's MXNe reference, once per Mexico City day; the council publishes the rest, dated at most five days back |
 | `set_fix_bounds(min_fix_rate, max_fix_rate, valid_until)` | council | sets the lowest and highest FIX `post_fix` accepts (zero and zero for none) |
 | `set_max_line_bps(max_line_bps, valid_until)` | council | sets the line cap, 1 to 10,000 bps of the NAV, measured at every approval and draw |
+| `set_provision_bps(provision_bps, valid_until)` | council | sets the provision the NAV takes on the lines in collection, 0 to 10,000 bps of their outstanding cost; `init_pool` starts it at 10,000 (100%) |
 | `set_outstanding_cap(max_outstanding_principal, valid_until)` | council | sets the pool-wide cap on the USDC lent out at once |
 | `set_collection_period(collection_period_seconds, valid_until)` | council | sets the seconds a line in collection waits, from its mark, before write-off; never below 30 days |
 | `set_acceleration_notice(acceleration_notice_seconds, valid_until)` | council | sets the notice between `propose_acceleration` and `accelerate_line`; at least seven days |
@@ -206,10 +208,10 @@ the order listed for each instruction.
 | `PagarePayment` | `repay` that took pagaré records, after its `PagareEntry` events | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, entries (draw_index, kind, entry_count, principal_applied; empty for an interest-only payment) |
 | `LateInterestCollected` | `repay` with late interest, before `LineRepaid` | pool, line_id, amount |
 | `LineRepaid` | `repay`, then `NavUpdated` | pool, line_id, payer, receipt_hash, usdc_received, fix_rate, principal_part, interest_part, remaining (without late interest), nav_after |
-| `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining (after the forgiveness), interest_forgiven (the ordinary interest of the installments not yet due at the mark) |
+| `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining (after the forgiveness), interest_forgiven (the ordinary interest of the installments not yet due at the mark), impaired_principal (the pool's whole impairment after the mark) |
 | `AccelerationProposed` | `propose_acceleration` | pool, line_id, due_at |
 | `AccelerationWithdrawn` | `withdraw_acceleration` | pool, line_id |
-| `LineAccelerated` | `accelerate_line` | pool, line_id, remaining, interest_forgiven |
+| `LineAccelerated` | `accelerate_line` | pool, line_id, remaining, interest_forgiven, impaired_principal |
 | `LineDrawsSuspended` | `suspend_draws` | pool, line_id, available_forfeited |
 | `LineDrawsResumed` | `resume_draws` | pool, line_id, availability_end |
 | `LineWrittenOff` | `write_off`, then `NavUpdated` | pool, line_id, loss, loss_usdc, nav_after |
@@ -222,6 +224,7 @@ the order listed for each instruction.
 | `CouncilProposed` | `propose_council` | pool, council, kind |
 | `CouncilAccepted` | `accept_council` | pool, old, new, kind |
 | `MaxLineBpsSet` | `set_max_line_bps` | pool, max_line_bps |
+| `ProvisionSet` | `set_provision_bps` | pool, provision_bps |
 | `OutstandingCapSet` | `set_outstanding_cap` | pool, max_outstanding_principal |
 | `CollectionPeriodSet` | `set_collection_period` | pool, collection_period_seconds |
 | `AccelerationNoticeSet` | `set_acceleration_notice` | pool, acceleration_notice_seconds |

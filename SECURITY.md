@@ -101,7 +101,7 @@ Squads also numbers its errors from 6000 (its `NotAMember` is 6005, the same num
 
 Documented limits, not open vulnerabilities; most are pinned by `programs/elote_pool/tests/known_limits.rs`.
 
-- **Step-function NAV at historical cost.** Interest counts when collected, a loss when written off, an FX gain or loss when principal is repaid; a redemption between a missed installment and the write-off exits before the loss. A provision at the mark is reserved in the layout (`impaired_principal`, `provision_bps`, zero) and not decided.
+- **Step-function NAV at historical cost.** Interest counts when collected, an FX gain or loss when principal is repaid. A line entering collection provisions its whole outstanding cost in the NAV at the mark (decision 40, `provision_bps` = 100% at `init_pool`, council-set), so a redemption between the mark and the write-off already prices the expected loss; a recovery reverses its share, and the write-off books what remains.
 - **Collection can be unreachable** on a short schedule (`covered + max_missed > installments`); such a line is written off after the term.
 - **Late interest is computed at the second of the repayment**, so clients pad a payment meant to settle it.
 - **Exact-second gates on a leader-set clock** can move by a few seconds.

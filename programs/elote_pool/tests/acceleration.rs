@@ -295,7 +295,7 @@ fn an_accelerated_bullet_line_owes_late_interest_from_the_mark_collected_first()
     let ev: LateInterestCollected = find_event(&meta).expect("LateInterestCollected");
     let repaid: LineRepaid = find_event(&meta).expect("LineRepaid");
     assert_eq!((ev.amount, repaid.principal_part), (late, UNIT - late), "late interest first");
-    assert_eq!(env.nav(&k), nav + late, "the late interest raises the NAV");
+    assert_eq!(env.nav(&k), nav + UNIT, "the whole payment raises the provisioned NAV: late interest in, and the recovered principal leaves the provision (decision 40)");
     assert_eq!(env.line(&k, id).late_collected, late);
 }
 

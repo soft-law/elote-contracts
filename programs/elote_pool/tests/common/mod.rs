@@ -1183,7 +1183,9 @@ impl Env {
 
     /// Net asset value as the program computes it: vault balance + outstanding principal.
     pub fn nav(&self, k: &PoolKeys) -> u64 {
-        self.token_balance(&k.vault) + self.pool(k).outstanding_principal
+        let pool = self.pool(k);
+        let provision = u64::try_from(u128::from(pool.impaired_principal) * u128::from(pool.provision_bps) / 10_000u128).unwrap();
+        self.token_balance(&k.vault) + pool.outstanding_principal - provision
     }
 
     pub fn supply(&self, k: &PoolKeys) -> u64 {

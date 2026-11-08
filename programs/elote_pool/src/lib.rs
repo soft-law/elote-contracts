@@ -262,6 +262,12 @@ pub mod elote_pool {
         instructions::pool::set_max_line_bps(ctx, max_line_bps, valid_until)
     }
 
+    /// Sets the provision the NAV takes on the lines in collection, `0..=10_000` bps of their
+    /// outstanding cost (decision 40). Council only.
+    pub fn set_provision_bps(ctx: Context<CouncilPool>, provision_bps: u16, valid_until: i64) -> Result<()> {
+        instructions::pool::set_provision_bps(ctx, provision_bps, valid_until)
+    }
+
     /// Sets the pool-wide cap on the USDC cost lent out. Council only.
     pub fn set_outstanding_cap(ctx: Context<CouncilPool>, max_outstanding_principal: u64, valid_until: i64) -> Result<()> {
         instructions::pool::set_outstanding_cap(ctx, max_outstanding_principal, valid_until)

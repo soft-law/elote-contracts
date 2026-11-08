@@ -62,7 +62,7 @@ export type MarkInCollectionInstruction<
   InstructionWithAccounts<
     [
       TAccountPool extends string
-        ? ReadonlyAccount<TAccountPool>
+        ? WritableAccount<TAccountPool>
         : TAccountPool,
       TAccountLine extends string
         ? WritableAccount<TAccountLine>
@@ -169,7 +169,7 @@ export async function getMarkInCollectionInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
@@ -290,7 +290,7 @@ export function getMarkInCollectionInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,

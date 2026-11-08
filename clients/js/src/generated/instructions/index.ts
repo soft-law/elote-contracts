@@ -36,6 +36,7 @@ export * from "./setFixBounds";
 export * from "./setFxFeeder";
 export * from "./setMaxLineBps";
 export * from "./setOutstandingCap";
+export * from "./setProvisionBps";
 export * from "./suspendDraws";
 export * from "./withdrawAcceleration";
 export * from "./withdrawRequest";
