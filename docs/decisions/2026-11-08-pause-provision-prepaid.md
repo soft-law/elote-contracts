@@ -61,3 +61,25 @@ balance and who paid (`registry::annotation_hash`), which is exactly the evidenc
 turns on. This closes the counsel question on the aval's claim, including the reviewer's variant
 (an aval whose payment only completed a pagaré the suscriptor had nearly paid): the entries state
 the split, the judge rules on it.
+
+## 42 — A pinned FIX is exempt from staleness (same day)
+
+A pool whose bounds pin the FIX (`min_fix_rate == max_fix_rate != 0`) skips the
+`MAX_FIX_AGE_DAYS` check in `approve_line` and `draw` (`Pool::fix_pinned`). The peso series on
+MEXe runs at parity by the issuer's promise (1 MEXe = 1 MXN): the pin leaves exactly one postable
+rate, so an old FIX cannot price anything differently from a fresh one, and a council re-post
+cadence — the only mainnet path, since the RedStone MXNe reference rejects parity on the feeder —
+buys nothing. Mario: a council cadence is not an option.
+
+What the staleness check really measured on a pinned pool was council liveness, and the decision
+knowingly trades that: if the council goes quiet, lending continues at par instead of stopping.
+The depeg response is governance, as at Maker and Compound in March 2023 (see
+`docs/research/2026-11-08-fix-fijado-par.md`, the opus research: verdict sound-with-conditions):
+pause → `set_fix_bounds` wider → council `post_fix` → resume. The sequence is tested
+(`unpinning_restores_staleness_and_the_council_re_prices_under_pause`): unpinning restores the
+5-day check at once, so approvals and draws stay blocked until the council re-prices. Repay takes
+any FIX age, so a re-price reaches borrowers on their next payment. Conditions carried forward:
+the bounds stay council-adjustable (they do), an off-chain monitor watches MEXe *redemption
+working* rather than a price that is 1.0 by construction, the series is capped against confirmed
+redemption capacity, and investors are told their position is in MEXe, not pesos. No layout, IDL
+or client change.

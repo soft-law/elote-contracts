@@ -618,7 +618,8 @@ impl Env {
         }
         let today = self.today();
         let pool = self.pool(k);
-        if pool.fix_date >= today && pool.fix_rate != 0 {
+        // A pool whose bounds pin the FIX takes no other rate and never goes stale: leave it be.
+        if (pool.fix_date >= today || pool.fix_pinned()) && pool.fix_rate != 0 {
             return;
         }
         let council = self.council.insecure_clone();

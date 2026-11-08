@@ -50,8 +50,9 @@ cycle: `fx_realized = 0`, `interest_collected = 200000` (0.20 MEXe), `outstandin
    `FixOffReference` — only the council path (which ignores the reference) can re-post. Options:
    (a) a council vote every ≤5 days (operationally heavy), or (b) a one-line program change:
    skip the freshness check — or the reference check — when `min_fix_rate == max_fix_rate` (a
-   pinned FIX cannot go stale in any meaningful sense). (b) is the obvious pick when the peso
-   series is scheduled; it is NOT built yet.
+   pinned FIX cannot go stale in any meaningful sense). (b) was built the same day — decision 42:
+   `Pool::fix_pinned` exempts a pinned FIX from the freshness check in `approve_line` and `draw`,
+   and unpinning via `set_fix_bounds` restores it (see `docs/research/2026-11-08-fix-fijado-par.md`).
 2. **Caps read at parity.** `max_line_bps` against a peso NAV means peso figures everywhere: a
    50% cap over a 15-peso NAV is a 7.50-peso line. Nothing to change — just remember the cap is
    measured in the series' own currency.

@@ -279,7 +279,7 @@ Signers: `borrower`, `payer`, `sponsor (optional)`.
 
 The council approves a requested line, naming its expediente root and terms hash, within 15 days of the request and within the line cap at a FIX at most five days old; a curator cannot be the borrower.
 
-The principal must be at most `max_line_bps` of the NAV now (`vault + outstanding_principal`), converted to MXN at the FIX in force (`LineTooLarge`); that FIX must be published and dated at most `fx::MAX_FIX_AGE_DAYS` (5) days before today in Mexico City, the same freshness as a draw (`FixStale`).
+The principal must be at most `max_line_bps` of the NAV now (`vault + outstanding_principal`), converted to MXN at the FIX in force (`LineTooLarge`); that FIX must be published and, unless the pool's bounds pin it (`min_fix_rate == max_fix_rate != 0`, decision 42), dated at most `fx::MAX_FIX_AGE_DAYS` (5) days before today in Mexico City, the same freshness as a draw (`FixStale`).
 
 Signers: `council`. Council instruction.
 
@@ -319,7 +319,7 @@ Signers: `borrower`.
 
 ### `draw(amount_mxn: u64, fix_rate: u64, fix_date: u32, asset_bump: u8, pagare_bump: u8, cert_fingerprint: [u8; 32], signature_method: u8)`
 
-Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain from the approved template and terms) as a frozen Core asset owned by the pool, with its `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw window has closed, on a changed or stale FIX, or above what the line, the line cap (the line's USDC drawn within `max_line_bps` of the NAV now), the vault or the pool cap allows.
+Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain from the approved template and terms) as a frozen Core asset owned by the pool, with its `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw window has closed, on a changed or stale FIX (age unchecked when the bounds pin the FIX, decision 42), or above what the line, the line cap (the line's USDC drawn within `max_line_bps` of the NAV now), the vault or the pool cap allows.
 
 The line cap is measured again in USDC at every draw: `line.usdc_drawn + usdc ≤ max_line_bps × (vault + outstanding_principal) / BPS`, with the NAV read before the tranche moves (the NAV a deposit prices at), after the vault check (`LineTooLarge`). A line approved within the cap in MXN can therefore draw less than its principal when the peso strengthens or the NAV falls.
 

@@ -444,6 +444,87 @@ fn a_fix_older_than_five_days_stops_draws() {
     env.expect_err(ix, &borrower, &[], code(PoolError::FixStale));
 }
 
+/// Decision 42: bounds with `min == max` pin the FIX — a peso series on a peso asset (MEXe),
+/// where parity is the issuer's promise, not an oracle's reading — and a pinned FIX never goes
+/// stale: approvals and draws run on it months later with no re-posting, no feeder and no
+/// council cadence. Any post off the pin is refused by the bounds, so the exemption is safe.
+#[test]
+fn a_pinned_fix_never_goes_stale() {
+    let mut env = Env::new();
+    let council = env.council.insecure_clone();
+    let asset = env.create_mint(&council.pubkey(), 6);
+    let k = env.pool_keys_for(&asset);
+    let mut p = env.init_params(BPS, COLLECTION_PERIOD);
+    p.min_fix_rate = 10_000;
+    p.max_fix_rate = 10_000;
+    let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), p);
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 10_000, env.today());
+    env.send(ix, &council, &[]);
+    let investor = env.investor(&k, 5_000 * UNIT);
+    env.deposit(&k, &investor, 5_000 * UNIT);
+    let borrower = env.borrower(&k);
+    let terms = env.line_params(300_000, 0); // MXN 3,000.00 at parity
+    let (id, _) = env.request_line_with(&k, &borrower, &terms, None);
+    env.approve_line(&k, id, &borrower.pubkey(), &terms);
+
+    // A month later, with no re-posting (the harness stops refreshing this pool): the draw and
+    // the approval of a fresh request both run on the month-old pinned FIX.
+    env.release_fix(&k);
+    env.warp(env.now() + 30 * DAY);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 100_000);
+    env.send(ix, &borrower, &[]);
+    let pagare = env.pagare(&k, id, 0);
+    assert_eq!((pagare.fix_rate, pagare.amount_mxn, pagare.usdc_delivered), (10_000, 100_000, 1_000_000_000), "MXN 1,000.00 delivered as exactly 1,000.000000 of the peso asset");
+    let (id2, _) = env.request_line_with(&k, &borrower, &terms, None);
+    env.approve_line(&k, id2, &borrower.pubkey(), &terms);
+
+    // The pin holds: any other rate is refused, so the stale exemption can never price wrong.
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 10_001, env.today());
+    env.expect_err(ix, &council, &[], code(PoolError::FixOutOfBounds));
+}
+
+/// The crisis path of a pinned peso pool (decision 42): the council pauses, widens the bounds
+/// (the pool is no longer pinned, so the month-old FIX counts as stale again), re-prices while
+/// paused, and resumes. Draws then run at the new rate only.
+#[test]
+fn unpinning_restores_staleness_and_the_council_re_prices_under_pause() {
+    let mut env = Env::new();
+    let council = env.council.insecure_clone();
+    let asset = env.create_mint(&council.pubkey(), 6);
+    let k = env.pool_keys_for(&asset);
+    let mut p = env.init_params(BPS, COLLECTION_PERIOD);
+    p.min_fix_rate = 10_000;
+    p.max_fix_rate = 10_000;
+    let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), p);
+    env.send(ix, &council, &[]);
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 10_000, env.today());
+    env.send(ix, &council, &[]);
+    let investor = env.investor(&k, 5_000 * UNIT);
+    env.deposit(&k, &investor, 5_000 * UNIT);
+    let borrower = env.borrower(&k);
+    let terms = env.line_params(300_000, 0);
+    let (id, _) = env.request_line_with(&k, &borrower, &terms, None);
+    env.approve_line(&k, id, &borrower.pubkey(), &terms);
+    env.release_fix(&k);
+    env.warp(env.now() + 30 * DAY);
+
+    // The depeg response: pause, widen the bounds, re-price, resume — all by council vote.
+    env.set_paused(&k, true);
+    let ix = env.set_fix_bounds_ix(&k, &council.pubkey(), 9_000, 10_000);
+    env.send(ix, &council, &[]);
+    // Unpinned, the month-old FIX is stale again: a draw is refused even after resume.
+    env.set_paused(&k, false);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 100_000);
+    env.expect_err(ix, &borrower, &[], code(PoolError::FixStale));
+    // The re-priced FIX goes through the widened bounds and draws run at the new rate.
+    let ix = env.post_fix_ix(&k, &council.pubkey(), 9_500, env.today());
+    env.send(ix, &council, &[]);
+    let ix = env.draw_ix_amount(&k, id, &borrower.pubkey(), 50_000);
+    env.send(ix, &borrower, &[]);
+    assert_eq!(env.pagare(&k, id, 0).fix_rate, 9_500);
+}
+
 #[test]
 fn the_pool_cap_on_outstanding_cost_holds_at_every_draw() {
     let mut env = Env::new();

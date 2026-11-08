@@ -205,8 +205,10 @@ pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_
     // The NAV is in USDC and the principal in MXN: the cap is converted at the FIX in force, as
     // fresh as a draw needs it.
     require!(pool.fix_rate != 0, PoolError::FixStale);
-    let age = fx::mexico_city_day(now).checked_sub(fx::fix_day(pool.fix_date)?).ok_or(PoolError::Overflow)?;
-    require!(age <= fx::MAX_FIX_AGE_DAYS, PoolError::FixStale);
+    if !pool.fix_pinned() {
+        let age = fx::mexico_city_day(now).checked_sub(fx::fix_day(pool.fix_date)?).ok_or(PoolError::Overflow)?;
+        require!(age <= fx::MAX_FIX_AGE_DAYS, PoolError::FixStale);
+    }
     let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
     let cap_mxn = fx::mxn_for_usdc(cap, pool.fix_rate).ok_or(PoolError::Overflow)?;
     require!(line.principal <= cap_mxn, PoolError::LineTooLarge);
@@ -590,8 +592,10 @@ pub fn draw(
     let now = Clock::get()?.unix_timestamp;
     require!(now < line.availability_end, PoolError::AvailabilityEnded);
     require!(pool.fix_rate != 0 && fix_rate == pool.fix_rate && fix_date == pool.fix_date, PoolError::FixMismatch);
-    let age = fx::mexico_city_day(now).checked_sub(fx::fix_day(pool.fix_date)?).ok_or(PoolError::Overflow)?;
-    require!(age <= fx::MAX_FIX_AGE_DAYS, PoolError::FixStale);
+    if !pool.fix_pinned() {
+        let age = fx::mexico_city_day(now).checked_sub(fx::fix_day(pool.fix_date)?).ok_or(PoolError::Overflow)?;
+        require!(age <= fx::MAX_FIX_AGE_DAYS, PoolError::FixStale);
+    }
     let last_due = line.last_due().ok_or(PoolError::Overflow)?;
     let seconds = u64::try_from(last_due.checked_sub(now).ok_or(PoolError::Overflow)?).map_err(|_| PoolError::Overflow)?;
     let interest = math::tranche_interest(amount_mxn, line.rate_bps, seconds).ok_or(PoolError::Overflow)?;

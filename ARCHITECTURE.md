@@ -436,7 +436,7 @@ stays as the PAGADO mark and the registry.
 | `SPONSOR_PROMOTER`, `SPONSOR_GUARANTOR` | 0, 1 | `state` | `sponsor_role` |
 | `COUNCIL_SQUADS`, `COUNCIL_GENERIC` | 0, 1 | `state` | `council_kind` |
 | `FIX_SCALE` | 10 000 | `fx` | FIX × 10⁴ |
-| `MAX_FIX_AGE_DAYS` | 5 | `fx` | oldest FIX an approval or a draw accepts, oldest date the council publishes |
+| `MAX_FIX_AGE_DAYS` | 5 | `fx` | oldest FIX an approval or a draw accepts (skipped when the bounds pin the FIX, `Pool::fix_pinned`, decision 42), oldest date the council publishes |
 | `MAX_FIX_JUMP_BPS_PER_DAY`, `MAX_FIX_JUMP_DAYS` | 500, 3 | `fx` | the feeder's band: 5% a day between the FIX dates, one to three days, 15% at most |
 | `MAX_REFERENCE_AGE_SECONDS` | 93 600 (26 h) | `fx` | the RedStone feed's 24-hour heartbeat plus two hours |
 | `MAX_FIX_REFERENCE_GAP_BPS` | 200 | `fx` | the feeder's FIX within 2% of the reference |
@@ -692,8 +692,9 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
 - **Checks, in order:** `valid_until`; not paused (`Paused`); `council::check`; `status ==
   Requested` (`LineStatus`); `now <= requested_at + 15 d` (`RequestExpired`); both hashes equal the
   stored ones (`ExpedienteMismatch`); the borrower is not a member of the multisig
-  (`BorrowerIsCurator`); a FIX is published (`FixStale`) and is at most `MAX_FIX_AGE_DAYS` (5) old
-  in Mexico City days (`FixStale`); `principal <= mxn_for_usdc(max_line_principal(nav), fix_rate)`,
+  (`BorrowerIsCurator`); a FIX is published (`FixStale`) and, unless the bounds pin it
+  (`fix_pinned`: `min_fix_rate == max_fix_rate != 0`, decision 42), is at most `MAX_FIX_AGE_DAYS`
+  (5) old in Mexico City days (`FixStale`); `principal <= mxn_for_usdc(max_line_principal(nav), fix_rate)`,
   the cap measured on the provisioned NAV now and converted at the FIX in force (`LineTooLarge`);
   the window end (`first_due_at`, or `term_end` on a bullet line) is after now (`TermEnded`).
 - **Writes:** `status = Approved`, `approved_at = now`, `availability_end`.
@@ -734,7 +735,8 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
 - **Checks, in order (all before any write):** not paused; status `Approved` or `Active`
   (`LineStatus`); `0 < amount_mxn <= principal − drawn` (`WrongAmount`); `now < availability_end`
   (`AvailabilityEnded`); a FIX is published and the signed `fix_rate`, `fix_date` equal the pool's
-  (`FixMismatch`); the FIX is at most 5 days old in Mexico City days (`FixStale`); on a scheduled
+  (`FixMismatch`); unless the bounds pin the FIX (`fix_pinned`, decision 42), it is at most 5 days
+  old in Mexico City days (`FixStale`); on a scheduled
   line `drawn + interest_due >= installments` after the tranche (`InvalidSchedule`); `draws < 64`
   (`TooManyDraws`); `usdc = usdc_for_mxn(amount_mxn, fix_rate) > 0` (`WrongAmount`); `usdc <=
   vault.amount` (`InsufficientLiquidity`); `usdc_drawn + usdc <= max_line_principal(nav)`, the
@@ -1092,7 +1094,9 @@ falls outside 2000–2199.
      `MAX_REFERENCE_AGE_SECONDS` (26 h) old (`FxReferenceStale`) and the FIX within
      `MAX_FIX_REFERENCE_GAP_BPS` (2%) of it (`FixOffReference`).
 - **Both:** `min_fix_rate <= fix_rate <= max_fix_rate` unless both bounds are zero
-  (`FixOutOfBounds`).
+  (`FixOutOfBounds`). Bounds with `min == max != 0` pin the FIX: exactly one rate is postable, and
+  a pinned FIX is exempt from the staleness check in `approve_line` and `draw` (decision 42) — a
+  peso series at parity needs no re-post cadence. Unpinning via `set_fix_bounds` restores it.
 - **Writes:** `fix_rate`, `fix_date`, `fix_posted_at = now`.
 - **Events:** `FixPosted { fix_rate, fix_date, previous_rate, by, slot, posted_at, reference_rate,
   reference_at }`; the reference is recorded for both posters, zero when it was missing or, for the
@@ -1112,8 +1116,8 @@ within the band of the days elapsed (at most three).
 
 | instruction | rule |
 |---|---|
-| `approve_line` | a FIX is published and at most 5 days old (`FixStale`); the cap `max_line_principal(nav)` (USDC) is converted to MXN with `mxn_for_usdc` at it |
-| `draw` | the borrower signs `fix_rate` and `fix_date`; both equal the pool's (`FixMismatch`); `mexico_city_day(now) − fix_day(fix_date) <= 5` (`FixStale`) |
+| `approve_line` | a FIX is published and at most 5 days old (`FixStale`) — age unchecked when the bounds pin the FIX (`fix_pinned`, decision 42); the cap `max_line_principal(nav)` (USDC) is converted to MXN with `mxn_for_usdc` at it |
+| `draw` | the borrower signs `fix_rate` and `fix_date`; both equal the pool's (`FixMismatch`); `mexico_city_day(now) − fix_day(fix_date) <= 5` (`FixStale`), unchecked when the bounds pin the FIX (`fix_pinned`, decision 42) |
 | `repay` | the payer signs `fix_rate` and `fix_date`; both equal the pool's (`FixMismatch`); no age limit: a payment is never refused for an old FIX |
 
 A FIX published between the moment a client builds a draw or a repayment and the moment it lands

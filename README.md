@@ -108,7 +108,7 @@ more than 15 days ahead (`ProposalTooFar`). `init_pool` does not.
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit meets the minimum and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `request_line(line_id, terms)` | borrower, payer, sponsor if named | the borrower requests line `line_id` (the pool's next) on `terms`, in centavos of MXN; stored as `Requested` with the terms hash; a separate payer funds the account; moves no money; refused while paused |
-| `approve_line(expediente_root, terms_hash, valid_until)` | council | approves a requested line, naming its expediente root and terms hash, within 15 days of the request and within the line cap (its principal in MXN against the NAV) at a FIX at most five days old; the borrower is neither the council nor a member of it |
+| `approve_line(expediente_root, terms_hash, valid_until)` | council | approves a requested line, naming its expediente root and terms hash, within 15 days of the request and within the line cap (its principal in MXN against the NAV) at a FIX at most five days old (age unchecked when the bounds pin the FIX, `min == max`); the borrower is neither the council nor a member of it |
 | `reject_line(valid_until)` | council | rejects a requested line; the rent returns to the payer |
 | `withdraw_request()` | borrower | withdraws a requested line, expired or not; the rent returns to the payer |
 | `cancel_line(valid_until)` | council | clears an approved commitment nobody drew (`Cancelled`, terminal); refused once anything was drawn |
@@ -133,7 +133,7 @@ more than 15 days ahead (`ProposalTooFar`). `init_pool` does not.
 | `propose_council(new_council, kind, valid_until)` / `accept_council(valid_until)` | council / the proposed council | hands the pool to a new council in two steps (`kind` 0, a Squads vault, the only kind taken; the zero key withdraws the proposal), each after the multisig check |
 | `set_fx_feeder(fx_feeder, valid_until)` | council | names the key that publishes the FIX within the daily band (the zero key for none; then only the council publishes) |
 | `post_fix(fix_rate, fix_date, valid_until)` | the FIX feeder or the council | publishes Banxico's FIX (`fix_rate` is MXN per USD × 10⁴, `fix_date` is `yyyymmdd`), within the pool's bounds; the feeder moves within 5% a day (one to three days) and against RedStone's MXNe reference, once per Mexico City day; the council publishes the rest, dated at most five days back |
-| `set_fix_bounds(min_fix_rate, max_fix_rate, valid_until)` | council | sets the lowest and highest FIX `post_fix` accepts (zero and zero for none) |
+| `set_fix_bounds(min_fix_rate, max_fix_rate, valid_until)` | council | sets the lowest and highest FIX `post_fix` accepts (zero and zero for none); `min == max` pins the FIX, which then never goes stale for approvals and draws — the parity recipe of a peso series |
 | `set_max_line_bps(max_line_bps, valid_until)` | council | sets the line cap, 1 to 10,000 bps of the NAV, measured at every approval and draw |
 | `set_provision_bps(provision_bps, valid_until)` | council | sets the provision the NAV takes on the lines in collection, 0 to 10,000 bps of their outstanding cost; `init_pool` starts it at 10,000 (100%) |
 | `set_outstanding_cap(max_outstanding_principal, valid_until)` | council | sets the pool-wide cap on the USDC lent out at once |

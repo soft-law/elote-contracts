@@ -147,6 +147,25 @@ npx tsx scripts/council-propose.ts --cluster devnet --pool <pool> --op set-fx-fe
 **FIX bounds:** `npx tsx scripts/council-propose.ts --cluster devnet --pool <pool> --op set-fix-bounds --min 15.0000 --max 25.0000`
 (`--min 0 --max 0` for none).
 
+**A pinned FIX (peso series at parity).** Bounds with `min == max` (e.g. `--min 1.0000 --max
+1.0000` on a MEXe pool) pin the FIX: `post_fix` accepts exactly that rate, and approvals and draws
+skip the 5-day staleness check (decision 42) — no re-post cadence, no feeder, no reference. Post
+parity once at creation and leave it. What to watch instead of a price (which is 1.0 by
+construction): that MEXe **redemption works** (a periodic small sandbox/mainnet redemption or the
+issuer's attestations) and the mint's authority/freeze events. If redemption gates or the peg is
+in doubt, run the depeg response below within 24 hours.
+
+**Depeg response on a pinned pool** (tested:
+`unpinning_restores_staleness_and_the_council_re_prices_under_pause`):
+
+1. `pause` by council vote — deposits, redemptions, requests, approvals and draws stop; repay
+   never stops.
+2. `set_fix_bounds` to a working range. Unpinned, the old FIX is stale again at once, so
+   approvals and draws stay blocked even after resume until step 3.
+3. The council publishes the re-priced FIX (within the new bounds; the reference is not enforced
+   on the council path).
+4. `resume`. Repayments made in the interim were credited at the FIX in force at each payment.
+
 ## 3. Line lifecycle
 
 | Status | Reached by | Leaves by |

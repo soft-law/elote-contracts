@@ -213,6 +213,13 @@ impl Pool {
     /// at par. Deposits are priced here (decision 40b, Maple's dual price): whoever enters while a
     /// line is impaired buys that book at par, so a later recovery hands the entrant nothing and
     /// the sandwich — flash or patient — nets zero or less, while deposits are never gated.
+    /// Whether the FIX is pinned by the bounds: `min == max != 0` leaves exactly one postable
+    /// rate, so the rate cannot drift and age means nothing (decision 42). A pinned FIX is
+    /// exempt from the `MAX_FIX_AGE_DAYS` staleness check in `approve_line` and `draw`.
+    pub fn fix_pinned(&self) -> bool {
+        self.min_fix_rate != 0 && self.min_fix_rate == self.max_fix_rate
+    }
+
     pub fn entry_nav(&self, vault_amount: u64) -> Option<u64> {
         vault_amount.checked_add(self.outstanding_principal)
     }
