@@ -208,7 +208,7 @@ Signers: `council`. Council instruction.
 
 ### `deposit(assets: u64, min_shares_out: u64)`
 
-The depositor pays `assets` for shares at the current NAV, at least `min_shares_out`; the first deposit must meet the minimum and locks `DEAD_SHARES`. Refused while paused.
+The depositor pays `assets` for shares at the **unprovisioned** NAV (`vault + outstanding_principal`, any impaired book at par — decision 40b, the dual price), at least `min_shares_out`; the first deposit must meet the minimum and locks `DEAD_SHARES`. Refused while paused.
 
 Signers: `depositor`.
 
@@ -227,7 +227,7 @@ Signers: `depositor`.
 
 ### `redeem(shares: u64, min_assets_out: u64)`
 
-The holder burns `shares` for assets at the current NAV, at least `min_assets_out`, up to the vault's balance. Refused while paused.
+The holder burns `shares` for assets at the **provisioned** NAV, at least `min_assets_out`, up to the vault's balance. Refused while paused.
 
 Signers: `holder`.
 
@@ -810,6 +810,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6073 | `FixAlreadyPostedToday` | A FIX was already published today in Mexico City; the feeder publishes once a day |
 | 6074 | `PagareAlreadyDelivered` | This pagaré was already delivered |
 | 6075 | `DeliveryHeld` | Retired: no court act gates the delivery (decision 38-g) |
+| 6076 | `PoolImpaired` | Retired: deposits price at the unprovisioned NAV instead of waiting (decision 40b) |
 
 ## Compute
 

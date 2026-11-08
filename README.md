@@ -31,8 +31,11 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 
 - **Shares that appreciate.** Accounting follows ERC-4626:
   `shares = assets * supply / NAV` on deposit, `assets = shares * NAV / supply` on redemption,
-  with `NAV = vault balance + outstanding principal - the provision on the lines in collection`
-  (decision 40). Both legs round down, in favour of the pool.
+  with a dual price (decisions 40 and 40b, as Maple v2): a **deposit** is priced at the NAV with
+  no provision (`vault + outstanding principal`, any impaired book at par, so a recovery hands an
+  entrant nothing), and a **redemption** at the provisioned NAV
+  (`vault + outstanding principal - impaired cost × provision_bps`). Both legs round down, in
+  favour of the pool. A front end shows both prices.
   Interest counts when it is collected; nothing accrues.
 - **A council, not an admin.** Every privileged action — approving a line, a draw's limits, pausing,
   writing off, publishing the exchange rate — is taken by a council that is vault 0 of an autonomous

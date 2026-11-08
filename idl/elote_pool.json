@@ -4674,7 +4674,7 @@
     {
       "code": 6076,
       "name": "PoolImpaired",
-      "msg": "Deposits wait while lines in collection are provisioned; redemptions stay open"
+      "msg": "Retired: deposits price at the unprovisioned NAV instead of waiting (decision 40b)"
     }
   ],
   "types": [
