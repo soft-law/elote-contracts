@@ -292,7 +292,7 @@ tests. `programs/elote_pool/tests/` holds:
 
 | Cluster | Program id | Upgrade authority | Deployed from | Verified |
 |---|---|---|---|---|
-| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) | `main` @ `d6b9705`, 2026-11-08 | hash `7dd44fcf6ab3d8578e4858786306f03d4deac40729ed81cebc7eafbc8d62980e` matches the `--features devnet --arch v0 --tools-version v1.54` build of that commit |
+| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) | `main` @ `d8d94a9`, 2026-11-08 | hash `30e36d3720fa9ab7a77311990a362e9190bd41110cf5d0b534a70c15aa571fca` matches the `--features devnet --arch v0 --tools-version v1.54` build of that commit |
 | mainnet-beta | not deployed | | | |
 
 The devnet council is vault 0 (`6s6aBtkG6Wm9N6Gx1igKnc3Q3fcJt2r1WtyyLSQrnS6x`) of the Squads v4
