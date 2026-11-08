@@ -51,3 +51,13 @@ gated. What an entrant does share pro rata is ordinary income (interest, late in
 holder. The front end must show both prices. Residuals, documented: redeeming before a
 foreseeable mark (inherent to objective marking) and the cash-basis interest jumps (minor at
 pilot size). `PoolImpaired` retired.
+
+## 38-f, clarified (same day)
+
+The aval who settles a título receives it alive, but the pool asserts nothing about what the aval
+may then collect from the suscriptor: at most what it paid, and a judge decides (LGTOC 115). The
+program's whole role is to record the payments — every entry already commits the amount, the
+balance and who paid (`registry::annotation_hash`), which is exactly the evidence that question
+turns on. This closes the counsel question on the aval's claim, including the reviewer's variant
+(an aval whose payment only completed a pagaré the suscriptor had nearly paid): the entries state
+the split, the judge rules on it.

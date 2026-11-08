@@ -987,8 +987,9 @@ fn the_council_annuls_an_outstanding_titulo_by_annotation_alone() {
 
 /// The aval who settles the título receives it alive (LGTOC 115, decision 38-f): the covered
 /// pagaré gets a `PagadoAval` entry and the `PAID_BY_AVAL` flag, and the delivery goes to the
-/// sponsor — the borrower is refused as recipient — who can then collect the whole sum from the
-/// suscriptor with the título in hand, outside the program.
+/// sponsor — the borrower is refused as recipient. What the aval then collects from the
+/// suscriptor is a judge's call; the registry's entries state who paid what, and that is all the
+/// pool asserts.
 #[test]
 fn the_aval_who_settles_receives_the_live_titulo() {
     use elote_pool::state::{KIND_PAGADO_AVAL, PAGARE_FLAG_PAID_BY_AVAL, SPONSOR_GUARANTOR};

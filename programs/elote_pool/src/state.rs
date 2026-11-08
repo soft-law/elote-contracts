@@ -369,8 +369,9 @@ pub const PAGARE_FLAG_PROCURACION: u8 = 1 << 1;
 /// `Pagare::flags` bit: the paid título was delivered (`deliver_pagare`); terminal.
 pub const PAGARE_FLAG_DELIVERED: u8 = 1 << 2;
 /// `Pagare::flags` bit: the aval (`CreditLine.sponsor` with `SPONSOR_GUARANTOR`) made the payment
-/// that covered the título, so the delivery goes to the aval, who collects from the suscriptor
-/// with the live título (LGTOC 115).
+/// that covered the título, so the delivery goes to the aval, who holds it alive. What the aval
+/// may collect from the suscriptor — at most what it paid — is a judge's call (LGTOC 115): the
+/// pool only records the payments, and each entry states who paid what.
 pub const PAGARE_FLAG_PAID_BY_AVAL: u8 = 1 << 3;
 // `Pagare::flags` bit 4 was briefly a judicial hold, retired with decision 38-g (the judicial
 // stage runs off chain); never reuse it.
