@@ -1,6 +1,6 @@
 // Endorses a pagaré en procuración, or revokes the procuración in force. The pool stays the owner;
-// the procurador gets the power to collect and to extinguish the title through the program, which
-// approves the asset's burn delegate to the program address ["procurador", pagare, procurador].
+// the procurador of record collects through repay, like any payer, and litigates with the
+// registry's entry; no power over the asset is lent (decision 38).
 //
 //   npx tsx scripts/endorse-pagare.ts --cluster local|devnet --pool <address> --line-id <n>
 //        --draw-index <n> ([--procurador <address>] [--endoso-hash <64 hex>] | --revoke [--revocation-hash <64 hex>])

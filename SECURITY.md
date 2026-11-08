@@ -28,7 +28,7 @@ Never test with an asset that has real value, not even on a "test mainnet-beta".
 | Role | How it is identified | What it can do |
 |---|---|---|
 | Council | `Pool.council`: vault 0 of the Squads v4 multisig `Pool.multisig`. Every council instruction re-checks the multisig account (owner = Squads, vault 0 at the stored canonical bump, no config authority, at most ten members, threshold greater than half the voting members) and refuses a decision past its `valid_until` or dated more than 15 days ahead | Approve or reject line requests; suspend and resume draws; cancel an undrawn line; propose, withdraw and fire an acceleration; write off; endorse a pagaré en procuración, revoke it, annotate court acts and receipts, and annul a título issued in error; publish the FIX (any move, the first one, same-day corrections, dated at most five days back); name the FIX feeder; set the FIX bounds, the line cap, the outstanding cap, the acceleration notice, the collection period and the provision; pause and resume the pool; propose a new council |
-| Council members | The members of `Pool.multisig` | Each one alone can `pause` the pool (voter or not); together, through Squads votes, they act as the council |
+| Council members | The members of `Pool.multisig` | Nothing alone (decision 39); together, through Squads votes, they act as the council |
 | FIX feeder | `Pool.fx_feeder`, set by the council (the zero key for none) | `post_fix` for a later date within 5% a day of the FIX in force (one to three days, so at most 15%) and within the pool's FIX bounds, once per Mexico City day; nothing else |
 | Creator | `Pool.creator`, the payer of `init_pool` and a seed of the pool's address | Nothing after `init_pool` |
 | Borrower | `CreditLine.borrower`, the signer of `request_line` | Request a line, withdraw its request, draw tranches alone at the FIX it signs while the window is open; a paid pagaré is delivered to it (`deliver_pagare`, callable by anyone), and as the delivered título's owner it may burn the asset |
@@ -94,7 +94,7 @@ Squads also numbers its errors from 6000 (its `NotAMember` is 6005, the same num
 |---|---|---|
 | Council majority compromised | Lines to controlled wallets up to the caps; a pause or a write-off | Majority threshold checked on chain, at most ten members, caps, `valid_until`; KYC of curators off chain |
 | Lost keys in a 2-of-2 council | The council cannot act until a member is replaced, which itself needs both | Add a third curator (the first council is 3 members) |
-| Pause with no exit | While paused, depositors cannot redeem and borrowers cannot draw; repayments still arrive | Any member can pause, only the council resumes; written procedure in the runbook |
+| Pause with no exit | While paused, depositors cannot redeem and borrowers cannot draw; repayments still arrive | Both the pause and the resume take a council vote (decision 39); written procedure in the runbook |
 | Single upgrade key | The program can be replaced by one key | Squads multisig as upgrade authority; verified builds |
 
 ## Known risks by design

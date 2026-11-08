@@ -1,6 +1,6 @@
 // Pays on a line: late interest, then interest, then principal, never more than is due. Anyone may
 // pay; the payer here is the borrower unless --payer-keypair names another wallet. A payment that
-// would touch more pagaré records than one `repay` can carry is split into several (at most five
+// would touch more pagaré records than one `repay` can carry is split into several (at most three
 // records each), so a large payoff may take more than one transaction.
 //
 //   npx tsx scripts/repay.ts --cluster local|devnet --pool <address> --line-id <n>

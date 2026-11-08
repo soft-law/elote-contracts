@@ -122,7 +122,7 @@ more than 15 days ahead (`ProposalTooFar`). `pause` and `init_pool` do not.
 | `accelerate_line(valid_until)` | council | fires a pending acceleration once its notice has run: the line moves to collection, as `mark_in_collection` (the provision included), without missed installments |
 | `write_off(valid_until)` | council | books a line's unpaid principal as a loss: an `Active` line after the term, or a line in collection once the pool's collection period has run from the mark and either its oldest missed due date or the term has passed. Never paused |
 | `endorse_pagare(draw_index, kind, to, endoso_hash, valid_until)` | council | endoso en procuración of a pagaré to `to` (`KIND_PROCURACION`, the only kind the pool makes): appends the entry and names the procurador of record, who collects through `repay` and litigates with the entry; no power over the asset is lent (decision 38) and the asset stays with the pool. Refused when `to` is the zero key, the pool, the council, a member of it, the creator, the FIX feeder, or the line's borrower, payer or sponsor (`EndorseeInvalid`), on a written-off line, on a pagaré not outstanding, or while a procuración is in force |
-| `revoke_procuracion(draw_index, entry_hash, valid_until)` | council | revokes the procuración in force over the signed revocation's hash: appends the `Revocacion` entry and returns the burn delegate's authority to the owner; refused when none is in force |
+| `revoke_procuracion(draw_index, entry_hash, valid_until)` | council | revokes the procuración in force over the signed revocation's hash: appends the `Revocacion` entry; there is no power over the asset to take back (decision 38); refused when none is in force |
 | `court_annotation(draw_index, kind, document_hash, valid_until)` | council | records a court's act on a pagaré as an entry of its registry and moves nothing else — the judicial stage of a collection runs off chain, after the portfolio is sold or written off (decision 38-g); refused once the título was delivered |
 | `annotate_payment(draw_index, entry_count, receipt_hash, valid_until)` | council | attaches the real receipt to a payment entry of a pagaré's registry (a `Recibo` entry) when the payer's hash was zero or wrong; allowed whatever the pagaré's status; also replaces the provisional `receipt_hash` on the record while it carries the PAGADO mark and is not yet burnt |
 | `deliver_pagare(draw_index)` | anyone | delivers a paid título (decision 38, LGTOC 129-130): thaws the asset, renounces the `PermanentFreezeDelegate` to `None` (terminal: nobody can ever freeze it again) and transfers it to the line's borrower — or to the aval who settled it (LGTOC 115) — never to the sender; appends the `Entrega` entry and sets the `DELIVERED` flag. Refused before the payment (`PagareNotCovered`) or twice (`PagareAlreadyDelivered`). The client sends it in the repayment's own transaction; a missed one can be sent any time. Never paused |
@@ -321,7 +321,7 @@ The two hashes match when the deployed program was built from this commit with t
 [solana-verify](https://github.com/Ellipsis-Labs/solana-verifiable-build)'s own `build` runs in a
 Docker container whose platform-tools must match (`solana-verify build --library-name elote_pool
 -- --features devnet`); until the container pins v1.54 and the v0 arch, the local build above is
-the reference. No deployment has been verified yet; the first one that is will be recorded here.
+the reference. The devnet deployment in the table above is verified this way; mainnet will be too.
 
 ### Releasing the client
 
@@ -398,7 +398,7 @@ and runs `approve_line` through Squads with `valid_until` a day ahead.
 feeder with `--feeder-keypair`.
 
 `scripts/council-propose.ts --pool <address> --op <op>` runs one council decision on the pool's
-settings through Squads: `set-fx-feeder --address`, `set-max-line-bps
+settings through Squads: `set-fx-feeder --address`, `set-fix-bounds`, `set-max-line-bps
 --bps`, `set-outstanding-cap --usdc`, `reject-line --line-id`, `resume`.
 
 `scripts/draw.ts --pool <address> --line-id <n> --borrower-keypair <path> --amount <MXN>` draws one

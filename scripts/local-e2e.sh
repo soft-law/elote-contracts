@@ -5,8 +5,8 @@
 # with repay.ts (split into parts of at most three pagaré records), the council's settings and FIX,
 # the delivery of every paid pagaré and the owner's burn. A third line covers
 # endorse-pagare.ts (an endoso en procuración to a key made for the case, a revocation) and the
-# the procuración, whose collection is the repayment itself (decision 38);
-# the Rust suite covers it.
+# procuración whose collection is the repayment itself (decision 38); the Rust suite covers the
+# rest.
 #
 #   scripts/local-e2e.sh            (after `NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet`)
 #

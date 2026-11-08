@@ -410,7 +410,7 @@ Signers: `council`. Council instruction.
 
 ### `propose_acceleration(valid_until: i64)`
 
-Proposes to collect a drawn line early: draws are suspended at once and `accelerate_line` may fire after the pool'"'"'s notice. Council only.
+Proposes to collect a drawn line early: draws are suspended at once and `accelerate_line` may fire after the pool's notice. Council only.
 
 Signers: `council`. Council instruction.
 
@@ -837,7 +837,7 @@ Measured by `programs/elote_pool/tests/compute.rs` (the program alone) and `test
 | mark_in_collection at 120 installments | 36729 |
 | mark_in_collection at 120 installments, 3 missed | 13712 |
 | mark_in_collection at 18 installments | 16719 |
-| pause by a member | 9492 |
+| pause by the council | 9492 |
 | post_fix, by the council | 12966 |
 | post_fix, by the feeder | 11794 |
 | post_fix, by the feeder against the reference | 12081 |
