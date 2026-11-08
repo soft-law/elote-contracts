@@ -461,7 +461,7 @@ The localnet `.so` from step 1 is the e2e's and is never deployed.
 
 | Item | Address | Notes |
 |---|---|---|
-| Program | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `main` @ `ce0b1b2`, 2026-11-08; verified hash `d2b24a8e51648300d747fba7c9308713dd2fe5768bc6a4a8ca1c679bc37ab61a` against the `--features devnet --arch v0 --tools-version v1.54` build |
+| Program | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `main` @ `eaf0b12`, 2026-11-08; verified hash `ecef48b4b03b3e4c5aa0d8eb486060708f3751708fe5cd6c1d0e6e0099389551` against the `--features devnet --arch v0 --tools-version v1.54` build |
 | Upgrade authority | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` | `~/.config/solana/id.json`; a single hot wallet, test only. Squads and `anchor idl init` before mainnet |
 | Council multisig | `C3sa3p6WRkEULZbVmYGDB3i6YaoDAWJXM9euUPJg8Vap` | Squads v4, 2 of 3, created with `scripts/devnet-multisig.ts` |
 | Council (vault 0) | `6s6aBtkG6Wm9N6Gx1igKnc3Q3fcJt2r1WtyyLSQrnS6x` | |
