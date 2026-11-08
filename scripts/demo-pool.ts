@@ -12,6 +12,8 @@
 //                     devnet USDC and the Etherfuse sandbox mints); the wallets are funded by
 //                     transfer from the admin's balance instead of a fresh mint, so the admin must
 //                     hold enough of it (the faucet)
+// --fix               the FIX to publish, MXN per USD with up to four decimals (default 18.3740;
+//                     1.0000 runs a peso series on a peso asset like MEXe: every conversion is 1:1)
 // --scale             divide every demo amount by this (default 1, at most 1000, which fits a
 //                     16-USDC faucet balance: deposits of 10 and 5, a line of MXN 60)
 //                     NOTE: the pool address is ["pool", creator, asset_mint], so one admin key
@@ -68,6 +70,7 @@ import {
   mexicoCityDate,
   usdcCeilForMxn,
   usdcForMxn,
+  parseFix,
 } from "../clients/js/src/index.ts";
 import {
   ASSET,
@@ -92,7 +95,7 @@ import {
 import { approveLine, councilExecute, loadCouncil } from "./lib/council.ts";
 import { ataOf, repayInParts } from "./lib/pool.ts";
 
-checkFlags(["cluster", "multisig", "council-keypairs", "asset-mint", "scale", "agreement-hash", "sponsor", "schedule", "interval-seconds", "max-line-bps", "yes"]);
+checkFlags(["cluster", "multisig", "council-keypairs", "asset-mint", "fix", "scale", "agreement-hash", "sponsor", "schedule", "interval-seconds", "max-line-bps", "yes"]);
 const c = cluster();
 const withSponsor = flag("sponsor");
 const withSchedule = flag("schedule");
@@ -228,8 +231,8 @@ console.log(
 
 // The council publishes the first FIX; draws and repayments are converted at it.
 const council = await loadCouncil(c, multisig);
-const FIX = 183_740n; // 18.3740 MXN per USD, a demo figure
-await councilExecute(c, council, `post_fix 18.3740 for ${mexicoCityDate(await chainNow(c))}`, [
+const FIX = arg("fix") !== undefined ? parseFix(arg("fix")!) : 183_740n; // MXN per USD; 18.3740 unless --fix
+await councilExecute(c, council, `post_fix ${Number(FIX) / 10_000} for ${mexicoCityDate(await chainNow(c))}`, [
   await getPostFixInstructionAsync({
     poster: council.signer,
     multisig,
