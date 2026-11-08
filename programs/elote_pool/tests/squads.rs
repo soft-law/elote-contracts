@@ -166,7 +166,7 @@ fn the_council_approves_a_line_through_squads() {
 }
 
 #[test]
-fn the_council_endorses_and_cancels_pagares_through_squads() {
+fn the_council_endorses_and_annuls_pagares_through_squads() {
     let mut env = squads_env();
     let (k, borrower, id, p) = pool_with_line(&mut env);
     env.approve_line(&k, id, &borrower.pubkey(), &p);

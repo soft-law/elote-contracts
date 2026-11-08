@@ -21,7 +21,7 @@ The v1 program was audited on 2026-11-01 and re-audited on 2026-11-02 (`tests/au
 
 ## Testing assets
 
-Never test with an asset that has real value, not even on a "test mainnet-beta". The devnet allow-list holds only sandbox and faucet mints (Etherfuse sandbox MEXe `MEXeDZ8U…` and USDC `4D4r1KuS…`, Circle's devnet USDC `4zMMC9sr…`); the `localnet` feature (tests and the local e2e) accepts any mint and is never deployed.
+Never test with an asset that has real value, not even on a "test mainnet-beta". The devnet allow-list holds only sandbox and faucet mints (Etherfuse sandbox MEXe `MEXeDZ8U…` and USDC `BXTou3…`, Circle's devnet USDC `4zMMC9sr…`; the sandbox identifiers come from Etherfuse's `GET /supported_assets` and can change — re-check before a redeploy); the `localnet` feature (tests and the local e2e) accepts any mint and is never deployed.
 
 ## Roles and permissions
 
@@ -86,7 +86,7 @@ Pause blocks `draw`, `deposit`, `request_line`, `approve_line` and `redeem`. `re
 
 ## Errors from two programs
 
-Squads also numbers its errors from 6000 (its `NotAMember` is 6005, the same number as `CouncilInvalid`). Inside a Squads execution an error code alone is ambiguous: the council tooling and the web decode an error by the program that raised it, read from the invoke stack in the logs (`scripts/lib/cli.ts`).
+Squads also numbers its errors from 6000 (its `NotAMember` is 6005, the same number as `CouncilTooLarge`). Inside a Squads execution an error code alone is ambiguous: the council tooling and the web decode an error by the program that raised it, read from the invoke stack in the logs (`scripts/lib/cli.ts`).
 
 ## Centralization risks
 

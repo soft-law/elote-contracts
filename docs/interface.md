@@ -9,7 +9,7 @@ Conventions:
 - Amounts on a line and a pagaré are **centavos of MXN** (`CreditLine.currency = 484`); the vault, deposits, redemptions and repayments are **USDC base units** (6 decimals). Conversions use the FIX (`Pool.fix_rate`, MXN per USD × 10^4).
 - **Late payment has no grace period** (decision 36): late interest runs from the first second past a due date (or `term_end` on a bullet line), `mark_in_collection` is open a second after the due date of the `max_missed`-th missed installment (`max_missed` at least 3), and `write_off` counts from the due dates and the term themselves. `Pool.grace_period_seconds` is reserved and always zero.
 - Every instruction that emits events takes `event_authority` and `program` (Anchor `#[event_cpi]`); they are not listed below.
-- Error codes start at 6000 in the order of `errors.rs`. **Squads also numbers its errors from 6000** (its `NotAMember` is 6005, the same number as `CouncilInvalid`): decode an error by the program that raised it (the invoke stack in the logs), never by number alone. `scripts/lib/cli.ts` does this.
+- Error codes start at 6000 in the order of `errors.rs`. **Squads also numbers its errors from 6000** (its `NotAMember` is 6005, the same number as `CouncilTooLarge`): decode an error by the program that raised it (the invoke stack in the logs), never by number alone. `scripts/lib/cli.ts` does this.
 
 ## Pool and council
 
@@ -818,39 +818,40 @@ Measured by `programs/elote_pool/tests/compute.rs` (the program alone) and `test
 
 | Case | CU |
 |---|---|
-| accelerate_line at 120 installments, all due | 49255 |
-| annotate_payment at 120 installments | 20368 |
-| approve_line (with the multisig check) | 15271 |
-| approve_line through Squads | 41411 |
-| deliver_pagare at 120 installments | 67653 |
-| deliver_pagare after a procuración | 67559 |
-| burn_pagare | 30568 |
-| court_annotation at 120 installments | 17690 |
-| draw, first tranche at 120 installments | 82336 |
-| draw, second tranche at 120 installments | 82510 |
-| draw, tranche 10 at 120 installments | 82523 |
-| endorse_pagare (procuracion, plugin added) at 120 installments | 38407 |
-| endorse_pagare (procuracion, plugin approved) at 120 installments | 44992 |
-| endorse_pagare through Squads | 70140 |
-| init_pool, classic asset and permissioned shares | 38173 |
-| init_pool, classic asset and plain shares | 38639 |
-| mark_in_collection at 120 installments | 36729 |
-| mark_in_collection at 120 installments, 3 missed | 13712 |
-| mark_in_collection at 18 installments | 16719 |
-| pause by the council | 9492 |
-| post_fix, by the council | 12966 |
-| post_fix, by the feeder | 11794 |
-| post_fix, by the feeder against the reference | 12081 |
-| propose_acceleration | 14587 |
-| propose_council through Squads | 34972 |
-| repay after the mark at 120 installments | 58047 |
-| repay at 120 installments | 68421 |
-| repay at 18 installments | 39537 |
-| repay covering three sidecars at 120 installments, all missed | 90003 |
-| request_line at 120 installments | 22390 |
-| resume_draws | 13892 |
-| revoke_procuracion at 120 installments | 40092 |
-| suspend_draws | 14577 |
-| write_off after the mark at 120 installments | 55350 |
-| write_off at 120 installments | 55348 |
-| write_off at 18 installments | 26584 |
+| accelerate_line at 120 installments, all due | 51344 |
+| annotate_payment at 120 installments | 20061 |
+| annul_pagare through Squads | 46219 |
+| approve_line (with the multisig check) | 15400 |
+| approve_line through Squads | 41477 |
+| burn_pagare | 31016 |
+| court_annotation at 120 installments | 17380 |
+| deliver_pagare after a procuración | 67558 |
+| deliver_pagare at 120 installments | 67652 |
+| draw, first tranche at 120 installments | 82531 |
+| draw, second tranche at 120 installments | 82705 |
+| draw, tranche 10 at 120 installments | 82718 |
+| endorse_pagare (procuración) at 120 installments | 17618 |
+| endorse_pagare (procuración, again after a revocation) at 120 installments | 17618 |
+| endorse_pagare through Squads | 43760 |
+| init_pool, classic asset and permissioned shares | 46600 |
+| init_pool, classic asset and plain shares | 53066 |
+| mark_in_collection at 120 installments | 38797 |
+| mark_in_collection at 120 installments, 3 missed | 15780 |
+| mark_in_collection at 18 installments | 18787 |
+| pause by the council | 11198 |
+| post_fix, by the council | 12823 |
+| post_fix, by the feeder | 11651 |
+| post_fix, by the feeder against the reference | 11938 |
+| propose_acceleration | 16600 |
+| propose_council through Squads | 34892 |
+| repay after the mark at 120 installments | 63535 |
+| repay at 120 installments | 73883 |
+| repay at 18 installments | 44999 |
+| repay covering three sidecars at 120 installments, all missed | 90494 |
+| request_line at 120 installments | 22252 |
+| resume_draws | 15909 |
+| revoke_procuracion at 120 installments | 17386 |
+| suspend_draws | 16590 |
+| write_off after the mark at 120 installments | 55404 |
+| write_off at 120 installments | 55402 |
+| write_off at 18 installments | 26638 |

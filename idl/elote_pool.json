@@ -945,7 +945,7 @@
         "Delivers paid pagaré `draw_index` to the line's borrower — or to the aval who settled it",
         "(LGTOC 115) — thawing the asset, renouncing the freeze forever and transferring it. Anyone",
         "may call it, in the repayment's transaction or later; refused before the payment, twice, or",
-        "while a court act holds the título. Never paused (decision 38)."
+        "twice. Never paused (decision 38; no court act gates it, 38-g)."
       ],
       "discriminator": [
         92,
@@ -1585,7 +1585,7 @@
         "share mint and the series collection. The creator signs and pays; the council is vault 0 of",
         "`multisig`, an autonomous Squads v4 multisig of at most ten members with a majority",
         "threshold, and does not sign. Sets the line cap (`1..=10_000` bps of the NAV), the collection",
-        "period, the outstanding cap, the acceleration notice and the cancel grace. There is no grace",
+        "period, the outstanding cap, the acceleration notice and the provision (100%). There is no grace",
         "period on late payment: late interest runs from the first day past a due date."
       ],
       "discriminator": [
@@ -1829,7 +1829,7 @@
     {
       "name": "pause",
       "docs": [
-        "Pauses deposits, redemptions, requests, approvals and draws. Any member of the council'\"'\"'s multisig alone,",
+        "Pauses deposits, redemptions, requests, approvals and draws. Council only (decision 39);",
         "repayments and everything else go on."
       ],
       "discriminator": [
@@ -1983,7 +1983,7 @@
       "name": "propose_acceleration",
       "docs": [
         "Proposes to collect a drawn line early: draws are suspended at once and `accelerate_line`",
-        "may fire after the pool'\"'\"'s notice. Council only."
+        "may fire after the pool's notice. Council only."
       ],
       "discriminator": [
         71,

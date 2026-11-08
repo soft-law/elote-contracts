@@ -19,7 +19,7 @@ use solana_signer::Signer;
 /// one-key path "open a line to self, draw the vault" is closed. Everything else about the
 /// council's lending power (any other borrower, no allowlist) still holds; see the trust table.
 #[test]
-fn admin_cannot_be_the_borrower_of_its_own_line() {
+fn the_council_cannot_be_the_borrower_of_its_own_line() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 10 * UNIT);

@@ -87,7 +87,7 @@ pub const ASSET_ALLOWLIST: Option<&[Pubkey]> = Some(&[
 #[cfg(feature = "devnet")]
 pub const ASSET_ALLOWLIST: Option<&[Pubkey]> = Some(&[
     pubkey!("MEXeDZ8UKQUzKK3yXcXFjHwCG2AAigdSTnaXPuxxchK"), // MEXe, Etherfuse sandbox
-    pubkey!("4D4r1KuS9WxbPCzzAJnWtYUJSSzDEZzrF1CbwajWGVjg"), // USDC, Etherfuse sandbox
+    pubkey!("BXTou3CvPxpFVAJvzvEZcAnRLGCHqT1LHKsFTSQft7s"), // USDC, Etherfuse sandbox (GET /supported_assets, 2026-11-08)
     pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"), // USDC, Circle
 ]);
 /// Localnet (the tests and the local e2e): any mint the asset policy accepts.
@@ -597,7 +597,7 @@ mod tests {
     #[cfg(feature = "devnet")]
     fn devnet_lists_the_sandbox_mints_and_circles_usdc() {
         assert!(asset_listed(&pubkey!("MEXeDZ8UKQUzKK3yXcXFjHwCG2AAigdSTnaXPuxxchK")));
-        assert!(asset_listed(&pubkey!("4D4r1KuS9WxbPCzzAJnWtYUJSSzDEZzrF1CbwajWGVjg")));
+        assert!(asset_listed(&pubkey!("BXTou3CvPxpFVAJvzvEZcAnRLGCHqT1LHKsFTSQft7s")));
         assert!(asset_listed(&pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU")));
         assert!(!asset_listed(&pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")));
         assert!(!asset_listed(&Pubkey::new_unique()));
