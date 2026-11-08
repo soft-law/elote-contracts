@@ -287,12 +287,14 @@ tests. `programs/elote_pool/tests/` holds:
 
 ## Deployments and upgrade authority
 
-| Cluster | Program id | Upgrade authority |
-|---|---|---|
-| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) |
-| mainnet-beta | not deployed | |
+| Cluster | Program id | Upgrade authority | Deployed from | Verified |
+|---|---|---|---|---|
+| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) | `main` @ `da34998`, 2026-11-08, slot 519984298 | hash `e075ad92b09d91ab48048586fd704e0da0cfe5b591ac5ad0651a2642dd9523af` matches the `--features devnet --arch v0 --tools-version v1.54` build of that commit |
+| mainnet-beta | not deployed | | | |
 
-The devnet program was built with Anchor 1.1.2 and Solana CLI 3.1.10, before `security.txt` was added; the last commit on that toolchain is tag `pre-audit-2026-10-19`, and `main` (Anchor 1.2.1, Solana 4.1.2) produces a different binary. No deployment has been verified against any commit yet; the next deployment should be made from `main` so the on-chain program and the source line up. The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
+The devnet council is vault 0 (`6s6aBtkG6Wm9N6Gx1igKnc3Q3fcJt2r1WtyyLSQrnS6x`) of the Squads v4
+multisig `C3sa3p6WRkEULZbVmYGDB3i6YaoDAWJXM9euUPJg8Vap` (2 of 3, created with
+`scripts/devnet-multisig.ts`). The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
 mainnet deployment the authority moves to a [Squads](https://squads.so) multisig, the IDL is
 published on chain (`anchor idl init`), and the build is verified. The program embeds a
 `security.txt` (see `SECURITY.md`).

@@ -56,6 +56,10 @@ export async function multisigPda(createKey: Address): Promise<readonly [Address
   return getProgramDerivedAddress({ programAddress: SQUADS_PROGRAM_ADDRESS, seeds: [utf8("multisig"), utf8("multisig"), key(createKey)] });
 }
 
+export async function programConfigPda(): Promise<readonly [Address, number]> {
+  return getProgramDerivedAddress({ programAddress: SQUADS_PROGRAM_ADDRESS, seeds: [utf8("multisig"), utf8("program_config")] });
+}
+
 export async function vaultPda(multisig: Address, index = 0): Promise<readonly [Address, number]> {
   return getProgramDerivedAddress({ programAddress: SQUADS_PROGRAM_ADDRESS, seeds: [utf8("multisig"), key(multisig), utf8("vault"), u8(index)] });
 }
