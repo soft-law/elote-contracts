@@ -13,6 +13,7 @@ import {
   findLinePda,
   findPagarePda,
   findPoolPda,
+  getDeliverPagareInstructionAsync,
   getRepayInstructionAsync,
   fetchPool,
   lineLateDue,
@@ -93,7 +94,31 @@ export async function repayInParts(
       const piece = late + interest + principal;
       if (piece === 0n) return start - (await balance());
       const records = await repaySidecars({ line, pagaresPaid: l.pagaresPaid, drawnThrough, principalAfter: l.principalRepaid + principal });
-      const label = `repay part ${part}: MXN ${fmtMxn(piece)} (${records.length} pagaré record${records.length === 1 ? "" : "s"})`;
+      // A deliver_pagare for each pagaré this part covers, in the same transaction (decision 38):
+      // the título goes to the borrower, or to the aval when the aval's payment settles it. If a
+      // part is sent without them, anyone can deliver later with deliver-pagare.ts.
+      const byAval = l.sponsor.__option === "Some" && payer.address === l.sponsor.value && l.sponsorRole === 1;
+      const recipient = byAval && l.sponsor.__option === "Some" ? l.sponsor.value : l.borrower;
+      const principalAfter = l.principalRepaid + principal;
+      const deliveries = [];
+      for (let i = 0; i < records.length; i++) {
+        const drawIndex = l.pagaresPaid + i;
+        if (drawnThrough[drawIndex] > principalAfter) break;
+        const asset = (await fetchPagare(c.rpc, records[i], { commitment: "confirmed" })).data.asset;
+        deliveries.push(
+          await getDeliverPagareInstructionAsync({
+            payer,
+            pool,
+            line,
+            pagare: records[i],
+            asset,
+            collection: poolData.collection,
+            recipient,
+            drawIndex,
+          })
+        );
+      }
+      const label = `repay part ${part}: MXN ${fmtMxn(piece)} (${records.length} pagaré record${records.length === 1 ? "" : "s"}${deliveries.length ? `, ${deliveries.length} delivered` : ""})`;
       try {
         await send(c, label, payer, [
           withRemainingAccounts(
@@ -113,6 +138,7 @@ export async function repayInParts(
             }),
             records
           ),
+          ...deliveries,
         ]);
         sent = true;
       } catch (e) {

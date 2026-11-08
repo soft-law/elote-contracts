@@ -180,8 +180,6 @@ pub const E_WRONG_ACCOUNT: u32 = ERR_BASE + PoolError::WrongAccount as u32;
 pub const E_SLIPPAGE_EXCEEDED: u32 = ERR_BASE + PoolError::SlippageExceeded as u32;
 pub const E_TERM_ENDED: u32 = ERR_BASE + PoolError::TermEnded as u32;
 pub const E_INVALID_SCHEDULE: u32 = ERR_BASE + PoolError::InvalidSchedule as u32;
-pub const E_CANCEL_GRACE_TOO_SHORT: u32 = ERR_BASE + PoolError::CancelGraceTooShort as u32;
-pub const E_CANCEL_GRACE_NOT_ELAPSED: u32 = ERR_BASE + PoolError::CancelGraceNotElapsed as u32;
 pub const E_MAX_MISSED_TOO_LOW: u32 = ERR_BASE + PoolError::MaxMissedTooLow as u32;
 pub const E_SCHEDULE_ENDS_AFTER_TERM: u32 = ERR_BASE + PoolError::ScheduleEndsAfterTerm as u32;
 pub const E_NOT_SCHEDULED: u32 = ERR_BASE + PoolError::NotScheduled as u32;
@@ -213,7 +211,6 @@ pub const E_PROCURACION_STATE: u32 = ERR_BASE + PoolError::ProcuracionState as u
 pub const E_ANNOTATION_KIND_INVALID: u32 = ERR_BASE + PoolError::AnnotationKindInvalid as u32;
 pub const E_ENTRY_NOT_FOUND: u32 = ERR_BASE + PoolError::EntryNotFound as u32;
 pub const E_TOO_MANY_SIDECARS: u32 = ERR_BASE + PoolError::TooManySidecars as u32;
-pub const E_CANCEL_GRACE_TOO_LONG: u32 = ERR_BASE + PoolError::CancelGraceTooLong as u32;
 pub const E_FIX_OUT_OF_BOUNDS: u32 = ERR_BASE + PoolError::FixOutOfBounds as u32;
 pub const E_FX_REFERENCE_INVALID: u32 = ERR_BASE + PoolError::FxReferenceInvalid as u32;
 pub const E_FX_REFERENCE_STALE: u32 = ERR_BASE + PoolError::FxReferenceStale as u32;
@@ -248,7 +245,6 @@ pub const MONTH: i64 = 30 * 24 * 3600;
 /// The collection period every pool of the harness is created with: the 30-day floor.
 pub const COLLECTION_PERIOD: u32 = elote_pool::state::MIN_COLLECTION_PERIOD_SECONDS;
 pub const ACCELERATION_NOTICE: u32 = elote_pool::state::MIN_ACCELERATION_NOTICE_SECONDS;
-pub const CANCEL_GRACE: u32 = elote_pool::state::MIN_CANCEL_GRACE_SECONDS;
 
 // -----------------------------------------------------------------------------------------------
 // PDAs: the seed layouts of `state::seeds`.
@@ -861,7 +857,6 @@ impl Env {
             collection_period_seconds,
             max_outstanding_principal: HARNESS_MAX_OUTSTANDING,
             acceleration_notice_seconds: ACCELERATION_NOTICE,
-            cancel_grace_seconds: CANCEL_GRACE,
             min_fix_rate: 0,
             max_fix_rate: 0,
         }
@@ -922,16 +917,6 @@ impl Env {
             accounts: elote_pool::accounts::AcceptCouncil { new_council: *new_council, multisig: *multisig, pool: k.pool, event_authority, program }
                 .to_account_metas(None),
             data: elote_pool::instruction::AcceptCouncil { valid_until: self.valid_until() }.data(),
-        }
-    }
-
-    pub fn set_cancel_grace_ix(&self, k: &PoolKeys, council: &Pubkey, seconds: u32) -> Instruction {
-        let (event_authority, program) = event_metas();
-        Instruction {
-            program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::SetCancelGrace { council: *council, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
-                .to_account_metas(None),
-            data: elote_pool::instruction::SetCancelGrace { cancel_grace_seconds: seconds, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1491,54 +1476,95 @@ impl Env {
     /// `cancel_pagare(draw_index, receipt_hash)` signed by `holder`: the council, or the line's
     /// borrower after the cancel grace. `payer` receives the asset's rent back from the Core
     /// program. The asset is read from the sidecar, as a client would.
-    pub fn cancel_pagare_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, holder: &Pubkey, payer: &Pubkey, receipt_hash: [u8; 32]) -> Instruction {
-        let asset = self.pagare(k, line_id, draw_index).asset;
-        self.cancel_pagare_ix_full(k, line_id, draw_index, holder, payer, receipt_hash, asset, k.collection, None)
-    }
-    /// `cancel_pagare` signed by the procurador of record: `holder` is the procurador and the
-    /// program address `["procurador", pagare, procurador]` is passed as the burn's authority.
-    pub fn cancel_pagare_by_procurador_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, procurador: &Pubkey, payer: &Pubkey, receipt_hash: [u8; 32]) -> Instruction {
-        let line = line_pda(&k.pool, line_id).0;
-        let asset = self.pagare(k, line_id, draw_index).asset;
-        let pda = procurador_pda(&pagare_pda(&line, draw_index).0, procurador).0;
-        self.cancel_pagare_ix_full(k, line_id, draw_index, procurador, payer, receipt_hash, asset, k.collection, Some(pda))
-    }
-
-    /// As `cancel_pagare_ix`, with the asset and the collection given explicitly.
-    #[allow(clippy::too_many_arguments)]
-    pub fn cancel_pagare_ix_full(
-        &self,
-        k: &PoolKeys,
-        line_id: u64,
-        draw_index: u16,
-        holder: &Pubkey,
-        payer: &Pubkey,
-        receipt_hash: [u8; 32],
-        asset: Pubkey,
-        collection: Pubkey,
-        procurador_authority: Option<Pubkey>,
-    ) -> Instruction {
+    /// `deliver_pagare(draw_index)`: anyone sends; the título goes to `recipient` (the borrower,
+    /// or the aval who settled it).
+    pub fn deliver_pagare_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, payer: &Pubkey, recipient: &Pubkey) -> Instruction {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
         Instruction {
             program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::CancelPagare {
-                holder: *holder,
-                multisig: self.pool(k).multisig,
+            accounts: elote_pool::accounts::DeliverPagare {
                 payer: *payer,
                 pool: k.pool,
                 line,
                 pagare: pagare_pda(&line, draw_index).0,
-                asset,
-                collection,
-                procurador_authority,
+                asset: self.pagare(k, line_id, draw_index).asset,
+                collection: k.collection,
+                recipient: *recipient,
                 mpl_core_program: MPL_CORE_ID,
                 system_program: SYSTEM_PROGRAM_ID,
                 event_authority,
                 program,
             }
             .to_account_metas(None),
-            data: elote_pool::instruction::CancelPagare { draw_index, receipt_hash, valid_until: self.valid_until() }.data(),
+            data: elote_pool::instruction::DeliverPagare { draw_index }.data(),
+        }
+    }
+
+    /// As `deliver_pagare_ix`, with the asset and the collection given explicitly.
+    pub fn deliver_pagare_ix_raw(&self, k: &PoolKeys, line_id: u64, draw_index: u16, payer: &Pubkey, recipient: &Pubkey, asset: Pubkey, collection: Pubkey) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::DeliverPagare {
+                payer: *payer,
+                pool: k.pool,
+                line,
+                pagare: pagare_pda(&line, draw_index).0,
+                asset,
+                collection,
+                recipient: *recipient,
+                mpl_core_program: MPL_CORE_ID,
+                system_program: SYSTEM_PROGRAM_ID,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::DeliverPagare { draw_index }.data(),
+        }
+    }
+
+    /// `burn_pagare(draw_index, document_hash)` by the delivered título's owner.
+    pub fn burn_pagare_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, owner: &Pubkey, document_hash: [u8; 32]) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::BurnPagare {
+                owner: *owner,
+                pool: k.pool,
+                line,
+                pagare: pagare_pda(&line, draw_index).0,
+                asset: self.pagare(k, line_id, draw_index).asset,
+                collection: k.collection,
+                mpl_core_program: MPL_CORE_ID,
+                system_program: SYSTEM_PROGRAM_ID,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::BurnPagare { draw_index, document_hash }.data(),
+        }
+    }
+
+    /// `annul_pagare(draw_index, document_hash)` by the council.
+    pub fn annul_pagare_ix(&self, k: &PoolKeys, line_id: u64, draw_index: u16, document_hash: [u8; 32]) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let line = line_pda(&k.pool, line_id).0;
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::AnnulPagare {
+                holder: self.council.pubkey(),
+                multisig: self.pool(k).multisig,
+                pool: k.pool,
+                line,
+                pagare: pagare_pda(&line, draw_index).0,
+                event_authority,
+                program,
+            }
+            .to_account_metas(None),
+            data: elote_pool::instruction::AnnulPagare { draw_index, document_hash, valid_until: self.valid_until() }.data(),
         }
     }
 
@@ -1552,14 +1578,9 @@ impl Env {
             accounts: elote_pool::accounts::EndorsePagare {
                 holder: *holder,
                 multisig: self.pool(k).multisig,
-                payer: *holder,
                 pool: k.pool,
                 line,
                 pagare: pagare_pda(&line, draw_index).0,
-                asset: self.pagare(k, line_id, draw_index).asset,
-                collection: k.collection,
-                mpl_core_program: MPL_CORE_ID,
-                system_program: SYSTEM_PROGRAM_ID,
                 event_authority,
                 program,
             }
@@ -1577,14 +1598,9 @@ impl Env {
             accounts: elote_pool::accounts::RevokeProcuracion {
                 holder: *holder,
                 multisig: self.pool(k).multisig,
-                payer: *holder,
                 pool: k.pool,
                 line,
                 pagare: pagare_pda(&line, draw_index).0,
-                asset: self.pagare(k, line_id, draw_index).asset,
-                collection: k.collection,
-                mpl_core_program: MPL_CORE_ID,
-                system_program: SYSTEM_PROGRAM_ID,
                 event_authority,
                 program,
             }
@@ -1626,17 +1642,19 @@ impl Env {
         self.send(ix, &council, &[])
     }
 
-    /// Cancels pagaré `draw_index` of a line: the council as holder and payer.
-    pub fn cancel_pagare(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16) -> TransactionMetadata {
+    /// Delivers paid pagaré `draw_index` to the line's borrower; the council's key only pays.
+    pub fn deliver_pagare(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16) -> TransactionMetadata {
         let council = self.council.insecure_clone();
-        let ix = self.cancel_pagare_ix(k, line_id, draw_index, &council.pubkey(), &council.pubkey(), RECEIPT_HASH);
+        let borrower = self.line(k, line_id).borrower;
+        let ix = self.deliver_pagare_ix(k, line_id, draw_index, &council.pubkey(), &borrower);
         self.send(ix, &council, &[])
     }
 
-    /// Asserts a cancellation of pagaré `draw_index` by the council fails with `code`.
-    pub fn expect_cancel_err(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, code: u32) {
+    /// Asserts a delivery of pagaré `draw_index` to the borrower fails with `code`.
+    pub fn expect_deliver_err(&mut self, k: &PoolKeys, line_id: u64, draw_index: u16, code: u32) {
         let council = self.council.insecure_clone();
-        let ix = self.cancel_pagare_ix(k, line_id, draw_index, &council.pubkey(), &council.pubkey(), RECEIPT_HASH);
+        let borrower = self.line(k, line_id).borrower;
+        let ix = self.deliver_pagare_ix(k, line_id, draw_index, &council.pubkey(), &borrower);
         self.expect_err(ix, &council, &[], code);
     }
 
@@ -1872,6 +1890,22 @@ where
         return Some(E::deserialize(&mut &data[16..]).expect("event borsh"));
     }
     None
+}
+
+/// Every event of type `E` that `meta` emitted, in order.
+pub fn find_events<E>(meta: &TransactionMetadata) -> Vec<E>
+where
+    E: Discriminator + anchor_lang::AnchorDeserialize,
+{
+    let mut out = Vec::new();
+    for inner in meta.inner_instructions.iter().flatten() {
+        let data = &inner.instruction.data;
+        if data.len() < 16 || &data[..8] != anchor_lang::event::EVENT_IX_TAG_LE || &data[8..16] != E::DISCRIMINATOR {
+            continue;
+        }
+        out.push(E::deserialize(&mut &data[16..]).expect("event borsh"));
+    }
+    out
 }
 
 /// The discriminators of every event `meta` emitted, in order.

@@ -75,7 +75,7 @@ export const ELOTE_POOL_ERROR__OUTSTANDING_CAP_EXCEEDED = 0x178b; // 6027
 export const ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT = 0x178c; // 6028
 /** AccelerationNoticeTooShort: The acceleration notice is below the seven-day floor */
 export const ELOTE_POOL_ERROR__ACCELERATION_NOTICE_TOO_SHORT = 0x178d; // 6029
-/** CancelGraceTooShort: The borrower's cancel grace is below the thirty-day floor */
+/** CancelGraceTooShort: Retired: the cancel grace is gone with the cancellation route (decision 38) */
 export const ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_SHORT = 0x178e; // 6030
 /** LineStatus: The line is not in the required status */
 export const ELOTE_POOL_ERROR__LINE_STATUS = 0x178f; // 6031
@@ -135,9 +135,9 @@ export const ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED = 0x17a9; // 6057
 export const ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID = 0x17aa; // 6058
 /** PagareNotCovered: No repayment has marked this pagaré paid */
 export const ELOTE_POOL_ERROR__PAGARE_NOT_COVERED = 0x17ab; // 6059
-/** PagareAlreadyPaid: This pagaré is already extinguished */
+/** PagareAlreadyPaid: This pagaré is already paid */
 export const ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID = 0x17ac; // 6060
-/** CancelGraceNotElapsed: The borrower may cancel alone only after the cancel grace from the payment */
+/** CancelGraceNotElapsed: Retired: the cancellation route is gone (decision 38) */
 export const ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED = 0x17ad; // 6061
 /** EndosoKindInvalid: This kind of endoso is not one the program records */
 export const ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID = 0x17ae; // 6062
@@ -149,7 +149,7 @@ export const ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID = 0x17b0; // 6064
 export const ELOTE_POOL_ERROR__ENTRY_NOT_FOUND = 0x17b1; // 6065
 /** TooManySidecars: A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment */
 export const ELOTE_POOL_ERROR__TOO_MANY_SIDECARS = 0x17b2; // 6066
-/** CancelGraceTooLong: The borrower's cancel grace is above the one-year ceiling */
+/** CancelGraceTooLong: Retired: the cancel grace ceiling is gone with the cancellation route (decision 38) */
 export const ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_LONG = 0x17b3; // 6067
 /** ProposalTooFar: The council's decision is dated more than fifteen days ahead */
 export const ELOTE_POOL_ERROR__PROPOSAL_TOO_FAR = 0x17b4; // 6068
@@ -163,6 +163,10 @@ export const ELOTE_POOL_ERROR__FX_REFERENCE_STALE = 0x17b7; // 6071
 export const ELOTE_POOL_ERROR__FIX_OFF_REFERENCE = 0x17b8; // 6072
 /** FixAlreadyPostedToday: A FIX was already published today in Mexico City; the feeder publishes once a day */
 export const ELOTE_POOL_ERROR__FIX_ALREADY_POSTED_TODAY = 0x17b9; // 6073
+/** PagareAlreadyDelivered: This pagaré was already delivered */
+export const ELOTE_POOL_ERROR__PAGARE_ALREADY_DELIVERED = 0x17ba; // 6074
+/** DeliveryHeld: A court act holds this título; a ConstanciaJudicial must lift it before the delivery */
+export const ELOTE_POOL_ERROR__DELIVERY_HELD = 0x17bb; // 6075
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -184,6 +188,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__COUNCIL_INVALID
   | typeof ELOTE_POOL_ERROR__COUNCIL_KIND_INVALID
   | typeof ELOTE_POOL_ERROR__COUNCIL_TOO_LARGE
+  | typeof ELOTE_POOL_ERROR__DELIVERY_HELD
   | typeof ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED
   | typeof ELOTE_POOL_ERROR__DRAWS_NOT_SUSPENDED
   | typeof ELOTE_POOL_ERROR__ENDORSEE_INVALID
@@ -215,6 +220,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__OUTSTANDING_CAP_EXCEEDED
   | typeof ELOTE_POOL_ERROR__OVERFLOW
   | typeof ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH
+  | typeof ELOTE_POOL_ERROR__PAGARE_ALREADY_DELIVERED
   | typeof ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID
   | typeof ELOTE_POOL_ERROR__PAGARE_NOT_COVERED
   | typeof ELOTE_POOL_ERROR__PAGARE_TEMPLATE_HASH_REQUIRED
@@ -254,14 +260,15 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__AVAILABILITY_ENDED]: `The draw window of this line has closed`,
     [ELOTE_POOL_ERROR__BORROWER_IS_COUNCIL]: `The council cannot be the borrower`,
     [ELOTE_POOL_ERROR__BORROWER_IS_CURATOR]: `A member of the council cannot be the borrower`,
-    [ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED]: `The borrower may cancel alone only after the cancel grace from the payment`,
-    [ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_LONG]: `The borrower's cancel grace is above the one-year ceiling`,
-    [ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_SHORT]: `The borrower's cancel grace is below the thirty-day floor`,
+    [ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED]: `Retired: the cancellation route is gone (decision 38)`,
+    [ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_LONG]: `Retired: the cancel grace ceiling is gone with the cancellation route (decision 38)`,
+    [ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_SHORT]: `Retired: the cancel grace is gone with the cancellation route (decision 38)`,
     [ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED]: `The collection is not a bare Metaplex Core collection whose update authority is the pool`,
     [ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT]: `The collection period is shorter than the minimum`,
     [ELOTE_POOL_ERROR__COUNCIL_INVALID]: `The council is not the vault of an autonomous Squads v4 multisig with a majority threshold`,
     [ELOTE_POOL_ERROR__COUNCIL_KIND_INVALID]: `This council kind is not accepted`,
     [ELOTE_POOL_ERROR__COUNCIL_TOO_LARGE]: `The council multisig has more members than the program checks`,
+    [ELOTE_POOL_ERROR__DELIVERY_HELD]: `A court act holds this título; a ConstanciaJudicial must lift it before the delivery`,
     [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed document's hash is required`,
     [ELOTE_POOL_ERROR__DRAWS_NOT_SUSPENDED]: `The line's draws are not suspended`,
     [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing, or is the pool, the council, a curator, the creator, the FIX feeder, or the line's borrower, payer or sponsor`,
@@ -293,7 +300,8 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__OUTSTANDING_CAP_EXCEEDED]: `The draw would take the pool's outstanding principal above its cap`,
     [ELOTE_POOL_ERROR__OVERFLOW]: `Arithmetic overflow`,
     [ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH]: `The pagaré records passed are not the ones this payment touches, oldest first`,
-    [ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID]: `This pagaré is already extinguished`,
+    [ELOTE_POOL_ERROR__PAGARE_ALREADY_DELIVERED]: `This pagaré was already delivered`,
+    [ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID]: `This pagaré is already paid`,
     [ELOTE_POOL_ERROR__PAGARE_NOT_COVERED]: `No repayment has marked this pagaré paid`,
     [ELOTE_POOL_ERROR__PAGARE_TEMPLATE_HASH_REQUIRED]: `The pagaré template's hash is required`,
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,

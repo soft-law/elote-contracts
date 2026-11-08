@@ -58,7 +58,6 @@ export type PoolInitializedEvent = {
   maxLineBps: number;
   maxOutstandingPrincipal: bigint;
   accelerationNoticeSeconds: number;
-  cancelGraceSeconds: number;
   assetControls: number;
   permissioned: boolean;
   minFixRate: bigint;
@@ -77,7 +76,6 @@ export type PoolInitializedEventArgs = {
   maxLineBps: number;
   maxOutstandingPrincipal: number | bigint;
   accelerationNoticeSeconds: number;
-  cancelGraceSeconds: number;
   assetControls: number;
   permissioned: boolean;
   minFixRate: number | bigint;
@@ -99,7 +97,6 @@ export function getPoolInitializedEventEncoder(): FixedSizeEncoder<PoolInitializ
       ["maxLineBps", getU16Encoder()],
       ["maxOutstandingPrincipal", getU64Encoder()],
       ["accelerationNoticeSeconds", getU32Encoder()],
-      ["cancelGraceSeconds", getU32Encoder()],
       ["assetControls", getU8Encoder()],
       ["permissioned", getBooleanEncoder()],
       ["minFixRate", getU64Encoder()],
@@ -124,7 +121,6 @@ export function getPoolInitializedEventDecoder(): FixedSizeDecoder<PoolInitializ
       ["maxLineBps", getU16Decoder()],
       ["maxOutstandingPrincipal", getU64Decoder()],
       ["accelerationNoticeSeconds", getU32Decoder()],
-      ["cancelGraceSeconds", getU32Decoder()],
       ["assetControls", getU8Decoder()],
       ["permissioned", getBooleanDecoder()],
       ["minFixRate", getU64Decoder()],

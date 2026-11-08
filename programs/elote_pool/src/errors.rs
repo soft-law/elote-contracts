@@ -75,7 +75,8 @@ pub enum PoolError {
     CollectionPeriodTooShort,
     #[msg("The acceleration notice is below the seven-day floor")]
     AccelerationNoticeTooShort,
-    #[msg("The borrower's cancel grace is below the thirty-day floor")]
+    /// Retired (decision 38): the cancellation route is gone; the code stays so nothing renumbers.
+    #[msg("Retired: the cancel grace is gone with the cancellation route (decision 38)")]
     CancelGraceTooShort,
 
     // Lines.
@@ -141,9 +142,10 @@ pub enum PoolError {
     SignatureMethodInvalid,
     #[msg("No repayment has marked this pagaré paid")]
     PagareNotCovered,
-    #[msg("This pagaré is already extinguished")]
+    #[msg("This pagaré is already paid")]
     PagareAlreadyPaid,
-    #[msg("The borrower may cancel alone only after the cancel grace from the payment")]
+    /// Retired (decision 38): the cancellation route is gone; the code stays so nothing renumbers.
+    #[msg("Retired: the cancellation route is gone (decision 38)")]
     CancelGraceNotElapsed,
     #[msg("This kind of endoso is not one the program records")]
     EndosoKindInvalid,
@@ -157,7 +159,8 @@ pub enum PoolError {
     // Added after the codes above were published; appended so no existing code moves.
     #[msg("A repayment takes at most MAX_SIDECARS_PER_REPAY pagaré records; split the payment")]
     TooManySidecars,
-    #[msg("The borrower's cancel grace is above the one-year ceiling")]
+    /// Retired (decision 38): the cancellation route is gone; the code stays so nothing renumbers.
+    #[msg("Retired: the cancel grace ceiling is gone with the cancellation route (decision 38)")]
     CancelGraceTooLong,
     #[msg("The council's decision is dated more than fifteen days ahead")]
     ProposalTooFar,
@@ -171,4 +174,8 @@ pub enum PoolError {
     FixOffReference,
     #[msg("A FIX was already published today in Mexico City; the feeder publishes once a day")]
     FixAlreadyPostedToday,
+    #[msg("This pagaré was already delivered")]
+    PagareAlreadyDelivered,
+    #[msg("A court act holds this título; a ConstanciaJudicial must lift it before the delivery")]
+    DeliveryHeld,
 }

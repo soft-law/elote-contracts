@@ -10,9 +10,9 @@ use elote_pool::state::{CreditLine, Pagare, Pool};
 /// created zero, so zero there always means "no value".
 #[test]
 fn account_sizes_are_fixed_and_reserved_starts_zero() {
-    assert_eq!(8 + Pool::INIT_SPACE, 495);
+    assert_eq!(8 + Pool::INIT_SPACE, 491);
     assert_eq!(8 + CreditLine::INIT_SPACE, 529);
-    assert_eq!(8 + Pagare::INIT_SPACE, 399);
+    assert_eq!(8 + Pagare::INIT_SPACE, 363);
 
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
@@ -33,7 +33,6 @@ fn account_sizes_are_fixed_and_reserved_starts_zero() {
     assert_eq!((line.acceleration_due_at, line.availability_end_saved), (0, 0));
     assert_eq!(line.reserved, [0u8; 64]);
     assert_eq!(pagare.reserved, [0u8; 28]);
-    assert_eq!(pagare.cancel_grace_seconds, 0, "fixed at payment, zero while outstanding");
     for (key, len) in [
         (k.pool, 8 + Pool::INIT_SPACE),
         (line_pda(&k.pool, line_id).0, 8 + CreditLine::INIT_SPACE),

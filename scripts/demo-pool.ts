@@ -192,7 +192,6 @@ await send("init_pool", admin, [
     collectionPeriodSeconds: 30 * 86_400,
     maxOutstandingPrincipal: 2n ** 64n - 1n,
     accelerationNoticeSeconds: 7 * 86_400,
-    cancelGraceSeconds: 30 * 86_400,
     // No FIX bounds in the demo; a production pool sets them (set_fix_bounds moves them).
     minFixRate: 0n,
     maxFixRate: 0n,

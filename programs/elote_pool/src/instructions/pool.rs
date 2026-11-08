@@ -8,7 +8,7 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    AccelerationNoticeSet, CancelGraceSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, FixBoundsSet, FixPosted, FxFeederSet,
+    AccelerationNoticeSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, FixBoundsSet, FixPosted, FxFeederSet,
     MaxLineBpsSet, NavUpdated, ProvisionSet, OutstandingCapSet, PoolInitialized, PoolPaused, PoolResumed, Redeemed,
 };
 use crate::council;
@@ -16,7 +16,7 @@ use crate::fx;
 use crate::math;
 use crate::state::{self, 
     min_first_deposit, seeds, Pool, ASSET_CONTROL_FREEZE, ASSET_CONTROL_PAUSABLE, BPS, DEAD_SHARES,
-    COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_GRACE_SECONDS, MAX_CANCEL_GRACE_SECONDS,
+    COUNCIL_SQUADS, MIN_ACCELERATION_NOTICE_SECONDS,
     MIN_COLLECTION_PERIOD_SECONDS,
 };
 
@@ -242,8 +242,6 @@ pub struct InitPoolParams {
     pub max_outstanding_principal: u64,
     /// At least `MIN_ACCELERATION_NOTICE_SECONDS`.
     pub acceleration_notice_seconds: u32,
-    /// `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`.
-    pub cancel_grace_seconds: u32,
     /// The lowest and highest FIX `post_fix` accepts (`fx::bounds_valid`); zero and zero for none.
     pub min_fix_rate: u64,
     pub max_fix_rate: u64,
@@ -257,8 +255,6 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
     require!(p.max_outstanding_principal >= 1, PoolError::WrongAmount);
     require!(p.collection_period_seconds >= MIN_COLLECTION_PERIOD_SECONDS, PoolError::CollectionPeriodTooShort);
     require!(p.acceleration_notice_seconds >= MIN_ACCELERATION_NOTICE_SECONDS, PoolError::AccelerationNoticeTooShort);
-    require!(p.cancel_grace_seconds >= MIN_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooShort);
-    require!(p.cancel_grace_seconds <= MAX_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooLong);
     require!(fx::bounds_valid(p.min_fix_rate, p.max_fix_rate), PoolError::WrongAmount);
     let multisig = ctx.accounts.multisig.to_account_info();
     let (council, council_vault_bump) = council::canonical_vault(multisig.key);
@@ -298,7 +294,6 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         pending_council_kind: 0,
         max_outstanding_principal: p.max_outstanding_principal,
         acceleration_notice_seconds: p.acceleration_notice_seconds,
-        cancel_grace_seconds: p.cancel_grace_seconds,
         impaired_principal: 0,
         provision_bps: BPS as u16,
         fx_feeder: Pubkey::default(),
@@ -323,7 +318,6 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         max_line_bps: p.max_line_bps,
         max_outstanding_principal: p.max_outstanding_principal,
         acceleration_notice_seconds: p.acceleration_notice_seconds,
-        cancel_grace_seconds: p.cancel_grace_seconds,
         asset_controls: controls,
         permissioned,
         min_fix_rate: p.min_fix_rate,
@@ -696,39 +690,6 @@ pub fn set_acceleration_notice(ctx: Context<CouncilPool>, acceleration_notice_se
     let pool = &mut ctx.accounts.pool;
     pool.acceleration_notice_seconds = acceleration_notice_seconds;
     emit_cpi!(AccelerationNoticeSet { pool: pool.key(), acceleration_notice_seconds });
-    Ok(())
-}
-
-#[event_cpi]
-#[derive(Accounts)]
-pub struct SetCancelGrace<'info> {
-    pub council: Signer<'info>,
-
-    /// CHECK: `council::check` against the pool's stored multisig.
-    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
-    pub multisig: UncheckedAccount<'info>,
-
-    #[account(
-        mut,
-        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
-        bump = pool.bump,
-        has_one = council @ PoolError::Unauthorized,
-    )]
-    pub pool: Account<'info, Pool>,
-}
-
-/// Council only; refused below `MIN_CANCEL_GRACE_SECONDS` (`CancelGraceTooShort`) and above
-/// `MAX_CANCEL_GRACE_SECONDS` (`CancelGraceTooLong`). Applies to pagarés paid from now on: a
-/// repayment fixes the grace in force on each pagaré it marks paid (`Pagare.cancel_grace_seconds`),
-/// so a pagaré already paid keeps its borrower's date.
-pub fn set_cancel_grace(ctx: Context<SetCancelGrace>, cancel_grace_seconds: u32, valid_until: i64) -> Result<()> {
-    council::fresh(valid_until)?;
-    require!(cancel_grace_seconds >= MIN_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooShort);
-    require!(cancel_grace_seconds <= MAX_CANCEL_GRACE_SECONDS, PoolError::CancelGraceTooLong);
-    let pool = &mut ctx.accounts.pool;
-    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
-    pool.cancel_grace_seconds = cancel_grace_seconds;
-    emit_cpi!(CancelGraceSet { pool: pool.key(), cancel_grace_seconds });
     Ok(())
 }
 

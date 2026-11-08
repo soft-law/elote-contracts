@@ -34,9 +34,9 @@ test("procurador sits at the offset the lookup filters on", () => {
   const bytes = getPagareEncoder().encode({
     line: zero, drawIndex: 0, asset: zero, pagareHash: new Uint8Array(32), amountMxn: 0n, issuedAt: 0n, dueAt: 0n,
     drawnThrough: 0n, certFingerprint: new Uint8Array(32), signatureMethod: 0, status: 0, paidAt: 0n,
-    receiptHash: new Uint8Array(32), cancelReceiptHash: new Uint8Array(32), procurador, flags: 0,
+    receiptHash: new Uint8Array(32), procurador, flags: 0,
     logRoot: new Uint8Array(32), entryCount: 0, lastKind: 0, bump: 0, fixRate: 0n, fixDate: 0, usdcDelivered: 0n,
-    deliveryHash: new Uint8Array(32), cancelGraceSeconds: 0, reserved: new Uint8Array(28),
+    deliveryHash: new Uint8Array(32), reserved: new Uint8Array(28),
   });
   const key = Buffer.from(getAddressEncoder().encode(procurador));
   assert.equal(Buffer.from(bytes).indexOf(key), PAGARE_PROCURADOR_OFFSET);

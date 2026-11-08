@@ -124,9 +124,11 @@ fn post_fix_stays_under_the_ceiling() {
 
 /// `cancel_pagare` runs no arrears loop: one coverage comparison, the sidecar's mark and the Core
 /// `BurnV1` CPI. Measured on a 120-installment line repaid in full, the shape of a real
-/// cancellation.
+/// `deliver_pagare` carries three Core CPIs (thaw, renounce, transfer) and the Entrega entry;
+/// `burn_pagare` one CPI and the Terminacion entry; `annotate_payment` at 120 installments pins
+/// the annotation path. All under the ceiling.
 #[test]
-fn cancel_pagare_stays_under_the_ceiling() {
+fn deliver_and_burn_stay_under_the_ceiling() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let investor = env.investor(&k, 200 * UNIT);
@@ -143,10 +145,14 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let annotate = env.send(ix, &council, &[]).compute_units_consumed;
     println!("annotate_payment at 120 installments: {annotate} CU");
     assert!(annotate < CEILING);
-    let cancel = env.cancel_pagare(&k, line_id, 0).compute_units_consumed;
-    println!("cancel_pagare at 120 installments: {cancel} CU");
-    assert!(cancel < CEILING, "cancel_pagare used {cancel} CU, ceiling {CEILING}");
-    // The procurador's branch, on a second line.
+    let deliver = env.deliver_pagare(&k, line_id, 0).compute_units_consumed;
+    println!("deliver_pagare at 120 installments: {deliver} CU");
+    assert!(deliver < CEILING, "deliver_pagare used {deliver} CU, ceiling {CEILING}");
+    let ix = env.burn_pagare_ix(&k, line_id, 0, &borrower.pubkey(), [0x4e; 32]);
+    let burn = env.send(ix, &borrower, &[]).compute_units_consumed;
+    println!("burn_pagare: {burn} CU");
+    assert!(burn < CEILING);
+    // A delivery of a pagaré whose procuración the payment ended, on a second line.
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(50 * UNIT, 1_200, 120, 5_000);
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
@@ -156,23 +162,9 @@ fn cancel_pagare_stays_under_the_ceiling() {
     let interest = env.line(&k, line_id).interest_due;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
-    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &procurador.pubkey(), &council.pubkey(), RECEIPT_HASH);
-    let by_procurador = env.send(ix, &council, &[&procurador]).compute_units_consumed;
-    println!("cancel_pagare by the procurador at 120 installments: {by_procurador} CU");
-    assert!(by_procurador < CEILING, "cancel by the procurador used {by_procurador} CU, ceiling {CEILING}");
-    // The borrower's exit, on a third line under a procuración: alone, after the cancel grace.
-    let borrower = env.borrower(&k);
-    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
-    env.draw(&k, line_id, &borrower);
-    env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
-    let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
-    env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
-    env.warp(env.now() + i64::from(CANCEL_GRACE) + 1);
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &borrower.pubkey(), &borrower.pubkey(), RECEIPT_HASH);
-    let by_borrower = env.send(ix, &borrower, &[]).compute_units_consumed;
-    println!("cancel_pagare by the borrower at 120 installments: {by_borrower} CU");
-    assert!(by_borrower < CEILING);
+    let deliver = env.deliver_pagare(&k, line_id, 0).compute_units_consumed;
+    println!("deliver_pagare after a procuración: {deliver} CU");
+    assert!(deliver < CEILING);
 }
 
 /// After the mark every remaining installment is due, so a repayment early in a 120-installment

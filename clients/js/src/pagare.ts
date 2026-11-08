@@ -1,7 +1,7 @@
 // The pagaré token (decision 24): `draw` mints one Metaplex Core asset per disposición and writes a
 // `Pagare` sidecar record, both at program-derived addresses seeded by the line and the draw index
 // (`CreditLine.draws` at the time of the draw, as a u16 LE). Codama derives `findPagarePda` from
-// `cancel_pagare`, whose `draw_index` is an argument; it derives nothing for the asset, whose
+// `deliver_pagare`, whose `draw_index` is an argument; it derives nothing for the asset, whose
 // seed in `draw` is a field of the line account, so that one is written by hand here and checked
 // against the Solana CLI in `test/pagare.test.ts`.
 import {
@@ -109,25 +109,6 @@ export function withRemainingAccounts<T extends Instruction>(instruction: T, add
 }
 
 /**
- * The program address that holds a pagaré's burn delegate during an endoso en procuración,
- * `["procurador", pagare, procurador]`. The procurador's `cancel_pagare` passes it as
- * `procuradorAuthority`.
- */
-export async function findProcuradorAuthorityPda(
-  seeds: { pagare: Address; procurador: Address },
-  config: { programAddress?: Address } = {}
-): Promise<ProgramDerivedAddress> {
-  return await getProgramDerivedAddress({
-    programAddress: config.programAddress ?? ELOTE_POOL_PROGRAM_ADDRESS,
-    seeds: [
-      getUtf8Encoder().encode("procurador"),
-      getAddressEncoder().encode(seeds.pagare),
-      getAddressEncoder().encode(seeds.procurador),
-    ],
-  });
-}
-
-/**
  * The most principal one `repay` may apply so that it touches at most `maxRecords` pagaré
  * records: it may cover pagarés `pagaresPaid ..= pagaresPaid + maxRecords - 2`, the next one
  * being the last record it passes. A payment above the cap is split into several `repay` calls.
@@ -146,7 +127,7 @@ export function repayPrincipalCap(input: {
 }
 
 /** Byte offset of `procurador` in a `Pagare` account (pinned against the generated codec in the tests). */
-export const PAGARE_PROCURADOR_OFFSET = 244;
+export const PAGARE_PROCURADOR_OFFSET = 212;
 
 /**
  * The pagaré records whose procuración in force names `procurador`. A procurador key must serve

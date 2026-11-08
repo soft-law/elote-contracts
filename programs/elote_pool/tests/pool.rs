@@ -314,12 +314,12 @@ fn init_pool_records_its_parameters_and_no_grace_period() {
     assert_eq!(pool.grace_period_seconds, 0, "reserved");
     assert_eq!(pool.max_line_bps, HARNESS_MAX_LINE_BPS, "the harness default cap of 5,000 bps");
     assert_eq!((pool.asset_controls, pool.permissioned), (0, false));
-    assert_eq!((pool.cancel_grace_seconds, pool.collection_period_seconds), (CANCEL_GRACE, COLLECTION_PERIOD));
+    assert_eq!(pool.collection_period_seconds, COLLECTION_PERIOD);
     assert_eq!((pool.acceleration_notice_seconds, pool.max_outstanding_principal), (ACCELERATION_NOTICE, HARNESS_MAX_OUTSTANDING));
 
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((ev.pool, ev.max_line_bps), (k.pool, HARNESS_MAX_LINE_BPS));
-    assert_eq!((ev.collection_period_seconds, ev.cancel_grace_seconds), (COLLECTION_PERIOD, CANCEL_GRACE));
+    assert_eq!(ev.collection_period_seconds, COLLECTION_PERIOD);
 }
 
 /// `max_line_bps` is fixed at `init_pool` and is
@@ -530,7 +530,7 @@ fn init_pool_records_the_collection() {
     let ev: PoolInitialized = find_event(&meta).expect("PoolInitialized");
     assert_eq!((ev.pool, ev.collection), (k.pool, k.collection));
     assert_eq!((ev.council, ev.asset_mint, ev.share_mint), (env.council.pubkey(), k.asset_mint, k.share_mint));
-    assert!(find_event::<elote_pool::events::CancelGraceSet>(&meta).is_none(), "the setters' events are for changes");
+    assert!(find_event::<elote_pool::events::CollectionPeriodSet>(&meta).is_none(), "the setters' events are for changes");
     // The collection is a real Metaplex Core collection the pool controls, read back through the
     // crate's decoder against the pinned program binary.
     let c = env.collection_state(&k.collection);
@@ -818,7 +818,9 @@ fn init_pool_rejects_a_mint_whose_decimals_make_the_first_deposit_impossible() {
 /// `PoolInitialized` alone.
 #[test]
 fn every_pool_setter_announces_the_new_value() {
-    use elote_pool::events::{CancelGraceSet, CollectionPeriodSet};
+    use anchor_lang::InstructionData;
+    use elote_pool::events::{CollectionPeriodSet, ProvisionSet};
+    use elote_pool::instruction as ix;
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let council = env.council.insecure_clone();
@@ -830,13 +832,11 @@ fn every_pool_setter_announces_the_new_value() {
     assert_eq!((ev.pool, ev.collection_period_seconds), (k.pool, 2 * COLLECTION_PERIOD));
     assert_eq!(env.pool(&k).collection_period_seconds, 2 * COLLECTION_PERIOD);
 
-    let ix = env.set_cancel_grace_ix(&k, &a, CANCEL_GRACE - 1);
-    env.expect_err(ix, &council, &[], ERR_BASE + elote_pool::errors::PoolError::CancelGraceTooShort as u32);
-    let ix = env.set_cancel_grace_ix(&k, &a, 2 * CANCEL_GRACE);
+    let ix = env.council_pool_ix(&k, &a, ix::SetProvisionBps { provision_bps: 5_000, valid_until: env.valid_until() }.data());
     let meta = env.send(ix, &council, &[]);
-    let ev: CancelGraceSet = find_event(&meta).expect("CancelGraceSet");
-    assert_eq!((ev.pool, ev.cancel_grace_seconds), (k.pool, 2 * CANCEL_GRACE));
-    assert_eq!(env.pool(&k).cancel_grace_seconds, 2 * CANCEL_GRACE);
+    let ev: ProvisionSet = find_event(&meta).expect("ProvisionSet");
+    assert_eq!((ev.pool, ev.provision_bps), (k.pool, 5_000));
+    assert_eq!(env.pool(&k).provision_bps, 5_000);
 
     let meta = env.set_paused(&k, true);
     let ev: PoolPaused = find_event(&meta).expect("PoolPaused");

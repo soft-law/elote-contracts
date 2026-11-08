@@ -12,8 +12,6 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
-  getI64Decoder,
-  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
@@ -33,7 +31,6 @@ import {
   type InstructionWithAccounts,
   type InstructionWithData,
   type ReadonlyAccount,
-  type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type WritableAccount,
   type WritableSignerAccount,
@@ -51,27 +48,22 @@ import {
 import { findPagarePda } from "../pdas";
 import { ELOTE_POOL_PROGRAM_ADDRESS } from "../programs";
 
-export const CANCEL_PAGARE_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
-  90, 9, 227, 98, 84, 183, 29, 9,
+export const BURN_PAGARE_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
+  133, 111, 91, 157, 141, 129, 9, 214,
 ]);
 
-export function getCancelPagareDiscriminatorBytes(): ReadonlyUint8Array {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(
-    CANCEL_PAGARE_DISCRIMINATOR,
-  );
+export function getBurnPagareDiscriminatorBytes(): ReadonlyUint8Array {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(BURN_PAGARE_DISCRIMINATOR);
 }
 
-export type CancelPagareInstruction<
+export type BurnPagareInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountHolder extends string | AccountMeta<string> = string,
-  TAccountMultisig extends string | AccountMeta<string> = string,
-  TAccountPayer extends string | AccountMeta<string> = string,
+  TAccountOwner extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountPagare extends string | AccountMeta<string> = string,
   TAccountAsset extends string | AccountMeta<string> = string,
   TAccountCollection extends string | AccountMeta<string> = string,
-  TAccountProcuradorAuthority extends string | AccountMeta<string> = string,
   TAccountMplCoreProgram extends string | AccountMeta<string> =
     "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
   TAccountSystemProgram extends string | AccountMeta<string> =
@@ -84,17 +76,10 @@ export type CancelPagareInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountHolder extends string
-        ? ReadonlySignerAccount<TAccountHolder> &
-            AccountSignerMeta<TAccountHolder>
-        : TAccountHolder,
-      TAccountMultisig extends string
-        ? ReadonlyAccount<TAccountMultisig>
-        : TAccountMultisig,
-      TAccountPayer extends string
-        ? WritableSignerAccount<TAccountPayer> &
-            AccountSignerMeta<TAccountPayer>
-        : TAccountPayer,
+      TAccountOwner extends string
+        ? WritableSignerAccount<TAccountOwner> &
+            AccountSignerMeta<TAccountOwner>
+        : TAccountOwner,
       TAccountPool extends string
         ? ReadonlyAccount<TAccountPool>
         : TAccountPool,
@@ -110,9 +95,6 @@ export type CancelPagareInstruction<
       TAccountCollection extends string
         ? WritableAccount<TAccountCollection>
         : TAccountCollection,
-      TAccountProcuradorAuthority extends string
-        ? ReadonlyAccount<TAccountProcuradorAuthority>
-        : TAccountProcuradorAuthority,
       TAccountMplCoreProgram extends string
         ? ReadonlyAccount<TAccountMplCoreProgram>
         : TAccountMplCoreProgram,
@@ -129,61 +111,53 @@ export type CancelPagareInstruction<
     ]
   >;
 
-export type CancelPagareInstructionData = {
+export type BurnPagareInstructionData = {
   discriminator: ReadonlyUint8Array;
   drawIndex: number;
-  receiptHash: ReadonlyUint8Array;
-  validUntil: bigint;
+  documentHash: ReadonlyUint8Array;
 };
 
-export type CancelPagareInstructionDataArgs = {
+export type BurnPagareInstructionDataArgs = {
   drawIndex: number;
-  receiptHash: ReadonlyUint8Array;
-  validUntil: number | bigint;
+  documentHash: ReadonlyUint8Array;
 };
 
-export function getCancelPagareInstructionDataEncoder(): FixedSizeEncoder<CancelPagareInstructionDataArgs> {
+export function getBurnPagareInstructionDataEncoder(): FixedSizeEncoder<BurnPagareInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["drawIndex", getU16Encoder()],
-      ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["validUntil", getI64Encoder()],
+      ["documentHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
-    (value) => ({ ...value, discriminator: CANCEL_PAGARE_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: BURN_PAGARE_DISCRIMINATOR }),
   );
 }
 
-export function getCancelPagareInstructionDataDecoder(): FixedSizeDecoder<CancelPagareInstructionData> {
+export function getBurnPagareInstructionDataDecoder(): FixedSizeDecoder<BurnPagareInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["drawIndex", getU16Decoder()],
-    ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["validUntil", getI64Decoder()],
+    ["documentHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
 
-export function getCancelPagareInstructionDataCodec(): FixedSizeCodec<
-  CancelPagareInstructionDataArgs,
-  CancelPagareInstructionData
+export function getBurnPagareInstructionDataCodec(): FixedSizeCodec<
+  BurnPagareInstructionDataArgs,
+  BurnPagareInstructionData
 > {
   return combineCodec(
-    getCancelPagareInstructionDataEncoder(),
-    getCancelPagareInstructionDataDecoder(),
+    getBurnPagareInstructionDataEncoder(),
+    getBurnPagareInstructionDataDecoder(),
   );
 }
 
-export type CancelPagareAsyncInput<
-  TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
-  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
-  TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
+export type BurnPagareAsyncInput<
+  TAccountOwner extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
   TAccountAsset extends InstructionAccountInput = InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
-  TAccountProcuradorAuthority extends InstructionAccountInput =
-    InstructionAccountInput,
   TAccountMplCoreProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput =
@@ -193,62 +167,43 @@ export type CancelPagareAsyncInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   /**
-   * The council (the owner while the asset is in the pool), the procurador of record with a
-   * procuración in force, or the line's borrower once the cancel grace has run; checked in the
-   * handler (`NotHolder`, `ProcuracionState`, `CancelGraceNotElapsed`).
+   * The delivered título's owner; the Core program refuses anyone else. Receives the asset's
+   * rent.
    */
-  holder: TAccountHolder;
-  multisig: TAccountMultisig;
-  /** Receives the asset's rent from the Core program. Any signer. */
-  payer: TAccountPayer;
+  owner: TAccountOwner;
   pool: TAccountPool;
   line: TAccountLine;
-  /** The record of pagaré `draw_index` of the line; written, never closed. */
   pagare?: TAccountPagare;
-  /** The Core asset the record names; burnt by the Core program. */
   asset: TAccountAsset;
-  /** The series' collection the asset belongs to. */
   collection: TAccountCollection;
-  /**
-   * The burn delegate's authority, `["procurador", pagare, holder]`: required on the
-   * procurador's branch, where the program signs for it; left out on the owner's.
-   */
-  procuradorAuthority?: TAccountProcuradorAuthority;
   mplCoreProgram?: TAccountMplCoreProgram;
   systemProgram?: TAccountSystemProgram;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  drawIndex: CancelPagareInstructionDataArgs["drawIndex"];
-  receiptHash: CancelPagareInstructionDataArgs["receiptHash"];
-  validUntil: CancelPagareInstructionDataArgs["validUntil"];
+  drawIndex: BurnPagareInstructionDataArgs["drawIndex"];
+  documentHash: BurnPagareInstructionDataArgs["documentHash"];
 };
 
-export async function getCancelPagareInstructionAsync<
-  TAccountHolder extends InstructionSignerInput,
-  TAccountMultisig extends InstructionAccountInput,
-  TAccountPayer extends InstructionSignerInput,
+export async function getBurnPagareInstructionAsync<
+  TAccountOwner extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput,
   TAccountAsset extends InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput,
-  TAccountProcuradorAuthority extends InstructionAccountInput,
   TAccountMplCoreProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: CancelPagareAsyncInput<
-    TAccountHolder,
-    TAccountMultisig,
-    TAccountPayer,
+  input: BurnPagareAsyncInput<
+    TAccountOwner,
     TAccountPool,
     TAccountLine,
     TAccountPagare,
     TAccountAsset,
     TAccountCollection,
-    TAccountProcuradorAuthority,
     TAccountMplCoreProgram,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -258,19 +213,11 @@ export async function getCancelPagareInstructionAsync<
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
 ): Promise<
-  CancelPagareInstruction<
+  BurnPagareInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountHolder,
-      InstructionAccountInputAddress<TAccountHolder>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountMultisig,
-      InstructionAccountInputAddress<TAccountMultisig>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountPayer,
-      InstructionAccountInputAddress<TAccountPayer>
+      TAccountOwner,
+      InstructionAccountInputAddress<TAccountOwner>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -291,10 +238,6 @@ export async function getCancelPagareInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountCollection,
       InstructionAccountInputAddress<TAccountCollection>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountProcuradorAuthority,
-      InstructionAccountInputAddress<TAccountProcuradorAuthority>
     >,
     ResolvedInstructionAccountMeta<
       TAccountMplCoreProgram,
@@ -327,13 +270,7 @@ export async function getCancelPagareInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
-    multisig: {
-      value: input.multisig ?? null,
-      isSigner: false,
-      isWritable: false,
-    },
-    payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
+    owner: { value: input.owner ?? null, isSigner: true, isWritable: true },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
     line: { value: input.line ?? null, isSigner: false, isWritable: false },
     pagare: { value: input.pagare ?? null, isSigner: false, isWritable: true },
@@ -342,11 +279,6 @@ export async function getCancelPagareInstructionAsync<
       value: input.collection ?? null,
       isSigner: false,
       isWritable: true,
-    },
-    procuradorAuthority: {
-      value: input.procuradorAuthority ?? null,
-      isSigner: false,
-      isWritable: false,
     },
     mplCoreProgram: {
       value: input.mplCoreProgram ?? null,
@@ -414,37 +346,26 @@ export async function getCancelPagareInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("holder", accounts.holder),
-      getAccountMeta("multisig", accounts.multisig),
-      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("owner", accounts.owner),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("pagare", accounts.pagare),
       getAccountMeta("asset", accounts.asset),
       getAccountMeta("collection", accounts.collection),
-      getAccountMeta("procuradorAuthority", accounts.procuradorAuthority),
       getAccountMeta("mplCoreProgram", accounts.mplCoreProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getCancelPagareInstructionDataEncoder().encode(
-      args as CancelPagareInstructionDataArgs,
+    data: getBurnPagareInstructionDataEncoder().encode(
+      args as BurnPagareInstructionDataArgs,
     ),
     programAddress,
-  } as CancelPagareInstruction<
+  } as BurnPagareInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountHolder,
-      InstructionAccountInputAddress<TAccountHolder>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountMultisig,
-      InstructionAccountInputAddress<TAccountMultisig>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountPayer,
-      InstructionAccountInputAddress<TAccountPayer>
+      TAccountOwner,
+      InstructionAccountInputAddress<TAccountOwner>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -467,10 +388,6 @@ export async function getCancelPagareInstructionAsync<
       InstructionAccountInputAddress<TAccountCollection>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountProcuradorAuthority,
-      InstructionAccountInputAddress<TAccountProcuradorAuthority>
-    >,
-    ResolvedInstructionAccountMeta<
       TAccountMplCoreProgram,
       InstructionAccountInputAddress<TAccountMplCoreProgram>
     >,
@@ -489,17 +406,13 @@ export async function getCancelPagareInstructionAsync<
   >);
 }
 
-export type CancelPagareInput<
-  TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
-  TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
-  TAccountPayer extends InstructionSignerInput = InstructionSignerInput,
+export type BurnPagareInput<
+  TAccountOwner extends InstructionSignerInput = InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
   TAccountAsset extends InstructionAccountInput = InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput = InstructionAccountInput,
-  TAccountProcuradorAuthority extends InstructionAccountInput =
-    InstructionAccountInput,
   TAccountMplCoreProgram extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput =
@@ -509,62 +422,43 @@ export type CancelPagareInput<
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
   /**
-   * The council (the owner while the asset is in the pool), the procurador of record with a
-   * procuración in force, or the line's borrower once the cancel grace has run; checked in the
-   * handler (`NotHolder`, `ProcuracionState`, `CancelGraceNotElapsed`).
+   * The delivered título's owner; the Core program refuses anyone else. Receives the asset's
+   * rent.
    */
-  holder: TAccountHolder;
-  multisig: TAccountMultisig;
-  /** Receives the asset's rent from the Core program. Any signer. */
-  payer: TAccountPayer;
+  owner: TAccountOwner;
   pool: TAccountPool;
   line: TAccountLine;
-  /** The record of pagaré `draw_index` of the line; written, never closed. */
   pagare: TAccountPagare;
-  /** The Core asset the record names; burnt by the Core program. */
   asset: TAccountAsset;
-  /** The series' collection the asset belongs to. */
   collection: TAccountCollection;
-  /**
-   * The burn delegate's authority, `["procurador", pagare, holder]`: required on the
-   * procurador's branch, where the program signs for it; left out on the owner's.
-   */
-  procuradorAuthority?: TAccountProcuradorAuthority;
   mplCoreProgram?: TAccountMplCoreProgram;
   systemProgram?: TAccountSystemProgram;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  drawIndex: CancelPagareInstructionDataArgs["drawIndex"];
-  receiptHash: CancelPagareInstructionDataArgs["receiptHash"];
-  validUntil: CancelPagareInstructionDataArgs["validUntil"];
+  drawIndex: BurnPagareInstructionDataArgs["drawIndex"];
+  documentHash: BurnPagareInstructionDataArgs["documentHash"];
 };
 
-export function getCancelPagareInstruction<
-  TAccountHolder extends InstructionSignerInput,
-  TAccountMultisig extends InstructionAccountInput,
-  TAccountPayer extends InstructionSignerInput,
+export function getBurnPagareInstruction<
+  TAccountOwner extends InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountPagare extends InstructionAccountInput,
   TAccountAsset extends InstructionAccountInput,
   TAccountCollection extends InstructionAccountInput,
-  TAccountProcuradorAuthority extends InstructionAccountInput,
   TAccountMplCoreProgram extends InstructionAccountInput,
   TAccountSystemProgram extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: CancelPagareInput<
-    TAccountHolder,
-    TAccountMultisig,
-    TAccountPayer,
+  input: BurnPagareInput<
+    TAccountOwner,
     TAccountPool,
     TAccountLine,
     TAccountPagare,
     TAccountAsset,
     TAccountCollection,
-    TAccountProcuradorAuthority,
     TAccountMplCoreProgram,
     TAccountSystemProgram,
     TAccountEventAuthority,
@@ -573,19 +467,11 @@ export function getCancelPagareInstruction<
   config?: {
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
-): CancelPagareInstruction<
+): BurnPagareInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountHolder,
-    InstructionAccountInputAddress<TAccountHolder>
-  >,
-  ResolvedInstructionAccountMeta<
-    TAccountMultisig,
-    InstructionAccountInputAddress<TAccountMultisig>
-  >,
-  ResolvedInstructionAccountMeta<
-    TAccountPayer,
-    InstructionAccountInputAddress<TAccountPayer>
+    TAccountOwner,
+    InstructionAccountInputAddress<TAccountOwner>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -606,10 +492,6 @@ export function getCancelPagareInstruction<
   ResolvedInstructionAccountMeta<
     TAccountCollection,
     InstructionAccountInputAddress<TAccountCollection>
-  >,
-  ResolvedInstructionAccountMeta<
-    TAccountProcuradorAuthority,
-    InstructionAccountInputAddress<TAccountProcuradorAuthority>
   >,
   ResolvedInstructionAccountMeta<
     TAccountMplCoreProgram,
@@ -641,13 +523,7 @@ export function getCancelPagareInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
-    multisig: {
-      value: input.multisig ?? null,
-      isSigner: false,
-      isWritable: false,
-    },
-    payer: { value: input.payer ?? null, isSigner: true, isWritable: true },
+    owner: { value: input.owner ?? null, isSigner: true, isWritable: true },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
     line: { value: input.line ?? null, isSigner: false, isWritable: false },
     pagare: { value: input.pagare ?? null, isSigner: false, isWritable: true },
@@ -656,11 +532,6 @@ export function getCancelPagareInstruction<
       value: input.collection ?? null,
       isSigner: false,
       isWritable: true,
-    },
-    procuradorAuthority: {
-      value: input.procuradorAuthority ?? null,
-      isSigner: false,
-      isWritable: false,
     },
     mplCoreProgram: {
       value: input.mplCoreProgram ?? null,
@@ -707,37 +578,26 @@ export function getCancelPagareInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("holder", accounts.holder),
-      getAccountMeta("multisig", accounts.multisig),
-      getAccountMeta("payer", accounts.payer),
+      getAccountMeta("owner", accounts.owner),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("pagare", accounts.pagare),
       getAccountMeta("asset", accounts.asset),
       getAccountMeta("collection", accounts.collection),
-      getAccountMeta("procuradorAuthority", accounts.procuradorAuthority),
       getAccountMeta("mplCoreProgram", accounts.mplCoreProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getCancelPagareInstructionDataEncoder().encode(
-      args as CancelPagareInstructionDataArgs,
+    data: getBurnPagareInstructionDataEncoder().encode(
+      args as BurnPagareInstructionDataArgs,
     ),
     programAddress,
-  } as CancelPagareInstruction<
+  } as BurnPagareInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountHolder,
-      InstructionAccountInputAddress<TAccountHolder>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountMultisig,
-      InstructionAccountInputAddress<TAccountMultisig>
-    >,
-    ResolvedInstructionAccountMeta<
-      TAccountPayer,
-      InstructionAccountInputAddress<TAccountPayer>
+      TAccountOwner,
+      InstructionAccountInputAddress<TAccountOwner>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -760,10 +620,6 @@ export function getCancelPagareInstruction<
       InstructionAccountInputAddress<TAccountCollection>
     >,
     ResolvedInstructionAccountMeta<
-      TAccountProcuradorAuthority,
-      InstructionAccountInputAddress<TAccountProcuradorAuthority>
-    >,
-    ResolvedInstructionAccountMeta<
       TAccountMplCoreProgram,
       InstructionAccountInputAddress<TAccountMplCoreProgram>
     >,
@@ -782,56 +638,44 @@ export function getCancelPagareInstruction<
   >);
 }
 
-export type ParsedCancelPagareInstruction<
+export type ParsedBurnPagareInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
     /**
-     * The council (the owner while the asset is in the pool), the procurador of record with a
-     * procuración in force, or the line's borrower once the cancel grace has run; checked in the
-     * handler (`NotHolder`, `ProcuracionState`, `CancelGraceNotElapsed`).
+     * The delivered título's owner; the Core program refuses anyone else. Receives the asset's
+     * rent.
      */
-    holder: TAccountMetas[0];
-    multisig: TAccountMetas[1];
-    /** Receives the asset's rent from the Core program. Any signer. */
-    payer: TAccountMetas[2];
-    pool: TAccountMetas[3];
-    line: TAccountMetas[4];
-    /** The record of pagaré `draw_index` of the line; written, never closed. */
-    pagare: TAccountMetas[5];
-    /** The Core asset the record names; burnt by the Core program. */
-    asset: TAccountMetas[6];
-    /** The series' collection the asset belongs to. */
-    collection: TAccountMetas[7];
-    /**
-     * The burn delegate's authority, `["procurador", pagare, holder]`: required on the
-     * procurador's branch, where the program signs for it; left out on the owner's.
-     */
-    procuradorAuthority?: TAccountMetas[8] | undefined;
-    mplCoreProgram: TAccountMetas[9];
-    systemProgram: TAccountMetas[10];
-    eventAuthority: TAccountMetas[11];
-    program: TAccountMetas[12];
+    owner: TAccountMetas[0];
+    pool: TAccountMetas[1];
+    line: TAccountMetas[2];
+    pagare: TAccountMetas[3];
+    asset: TAccountMetas[4];
+    collection: TAccountMetas[5];
+    mplCoreProgram: TAccountMetas[6];
+    systemProgram: TAccountMetas[7];
+    eventAuthority: TAccountMetas[8];
+    program: TAccountMetas[9];
   };
-  data: CancelPagareInstructionData;
+  data: BurnPagareInstructionData;
 };
 
-export function parseCancelPagareInstruction<
+export function parseBurnPagareInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedCancelPagareInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 13) {
+): ParsedBurnPagareInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 10) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 13,
+        expectedAccountMetas: 10,
       },
     );
   }
@@ -841,29 +685,20 @@ export function parseCancelPagareInstruction<
     accountIndex += 1;
     return accountMeta;
   };
-  const getNextOptionalAccount = () => {
-    const accountMeta = getNextAccount();
-    return accountMeta.address === ELOTE_POOL_PROGRAM_ADDRESS
-      ? undefined
-      : accountMeta;
-  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      holder: getNextAccount(),
-      multisig: getNextAccount(),
-      payer: getNextAccount(),
+      owner: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       pagare: getNextAccount(),
       asset: getNextAccount(),
       collection: getNextAccount(),
-      procuradorAuthority: getNextOptionalAccount(),
       mplCoreProgram: getNextAccount(),
       systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },
-    data: getCancelPagareInstructionDataDecoder().decode(instruction.data),
+    data: getBurnPagareInstructionDataDecoder().decode(instruction.data),
   };
 }

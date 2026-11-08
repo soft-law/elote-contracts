@@ -1,7 +1,7 @@
 //! The council of curators: constants and states fixed by the design (PR 4).
 
 use elote_pool::state::{
-    LineStatus, COUNCIL_GENERIC, COUNCIL_SQUADS, MAX_COUNCIL_MEMBERS, MIN_ACCELERATION_NOTICE_SECONDS, MIN_CANCEL_GRACE_SECONDS,
+    LineStatus, COUNCIL_GENERIC, COUNCIL_SQUADS, MAX_COUNCIL_MEMBERS, MIN_ACCELERATION_NOTICE_SECONDS,
     REQUEST_TTL_SECONDS, SQUADS_PROGRAM_ID,
 };
 
@@ -10,7 +10,6 @@ fn council_constants_match_the_design() {
     assert_eq!(MAX_COUNCIL_MEMBERS, 10);
     assert_eq!(REQUEST_TTL_SECONDS, 15 * 86_400);
     assert_eq!(MIN_ACCELERATION_NOTICE_SECONDS, 7 * 86_400);
-    assert_eq!(MIN_CANCEL_GRACE_SECONDS, 30 * 86_400);
     assert_eq!((COUNCIL_SQUADS, COUNCIL_GENERIC), (0, 1));
     assert_eq!(SQUADS_PROGRAM_ID.to_string(), "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf");
 }
@@ -83,7 +82,7 @@ fn init_pool_makes_vault_0_of_the_multisig_the_council_and_the_creator_only_pays
     assert_eq!(pool.council, env.council.pubkey());
     assert_eq!((pool.creator, pool.multisig, pool.council_vault_bump), (creator.pubkey(), multisig, bump));
     assert_eq!((pool.council_kind, pool.pending_council), (COUNCIL_SQUADS, Pubkey::default()));
-    assert_eq!((pool.acceleration_notice_seconds, pool.cancel_grace_seconds), (ACCELERATION_NOTICE, CANCEL_GRACE));
+    assert_eq!(pool.acceleration_notice_seconds, ACCELERATION_NOTICE);
     assert_eq!(k.pool, pool_pda(&creator.pubkey(), &k.asset_mint).0, "the creator seeds the pool");
 
     let ix = env.set_paused_ix(&k, &creator.pubkey(), true);
@@ -143,9 +142,8 @@ fn init_pool_refuses_params_below_their_floors() {
     let multisig = env.multisig;
     let creator = env.creator.insecure_clone();
     type Edit = fn(&mut elote_pool::instructions::pool::InitPoolParams);
-    let cases: [(Edit, u32); 3] = [
+    let cases: [(Edit, u32); 2] = [
         (|p| p.acceleration_notice_seconds = ACCELERATION_NOTICE - 1, ERR_BASE + PoolError::AccelerationNoticeTooShort as u32),
-        (|p| p.cancel_grace_seconds = CANCEL_GRACE - 1, ERR_BASE + PoolError::CancelGraceTooShort as u32),
         (|p| p.max_outstanding_principal = 0, E_WRONG_AMOUNT),
     ];
     for (edit, code) in cases {

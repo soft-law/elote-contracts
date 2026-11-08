@@ -86,12 +86,10 @@ export type Pagare = {
   /** When the repayment that covered it landed; zero while outstanding. */
   paidAt: bigint;
   /**
-   * The receipt hash of that repayment: the payer's, until the holder annotates the real one
-   * (`annotate_payment`, before the burn).
+   * The receipt hash of that repayment, the payer's and provisional: the holder's correction
+   * arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41).
    */
   receiptHash: ReadonlyUint8Array;
-  /** The receipt hash `cancel_pagare` was given; zero until the burn. */
-  cancelReceiptHash: ReadonlyUint8Array;
   /**
    * The procurador of the endoso en procuración in force; the zero key when none. Cleared by
    * `revoke_procuracion` and by the extinction.
@@ -119,12 +117,6 @@ export type Pagare = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
-  /**
-   * The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then:
-   * the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool
-   * sets later. Zero while outstanding.
-   */
-  cancelGraceSeconds: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -160,12 +152,10 @@ export type PagareArgs = {
   /** When the repayment that covered it landed; zero while outstanding. */
   paidAt: number | bigint;
   /**
-   * The receipt hash of that repayment: the payer's, until the holder annotates the real one
-   * (`annotate_payment`, before the burn).
+   * The receipt hash of that repayment, the payer's and provisional: the holder's correction
+   * arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41).
    */
   receiptHash: ReadonlyUint8Array;
-  /** The receipt hash `cancel_pagare` was given; zero until the burn. */
-  cancelReceiptHash: ReadonlyUint8Array;
   /**
    * The procurador of the endoso en procuración in force; the zero key when none. Cleared by
    * `revoke_procuracion` and by the extinction.
@@ -193,12 +183,6 @@ export type PagareArgs = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
-  /**
-   * The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then:
-   * the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool
-   * sets later. Zero while outstanding.
-   */
-  cancelGraceSeconds: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -221,7 +205,6 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["status", getU8Encoder()],
       ["paidAt", getI64Encoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["cancelReceiptHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["procurador", getAddressEncoder()],
       ["flags", getU8Encoder()],
       ["logRoot", fixEncoderSize(getBytesEncoder(), 32)],
@@ -232,7 +215,6 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["fixDate", getU32Encoder()],
       ["usdcDelivered", getU64Encoder()],
       ["deliveryHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["cancelGraceSeconds", getU32Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 28)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
@@ -256,7 +238,6 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["status", getU8Decoder()],
     ["paidAt", getI64Decoder()],
     ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["cancelReceiptHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["procurador", getAddressDecoder()],
     ["flags", getU8Decoder()],
     ["logRoot", fixDecoderSize(getBytesDecoder(), 32)],
@@ -267,7 +248,6 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["fixDate", getU32Decoder()],
     ["usdcDelivered", getU64Decoder()],
     ["deliveryHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["cancelGraceSeconds", getU32Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 28)],
   ]);
 }
@@ -339,5 +319,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 399;
+  return 363;
 }

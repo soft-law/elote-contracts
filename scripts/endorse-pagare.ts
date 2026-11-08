@@ -28,7 +28,6 @@ import { address } from "@solana/kit";
 import {
   fetchPagare,
   findPagarePda,
-  findProcuradorAuthorityPda,
   getEndorsePagareInstructionAsync,
   getRevokeProcuracionInstructionAsync,
   pagaresUnderProcuracion,
@@ -89,12 +88,9 @@ if (revoke) {
       holder: council.signer,
       multisig: pool.multisig,
       validUntil,
-      payer,
       pool: poolAddress,
       line,
       pagare: record,
-      asset: before.asset,
-      collection: pool.collection,
       drawIndex,
       entryHash,
     }),
@@ -126,20 +122,16 @@ if (revoke) {
       holder: council.signer,
       multisig: pool.multisig,
       validUntil,
-      payer,
       pool: poolAddress,
       line,
       pagare: record,
-      asset: before.asset,
-      collection: pool.collection,
       drawIndex,
       kind: KIND_PROCURACION,
       to: procurador,
       endosoHash,
     }),
   ], [payer]).catch((e) => fail((e as Error).message));
-  const [authority] = await findProcuradorAuthorityPda({ pagare: record, procurador });
-  console.log(`  the burn delegate is approved to ${authority}; the procurador cancels with cancel-pagare.ts --procurador-keypair`);
+  console.log(`  the procurador of record collects through repay.ts; the entry is the endorsement (no power over the asset is lent)`);
 }
 
 const after = (await fetchPagare(c.rpc, record, { commitment: "confirmed" })).data;

@@ -174,7 +174,8 @@
       "name": "annotate_payment",
       "docs": [
         "The council (the holder) attaches a receipt to payment entry `entry_count` of pagaré",
-        "`draw_index`, as a `Recibo` entry over `receipt_hash`. The annotation also replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`)."
+        "`draw_index`, as a `Recibo` entry over `receipt_hash`; the correction is the entry, no",
+        "field is rewritten (LGTOC 41)."
       ],
       "discriminator": [
         142,
@@ -313,6 +314,144 @@
       ]
     },
     {
+      "name": "annul_pagare",
+      "docs": [
+        "The council annuls an outstanding pagaré issued in error: a `Terminacion` entry over the",
+        "annulment document's hash; nothing burns and no state moves (decision 38)."
+      ],
+      "discriminator": [
+        59,
+        180,
+        220,
+        161,
+        205,
+        199,
+        42,
+        216
+      ],
+      "accounts": [
+        {
+          "name": "holder",
+          "docs": [
+            "The council, the holder."
+          ],
+          "signer": true
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          },
+          "relations": [
+            "pagare"
+          ]
+        },
+        {
+          "name": "pagare",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "arg",
+                "path": "draw_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_index",
+          "type": "u16"
+        },
+        {
+          "name": "document_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "approve_line",
       "docs": [
         "The council approves a requested line, naming its expediente root and terms hash, within 15",
@@ -408,6 +547,155 @@
         {
           "name": "valid_until",
           "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "burn_pagare",
+      "docs": [
+        "The delivered título's owner burns the asset, optionally: a `Terminacion` entry over",
+        "`document_hash` (zero for none), then `BurnV1` with the owner as authority. The record stays."
+      ],
+      "discriminator": [
+        133,
+        111,
+        91,
+        157,
+        141,
+        129,
+        9,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "The delivered título's owner; the Core program refuses anyone else. Receives the asset's",
+            "rent."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          },
+          "relations": [
+            "pagare"
+          ]
+        },
+        {
+          "name": "pagare",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "arg",
+                "path": "draw_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset",
+          "writable": true
+        },
+        {
+          "name": "collection",
+          "writable": true
+        },
+        {
+          "name": "mpl_core_program",
+          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_index",
+          "type": "u16"
+        },
+        {
+          "name": "document_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -508,195 +796,12 @@
       ]
     },
     {
-      "name": "cancel_pagare",
-      "docs": [
-        "Extinguishes pagaré `draw_index` once a repayment has marked it paid",
-        "(`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry,",
-        "then thaws and burns the asset; the record stays. The council (the owner), the procurador of",
-        "record alone, or the line's borrower alone once the cancel grace fixed at the payment has run.",
-        "Never paused."
-      ],
-      "discriminator": [
-        90,
-        9,
-        227,
-        98,
-        84,
-        183,
-        29,
-        9
-      ],
-      "accounts": [
-        {
-          "name": "holder",
-          "docs": [
-            "The council (the owner while the asset is in the pool), the procurador of record with a",
-            "procuración in force, or the line's borrower once the cancel grace has run; checked in the",
-            "handler (`NotHolder`, `ProcuracionState`, `CancelGraceNotElapsed`)."
-          ],
-          "signer": true
-        },
-        {
-          "name": "multisig"
-        },
-        {
-          "name": "payer",
-          "docs": [
-            "Receives the asset's rent from the Core program. Any signer."
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "pool",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  111,
-                  111,
-                  108
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool.creator",
-                "account": "Pool"
-              },
-              {
-                "kind": "account",
-                "path": "pool.asset_mint",
-                "account": "Pool"
-              }
-            ]
-          },
-          "relations": [
-            "line"
-          ]
-        },
-        {
-          "name": "line",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  105,
-                  110,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool"
-              },
-              {
-                "kind": "account",
-                "path": "line.line_id",
-                "account": "CreditLine"
-              }
-            ]
-          },
-          "relations": [
-            "pagare"
-          ]
-        },
-        {
-          "name": "pagare",
-          "docs": [
-            "The record of pagaré `draw_index` of the line; written, never closed."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  97,
-                  103,
-                  97,
-                  114,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "line"
-              },
-              {
-                "kind": "arg",
-                "path": "draw_index"
-              }
-            ]
-          }
-        },
-        {
-          "name": "asset",
-          "docs": [
-            "The Core asset the record names; burnt by the Core program."
-          ],
-          "writable": true
-        },
-        {
-          "name": "collection",
-          "docs": [
-            "The series' collection the asset belongs to."
-          ],
-          "writable": true
-        },
-        {
-          "name": "procurador_authority",
-          "docs": [
-            "The burn delegate's authority, `[\"procurador\", pagare, holder]`: required on the",
-            "procurador's branch, where the program signs for it; left out on the owner's."
-          ],
-          "optional": true
-        },
-        {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "event_authority"
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": [
-        {
-          "name": "draw_index",
-          "type": "u16"
-        },
-        {
-          "name": "receipt_hash",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "valid_until",
-          "type": "i64"
-        }
-      ]
-    },
-    {
       "name": "court_annotation",
       "docs": [
         "Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,",
-        "suspension, cancellation) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. The",
-        "council signs; refused on a cancelled pagaré; moves nothing."
+        "suspension — it also holds the delivery) or `KIND_CONSTANCIA_JUDICIAL` (it lifts the hold),",
+        "over the court document's hash. The council signs; refused once the título was delivered;",
+        "moves nothing else."
       ],
       "discriminator": [
         218,
@@ -831,6 +936,154 @@
         {
           "name": "valid_until",
           "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "deliver_pagare",
+      "docs": [
+        "Delivers paid pagaré `draw_index` to the line's borrower — or to the aval who settled it",
+        "(LGTOC 115) — thawing the asset, renouncing the freeze forever and transferring it. Anyone",
+        "may call it, in the repayment's transaction or later; refused before the payment, twice, or",
+        "while a court act holds the título. Never paused (decision 38)."
+      ],
+      "discriminator": [
+        92,
+        79,
+        129,
+        211,
+        221,
+        172,
+        179,
+        148
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "Anyone: the delivery is the debtor's right, not a decision. Pays what the CPIs may need."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          },
+          "relations": [
+            "pagare"
+          ]
+        },
+        {
+          "name": "pagare",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  103,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "line"
+              },
+              {
+                "kind": "arg",
+                "path": "draw_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset",
+          "writable": true
+        },
+        {
+          "name": "collection",
+          "writable": true
+        },
+        {
+          "name": "recipient",
+          "docs": [
+            "The título's new owner: the line's borrower, or its sponsor when the aval made the",
+            "settling payment. Does not sign."
+          ]
+        },
+        {
+          "name": "mpl_core_program",
+          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "draw_index",
+          "type": "u16"
         }
       ]
     },
@@ -1179,11 +1432,11 @@
     {
       "name": "endorse_pagare",
       "docs": [
-        "Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets",
-        "the program address `[\"procurador\", pagare, to]` burn the asset through an owner-managed",
-        "`BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused",
-        "with `to` the zero key, the pool, the council, a curator, the guardian, the pool's creator,",
-        "the FIX feeder, or the line's borrower, rent payer or sponsor, or a procuración in force."
+        "Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry; the",
+        "pool stays the owner and no power over the asset is lent (decision 38). The council (the",
+        "holder) signs; `kind` must be `KIND_PROCURACION`; refused with `to` the zero key, the pool,",
+        "the council, a curator, the pool's creator, the FIX feeder, or the line's borrower, rent",
+        "payer or sponsor, or a procuración in force."
       ],
       "discriminator": [
         108,
@@ -1205,14 +1458,6 @@
         },
         {
           "name": "multisig"
-        },
-        {
-          "name": "payer",
-          "docs": [
-            "Pays the rent the Core plugin may need. Any signer."
-          ],
-          "writable": true,
-          "signer": true
         },
         {
           "name": "pool",
@@ -1297,22 +1542,6 @@
               }
             ]
           }
-        },
-        {
-          "name": "asset",
-          "writable": true
-        },
-        {
-          "name": "collection",
-          "writable": true
-        },
-        {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
         },
         {
           "name": "event_authority"
@@ -2526,8 +2755,7 @@
       "name": "revoke_procuracion",
       "docs": [
         "Revokes the procuración in force on pagaré `draw_index`: appends the revocation entry over",
-        "the signed revocation's hash and returns the burn delegate to the owner. The holder (the",
-        "council) signs."
+        "the signed revocation's hash. The holder (the council) signs."
       ],
       "discriminator": [
         139,
@@ -2549,11 +2777,6 @@
         },
         {
           "name": "multisig"
-        },
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
         },
         {
           "name": "pool",
@@ -2638,22 +2861,6 @@
               }
             ]
           }
-        },
-        {
-          "name": "asset",
-          "writable": true
-        },
-        {
-          "name": "collection",
-          "writable": true
-        },
-        {
-          "name": "mpl_core_program",
-          "address": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
         },
         {
           "name": "event_authority"
@@ -2745,79 +2952,6 @@
       "args": [
         {
           "name": "acceleration_notice_seconds",
-          "type": "u32"
-        },
-        {
-          "name": "valid_until",
-          "type": "i64"
-        }
-      ]
-    },
-    {
-      "name": "set_cancel_grace",
-      "docs": [
-        "Sets the wait from a pagaré's payment before its borrower may cancel it alone; never below",
-        "30 days nor above 365. Applies to pagarés paid from then on: each keeps the grace in force",
-        "at its payment. Council only."
-      ],
-      "discriminator": [
-        18,
-        242,
-        191,
-        228,
-        180,
-        133,
-        104,
-        187
-      ],
-      "accounts": [
-        {
-          "name": "council",
-          "signer": true,
-          "relations": [
-            "pool"
-          ]
-        },
-        {
-          "name": "multisig"
-        },
-        {
-          "name": "pool",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  111,
-                  111,
-                  108
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool.creator",
-                "account": "Pool"
-              },
-              {
-                "kind": "account",
-                "path": "pool.asset_mint",
-                "account": "Pool"
-              }
-            ]
-          }
-        },
-        {
-          "name": "event_authority"
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": [
-        {
-          "name": "cancel_grace_seconds",
           "type": "u32"
         },
         {
@@ -3688,19 +3822,6 @@
       ]
     },
     {
-      "name": "CancelGraceSet",
-      "discriminator": [
-        218,
-        221,
-        95,
-        147,
-        75,
-        72,
-        252,
-        88
-      ]
-    },
-    {
       "name": "CollectionPeriodSet",
       "discriminator": [
         132,
@@ -4000,16 +4121,42 @@
       ]
     },
     {
-      "name": "PagareCancelled",
+      "name": "PagareAnnulled",
       "discriminator": [
-        52,
-        176,
-        158,
+        23,
+        58,
+        135,
+        100,
+        75,
+        106,
+        146,
+        102
+      ]
+    },
+    {
+      "name": "PagareBurned",
+      "discriminator": [
+        0,
+        31,
+        190,
+        89,
+        221,
         29,
-        111,
+        44,
+        247
+      ]
+    },
+    {
+      "name": "PagareDelivered",
+      "discriminator": [
+        214,
+        178,
+        95,
+        27,
+        126,
         2,
-        28,
-        70
+        202,
+        76
       ]
     },
     {
@@ -4297,7 +4444,7 @@
     {
       "code": 6030,
       "name": "CancelGraceTooShort",
-      "msg": "The borrower's cancel grace is below the thirty-day floor"
+      "msg": "Retired: the cancel grace is gone with the cancellation route (decision 38)"
     },
     {
       "code": 6031,
@@ -4447,12 +4594,12 @@
     {
       "code": 6060,
       "name": "PagareAlreadyPaid",
-      "msg": "This pagaré is already extinguished"
+      "msg": "This pagaré is already paid"
     },
     {
       "code": 6061,
       "name": "CancelGraceNotElapsed",
-      "msg": "The borrower may cancel alone only after the cancel grace from the payment"
+      "msg": "Retired: the cancellation route is gone (decision 38)"
     },
     {
       "code": 6062,
@@ -4482,7 +4629,7 @@
     {
       "code": 6067,
       "name": "CancelGraceTooLong",
-      "msg": "The borrower's cancel grace is above the one-year ceiling"
+      "msg": "Retired: the cancel grace ceiling is gone with the cancellation route (decision 38)"
     },
     {
       "code": 6068,
@@ -4513,6 +4660,16 @@
       "code": 6073,
       "name": "FixAlreadyPostedToday",
       "msg": "A FIX was already published today in Mexico City; the feeder publishes once a day"
+    },
+    {
+      "code": 6074,
+      "name": "PagareAlreadyDelivered",
+      "msg": "This pagaré was already delivered"
+    },
+    {
+      "code": 6075,
+      "name": "DeliveryHeld",
+      "msg": "A court act holds this título; a ConstanciaJudicial must lift it before the delivery"
     }
   ],
   "types": [
@@ -4571,22 +4728,6 @@
           {
             "name": "line_id",
             "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "CancelGraceSet",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "cancel_grace_seconds",
-            "type": "u32"
           }
         ]
       }
@@ -5169,13 +5310,6 @@
             "name": "acceleration_notice_seconds",
             "docs": [
               "At least `MIN_ACCELERATION_NOTICE_SECONDS`."
-            ],
-            "type": "u32"
-          },
-          {
-            "name": "cancel_grace_seconds",
-            "docs": [
-              "`MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`."
             ],
             "type": "u32"
           },
@@ -5840,7 +5974,8 @@
       "name": "Pagare",
       "docs": [
         "The program's record of one pagaré, beside the Core asset `draw` mints. It holds no folio and",
-        "nothing personal, and is never closed: after `cancel_pagare` it stays as the PAGADO mark."
+        "nothing personal, and is never closed: after the payment, the delivery and even the owner's",
+        "`burn_pagare` it stays as the PAGADO mark and the registry."
       ],
       "type": {
         "kind": "struct",
@@ -5939,20 +6074,8 @@
           {
             "name": "receipt_hash",
             "docs": [
-              "The receipt hash of that repayment: the payer's, until the holder annotates the real one",
-              "(`annotate_payment`, before the burn)."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "cancel_receipt_hash",
-            "docs": [
-              "The receipt hash `cancel_pagare` was given; zero until the burn."
+              "The receipt hash of that repayment, the payer's and provisional: the holder's correction",
+              "arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41)."
             ],
             "type": {
               "array": [
@@ -6039,15 +6162,6 @@
             }
           },
           {
-            "name": "cancel_grace_seconds",
-            "docs": [
-              "The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then:",
-              "the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool",
-              "sets later. Zero while outstanding."
-            ],
-            "type": "u32"
-          },
-          {
             "name": "reserved",
             "docs": [
               "Zero; for fields added after mainnet."
@@ -6063,10 +6177,11 @@
       }
     },
     {
-      "name": "PagareCancelled",
+      "name": "PagareAnnulled",
       "docs": [
-        "Emitted by `cancel_pagare`, before the burn. `holder` is the key that extinguished the pagaré",
-        "(the council, the procurador or the borrower); the sidecar stays as the PAGADO mark."
+        "The council annulled an outstanding título issued in error: a `Terminacion` entry over the",
+        "annulment document's hash. Nothing is burnt and no state moves — the record is the annotation",
+        "(decision 38: a título issued in error is annotated, never destroyed)."
       ],
       "type": {
         "kind": "struct",
@@ -6088,6 +6203,94 @@
             "type": "pubkey"
           },
           {
+            "name": "document_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PagareBurned",
+      "docs": [
+        "The delivered título's owner burnt the asset through `burn_pagare`, after a `Terminacion`",
+        "entry over `document_hash` (zero for none: the burn is the owner's unilateral act). The record",
+        "stays."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "draw_index",
+            "type": "u16"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "document_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PagareDelivered",
+      "docs": [
+        "The paid título left the pool: `deliver_pagare` thawed the asset, renounced the freeze and",
+        "transferred it to `recipient` — the suscriptor, or the aval who settled it (decision 38).",
+        "`payer` is whoever sent the instruction; anyone may."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "draw_index",
+            "type": "u16"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
             "name": "receipt_hash",
             "type": {
               "array": [
@@ -6097,15 +6300,12 @@
             }
           },
           {
-            "name": "holder",
-            "type": "pubkey"
+            "name": "entry_count",
+            "type": "u32"
           },
           {
-            "name": "by_borrower",
-            "docs": [
-              "The borrower cancelled alone after the cancel grace."
-            ],
-            "type": "bool"
+            "name": "delivered_at",
+            "type": "i64"
           }
         ]
       }
@@ -6557,15 +6757,6 @@
             "type": "u32"
           },
           {
-            "name": "cancel_grace_seconds",
-            "docs": [
-              "Seconds from a pagaré's payment before its borrower may cancel it alone,",
-              "`MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the",
-              "pagarés it marks paid."
-            ],
-            "type": "u32"
-          },
-          {
             "name": "impaired_principal",
             "docs": [
               "The outstanding USDC cost of the lines in collection: the mark and the council's",
@@ -6697,10 +6888,6 @@
           },
           {
             "name": "acceleration_notice_seconds",
-            "type": "u32"
-          },
-          {
-            "name": "cancel_grace_seconds",
             "type": "u32"
           },
           {

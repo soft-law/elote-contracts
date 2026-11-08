@@ -12,7 +12,6 @@ import {
   MPL_CORE_PROGRAM_ADDRESS,
   drawPagareAccounts,
   findPagareAssetPda,
-  findProcuradorAuthorityPda,
   repayPrincipalCap,
   repaySidecars,
   withRemainingAccounts,
@@ -20,11 +19,6 @@ import {
 import { findPagarePda } from "../src/generated";
 
 const line = address("11111111111111111111111111111112");
-
-test("findProcuradorAuthorityPda derives [procurador, pagare, procurador], as the Solana CLI does", async () => {
-  const procurador = address("11111111111111111111111111111113");
-  assert.equal((await findProcuradorAuthorityPda({ pagare: line, procurador }))[0], "6wdMPzs1ZM9LzU4QHYjBTDYqQhcaGP7kcWJrhrpyspKU");
-});
 
 test("repayPrincipalCap keeps a repay within maxRecords pagaré records", () => {
   const drawnThrough = [100n, 200n, 300n, 400n, 500n, 600n, 700n];

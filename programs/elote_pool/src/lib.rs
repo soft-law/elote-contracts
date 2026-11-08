@@ -61,13 +61,6 @@ pub mod elote_pool {
         instructions::pool::set_collection_period(ctx, collection_period_seconds, valid_until)
     }
 
-    /// Sets the wait from a pagaré's payment before its borrower may cancel it alone; never below
-    /// 30 days nor above 365. Applies to pagarés paid from then on: each keeps the grace in force
-    /// at its payment. Council only.
-    pub fn set_cancel_grace(ctx: Context<SetCancelGrace>, cancel_grace_seconds: u32, valid_until: i64) -> Result<()> {
-        instructions::pool::set_cancel_grace(ctx, cancel_grace_seconds, valid_until)
-    }
-
     /// Closes the draw window of an `Approved` or `Active` line now, forfeiting the undrawn
     /// remainder. Council only. Repayment is untouched.
     pub fn suspend_draws(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
@@ -158,34 +151,45 @@ pub mod elote_pool {
         instructions::lines::draw(ctx, amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
-    /// Extinguishes pagaré `draw_index` once a repayment has marked it paid
-    /// (`PAGARE_PAID_PENDING_CANCEL`, whatever the line's status): writes the `Terminacion` entry,
-    /// then thaws and burns the asset; the record stays. The council (the owner), the procurador of
-    /// record alone, or the line's borrower alone once the cancel grace fixed at the payment has run.
-    /// Never paused.
-    pub fn cancel_pagare(ctx: Context<CancelPagare>, draw_index: u16, receipt_hash: [u8; 32], valid_until: i64) -> Result<()> {
-        instructions::pagare::cancel_pagare(ctx, draw_index, receipt_hash, valid_until)
+    /// Delivers paid pagaré `draw_index` to the line's borrower — or to the aval who settled it
+    /// (LGTOC 115) — thawing the asset, renouncing the freeze forever and transferring it. Anyone
+    /// may call it, in the repayment's transaction or later; refused before the payment, twice, or
+    /// while a court act holds the título. Never paused (decision 38).
+    pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()> {
+        instructions::pagare::deliver_pagare(ctx, draw_index)
     }
 
-    /// Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets
-    /// the program address `["procurador", pagare, to]` burn the asset through an owner-managed
-    /// `BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused
-    /// with `to` the zero key, the pool, the council, a curator, the guardian, the pool's creator,
-    /// the FIX feeder, or the line's borrower, rent payer or sponsor, or a procuración in force.
+    /// The delivered título's owner burns the asset, optionally: a `Terminacion` entry over
+    /// `document_hash` (zero for none), then `BurnV1` with the owner as authority. The record stays.
+    pub fn burn_pagare(ctx: Context<BurnPagare>, draw_index: u16, document_hash: [u8; 32]) -> Result<()> {
+        instructions::pagare::burn_pagare(ctx, draw_index, document_hash)
+    }
+
+    /// The council annuls an outstanding pagaré issued in error: a `Terminacion` entry over the
+    /// annulment document's hash; nothing burns and no state moves (decision 38).
+    pub fn annul_pagare(ctx: Context<AnnulPagare>, draw_index: u16, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
+        instructions::pagare::annul_pagare(ctx, draw_index, document_hash, valid_until)
+    }
+
+    /// Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry; the
+    /// pool stays the owner and no power over the asset is lent (decision 38). The council (the
+    /// holder) signs; `kind` must be `KIND_PROCURACION`; refused with `to` the zero key, the pool,
+    /// the council, a curator, the pool's creator, the FIX feeder, or the line's borrower, rent
+    /// payer or sponsor, or a procuración in force.
     pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to: Pubkey, endoso_hash: [u8; 32], valid_until: i64) -> Result<()> {
         instructions::pagare::endorse_pagare(ctx, draw_index, kind, to, endoso_hash, valid_until)
     }
 
     /// Revokes the procuración in force on pagaré `draw_index`: appends the revocation entry over
-    /// the signed revocation's hash and returns the burn delegate to the owner. The holder (the
-    /// council) signs.
+    /// the signed revocation's hash. The holder (the council) signs.
     pub fn revoke_procuracion(ctx: Context<RevokeProcuracion>, draw_index: u16, entry_hash: [u8; 32], valid_until: i64) -> Result<()> {
         instructions::pagare::revoke_procuracion(ctx, draw_index, entry_hash, valid_until)
     }
 
     /// Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,
-    /// suspension, cancellation) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. The
-    /// council signs; refused on a cancelled pagaré; moves nothing.
+    /// suspension — it also holds the delivery) or `KIND_CONSTANCIA_JUDICIAL` (it lifts the hold),
+    /// over the court document's hash. The council signs; refused once the título was delivered;
+    /// moves nothing else.
     pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
         instructions::pagare::court_annotation(ctx, draw_index, kind, document_hash, valid_until)
     }
@@ -202,7 +206,8 @@ pub mod elote_pool {
     }
 
     /// The council (the holder) attaches a receipt to payment entry `entry_count` of pagaré
-    /// `draw_index`, as a `Recibo` entry over `receipt_hash`. The annotation also replaces the pagaré's provisional `receipt_hash` until the burn (`PAGARE_PAID_PENDING_CANCEL`).
+    /// `draw_index`, as a `Recibo` entry over `receipt_hash`; the correction is the entry, no
+    /// field is rewritten (LGTOC 41).
     pub fn annotate_payment(ctx: Context<AnnotatePayment>, draw_index: u16, entry_count: u32, receipt_hash: [u8; 32], valid_until: i64) -> Result<()> {
         instructions::pagare::annotate_payment(ctx, draw_index, entry_count, receipt_hash, valid_until)
     }

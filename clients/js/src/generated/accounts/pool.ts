@@ -129,12 +129,6 @@ export type Pool = {
    */
   accelerationNoticeSeconds: number;
   /**
-   * Seconds from a pagaré's payment before its borrower may cancel it alone,
-   * `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the
-   * pagarés it marks paid.
-   */
-  cancelGraceSeconds: number;
-  /**
    * The outstanding USDC cost of the lines in collection: the mark and the council's
    * acceleration add a line's cost, each recovery subtracts what it recovered, and the
    * write-off removes the rest as the loss (decision 40).
@@ -243,12 +237,6 @@ export type PoolArgs = {
    */
   accelerationNoticeSeconds: number;
   /**
-   * Seconds from a pagaré's payment before its borrower may cancel it alone,
-   * `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the
-   * pagarés it marks paid.
-   */
-  cancelGraceSeconds: number;
-  /**
    * The outstanding USDC cost of the lines in collection: the mark and the council's
    * acceleration add a line's cost, each recovery subtracts what it recovered, and the
    * write-off removes the rest as the loss (decision 40).
@@ -315,7 +303,6 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["pendingCouncilKind", getU8Encoder()],
       ["maxOutstandingPrincipal", getU64Encoder()],
       ["accelerationNoticeSeconds", getU32Encoder()],
-      ["cancelGraceSeconds", getU32Encoder()],
       ["impairedPrincipal", getU64Encoder()],
       ["provisionBps", getU16Encoder()],
       ["fxFeeder", getAddressEncoder()],
@@ -360,7 +347,6 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["pendingCouncilKind", getU8Decoder()],
     ["maxOutstandingPrincipal", getU64Decoder()],
     ["accelerationNoticeSeconds", getU32Decoder()],
-    ["cancelGraceSeconds", getU32Decoder()],
     ["impairedPrincipal", getU64Decoder()],
     ["provisionBps", getU16Decoder()],
     ["fxFeeder", getAddressDecoder()],
@@ -441,5 +427,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 495;
+  return 491;
 }

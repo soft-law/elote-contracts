@@ -3,9 +3,9 @@
 # the demo (pool, the council's FIX, deposits, a MXN line approved by the council, drawn as USDC and
 # repaid, a redemption), then request-line.ts and approve-line.ts, six draws with draw.ts, one payoff
 # with repay.ts (split into parts of at most three pagaré records), the council's settings and FIX,
-# and every cancel-pagare.ts branch that does not need the clock moved forward. A third line covers
+# the delivery of every paid pagaré and the owner's burn. A third line covers
 # endorse-pagare.ts (an endoso en procuración to a key made for the case, a revocation) and the
-# procurador's cancellation. The borrower's own cancellation needs the 30-day cancel grace to pass;
+# the procuración, whose collection is the repayment itself (decision 38);
 # the Rust suite covers it.
 #
 #   scripts/local-e2e.sh            (after `NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features localnet`)
@@ -94,8 +94,12 @@ POOL="$(sed -n 's/^pool \([1-9A-HJ-NP-Za-km-z]\{32,44\}\)$/\1/p' "$WORK/demo.log
 [ -n "$POOL" ] || { echo "error: no pool address in the demo's output" >&2; exit 1; }
 grep -q 'execute approve_line 0' "$WORK/demo.log" || { echo "error: the council did not approve through Squads" >&2; exit 1; }
 
-echo "== cancel-pagare.ts: the demo line's pagaré 0, by the council through Squads"
-run cancel-pagare.ts --pool "$POOL" --line-id 0 --draw-index 0 --receipt-hash "$RECEIPT"
+echo "== deliver-pagare.ts: the demo repay already delivered pagaré 0; a second delivery is refused"
+if run deliver-pagare.ts --pool "$POOL" --line-id 0 --draw-index 0 2>"$WORK/redeliver.err"; then
+  echo "error: a second delivery went through" >&2; exit 1
+fi
+grep -q "already delivered" "$WORK/redeliver.err" || { echo "error: unexpected refusal:" >&2; cat "$WORK/redeliver.err" >&2; exit 1; }
+echo "  refused as expected: $(cat "$WORK/redeliver.err")"
 
 echo "== council-propose.ts and post-fix.ts: a feeder named, the line cap restated, today's FIX corrected"
 solana-keygen new --no-bip39-passphrase --silent -o "$KEYS/feeder.json" >/dev/null
@@ -124,15 +128,13 @@ run repay.ts --pool "$POOL" --line-id 1 --all | tee "$WORK/repay.log"
 grep -q 'repay part 2' "$WORK/repay.log" || { echo "error: the payoff was not split" >&2; exit 1; }
 grep -q 'status       Repaid' "$WORK/repay.log" || { echo "error: the line is not repaid" >&2; exit 1; }
 
-echo "== cancel-pagare.ts: pagaré 0 by the council; pagaré 1 refused to the borrower before the cancel grace"
-run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 0 --receipt-hash "$RECEIPT"
-if run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 1 --receipt-hash "$RECEIPT" --borrower-keypair "$KEYS/borrower.json" 2>"$WORK/grace.err"; then
-  echo "error: the borrower cancelled before the cancel grace" >&2; exit 1
+echo "== the repay delivered its pagarés in the same transactions; the borrower burns pagaré 0 as its owner"
+grep -q ", 1 delivered" "$WORK/repay.log" || grep -q "delivered" "$WORK/repay.log" || { echo "error: the repay delivered nothing" >&2; exit 1; }
+if run deliver-pagare.ts --pool "$POOL" --line-id 1 --draw-index 0 --burn --owner-keypair "$KEYS/sponsor.json" 2>"$WORK/burn.err"; then
+  echo "error: a non-owner burnt the asset" >&2; exit 1
 fi
-grep -q "elote_pool error CancelGraceNotElapsed" "$WORK/grace.err" || { echo "error: unexpected refusal:" >&2; cat "$WORK/grace.err" >&2; exit 1; }
-echo "  refused as expected: $(cat "$WORK/grace.err")"
-echo "== cancel-pagare.ts: pagaré 1, by the council"
-run cancel-pagare.ts --pool "$POOL" --line-id 1 --draw-index 1 --receipt-hash "$RECEIPT"
+echo "  refused as expected: a non-owner cannot burn"
+run deliver-pagare.ts --pool "$POOL" --line-id 1 --draw-index 0 --burn --owner-keypair "$KEYS/borrower.json"
 
 echo "== endorse-pagare.ts: a third line, pagaré 0 en procuración to a key made for the case, pagaré 1 endorsed and revoked"
 run request-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --principal 3000 --agreement-hash "$HASH"
@@ -159,14 +161,12 @@ run repay.ts --pool "$POOL" --line-id 2 --amount 15 --payer-keypair "$KEYS/spons
 run repay.ts --pool "$POOL" --line-id 2 --all | tee "$WORK/repay2.log"
 grep -q 'status       Repaid' "$WORK/repay2.log" || { echo "error: the third line is not repaid" >&2; exit 1; }
 
-echo "== cancel-pagare.ts: pagaré 0 by the procurador, pagarés 1 and 2 by the council"
-if run cancel-pagare.ts --pool "$POOL" --line-id 2 --draw-index 1 --receipt-hash "$RECEIPT" --procurador-keypair "$PROCURADOR_KEY" 2>"$WORK/revoked.err"; then
-  echo "error: the procurador cancelled a pagaré whose procuración was revoked" >&2; exit 1
+echo "== the repay settled the procurador's collection and delivered the títulos (decision 38)"
+grep -q "delivered" "$WORK/repay2.log" || { echo "error: the third line's repay delivered nothing" >&2; exit 1; }
+if run deliver-pagare.ts --pool "$POOL" --line-id 2 --draw-index 0 2>"$WORK/redeliver2.err"; then
+  echo "error: a second delivery went through on the procurador's pagaré" >&2; exit 1
 fi
-echo "  refused as expected: $(cat "$WORK/revoked.err")"
-run cancel-pagare.ts --pool "$POOL" --line-id 2 --draw-index 0 --receipt-hash "$RECEIPT" --procurador-keypair "$PROCURADOR_KEY" | tee "$WORK/procurador.log"
-grep -q 'PAID (extinguished).*burnt' "$WORK/procurador.log" || { echo "error: the procurador's cancellation did not burn the asset" >&2; exit 1; }
-run cancel-pagare.ts --pool "$POOL" --line-id 2 --draw-index 1 --receipt-hash "$RECEIPT"
-run cancel-pagare.ts --pool "$POOL" --line-id 2 --draw-index 2 --receipt-hash "$RECEIPT"
+grep -q "already delivered" "$WORK/redeliver2.err" || { echo "error: unexpected refusal:" >&2; cat "$WORK/redeliver2.err" >&2; exit 1; }
+echo "  refused as expected: $(cat "$WORK/redeliver2.err")"
 
 echo "== local e2e passed"

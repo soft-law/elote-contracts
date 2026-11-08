@@ -23,7 +23,8 @@ use crate::registry;
 use crate::terms::{self, LineTerms};
 use crate::state::{
     seeds, CreditLine, LineStatus, Pagare, Pool, ScheduleParams, BPS, KIND_ABONO, KIND_EMISION, KIND_PAGADO,
-    CURRENCY_MXN, MAX_DRAWS, MAX_INSTALLMENTS, MAX_SIDECARS_PER_REPAY, MIN_MAX_MISSED, REQUEST_TTL_SECONDS, PAGARE_OUTSTANDING, PAGARE_PAID_PENDING_CANCEL,
+    KIND_PAGADO_AVAL, KIND_TERMINACION, CURRENCY_MXN, MAX_DRAWS, MAX_INSTALLMENTS, MAX_SIDECARS_PER_REPAY, MIN_MAX_MISSED,
+    REQUEST_TTL_SECONDS, PAGARE_FLAG_PAID_BY_AVAL, PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING, PAGARE_PAID,
     SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
 };
 
@@ -648,7 +649,6 @@ pub fn draw(
         status: PAGARE_OUTSTANDING,
         paid_at: 0,
         receipt_hash: [0; 32],
-        cancel_receipt_hash: [0; 32],
         procurador: Pubkey::default(),
         flags: 0,
         log_root: [0; 32],
@@ -659,7 +659,6 @@ pub fn draw(
         fix_date,
         usdc_delivered: usdc,
         delivery_hash: delivery,
-        cancel_grace_seconds: 0,
         reserved: [0; 28],
     };
     // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.
@@ -786,8 +785,10 @@ pub struct Repay<'info> {
 /// where `last_touched` is the first one this payment leaves partly unpaid, or the last draw; none
 /// once the cursor has passed the last draw (`PagareAccountsMismatch` otherwise), and never more
 /// than `MAX_SIDECARS_PER_REPAY` (`TooManySidecars`): a larger payment is split. A covered pagaré
-/// gets a `Pagado` entry, status `PAGARE_PAID_PENDING_CANCEL`, `paid_at`, `receipt_hash` and the
-/// pool's `cancel_grace_seconds`, fixed for the borrower's exit (only the burn waits), and the cursor `pagares_paid` moves past it. The uncovered one gets an `Abono`
+/// gets a `Pagado` entry (`PagadoAval` when the aval settles it, LGTOC 115), status `PAGARE_PAID`,
+/// `paid_at` and `receipt_hash`, any procuración ends with a `Terminacion` entry, and the cursor
+/// `pagares_paid` moves past it; the título's delivery is `deliver_pagare`, in the same
+/// transaction or whenever the debtor wants. The uncovered one gets an `Abono`
 /// entry when the payment applied principal to it, and the oldest pagaré touched also when it only
 /// settled accessories. Every payment entry commits, through `registry::annotation_hash`, the
 /// principal applied to that pagaré, the accessories settled (annotated once, on the oldest
@@ -933,9 +934,11 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     // entry commits the amount applied and the balance (decision 38, LGTOC 17 and 130): the
     // accessories are annotated once, on the oldest pagaré touched, so a payment of interest or
     // late interest alone also leaves its entry there.
-    let cancel_grace = pool.cancel_grace_seconds;
     let payer_key = ctx.accounts.payer.key();
     let by_borrower = payer_key == line.borrower;
+    // The aval's settling payment is its own mark, and the título then goes to the aval
+    // (LGTOC 115, decision 38-f).
+    let by_aval = !by_borrower && line.sponsor == Some(payer_key) && line.sponsor_role == SPONSOR_GUARANTOR;
     let accessory_total = interest_part.checked_add(late_part).ok_or(PoolError::Overflow)?;
     let pool_key = pool.key();
     let line_id = line.line_id;
@@ -943,7 +946,13 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     let mut floor = principal_before;
     for (i, sidecar) in touched.iter_mut().enumerate() {
         let covered = sidecar.drawn_through <= principal_after;
-        let kind = if covered { KIND_PAGADO } else { KIND_ABONO };
+        let kind = if covered && by_aval {
+            KIND_PAGADO_AVAL
+        } else if covered {
+            KIND_PAGADO
+        } else {
+            KIND_ABONO
+        };
         let ceiling = sidecar.drawn_through.min(principal_after);
         let principal_applied = ceiling.saturating_sub(floor);
         floor = floor.max(ceiling);
@@ -956,13 +965,6 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         let principal_balance = sidecar.amount_mxn.min(sidecar.drawn_through.saturating_sub(principal_after));
         let annotation = registry::annotation_hash(&receipt_hash, principal_applied, accessory_applied, principal_balance, by_borrower);
         let hash = registry::append(sidecar, kind, &payer_key, &pool_key, &annotation, now).ok_or(PoolError::Overflow)?;
-        if covered {
-            sidecar.status = PAGARE_PAID_PENDING_CANCEL;
-            sidecar.paid_at = now;
-            sidecar.receipt_hash = receipt_hash;
-            sidecar.cancel_grace_seconds = cancel_grace;
-            line.pagares_paid = sidecar.draw_index.checked_add(1).ok_or(PoolError::Overflow)?;
-        }
         emit_cpi!(PagareEntry {
             pool: pool_key,
             line_id,
@@ -976,6 +978,38 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
             recorded_at: now,
             stated_at: now,
         });
+        if covered {
+            sidecar.status = PAGARE_PAID;
+            sidecar.paid_at = now;
+            sidecar.receipt_hash = receipt_hash;
+            if by_aval {
+                sidecar.flags |= PAGARE_FLAG_PAID_BY_AVAL;
+            }
+            line.pagares_paid = sidecar.draw_index.checked_add(1).ok_or(PoolError::Overflow)?;
+            // The título's payment ends a procuración in force: a Terminacion entry from the pool
+            // to the procurador over the same annotation (decision 38; the procurador's own
+            // collection is this repay). The plugin history on the asset clears itself at the
+            // transfer.
+            if sidecar.flags & PAGARE_FLAG_PROCURACION != 0 {
+                let procurador = sidecar.procurador;
+                let hash = registry::append(sidecar, KIND_TERMINACION, &pool_key, &procurador, &annotation, now).ok_or(PoolError::Overflow)?;
+                sidecar.flags &= !PAGARE_FLAG_PROCURACION;
+                sidecar.procurador = Pubkey::default();
+                emit_cpi!(PagareEntry {
+                    pool: pool_key,
+                    line_id,
+                    draw_index: sidecar.draw_index,
+                    asset: sidecar.asset,
+                    kind: KIND_TERMINACION,
+                    from: pool_key,
+                    to: procurador,
+                    entry_hash: hash,
+                    entry_count: sidecar.entry_count,
+                    recorded_at: now,
+                    stated_at: now,
+                });
+            }
+        }
         entries.push(PaymentEntry {
             draw_index: sidecar.draw_index,
             kind,

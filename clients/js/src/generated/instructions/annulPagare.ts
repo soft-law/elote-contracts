@@ -17,8 +17,8 @@ import {
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
-  getU32Decoder,
-  getU32Encoder,
+  getU16Decoder,
+  getU16Encoder,
   getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
@@ -39,28 +39,34 @@ import {
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
+  getAddressFromResolvedInstructionAccount,
+  getNonNullResolvedInstructionInput,
   type InstructionAccountInput,
   type InstructionAccountInputAddress,
   type InstructionSignerInput,
   type ResolvedInstructionAccount,
   type ResolvedInstructionAccountMeta,
 } from "@solana/program-client-core";
+import { findPagarePda } from "../pdas";
 import { ELOTE_POOL_PROGRAM_ADDRESS } from "../programs";
 
-export const SET_CANCEL_GRACE_DISCRIMINATOR: ReadonlyUint8Array =
-  new Uint8Array([18, 242, 191, 228, 180, 133, 104, 187]);
+export const ANNUL_PAGARE_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
+  59, 180, 220, 161, 205, 199, 42, 216,
+]);
 
-export function getSetCancelGraceDiscriminatorBytes(): ReadonlyUint8Array {
+export function getAnnulPagareDiscriminatorBytes(): ReadonlyUint8Array {
   return fixEncoderSize(getBytesEncoder(), 8).encode(
-    SET_CANCEL_GRACE_DISCRIMINATOR,
+    ANNUL_PAGARE_DISCRIMINATOR,
   );
 }
 
-export type SetCancelGraceInstruction<
+export type AnnulPagareInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
-  TAccountCouncil extends string | AccountMeta<string> = string,
+  TAccountHolder extends string | AccountMeta<string> = string,
   TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
+  TAccountLine extends string | AccountMeta<string> = string,
+  TAccountPagare extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
     "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
@@ -69,16 +75,22 @@ export type SetCancelGraceInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountCouncil extends string
-        ? ReadonlySignerAccount<TAccountCouncil> &
-            AccountSignerMeta<TAccountCouncil>
-        : TAccountCouncil,
+      TAccountHolder extends string
+        ? ReadonlySignerAccount<TAccountHolder> &
+            AccountSignerMeta<TAccountHolder>
+        : TAccountHolder,
       TAccountMultisig extends string
         ? ReadonlyAccount<TAccountMultisig>
         : TAccountMultisig,
       TAccountPool extends string
-        ? WritableAccount<TAccountPool>
+        ? ReadonlyAccount<TAccountPool>
         : TAccountPool,
+      TAccountLine extends string
+        ? ReadonlyAccount<TAccountLine>
+        : TAccountLine,
+      TAccountPagare extends string
+        ? WritableAccount<TAccountPagare>
+        : TAccountPagare,
       TAccountEventAuthority extends string
         ? ReadonlyAccount<TAccountEventAuthority>
         : TAccountEventAuthority,
@@ -89,75 +101,89 @@ export type SetCancelGraceInstruction<
     ]
   >;
 
-export type SetCancelGraceInstructionData = {
+export type AnnulPagareInstructionData = {
   discriminator: ReadonlyUint8Array;
-  cancelGraceSeconds: number;
+  drawIndex: number;
+  documentHash: ReadonlyUint8Array;
   validUntil: bigint;
 };
 
-export type SetCancelGraceInstructionDataArgs = {
-  cancelGraceSeconds: number;
+export type AnnulPagareInstructionDataArgs = {
+  drawIndex: number;
+  documentHash: ReadonlyUint8Array;
   validUntil: number | bigint;
 };
 
-export function getSetCancelGraceInstructionDataEncoder(): FixedSizeEncoder<SetCancelGraceInstructionDataArgs> {
+export function getAnnulPagareInstructionDataEncoder(): FixedSizeEncoder<AnnulPagareInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["cancelGraceSeconds", getU32Encoder()],
+      ["drawIndex", getU16Encoder()],
+      ["documentHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["validUntil", getI64Encoder()],
     ]),
-    (value) => ({ ...value, discriminator: SET_CANCEL_GRACE_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: ANNUL_PAGARE_DISCRIMINATOR }),
   );
 }
 
-export function getSetCancelGraceInstructionDataDecoder(): FixedSizeDecoder<SetCancelGraceInstructionData> {
+export function getAnnulPagareInstructionDataDecoder(): FixedSizeDecoder<AnnulPagareInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["cancelGraceSeconds", getU32Decoder()],
+    ["drawIndex", getU16Decoder()],
+    ["documentHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["validUntil", getI64Decoder()],
   ]);
 }
 
-export function getSetCancelGraceInstructionDataCodec(): FixedSizeCodec<
-  SetCancelGraceInstructionDataArgs,
-  SetCancelGraceInstructionData
+export function getAnnulPagareInstructionDataCodec(): FixedSizeCodec<
+  AnnulPagareInstructionDataArgs,
+  AnnulPagareInstructionData
 > {
   return combineCodec(
-    getSetCancelGraceInstructionDataEncoder(),
-    getSetCancelGraceInstructionDataDecoder(),
+    getAnnulPagareInstructionDataEncoder(),
+    getAnnulPagareInstructionDataDecoder(),
   );
 }
 
-export type SetCancelGraceAsyncInput<
-  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+export type AnnulPagareAsyncInput<
+  TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
+  TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  council: TAccountCouncil;
+  /** The council, the holder. */
+  holder: TAccountHolder;
   multisig: TAccountMultisig;
   pool: TAccountPool;
+  line: TAccountLine;
+  pagare?: TAccountPagare;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  cancelGraceSeconds: SetCancelGraceInstructionDataArgs["cancelGraceSeconds"];
-  validUntil: SetCancelGraceInstructionDataArgs["validUntil"];
+  drawIndex: AnnulPagareInstructionDataArgs["drawIndex"];
+  documentHash: AnnulPagareInstructionDataArgs["documentHash"];
+  validUntil: AnnulPagareInstructionDataArgs["validUntil"];
 };
 
-export async function getSetCancelGraceInstructionAsync<
-  TAccountCouncil extends InstructionSignerInput,
+export async function getAnnulPagareInstructionAsync<
+  TAccountHolder extends InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
+  TAccountLine extends InstructionAccountInput,
+  TAccountPagare extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: SetCancelGraceAsyncInput<
-    TAccountCouncil,
+  input: AnnulPagareAsyncInput<
+    TAccountHolder,
     TAccountMultisig,
     TAccountPool,
+    TAccountLine,
+    TAccountPagare,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -165,11 +191,11 @@ export async function getSetCancelGraceInstructionAsync<
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
 ): Promise<
-  SetCancelGraceInstruction<
+  AnnulPagareInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountCouncil,
-      InstructionAccountInputAddress<TAccountCouncil>
+      TAccountHolder,
+      InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
       TAccountMultisig,
@@ -178,6 +204,14 @@ export async function getSetCancelGraceInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountLine,
+      InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountPagare,
+      InstructionAccountInputAddress<TAccountPagare>
     >,
     ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
@@ -202,17 +236,15 @@ export async function getSetCancelGraceInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    council: {
-      value: input.council ?? null,
-      isSigner: true,
-      isWritable: false,
-    },
+    holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
     multisig: {
       value: input.multisig ?? null,
       isSigner: false,
       isWritable: false,
     },
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    line: { value: input.line ?? null, isSigner: false, isWritable: false },
+    pagare: { value: input.pagare ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -233,6 +265,21 @@ export async function getSetCancelGraceInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.pagare.value) {
+    accounts.pagare.value = await findPagarePda(
+      {
+        line: getAddressFromResolvedInstructionAccount(
+          "line",
+          accounts.line.value,
+        ),
+        drawIndex: getNonNullResolvedInstructionInput(
+          "drawIndex",
+          args.drawIndex,
+        ),
+      },
+      { programAddress },
+    );
+  }
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
       programAddress,
@@ -246,21 +293,23 @@ export async function getSetCancelGraceInstructionAsync<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("council", accounts.council),
+      getAccountMeta("holder", accounts.holder),
       getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
+      getAccountMeta("line", accounts.line),
+      getAccountMeta("pagare", accounts.pagare),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSetCancelGraceInstructionDataEncoder().encode(
-      args as SetCancelGraceInstructionDataArgs,
+    data: getAnnulPagareInstructionDataEncoder().encode(
+      args as AnnulPagareInstructionDataArgs,
     ),
     programAddress,
-  } as SetCancelGraceInstruction<
+  } as AnnulPagareInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountCouncil,
-      InstructionAccountInputAddress<TAccountCouncil>
+      TAccountHolder,
+      InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
       TAccountMultisig,
@@ -269,6 +318,14 @@ export async function getSetCancelGraceInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountLine,
+      InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountPagare,
+      InstructionAccountInputAddress<TAccountPagare>
     >,
     ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
@@ -281,46 +338,56 @@ export async function getSetCancelGraceInstructionAsync<
   >);
 }
 
-export type SetCancelGraceInput<
-  TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
+export type AnnulPagareInput<
+  TAccountHolder extends InstructionSignerInput = InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
+  TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountPagare extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  council: TAccountCouncil;
+  /** The council, the holder. */
+  holder: TAccountHolder;
   multisig: TAccountMultisig;
   pool: TAccountPool;
+  line: TAccountLine;
+  pagare: TAccountPagare;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  cancelGraceSeconds: SetCancelGraceInstructionDataArgs["cancelGraceSeconds"];
-  validUntil: SetCancelGraceInstructionDataArgs["validUntil"];
+  drawIndex: AnnulPagareInstructionDataArgs["drawIndex"];
+  documentHash: AnnulPagareInstructionDataArgs["documentHash"];
+  validUntil: AnnulPagareInstructionDataArgs["validUntil"];
 };
 
-export function getSetCancelGraceInstruction<
-  TAccountCouncil extends InstructionSignerInput,
+export function getAnnulPagareInstruction<
+  TAccountHolder extends InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
+  TAccountLine extends InstructionAccountInput,
+  TAccountPagare extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: SetCancelGraceInput<
-    TAccountCouncil,
+  input: AnnulPagareInput<
+    TAccountHolder,
     TAccountMultisig,
     TAccountPool,
+    TAccountLine,
+    TAccountPagare,
     TAccountEventAuthority,
     TAccountProgram
   >,
   config?: {
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
-): SetCancelGraceInstruction<
+): AnnulPagareInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
-    TAccountCouncil,
-    InstructionAccountInputAddress<TAccountCouncil>
+    TAccountHolder,
+    InstructionAccountInputAddress<TAccountHolder>
   >,
   ResolvedInstructionAccountMeta<
     TAccountMultisig,
@@ -329,6 +396,14 @@ export function getSetCancelGraceInstruction<
   ResolvedInstructionAccountMeta<
     TAccountPool,
     InstructionAccountInputAddress<TAccountPool>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountLine,
+    InstructionAccountInputAddress<TAccountLine>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountPagare,
+    InstructionAccountInputAddress<TAccountPagare>
   >,
   ResolvedInstructionAccountMeta<
     TAccountEventAuthority,
@@ -352,17 +427,15 @@ export function getSetCancelGraceInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    council: {
-      value: input.council ?? null,
-      isSigner: true,
-      isWritable: false,
-    },
+    holder: { value: input.holder ?? null, isSigner: true, isWritable: false },
     multisig: {
       value: input.multisig ?? null,
       isSigner: false,
       isWritable: false,
     },
-    pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
+    pool: { value: input.pool ?? null, isSigner: false, isWritable: false },
+    line: { value: input.line ?? null, isSigner: false, isWritable: false },
+    pagare: { value: input.pagare ?? null, isSigner: false, isWritable: true },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -390,21 +463,23 @@ export function getSetCancelGraceInstruction<
 
   return Object.freeze({
     accounts: [
-      getAccountMeta("council", accounts.council),
+      getAccountMeta("holder", accounts.holder),
       getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
+      getAccountMeta("line", accounts.line),
+      getAccountMeta("pagare", accounts.pagare),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getSetCancelGraceInstructionDataEncoder().encode(
-      args as SetCancelGraceInstructionDataArgs,
+    data: getAnnulPagareInstructionDataEncoder().encode(
+      args as AnnulPagareInstructionDataArgs,
     ),
     programAddress,
-  } as SetCancelGraceInstruction<
+  } as AnnulPagareInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
-      TAccountCouncil,
-      InstructionAccountInputAddress<TAccountCouncil>
+      TAccountHolder,
+      InstructionAccountInputAddress<TAccountHolder>
     >,
     ResolvedInstructionAccountMeta<
       TAccountMultisig,
@@ -413,6 +488,14 @@ export function getSetCancelGraceInstruction<
     ResolvedInstructionAccountMeta<
       TAccountPool,
       InstructionAccountInputAddress<TAccountPool>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountLine,
+      InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountPagare,
+      InstructionAccountInputAddress<TAccountPagare>
     >,
     ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
@@ -425,35 +508,38 @@ export function getSetCancelGraceInstruction<
   >);
 }
 
-export type ParsedSetCancelGraceInstruction<
+export type ParsedAnnulPagareInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    council: TAccountMetas[0];
+    /** The council, the holder. */
+    holder: TAccountMetas[0];
     multisig: TAccountMetas[1];
     pool: TAccountMetas[2];
-    eventAuthority: TAccountMetas[3];
-    program: TAccountMetas[4];
+    line: TAccountMetas[3];
+    pagare: TAccountMetas[4];
+    eventAuthority: TAccountMetas[5];
+    program: TAccountMetas[6];
   };
-  data: SetCancelGraceInstructionData;
+  data: AnnulPagareInstructionData;
 };
 
-export function parseSetCancelGraceInstruction<
+export function parseAnnulPagareInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedSetCancelGraceInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 5) {
+): ParsedAnnulPagareInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 7) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 5,
+        expectedAccountMetas: 7,
       },
     );
   }
@@ -466,12 +552,14 @@ export function parseSetCancelGraceInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      council: getNextAccount(),
+      holder: getNextAccount(),
       multisig: getNextAccount(),
       pool: getNextAccount(),
+      line: getNextAccount(),
+      pagare: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },
-    data: getSetCancelGraceInstructionDataDecoder().decode(instruction.data),
+    data: getAnnulPagareInstructionDataDecoder().decode(instruction.data),
   };
 }

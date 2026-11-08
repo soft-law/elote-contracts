@@ -17,7 +17,6 @@ pub struct PoolInitialized {
     pub max_line_bps: u16,
     pub max_outstanding_principal: u64,
     pub acceleration_notice_seconds: u32,
-    pub cancel_grace_seconds: u32,
     pub asset_controls: u8,
     pub permissioned: bool,
     pub min_fix_rate: u64,
@@ -94,18 +93,45 @@ pub struct PagareEntry {
     pub stated_at: i64,
 }
 
-/// Emitted by `cancel_pagare`, before the burn. `holder` is the key that extinguished the pagaré
-/// (the council, the procurador or the borrower); the sidecar stays as the PAGADO mark.
+/// The paid título left the pool: `deliver_pagare` thawed the asset, renounced the freeze and
+/// transferred it to `recipient` — the suscriptor, or the aval who settled it (decision 38).
+/// `payer` is whoever sent the instruction; anyone may.
 #[event]
-pub struct PagareCancelled {
+pub struct PagareDelivered {
     pub pool: Pubkey,
     pub line_id: u64,
     pub draw_index: u16,
     pub asset: Pubkey,
+    pub recipient: Pubkey,
+    pub payer: Pubkey,
     pub receipt_hash: [u8; 32],
-    pub holder: Pubkey,
-    /// The borrower cancelled alone after the cancel grace.
-    pub by_borrower: bool,
+    pub entry_count: u32,
+    pub delivered_at: i64,
+}
+
+/// The delivered título's owner burnt the asset through `burn_pagare`, after a `Terminacion`
+/// entry over `document_hash` (zero for none: the burn is the owner's unilateral act). The record
+/// stays.
+#[event]
+pub struct PagareBurned {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub draw_index: u16,
+    pub asset: Pubkey,
+    pub owner: Pubkey,
+    pub document_hash: [u8; 32],
+}
+
+/// The council annulled an outstanding título issued in error: a `Terminacion` entry over the
+/// annulment document's hash. Nothing is burnt and no state moves — the record is the annotation
+/// (decision 38: a título issued in error is annotated, never destroyed).
+#[event]
+pub struct PagareAnnulled {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub draw_index: u16,
+    pub asset: Pubkey,
+    pub document_hash: [u8; 32],
 }
 
 /// `available_forfeited` is the undrawn remainder.
@@ -370,12 +396,6 @@ pub struct OutstandingCapSet {
 pub struct AccelerationNoticeSet {
     pub pool: Pubkey,
     pub acceleration_notice_seconds: u32,
-}
-
-#[event]
-pub struct CancelGraceSet {
-    pub pool: Pubkey,
-    pub cancel_grace_seconds: u32,
 }
 
 /// A FIX publication: Banxico's rate for `fix_date` as published by `by` (the feeder or the

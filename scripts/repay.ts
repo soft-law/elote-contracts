@@ -76,7 +76,7 @@ console.log(
   [
     `paid         ${fmt(paid)} USDC`,
     `line now     principal repaid MXN ${fmtMxn(after.principalRepaid)} of ${fmtMxn(after.drawn)}, interest MXN ${fmtMxn(after.interestRepaid)} of ${fmtMxn(after.interestDue)}`,
-    `pagarés      ${after.pagaresPaid} of ${after.draws} marked paid (cancel each with cancel-pagare.ts)`,
+    `pagarés      ${after.pagaresPaid} of ${after.draws} marked paid and delivered (deliver-pagare.ts re-delivers a missed one)`,
     `status       ${LineStatus[after.status]}`,
   ].join("\n")
 );

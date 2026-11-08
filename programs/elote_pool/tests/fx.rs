@@ -517,7 +517,7 @@ fn a_repayment_in_usdc_is_credited_in_mxn_at_the_fix_of_the_day_and_realizes_the
 
     let line = env.line(&k, id);
     assert_eq!((line.status, line.principal_repaid, line.usdc_cost_repaid), (elote_pool::state::LineStatus::Repaid, 5_000_000, delivered));
-    assert_eq!(env.pagare(&k, id, 0).status, elote_pool::state::PAGARE_PAID_PENDING_CANCEL, "the PAGADO mark at the exact MXN amount");
+    assert_eq!(env.pagare(&k, id, 0).status, elote_pool::state::PAGARE_PAID, "the PAGADO mark at the exact MXN amount");
     let fx: FxRealized = find_event(&meta).expect("FxRealized");
     let repaid: LineRepaid = find_event(&meta).expect("LineRepaid");
     let loss = delivered as i64 - (2_500 * UNIT) as i64;

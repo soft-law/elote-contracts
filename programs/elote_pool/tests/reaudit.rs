@@ -113,12 +113,12 @@ fn n03_the_council_its_curators_and_the_borrower_cannot_be_procurador() {
 
 }
 
-/// N-04: the payer's `receipt_hash` on the PAGADO mark is provisional. The holder's annotation
-/// replaces it while the burn is still owed; after the burn the
-/// field is frozen with the receipt the cancellation rested on.
+/// Inverted 2026-11-08 (decision 38, LGTOC 41): the payer's `receipt_hash` on the PAGADO mark is
+/// provisional and now stays as written — the holder's correction is the `Recibo` entry itself,
+/// and no field is ever rewritten, before or after the delivery.
 #[test]
-fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
-    use elote_pool::state::{PAGARE_PAID, PAGARE_PAID_PENDING_CANCEL};
+fn n04_the_holders_correction_is_the_recibo_entry_not_a_rewrite() {
+    use elote_pool::state::PAGARE_PAID;
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
     let borrower = env.borrower(&k);
@@ -136,22 +136,21 @@ fn n04_the_holder_corrects_the_payment_receipt_until_the_burn() {
     let ix = env.repay_ix_full(&k, line_id, &stranger.pubkey(), amount, [0x66; 32], &sidecars);
     env.send(ix, &stranger, &[]);
     let p0 = env.pagare(&k, line_id, 0);
-    assert_eq!((p0.status, p0.receipt_hash), (PAGARE_PAID_PENDING_CANCEL, [0x66; 32]));
+    assert_eq!((p0.status, p0.receipt_hash), (PAGARE_PAID, [0x66; 32]));
     let payment_entry = p0.entry_count;
 
-    // The holder's replaces the provisional hash.
+    // The holder's correction appends; the field stands.
     let ix = env.annotate_payment_ix(&k, line_id, 0, &a, payment_entry, RECEIPT_HASH);
     env.send(ix, &council, &[]);
     let p0 = env.pagare(&k, line_id, 0);
-    assert_eq!((p0.receipt_hash, p0.entry_count), (RECEIPT_HASH, payment_entry + 1));
+    assert_eq!((p0.receipt_hash, p0.entry_count), ([0x66; 32], payment_entry + 1));
 
-    // After the burn the field is frozen; the annotation still appends.
-    env.cancel_pagare(&k, line_id, 0);
+    // After the delivery too: the annotation still appends, nothing is rewritten.
+    env.deliver_pagare(&k, line_id, 0);
     let ix = env.annotate_payment_ix(&k, line_id, 0, &a, payment_entry, [0x88; 32]);
     env.send(ix, &council, &[]);
     let p0 = env.pagare(&k, line_id, 0);
-    assert_eq!(p0.status, PAGARE_PAID);
-    assert_eq!(p0.receipt_hash, RECEIPT_HASH);
-    assert_eq!(p0.last_kind, elote_pool::state::KIND_RECIBO);
+    assert_eq!((p0.status, p0.receipt_hash, p0.last_kind), (PAGARE_PAID, [0x66; 32], elote_pool::state::KIND_RECIBO));
 }
+
 

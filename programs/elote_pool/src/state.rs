@@ -15,9 +15,6 @@ pub mod seeds {
     pub const PAGARE: &[u8] = b"pagare";
     /// `[PAGARE_ASSET, line, draw_index (u16 LE)]`: the Metaplex Core asset that is the pagaré.
     pub const PAGARE_ASSET: &[u8] = b"pagare_asset";
-    /// `[PROCURADOR, pagare, procurador]`: the program-signed authority of a pagaré's `BurnDelegate`
-    /// during an endoso en procuración; nobody holds a key for it.
-    pub const PROCURADOR: &[u8] = b"procurador";
 }
 
 /// Shares the first deposit locks forever in the pool-owned dead account, so the supply never
@@ -76,12 +73,6 @@ pub const REQUEST_TTL_SECONDS: i64 = 15 * 86_400;
 pub const MAX_PROPOSAL_HORIZON_SECONDS: i64 = 15 * 86_400;
 /// The shortest notice a pool may set between `propose_acceleration` and `accelerate_line`.
 pub const MIN_ACCELERATION_NOTICE_SECONDS: u32 = 7 * 86_400;
-/// The shortest wait a pool may set from a pagaré's payment before its borrower may cancel it
-/// alone.
-pub const MIN_CANCEL_GRACE_SECONDS: u32 = 30 * 86_400;
-/// The longest wait a pool may set from a pagaré's payment before its borrower may cancel it
-/// alone: 365 days.
-pub const MAX_CANCEL_GRACE_SECONDS: u32 = 365 * 86_400;
 #[cfg(all(feature = "devnet", feature = "localnet"))]
 compile_error!("the cluster features `devnet` and `localnet` are exclusive");
 
@@ -172,10 +163,6 @@ pub struct Pool {
     /// Seconds from `propose_acceleration` before `accelerate_line`; at least
     /// `MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline.
     pub acceleration_notice_seconds: u32,
-    /// Seconds from a pagaré's payment before its borrower may cancel it alone,
-    /// `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the
-    /// pagarés it marks paid.
-    pub cancel_grace_seconds: u32,
     /// The outstanding USDC cost of the lines in collection: the mark and the council's
     /// acceleration add a line's cost, each recovery subtracts what it recovered, and the
     /// write-off removes the rest as the loss (decision 40).
@@ -360,17 +347,25 @@ pub const SIGNATURE_EFIRMA_WALLET: u8 = 2;
 
 /// `Pagare::status`: the título is outstanding (the asset exists, held by the pool or endorsed).
 pub const PAGARE_OUTSTANDING: u8 = 0;
-/// `Pagare::status`: paid and extinguished by `cancel_pagare`; the asset is burnt and the record
-/// stays as the PAGADO mark.
+/// `Pagare::status`: a repayment covered it (the PAGADO mark). The título's delivery to the
+/// suscriptor — or to the aval who settled it — is `PAGARE_FLAG_DELIVERED`, written by
+/// `deliver_pagare` (decision 38). Status 2 was PAID_PENDING_CANCEL (the retired cancellation
+/// route); never reuse it.
 pub const PAGARE_PAID: u8 = 1;
-/// `Pagare::status`: a repayment covered it (the PAGADO mark); `cancel_pagare` must still burn it.
-pub const PAGARE_PAID_PENDING_CANCEL: u8 = 2;
 
-/// `Pagare::flags` bit: the asset carries the owner-managed `BurnDelegate` plugin `endorse_pagare`
-/// adds at the first procuración, so a later one approves its authority instead of adding it again.
-pub const PAGARE_FLAG_BURN_DELEGATE: u8 = 1 << 0;
+// `Pagare::flags` bit 0 was the owner-managed `BurnDelegate` the retired procuración route added
+// to the asset; never reuse it.
 /// `Pagare::flags` bit: an endoso en procuración is in force.
 pub const PAGARE_FLAG_PROCURACION: u8 = 1 << 1;
+/// `Pagare::flags` bit: the paid título was delivered (`deliver_pagare`); terminal.
+pub const PAGARE_FLAG_DELIVERED: u8 = 1 << 2;
+/// `Pagare::flags` bit: the aval (`CreditLine.sponsor` with `SPONSOR_GUARANTOR`) made the payment
+/// that covered the título, so the delivery goes to the aval, who collects from the suscriptor
+/// with the live título (LGTOC 115).
+pub const PAGARE_FLAG_PAID_BY_AVAL: u8 = 1 << 3;
+/// `Pagare::flags` bit: a court act holds the título (`AnotacionJudicial`, e.g. an embargo —
+/// LGTOC 20); `deliver_pagare` refuses while it is set, and a `ConstanciaJudicial` lifts it.
+pub const PAGARE_FLAG_JUDICIAL_HOLD: u8 = 1 << 4;
 
 /// Registry entry kinds (`Pagare::last_kind`, `PagareEntry::kind`).
 // Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso, and 10 was the
@@ -384,9 +379,14 @@ pub const KIND_ANOTACION_JUDICIAL: u8 = 6;
 pub const KIND_CONSTANCIA_JUDICIAL: u8 = 7;
 pub const KIND_PAGADO: u8 = 9;
 pub const KIND_RECIBO: u8 = 11;
+/// The payment that covered the título was the aval's (LGTOC 115).
+pub const KIND_PAGADO_AVAL: u8 = 12;
+/// The paid título was delivered, to the suscriptor or to the aval who settled it.
+pub const KIND_ENTREGA: u8 = 13;
 
 /// The program's record of one pagaré, beside the Core asset `draw` mints. It holds no folio and
-/// nothing personal, and is never closed: after `cancel_pagare` it stays as the PAGADO mark.
+/// nothing personal, and is never closed: after the payment, the delivery and even the owner's
+/// `burn_pagare` it stays as the PAGADO mark and the registry.
 #[account]
 #[derive(InitSpace)]
 pub struct Pagare {
@@ -415,11 +415,9 @@ pub struct Pagare {
     pub status: u8,
     /// When the repayment that covered it landed; zero while outstanding.
     pub paid_at: i64,
-    /// The receipt hash of that repayment: the payer's, until the holder annotates the real one
-    /// (`annotate_payment`, before the burn).
+    /// The receipt hash of that repayment, the payer's and provisional: the holder's correction
+    /// arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41).
     pub receipt_hash: [u8; 32],
-    /// The receipt hash `cancel_pagare` was given; zero until the burn.
-    pub cancel_receipt_hash: [u8; 32],
     /// The procurador of the endoso en procuración in force; the zero key when none. Cleared by
     /// `revoke_procuracion` and by the extinction.
     pub procurador: Pubkey,
@@ -441,10 +439,6 @@ pub struct Pagare {
     /// `sha256(pagare_hash || fix_rate || fix_date || usdc_delivered)`: the delivery the borrower
     /// instructed, kept apart from the pagaré, which promises MXN only.
     pub delivery_hash: [u8; 32],
-    /// The pool's `cancel_grace_seconds` when the repayment that covered it landed, fixed then:
-    /// the borrower may cancel alone after `paid_at + cancel_grace_seconds`, whatever the pool
-    /// sets later. Zero while outstanding.
-    pub cancel_grace_seconds: u32,
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 28],
 }
@@ -538,7 +532,6 @@ mod tests {
             pending_council_kind: 0,
             max_outstanding_principal: 0,
             acceleration_notice_seconds: 0,
-            cancel_grace_seconds: 0,
             impaired_principal: 0,
             provision_bps: 0,
             fx_feeder: Pubkey::default(),

@@ -6,8 +6,11 @@
 mod common;
 
 use common::*;
-use elote_pool::events::{PagareCancelled, PagareIssued};
-use elote_pool::state::LineStatus;
+use elote_pool::errors::PoolError;
+
+const E_PAGARE_ALREADY_DELIVERED: u32 = ERR_BASE + PoolError::PagareAlreadyDelivered as u32;
+use elote_pool::events::PagareIssued;
+use elote_pool::state::{LineStatus, KIND_ENTREGA, PAGARE_FLAG_DELIVERED};
 use mpl_core::types::{Key, UpdateAuthority};
 use mpl_core::{AuthorityType, BaseAuthority};
 use anchor_lang::Space;
@@ -302,72 +305,83 @@ fn drawn_and_repaid(env: &mut Env, k: &PoolKeys, principal: u64, rate_bps: u16, 
     (borrower, line_id)
 }
 
-/// Extinction is an act of the holder with a receipt: the record stays as the PAGADO mark (status,
-/// the cancellation's receipt; it is not closed), the event names the asset and the receipt, and
-/// the asset is thawed and burnt last by its owner, its rent going back to the payer. A second
-/// cancellation is refused.
+/// The payment writes the PAGADO mark; the delivery hands the título over (decision 38): the pool
+/// thaws the asset, renounces the freeze forever and transfers it to the borrower, whoever sends
+/// the instruction. The record stays with an Entrega entry and the DELIVERED flag; the owner may
+/// then burn the asset himself through `burn_pagare`, taking the rent, and the record still stays.
+/// A second delivery is refused.
 #[test]
-fn cancel_pagare_marks_the_sidecar_paid_and_burns_the_asset() {
+fn a_paid_pagare_is_delivered_to_the_borrower_and_the_owner_may_burn_it() {
+    use elote_pool::events::{PagareBurned, PagareDelivered};
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
-    let (_, line_id) = drawn_and_repaid(&mut env, &k, 4 * UNIT, 1_000, &[UNIT, 3 * UNIT]);
+    let (borrower, line_id) = drawn_and_repaid(&mut env, &k, 4 * UNIT, 1_000, &[UNIT, 3 * UNIT]);
     let line_key = line_pda(&k.pool, line_id).0;
     let asset0 = pagare_asset_pda(&line_key, 0).0;
     let sidecar_key = pagare_pda(&line_key, 0).0;
     let before = env.pagare(&k, line_id, 0);
+    assert_eq!((before.status, before.flags & PAGARE_FLAG_DELIVERED), (PAGARE_PAID, 0), "paid at the repayment, not yet delivered");
     let sidecar_lamports = env.account(&sidecar_key).lamports;
     let asset_lamports = env.account(&asset0).lamports;
     assert_eq!(env.collection_state(&k.collection).current_size, 2);
 
-    let council = env.council.insecure_clone();
+    // A stranger delivers; the título still goes to the borrower.
     let relayer = env.funded(1);
-    let relayer_before = env.account(&relayer.pubkey()).lamports;
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &council.pubkey(), &relayer.pubkey(), RECEIPT_HASH);
-    let meta = env.send(ix, &relayer, &[&council]);
+    let ix = env.deliver_pagare_ix(&k, line_id, 0, &relayer.pubkey(), &borrower.pubkey());
+    let meta = env.send(ix, &relayer, &[]);
     let now = env.now();
-    let ev: PagareCancelled = find_event(&meta).expect("PagareCancelled");
+    let ev: PagareDelivered = find_event(&meta).expect("PagareDelivered");
     assert_eq!(
-        (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.receipt_hash, ev.holder, ev.by_borrower),
-        (k.pool, line_id, 0, asset0, RECEIPT_HASH, council.pubkey(), false)
+        (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.recipient, ev.payer, ev.delivered_at),
+        (k.pool, line_id, 0, asset0, borrower.pubkey(), relayer.pubkey(), now)
     );
 
-    // The sidecar: the mark written, everything else as issued, the account kept with its rent.
+    // The asset: the borrower's, thawed, nobody can freeze it again, still in the collection.
+    let asset = env.asset_state(&asset0);
+    assert_eq!(asset.base.owner, borrower.pubkey());
+    let pfd = asset.plugin_list.permanent_freeze_delegate.expect("the PFD stays, powerless");
+    assert!(!pfd.permanent_freeze_delegate.frozen);
+    assert_eq!(pfd.base.authority.address, None, "renounced: authority None");
+    assert_eq!(env.collection_state(&k.collection).current_size, 2, "a transfer shrinks nothing");
+
+    // The record: the Entrega entry and the flag; everything else as issued, the rent kept.
     let after = env.pagare(&k, line_id, 0);
-    assert_eq!((after.status, after.paid_at, after.receipt_hash), (PAGARE_PAID, now, RECEIPT_HASH));
+    assert_eq!((after.status, after.flags & PAGARE_FLAG_DELIVERED != 0, after.last_kind), (PAGARE_PAID, true, KIND_ENTREGA));
+    assert_eq!(after.entry_count, before.entry_count + 1);
     assert_eq!(
         (after.line, after.draw_index, after.asset, after.pagare_hash, after.amount_mxn, after.issued_at, after.due_at),
         (before.line, before.draw_index, before.asset, before.pagare_hash, before.amount_mxn, before.issued_at, before.due_at)
     );
-    assert_eq!(
-        (after.drawn_through, after.cert_fingerprint, after.signature_method, after.bump, after.procurador),
-        (before.drawn_through, before.cert_fingerprint, before.signature_method, before.bump, before.procurador)
-    );
-    assert_eq!(env.account(&sidecar_key).lamports, sidecar_lamports, "the PAGADO mark is never closed");
-    // The asset: burnt. Core leaves a one-byte `Uninitialized` tombstone (so the address cannot be
-    // re-created as an asset) and sends the rest of the rent to the payer; the collection is one
-    // smaller.
+    assert_eq!(env.account(&sidecar_key).lamports, sidecar_lamports, "the record is never closed");
+    // Delivered is terminal.
+    env.expect_deliver_err(&k, line_id, 0, E_PAGARE_ALREADY_DELIVERED);
+
+    // The owner burns, optionally: tombstone, rent back, the collection one smaller, the record
+    // stays with a Terminacion entry.
+    let owner_before = env.account(&borrower.pubkey()).lamports;
+    let ix = env.burn_pagare_ix(&k, line_id, 0, &borrower.pubkey(), [0x7a; 32]);
+    let meta = env.send(ix, &borrower, &[]);
+    let ev: PagareBurned = find_event(&meta).expect("PagareBurned");
+    assert_eq!((ev.asset, ev.owner, ev.document_hash), (asset0, borrower.pubkey(), [0x7a; 32]));
     let tomb = env.account(&asset0);
     assert_eq!((tomb.data.len(), tomb.data[0], tomb.owner), (1, Key::Uninitialized as u8, MPL_CORE_ID), "the asset is burnt");
     let returned = asset_lamports - tomb.lamports;
-    let relayer_after = env.account(&relayer.pubkey()).lamports;
-    assert!(returned > 2_000_000 && relayer_after > relayer_before && relayer_after <= relayer_before + returned, "the asset's rent returns to the payer");
-    let collection = env.collection_state(&k.collection);
-    assert_eq!((collection.num_minted, collection.current_size), (2, 1));
-    // The other pagaré, marked paid by the repayment, cancels in turn.
-    assert_eq!(env.pagare(&k, line_id, 1).status, elote_pool::state::PAGARE_PAID_PENDING_CANCEL);
-    env.cancel_pagare(&k, line_id, 1);
-    assert_eq!(env.pagare(&k, line_id, 1).status, PAGARE_PAID);
-    assert_eq!(env.collection_state(&k.collection).current_size, 0);
-    // Paid is terminal: the asset is gone and the mark says so.
-    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_ALREADY_PAID);
-    assert_eq!(env.pagare(&k, line_id, 0).receipt_hash, RECEIPT_HASH);
+    let owner_after = env.account(&borrower.pubkey()).lamports;
+    assert!(returned > 2_000_000 && owner_after > owner_before && owner_after <= owner_before + returned, "the asset's rent returns to the owner");
+    assert_eq!((env.collection_state(&k.collection).num_minted, env.collection_state(&k.collection).current_size), (2, 1));
+    let record = env.pagare(&k, line_id, 0);
+    assert_eq!((record.last_kind, record.entry_count), (elote_pool::state::KIND_TERMINACION, after.entry_count + 1), "the record outlives the asset");
+
+    // The second pagaré delivers in turn.
+    env.deliver_pagare(&k, line_id, 1);
+    assert!(env.pagare(&k, line_id, 1).flags & PAGARE_FLAG_DELIVERED != 0);
 }
 
 /// The coverage rule: pagaré `k` is paid once the line's principal repaid reaches its
 /// `drawn_through`, so repayments cover the pagarés oldest first and a later one cannot be
-/// cancelled while an earlier one is uncovered. Interest covers nothing by itself: `repay` settles
+/// delivered while an earlier one is uncovered. Interest covers nothing by itself: `repay` settles
 /// it before principal, so a payment the size of the pagaré leaves principal owed, and a título is
-/// never extinguished while any of its principal is.
+/// never marked paid, nor delivered, while any of its principal is owed.
 #[test]
 fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     let mut env = Env::new();
@@ -381,21 +395,21 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     for amount in [UNIT, 2 * UNIT, 3 * UNIT] {
         env.draw_amount(&k, line_id, &borrower, amount);
     }
-    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
+    env.expect_deliver_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, UNIT - 1);
-    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
+    env.expect_deliver_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, 1);
-    env.cancel_pagare(&k, line_id, 0);
-    env.expect_cancel_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
-    env.expect_cancel_err(&k, line_id, 2, E_PAGARE_NOT_COVERED);
+    env.deliver_pagare(&k, line_id, 0);
+    env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    env.expect_deliver_err(&k, line_id, 2, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, 2 * UNIT);
-    env.expect_cancel_err(&k, line_id, 2, E_PAGARE_NOT_COVERED);
+    env.expect_deliver_err(&k, line_id, 2, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, 3 * UNIT);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     // Order among covered pagarés is free: the last one first.
-    env.cancel_pagare(&k, line_id, 2);
-    env.cancel_pagare(&k, line_id, 1);
-    assert_eq!(env.collection_state(&k.collection).current_size, 0);
+    env.deliver_pagare(&k, line_id, 2);
+    env.deliver_pagare(&k, line_id, 1);
+    assert_eq!(env.collection_state(&k.collection).current_size, 3, "delivered, not burnt");
 
     // At 10%, two tranches of 1.0 with 0.1 of interest each: a repayment of 1.0 settles the 0.2
     // of interest and only 0.8 of principal, so the first pagaré is not covered until 0.2 more
@@ -408,10 +422,10 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let ev = env.repay(&k, line_id, &borrower, UNIT);
     assert_eq!((ev.interest_part, ev.principal_part), (200_000, 800_000));
-    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
+    env.expect_deliver_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, 200_000);
-    env.cancel_pagare(&k, line_id, 0);
-    env.expect_cancel_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    env.deliver_pagare(&k, line_id, 0);
+    env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
 
     // At 100% for a year the interest equals the principal: a payment the size of the pagaré is
     // all interest and covers nothing; the second payment repays the principal and closes the line.
@@ -422,23 +436,24 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let ev = env.repay(&k, line_id, &borrower, UNIT);
     assert_eq!((ev.interest_part, ev.principal_part), (UNIT, 0));
-    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
+    env.expect_deliver_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, UNIT);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
-    env.cancel_pagare(&k, line_id, 0);
+    env.deliver_pagare(&k, line_id, 0);
 }
 
-/// Cancellation follows the sidecar's PAGADO mark, not the line's status (re-audit F-06): a
-/// pagaré a payment covered cancels while its line is in collection or written off; the pagarés no payment covered stay in force for the
-/// collection. A cancelled line never drew, so it has no sidecar to cancel.
+/// The delivery follows the sidecar's PAGADO mark, not the line's status (re-audit F-06, decision
+/// 38): a pagaré a payment covered is delivered while its line is in collection or written off;
+/// the pagarés no payment covered stay in force for the collection. A cancelled line never drew,
+/// so there is nothing to deliver.
 #[test]
-fn cancel_pagare_follows_the_mark_whatever_the_line_status() {
+fn delivery_follows_the_mark_whatever_the_line_status() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
     let council = env.council.insecure_clone();
     let a = council.pubkey();
 
-    // In collection: a payment after the mark covers pagaré 0; it cancels, the line stays in
+    // In collection: a payment after the mark covers pagaré 0; it is delivered, the line stays in
     // collection, pagaré 1 stays in force.
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
@@ -455,12 +470,12 @@ fn cancel_pagare_follows_the_mark_whatever_the_line_status() {
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), cover0);
     env.repay(&k, line_id, &borrower, cover0);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
-    assert_eq!(env.pagare(&k, line_id, 0).status, elote_pool::state::PAGARE_PAID_PENDING_CANCEL);
-    env.cancel_pagare(&k, line_id, 0);
     assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
-    env.expect_cancel_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    env.deliver_pagare(&k, line_id, 0);
+    assert!(env.pagare(&k, line_id, 0).flags & PAGARE_FLAG_DELIVERED != 0);
+    env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
 
-    // Written off: the covered pagaré is cancelled; the other outlives the loss.
+    // Written off: the covered pagaré is delivered; the other outlives the loss.
     let borrower = env.borrower(&k);
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -472,9 +487,8 @@ fn cancel_pagare_follows_the_mark_whatever_the_line_status() {
     let ix = env.write_off_ix(&k, line_id, &a);
     env.send(ix, &council, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
-    env.cancel_pagare(&k, line_id, 0);
-    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
-    env.expect_cancel_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    env.deliver_pagare(&k, line_id, 0);
+    env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
     assert_eq!(env.pagare(&k, line_id, 1).status, PAGARE_OUTSTANDING);
 
     // Cancelled: no sidecar was ever created.
@@ -484,59 +498,64 @@ fn cancel_pagare_follows_the_mark_whatever_the_line_status() {
     let ix = env.cancel_line_ix(&k, line_id, &council.pubkey());
     env.send(ix, &council, &[]);
     let line_key = line_pda(&k.pool, line_id).0;
-    let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, pagare_asset_pda(&line_key, 0).0, k.collection, None);
+    let mut ix = env.deliver_pagare_ix_raw(&k, line_id, 0, &a, &borrower.pubkey(), pagare_asset_pda(&line_key, 0).0, k.collection);
+    ix.program_id = PROGRAM_ID;
     env.expect_err(ix, &council, &[], E_ACCOUNT_NOT_INITIALIZED);
 }
 
-/// The holder (the council while the asset is in the pool) signs with its multisig, the receipt
-/// is required, and the sidecar, asset and collection must be the pagaré's own. The borrower waits
-/// for the cancel grace; anyone else is not a holder.
+/// The delivery takes no permission but demands the facts: the PAGADO mark, the right recipient
+/// (the line's borrower, never the sender), the pagaré's own asset and the pool's collection. No
+/// court hold may be in force.
 #[test]
-fn cancel_pagare_requires_the_holder_the_receipt_and_the_right_accounts() {
+fn deliver_pagare_requires_the_mark_the_recipient_and_the_right_accounts() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let (borrower, line_id) = drawn_and_repaid(&mut env, &k, 2 * UNIT, 1_000, &[UNIT, UNIT]);
     let line_key = line_pda(&k.pool, line_id).0;
     let council = env.council.insecure_clone();
     let a = council.pubkey();
-
-    // The borrower before the cancel grace; a stranger at any time.
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &borrower.pubkey(), &a, RECEIPT_HASH);
-    env.expect_err(ix, &council, &[&borrower], ERR_BASE + elote_pool::errors::PoolError::CancelGraceNotElapsed as u32);
     let stranger = env.funded(1);
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &stranger.pubkey(), &a, RECEIPT_HASH);
-    env.expect_err(ix, &council, &[&stranger], E_NOT_HOLDER);
-    // A multisig whose threshold fell below a majority after the pool was created.
-    let multisig = env.multisig;
-    let mut account = env.account(&multisig);
-    let saved = account.clone();
-    account.data[72] = 1;
-    env.svm.set_account(multisig, account).unwrap();
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &a, &a, RECEIPT_HASH);
-    env.expect_err(ix, &council, &[], ERR_BASE + elote_pool::errors::PoolError::CouncilInvalid as u32);
-    env.svm.set_account(multisig, saved).unwrap();
-    // Without a receipt.
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &a, &a, [0; 32]);
-    env.expect_err(ix, &council, &[], E_DOCUMENT_HASH_REQUIRED);
+
+    // The recipient must be the borrower: the sender, a stranger or the council are refused.
+    for wrong in [stranger.pubkey(), a] {
+        let ix = env.deliver_pagare_ix(&k, line_id, 0, &stranger.pubkey(), &wrong);
+        env.expect_err(ix, &stranger, &[], E_WRONG_ACCOUNT);
+    }
     // Another pagaré's asset, or a stranger's.
     for wrong in [pagare_asset_pda(&line_key, 1).0, solana_pubkey::Pubkey::new_unique()] {
-        let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, wrong, k.collection, None);
+        let ix = env.deliver_pagare_ix_raw(&k, line_id, 0, &a, &borrower.pubkey(), wrong, k.collection);
         env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
     }
     // Another pagaré's sidecar for this index.
-    let mut ix = env.cancel_pagare_ix(&k, line_id, 0, &a, &a, RECEIPT_HASH);
+    let mut ix = env.deliver_pagare_ix(&k, line_id, 0, &a, &borrower.pubkey());
     let i = ix.accounts.iter().position(|m| m.pubkey == pagare_pda(&line_key, 0).0).unwrap();
     ix.accounts[i].pubkey = pagare_pda(&line_key, 1).0;
     env.expect_err(ix, &council, &[], E_CONSTRAINT_SEEDS);
     // A collection that is not the pool's.
     let other = env.create_collection(&k.pool);
-    let ix = env.cancel_pagare_ix_full(&k, line_id, 0, &a, &a, RECEIPT_HASH, pagare_asset_pda(&line_key, 0).0, other, None);
+    let ix = env.deliver_pagare_ix_raw(&k, line_id, 0, &a, &borrower.pubkey(), pagare_asset_pda(&line_key, 0).0, other);
     env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
 
-    // Nothing happened: the title keeps the repayment's mark and its asset.
-    assert_eq!(env.pagare(&k, line_id, 0).status, elote_pool::state::PAGARE_PAID_PENDING_CANCEL);
+    // An embargo holds the delivery (LGTOC 20); the constancia lifting it reopens it.
+    let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_ANOTACION_JUDICIAL, [0x66; 32]);
+    env.send(ix, &council, &[]);
+    env.expect_deliver_err(&k, line_id, 0, ERR_BASE + elote_pool::errors::PoolError::DeliveryHeld as u32);
+    let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_CONSTANCIA_JUDICIAL, [0x67; 32]);
+    env.send(ix, &council, &[]);
+
+    // Nothing happened yet: the title keeps the repayment's mark and its asset; now it delivers,
+    // a stranger sending, to the borrower.
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
     assert_eq!(env.asset_state(&pagare_asset_pda(&line_key, 0).0).base.owner, k.pool);
-    assert_eq!(env.collection_state(&k.collection).current_size, 2);
+    let ix = env.deliver_pagare_ix(&k, line_id, 0, &stranger.pubkey(), &borrower.pubkey());
+    env.send(ix, &stranger, &[]);
+    assert_eq!(env.asset_state(&pagare_asset_pda(&line_key, 0).0).base.owner, borrower.pubkey());
+
+    // The burn: only after the delivery, and the Core program refuses anyone but the owner.
+    let ix = env.burn_pagare_ix(&k, line_id, 1, &borrower.pubkey(), [0; 32]);
+    env.expect_err(ix, &borrower, &[], E_PAGARE_NOT_COVERED);
+    let ix = env.burn_pagare_ix(&k, line_id, 0, &stranger.pubkey(), [0; 32]);
+    env.expect_err(ix, &stranger, &[], 26); // Core's NoApprovals: only the owner burns
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -598,7 +617,6 @@ fn a_draw_writes_the_issuance_entry_of_the_registry() {
     let expected = entry_hash(&sidecar.asset, KIND_EMISION, &k.pool, &k.pool, &env.expected_pagare_hash(&k, line_id, 0, UNIT, now), now, 1);
     assert_eq!((sidecar.entry_count, sidecar.last_kind, sidecar.flags), (1, KIND_EMISION, 0));
     assert_eq!(sidecar.log_root, chain(&[0; 32], &expected), "genesis: the issuance entry over an empty root");
-    assert_eq!(sidecar.cancel_receipt_hash, [0; 32]);
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
     assert_eq!(
         (ev.pool, ev.line_id, ev.draw_index, ev.asset, ev.kind, ev.from, ev.to),
@@ -612,15 +630,14 @@ fn a_draw_writes_the_issuance_entry_of_the_registry() {
     assert_ne!(second.log_root, sidecar.log_root);
 }
 
-/// Endoso en procuración (the only endoso the program records): the pool
-/// stays the owner, the entry goes into the registry, and the power to extinguish the pagaré is lent
-/// through an owner-managed `BurnDelegate` whose authority is a program PDA nobody holds a key for,
-/// so the burn can only happen inside `cancel_pagare`. A second procuración after a revocation
-/// approves the existing plugin instead of adding it (the sidecar's flag says it exists).
+/// Endoso en procuración (the only endoso the program records): the pool stays the owner, the
+/// entry goes into the registry and the sidecar names the procurador — and that is all. No power
+/// over the asset is lent (decision 38): the procurador collects through `repay` and litigates
+/// with the entry; the asset carries no `BurnDelegate` and stays frozen with the pool.
 #[test]
-fn an_endoso_en_procuracion_appends_the_entry_and_lends_the_burn_to_a_program_address() {
+fn an_endoso_en_procuracion_appends_the_entry_and_lends_no_power_over_the_asset() {
     use elote_pool::events::PagareEntry;
-    use elote_pool::state::{KIND_EMISION, KIND_PROCURACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION};
+    use elote_pool::state::{KIND_EMISION, KIND_PROCURACION, PAGARE_FLAG_PROCURACION};
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
@@ -630,25 +647,23 @@ fn an_endoso_en_procuracion_appends_the_entry_and_lends_the_burn_to_a_program_ad
     let before = env.pagare(&k, line_id, 0);
     assert_eq!((before.entry_count, before.last_kind, before.flags), (1, KIND_EMISION, 0));
     let procurador = env.funded(1);
-    let (pda, _) = procurador_pda(&pagare_pda(&line_pda(&k.pool, line_id).0, 0).0, &procurador.pubkey());
 
     let meta = env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
     let now = env.now();
     let after = env.pagare(&k, line_id, 0);
     let expected = entry_hash(&after.asset, KIND_PROCURACION, &k.pool, &procurador.pubkey(), &ENDOSO_HASH, now, 2);
-    assert_eq!((after.entry_count, after.last_kind, after.flags), (2, KIND_PROCURACION, PAGARE_FLAG_BURN_DELEGATE | PAGARE_FLAG_PROCURACION));
+    assert_eq!((after.entry_count, after.last_kind, after.flags), (2, KIND_PROCURACION, PAGARE_FLAG_PROCURACION));
     assert_eq!(after.log_root, chain(&before.log_root, &expected));
     assert_eq!((after.status, after.asset, after.drawn_through), (before.status, before.asset, before.drawn_through), "nothing else moves");
     assert_eq!((before.procurador, after.procurador), (solana_pubkey::Pubkey::default(), procurador.pubkey()), "the sidecar names the procurador");
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
     assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count, ev.recorded_at, ev.stated_at), (KIND_PROCURACION, k.pool, procurador.pubkey(), expected, 2, now, now));
-    // The asset: still the pool's, still frozen, with a BurnDelegate held by the program PDA.
+    // The asset: still the pool's, still frozen, and no BurnDelegate exists.
     let asset = env.asset_state(&after.asset);
     assert_eq!(asset.base.owner, k.pool);
     assert!(asset.plugin_list.permanent_freeze_delegate.as_ref().unwrap().permanent_freeze_delegate.frozen);
-    let burn = asset.plugin_list.burn_delegate.as_ref().expect("BurnDelegate");
-    assert_eq!((burn.base.authority.authority_type, burn.base.authority.address), (AuthorityType::Address, Some(pda)));
-    // The procurador's own key cannot burn, and a second procuración while one is in force is refused.
+    assert!(asset.plugin_list.burn_delegate.is_none(), "no power over the asset is lent");
+    // The procurador's key cannot burn, and a second procuración while one is in force is refused.
     let ix = mpl_core::instructions::BurnV1Builder::new().asset(after.asset).collection(Some(k.collection)).payer(procurador.pubkey()).authority(Some(procurador.pubkey())).instruction();
     assert!(env.try_send(ix, &procurador, &[]).is_err());
     let council = env.council.insecure_clone();
@@ -737,9 +752,9 @@ fn endorse_pagare_refuses_the_creator_the_feeder_the_payer_and_the_sponsor() {
 /// takes the burn delegate back to `Owner`; the in-force flag clears, the plugin flag stays, and a
 /// later procuración approves the existing plugin instead of adding it.
 #[test]
-fn revoke_procuracion_appends_the_entry_and_takes_the_delegate_back() {
+fn revoke_procuracion_appends_the_entry_and_clears_the_record() {
     use elote_pool::events::PagareEntry;
-    use elote_pool::state::{KIND_PROCURACION, KIND_REVOCACION, PAGARE_FLAG_BURN_DELEGATE, PAGARE_FLAG_PROCURACION};
+    use elote_pool::state::{KIND_PROCURACION, KIND_REVOCACION, PAGARE_FLAG_PROCURACION};
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
@@ -767,32 +782,30 @@ fn revoke_procuracion_appends_the_entry_and_takes_the_delegate_back() {
     let now = env.now();
     let after = env.pagare(&k, line_id, 0);
     let expected = entry_hash(&after.asset, KIND_REVOCACION, &k.pool, &procurador.pubkey(), &revocation, now, 3);
-    assert_eq!((after.entry_count, after.last_kind, after.flags), (3, KIND_REVOCACION, PAGARE_FLAG_BURN_DELEGATE));
+    assert_eq!((after.entry_count, after.last_kind, after.flags), (3, KIND_REVOCACION, 0));
     assert_eq!(after.procurador, solana_pubkey::Pubkey::default(), "nobody collects now");
     assert_eq!(after.log_root, chain(&before.log_root, &expected));
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
     assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count), (KIND_REVOCACION, k.pool, procurador.pubkey(), expected, 3));
+    // There was never any power over the asset to take back.
     let asset = env.asset_state(&after.asset);
-    let burn = asset.plugin_list.burn_delegate.as_ref().expect("the plugin stays");
-    assert_eq!(burn.base.authority.authority_type, AuthorityType::Owner);
-    // Revoking twice is refused; a new procuración to another procurador approves the existing plugin.
+    assert!(asset.plugin_list.burn_delegate.is_none());
+    // Revoking twice is refused; a new procuración to another procurador just records it.
     let ix = env.revoke_procuracion_ix(&k, line_id, 0, &a, revocation);
     env.expect_err(ix, &council, &[], E_PROCURACION_STATE);
     let other = env.funded(1);
     env.procuracion(&k, line_id, 0, &other.pubkey(), [0x5f; 32]);
     let again = env.pagare(&k, line_id, 0);
-    assert_eq!((again.entry_count, again.last_kind, again.flags), (4, KIND_PROCURACION, PAGARE_FLAG_BURN_DELEGATE | PAGARE_FLAG_PROCURACION));
+    assert_eq!((again.entry_count, again.last_kind, again.flags), (4, KIND_PROCURACION, PAGARE_FLAG_PROCURACION));
     assert_eq!(again.procurador, other.pubkey());
-    let (pda, _) = procurador_pda(&pagare_pda(&line_pda(&k.pool, line_id).0, 0).0, &other.pubkey());
-    let asset = env.asset_state(&again.asset);
-    let burn = asset.plugin_list.burn_delegate.as_ref().unwrap();
-    assert_eq!(burn.base.authority.address, Some(pda));
+    assert!(env.asset_state(&again.asset).plugin_list.burn_delegate.is_none());
 }
 
 /// A court's act on a title (embargo, suspension, cancellation; the constancia of art. 28): the
 /// council records the document's hash as an entry; nothing moves on the sidecar or
 /// the asset. Allowed on any line status, written-off included, and beside a procuración in force;
-/// refused only on a burnt title, which the sidecar records as `PAGARE_PAID`.
+/// refused only on a delivered title, which is the owner's; an anotación holds the delivery and
+/// a constancia lifts the hold.
 #[test]
 fn court_annotations_append_the_entry_and_move_nothing() {
     use elote_pool::events::PagareEntry;
@@ -825,9 +838,10 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     let expected = entry_hash(&after.asset, KIND_ANOTACION_JUDICIAL, &k.pool, &k.pool, &embargo, now, 2);
     assert_eq!((after.entry_count, after.last_kind), (2, KIND_ANOTACION_JUDICIAL));
     assert_eq!(after.log_root, chain(&before.log_root, &expected));
+    assert_eq!(after.flags, elote_pool::state::PAGARE_FLAG_JUDICIAL_HOLD, "the anotación holds the delivery");
     assert_eq!(
-        (after.status, after.flags, after.procurador, after.paid_at, after.receipt_hash, after.amount_mxn, after.due_at),
-        (before.status, before.flags, before.procurador, before.paid_at, before.receipt_hash, before.amount_mxn, before.due_at),
+        (after.status, after.procurador, after.paid_at, after.receipt_hash, after.amount_mxn, after.due_at),
+        (before.status, before.procurador, before.paid_at, before.receipt_hash, before.amount_mxn, before.due_at),
         "nothing else on the sidecar moves"
     );
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
@@ -839,8 +853,10 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     assert_eq!(asset.base.owner, k.pool, "the asset stays with the pool");
     assert!(asset.plugin_list.permanent_freeze_delegate.as_ref().unwrap().permanent_freeze_delegate.frozen, "and stays frozen");
 
-    // The constancia (art. 28) chains on, and both coexist with a procuración in force.
+    // The constancia (art. 28) chains on — and lifts the hold — and both coexist with a
+    // procuración in force.
     env.court_annotation(&k, line_id, 0, KIND_CONSTANCIA_JUDICIAL, [0x6b; 32]);
+    assert_eq!(env.pagare(&k, line_id, 0).flags & elote_pool::state::PAGARE_FLAG_JUDICIAL_HOLD, 0, "the constancia lifted the hold");
     let procurador = env.funded(1);
     env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
     env.court_annotation(&k, line_id, 0, KIND_ANOTACION_JUDICIAL, [0x6c; 32]);
@@ -859,106 +875,31 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     env.court_annotation(&k, line_id, 0, KIND_ANOTACION_JUDICIAL, embargo);
     assert_eq!(env.pagare(&k, line_id, 0).entry_count, 2);
 
-    // A burnt title is refused; its sibling on the repaid line is not.
+    // A delivered title is the owner's and refused; its paid, undelivered sibling still takes a
+    // court act (the hold can land between the payment and the delivery).
     let (_, line_id) = drawn_and_repaid(&mut env, &k, 4 * UNIT, 1_000, &[UNIT, 3 * UNIT]);
-    env.cancel_pagare(&k, line_id, 0);
+    env.deliver_pagare(&k, line_id, 0);
     let ix = env.court_annotation_ix(&k, line_id, 0, &a, KIND_CONSTANCIA_JUDICIAL, embargo);
     env.expect_err(ix, &council, &[], E_PAGARE_ALREADY_PAID);
-    env.court_annotation(&k, line_id, 1, KIND_CONSTANCIA_JUDICIAL, embargo);
-    assert_eq!(env.pagare(&k, line_id, 1).last_kind, KIND_CONSTANCIA_JUDICIAL);
+    env.court_annotation(&k, line_id, 1, KIND_ANOTACION_JUDICIAL, embargo);
+    assert_eq!(env.pagare(&k, line_id, 1).last_kind, KIND_ANOTACION_JUDICIAL);
+    env.expect_deliver_err(&k, line_id, 1, ERR_BASE + PoolError::DeliveryHeld as u32);
 }
 
-/// The procurador's branch of `cancel_pagare` (LGTOC 35, decision 29): the procurador of record
-/// signs alone, the same receipt and coverage checks apply, the `Terminacion` entry is
-/// written from the procurador, the procuración ends with the title, and the burn goes through the
-/// program address the delegate was approved to. The owner's branch writes the same entry from the
-/// pool, and its extinction ends a procuración in force too.
+/// The procurador collects through `repay`, like any payer, and the settling payment itself ends
+/// the procuración: a `Terminacion` entry from the pool to the procurador follows the `Pagado`,
+/// the sidecar clears its record, and the sibling's procuración stands (decision 38; LGTOC 35
+/// gives the procurador the collection, which the payment is).
 #[test]
-fn the_procurador_extinguishes_the_title_through_the_program_address() {
+fn the_payment_ends_the_procuracion_and_the_procurador_keeps_no_record() {
     use elote_pool::events::PagareEntry;
-    use elote_pool::state::{KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE};
+    use elote_pool::state::{KIND_PAGADO, KIND_TERMINACION, PAGARE_FLAG_PROCURACION};
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
     let council = env.council.insecure_clone();
     let procurador = env.funded(1);
     let pr = procurador.pubkey();
-    let relayer = env.funded(1);
-    let r = relayer.pubkey();
-    // The endoso comes before the payment: a paid title has nothing left to collect.
-    let borrower = env.borrower(&k);
-    let p = env.line_params(4 * UNIT, 1_000);
-    let line_id = open(&mut env, &k, &borrower, &p);
-    let line_key = line_pda(&k.pool, line_id).0;
-    env.draw_amount(&k, line_id, &borrower, UNIT);
-    env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
-    env.procuracion(&k, line_id, 0, &pr, ENDOSO_HASH);
-    let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
-    env.repay(&k, line_id, &borrower, 4 * UNIT + interest);
 
-    // Refusals: a stranger; the procurador on a title it does not hold; no receipt;
-    // a program address derived for someone else, or none.
-    let stranger = env.funded(1);
-    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &stranger.pubkey(), &r, RECEIPT_HASH);
-    env.expect_err(ix, &relayer, &[&stranger], E_NOT_HOLDER);
-    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 1, &pr, &r, RECEIPT_HASH);
-    env.expect_err(ix, &relayer, &[&procurador], E_NOT_HOLDER);
-    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &pr, &r, [0; 32]);
-    env.expect_err(ix, &relayer, &[&procurador], E_DOCUMENT_HASH_REQUIRED);
-    let pagare_key = pagare_pda(&line_key, 0).0;
-    let pda = procurador_pda(&pagare_key, &pr).0;
-    for wrong in [procurador_pda(&pagare_key, &stranger.pubkey()).0, PROGRAM_ID] {
-        let mut ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &pr, &r, RECEIPT_HASH);
-        let i = ix.accounts.iter().position(|m| m.pubkey == pda).unwrap();
-        ix.accounts[i].pubkey = wrong;
-        env.expect_err(ix, &relayer, &[&procurador], E_WRONG_ACCOUNT);
-    }
-    assert_eq!(env.pagare(&k, line_id, 0).status, elote_pool::state::PAGARE_PAID_PENDING_CANCEL, "marked by the payment, not yet extinguished");
-
-    // The extinction: the entry from the procurador, the mark, the procuración ended, the asset
-    // burnt through the program address, the rent to the payer.
-    let before = env.pagare(&k, line_id, 0);
-    let relayer_before = env.account(&r).lamports;
-    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &pr, &r, RECEIPT_HASH);
-    let meta = env.send(ix, &relayer, &[&procurador]);
-    let now = env.now();
-    let after = env.pagare(&k, line_id, 0);
-    // Emision, Procuracion, Pagado (the payment's), Terminacion.
-    let expected = entry_hash(&after.asset, KIND_TERMINACION, &pr, &k.pool, &RECEIPT_HASH, now, 4);
-    assert_eq!((after.status, after.paid_at, after.receipt_hash, after.cancel_receipt_hash), (PAGARE_PAID, now, RECEIPT_HASH, RECEIPT_HASH));
-    assert_eq!(
-        (after.entry_count, after.last_kind, after.flags, after.procurador),
-        (4, KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE, solana_pubkey::Pubkey::default()),
-        "the procuración ends with the title"
-    );
-    assert_eq!(after.log_root, chain(&before.log_root, &expected));
-    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
-    assert_eq!((ev.kind, ev.from, ev.to, ev.entry_hash, ev.entry_count), (KIND_TERMINACION, pr, k.pool, expected, 4));
-    let ev: PagareCancelled = find_event(&meta).expect("PagareCancelled");
-    assert_eq!((ev.holder, ev.receipt_hash, ev.asset, ev.by_borrower), (pr, RECEIPT_HASH, after.asset, false));
-    let tomb = env.account(&after.asset);
-    assert_eq!((tomb.data.len(), tomb.owner), (1, MPL_CORE_ID), "burnt through the program address");
-    assert!(env.account(&r).lamports > relayer_before, "the rent goes to the payer");
-    assert_eq!(env.collection_state(&k.collection).current_size, 1);
-    // Paid is terminal: the ex-procurador is nobody now (the procuración ended with the title),
-    // and the owner finds the mark.
-    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 0, &pr, &r, RECEIPT_HASH);
-    env.expect_err(ix, &relayer, &[&procurador], E_NOT_HOLDER);
-    env.expect_cancel_err(&k, line_id, 0, E_PAGARE_ALREADY_PAID);
-
-    // The owner's branch writes the same entry, from the pool.
-    let before = env.pagare(&k, line_id, 1);
-    let meta = env.cancel_pagare(&k, line_id, 1);
-    let now = env.now();
-    let after = env.pagare(&k, line_id, 1);
-    let expected = entry_hash(&after.asset, KIND_TERMINACION, &k.pool, &k.pool, &RECEIPT_HASH, now, 3);
-    assert_eq!((after.entry_count, after.last_kind, after.cancel_receipt_hash), (3, KIND_TERMINACION, RECEIPT_HASH));
-    assert_eq!(after.log_root, chain(&before.log_root, &expected));
-    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
-    assert_eq!((ev.kind, ev.from, ev.to), (KIND_TERMINACION, k.pool, k.pool));
-
-    // The PAGADO mark binds the procurador too (the unpaid title is refused), and the owner's
-    // extinction ends a procuración in force.
     let borrower = env.borrower(&k);
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -968,188 +909,112 @@ fn the_procurador_extinguishes_the_title_through_the_program_address() {
     env.procuracion(&k, line_id, 1, &pr, ENDOSO_HASH);
     let interest = env.line(&k, line_id).interest_due;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
-    env.repay(&k, line_id, &borrower, UNIT + interest);
+    let meta = env.send(env.repay_ix_full(&k, line_id, &borrower.pubkey(), UNIT + interest, RECEIPT_HASH, &env.payment_sidecars(&k, line_id, UNIT + interest)), &borrower, &[]);
     assert_eq!(env.line(&k, line_id).principal_repaid, UNIT);
-    let ix = env.cancel_pagare_by_procurador_ix(&k, line_id, 1, &pr, &r, RECEIPT_HASH);
-    env.expect_err(ix, &relayer, &[&procurador], E_PAGARE_NOT_COVERED);
-    env.cancel_pagare(&k, line_id, 0);
+
+    // Pagaré 0: Emision, Procuracion, Pagado, Terminacion — the payment wrote the last two.
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!(
-        (p0.status, p0.flags, p0.procurador, p0.last_kind),
-        (PAGARE_PAID, PAGARE_FLAG_BURN_DELEGATE, solana_pubkey::Pubkey::default(), KIND_TERMINACION)
+        (p0.status, p0.last_kind, p0.entry_count, p0.flags & PAGARE_FLAG_PROCURACION, p0.procurador),
+        (PAGARE_PAID, KIND_TERMINACION, 4, 0, solana_pubkey::Pubkey::default()),
+        "the procuración ends with the payment"
     );
+    let entries: Vec<_> = find_events::<PagareEntry>(&meta).into_iter().map(|e| (e.draw_index, e.kind, e.from, e.to)).collect();
+    assert!(entries.contains(&(0, KIND_PAGADO, borrower.pubkey(), k.pool)));
+    assert!(entries.contains(&(0, KIND_TERMINACION, k.pool, pr)));
     assert_eq!(env.pagare(&k, line_id, 1).procurador, pr, "the sibling's procuración stands");
+
+    // The delivery goes to the borrower as always; the ex-procurador has no claim on the asset.
+    env.deliver_pagare(&k, line_id, 0);
+    assert_eq!(env.asset_state(&env.pagare(&k, line_id, 0).asset).base.owner, borrower.pubkey());
 }
 
-/// The borrower's exit's parameter: `cancel_grace_seconds` is set at `init_pool` with a 30-day
-/// floor and a one-year ceiling (`MAX_CANCEL_GRACE_SECONDS`), and changed only by the council
-/// (with its multisig), within the same bounds, with an event.
+/// The council's annulment of a título issued in error (decision 38): a `Terminacion` entry over
+/// the annulment document's own hash, nothing burnt, no state moved — the record is the
+/// annotation, and the debt still follows the line.
 #[test]
-fn the_cancel_grace_is_a_pool_parameter_between_thirty_days_and_a_year() {
-    use elote_pool::events::CancelGraceSet;
-    use elote_pool::state::MAX_CANCEL_GRACE_SECONDS;
-    assert_eq!(MAX_CANCEL_GRACE_SECONDS, 365 * 86_400);
+fn the_council_annuls_an_outstanding_titulo_by_annotation_alone() {
+    use elote_pool::events::PagareAnnulled;
+    use elote_pool::state::KIND_TERMINACION;
     let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
     let council = env.council.insecure_clone();
-    let asset_mint = env.create_mint(&council.pubkey(), 6);
-    let k = env.pool_keys_for(&asset_mint);
-    for (seconds, code) in [(CANCEL_GRACE - 1, E_CANCEL_GRACE_TOO_SHORT), (MAX_CANCEL_GRACE_SECONDS + 1, E_CANCEL_GRACE_TOO_LONG)] {
-        let mut params = env.init_params(BPS, COLLECTION_PERIOD);
-        params.cancel_grace_seconds = seconds;
-        let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), params);
-        env.expect_err(ix, &council, &[], code);
-    }
-    let (k, meta) = env.setup_pool();
-    let ev: elote_pool::events::PoolInitialized = find_event(&meta).expect("PoolInitialized");
-    assert_eq!((ev.pool, ev.cancel_grace_seconds, env.pool(&k).cancel_grace_seconds), (k.pool, CANCEL_GRACE, CANCEL_GRACE));
-    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), CANCEL_GRACE - 1);
-    env.expect_err(ix, &council, &[], E_CANCEL_GRACE_TOO_SHORT);
-    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), MAX_CANCEL_GRACE_SECONDS + 1);
-    env.expect_err(ix, &council, &[], E_CANCEL_GRACE_TOO_LONG);
-    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), u32::MAX);
-    env.expect_err(ix, &council, &[], E_CANCEL_GRACE_TOO_LONG);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+
+    // A document hash is required, and a stranger is no holder.
+    let ix = env.annul_pagare_ix(&k, line_id, 0, [0; 32]);
+    env.expect_err(ix, &council, &[], E_DOCUMENT_HASH_REQUIRED);
     let stranger = env.funded(1);
-    let ix = env.set_cancel_grace_ix(&k, &stranger.pubkey(), 2 * CANCEL_GRACE);
-    env.expect_err(ix, &stranger, &[], E_UNAUTHORIZED);
-    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), 2 * CANCEL_GRACE);
-    let ev: CancelGraceSet = find_event(&env.send(ix, &council, &[])).expect("CancelGraceSet");
-    assert_eq!((ev.pool, ev.cancel_grace_seconds), (k.pool, 2 * CANCEL_GRACE));
-    assert_eq!(env.pool(&k).cancel_grace_seconds, 2 * CANCEL_GRACE);
-    // The ceiling itself is accepted.
-    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), MAX_CANCEL_GRACE_SECONDS);
-    env.send(ix, &council, &[]);
-    assert_eq!(env.pool(&k).cancel_grace_seconds, MAX_CANCEL_GRACE_SECONDS);
-}
-
-/// The borrower's date is fixed when the pagaré is paid: `repay` copies the pool's
-/// `cancel_grace_seconds` onto each pagaré it marks `PAGARE_PAID_PENDING_CANCEL`, and the
-/// borrower's `cancel_pagare` waits `paid_at + Pagare.cancel_grace_seconds`. A later
-/// `set_cancel_grace`, up or down, applies only to pagarés paid after it.
-#[test]
-fn the_cancel_grace_is_fixed_on_the_pagare_at_payment() {
-    use elote_pool::state::{MAX_CANCEL_GRACE_SECONDS, PAGARE_PAID_PENDING_CANCEL};
-    let mut env = Env::new();
-    let k = pool_with(&mut env, 20 * UNIT);
-    let council = env.council.insecure_clone();
-    let grace = i64::from(CANCEL_GRACE);
-    let max = i64::from(MAX_CANCEL_GRACE_SECONDS);
-
-    let borrower = env.borrower(&k);
-    let b = borrower.pubkey();
-    let p = env.line_params(2 * UNIT, 1_000);
-    let line_id = open(&mut env, &k, &borrower, &p);
-    env.draw_amount(&k, line_id, &borrower, UNIT);
-    env.draw_amount(&k, line_id, &borrower, UNIT);
-    assert_eq!(env.pagare(&k, line_id, 0).cancel_grace_seconds, 0, "nothing is fixed while outstanding");
-    let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &council, &b, interest + 2 * UNIT);
-    env.repay(&k, line_id, &borrower, UNIT + interest);
-    let p0 = env.pagare(&k, line_id, 0);
-    assert_eq!((p0.status, p0.cancel_grace_seconds), (PAGARE_PAID_PENDING_CANCEL, CANCEL_GRACE));
-    assert_eq!(env.pagare(&k, line_id, 1).cancel_grace_seconds, 0, "the pagaré the payment did not cover");
-
-    // The council raises the grace to the ceiling after the payment: pagaré 0 keeps its date.
-    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), MAX_CANCEL_GRACE_SECONDS);
-    env.send(ix, &council, &[]);
-    assert_eq!(env.pagare(&k, line_id, 0).cancel_grace_seconds, CANCEL_GRACE);
-    env.warp(p0.paid_at + grace);
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &b, &b, RECEIPT_HASH);
-    env.expect_err(ix, &borrower, &[], E_CANCEL_GRACE_NOT_ELAPSED);
-    env.warp(p0.paid_at + grace + 1);
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &b, &b, RECEIPT_HASH);
-    env.send(ix, &borrower, &[]);
-    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
-
-    // Pagaré 1, paid after the change, carries the ceiling; lowering the pool's grace afterwards
-    // does not shorten it.
-    env.repay(&k, line_id, &borrower, 2 * UNIT);
-    let p1 = env.pagare(&k, line_id, 1);
-    assert_eq!((p1.status, p1.cancel_grace_seconds), (PAGARE_PAID_PENDING_CANCEL, MAX_CANCEL_GRACE_SECONDS));
-    let ix = env.set_cancel_grace_ix(&k, &council.pubkey(), CANCEL_GRACE);
-    env.send(ix, &council, &[]);
-    for at in [p1.paid_at + grace + 1, p1.paid_at + max] {
-        env.warp(at);
-        let ix = env.cancel_pagare_ix(&k, line_id, 1, &b, &b, RECEIPT_HASH);
-        env.expect_err(ix, &borrower, &[], E_CANCEL_GRACE_NOT_ELAPSED);
-    }
-    env.warp(p1.paid_at + max + 1);
-    let ix = env.cancel_pagare_ix(&k, line_id, 1, &b, &b, RECEIPT_HASH);
-    env.send(ix, &borrower, &[]);
-    let p1 = env.pagare(&k, line_id, 1);
-    assert_eq!((p1.status, p1.cancel_grace_seconds), (PAGARE_PAID, MAX_CANCEL_GRACE_SECONDS), "the grace stays as history");
-}
-
-/// The debtor's exit that does not depend on the council (research's legal review, point 4): once a
-/// payment wrote the PAGADO mark, the borrower alone cancels the pagaré after
-/// `paid_at + cancel_grace_seconds`, with a receipt; the entry is the borrower's, the event says
-/// `by_borrower`, and the pool PDA burns the asset as its owner, also under a procuración in force.
-#[test]
-fn the_borrower_cancels_alone_after_the_cancel_grace() {
-    use elote_pool::events::PagareEntry;
-    use elote_pool::state::{KIND_TERMINACION, PAGARE_FLAG_BURN_DELEGATE};
-    let mut env = Env::new();
-    let k = pool_with(&mut env, 20 * UNIT);
-    let council = env.council.insecure_clone();
-    let grace = i64::from(CANCEL_GRACE);
-
-    let borrower = env.borrower(&k);
-    let b = borrower.pubkey();
-    let p = env.line_params(2 * UNIT, 1_000);
-    let line_id = open(&mut env, &k, &borrower, &p);
-    env.draw_amount(&k, line_id, &borrower, UNIT);
-    env.draw_amount(&k, line_id, &borrower, UNIT);
-    let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &council, &b, interest);
-    env.repay(&k, line_id, &borrower, UNIT + interest);
-    let paid_at = env.pagare(&k, line_id, 0).paid_at;
-
-    // Before the grace, and at its last second: refused.
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &b, &b, RECEIPT_HASH);
-    env.expect_err(ix, &borrower, &[], E_CANCEL_GRACE_NOT_ELAPSED);
-    env.warp(paid_at + grace);
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &b, &b, RECEIPT_HASH);
-    env.expect_err(ix, &borrower, &[], E_CANCEL_GRACE_NOT_ELAPSED);
-    env.warp(paid_at + grace + 1);
-    // No receipt; a pagaré no payment covered.
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &b, &b, [0; 32]);
-    env.expect_err(ix, &borrower, &[], E_DOCUMENT_HASH_REQUIRED);
-    let ix = env.cancel_pagare_ix(&k, line_id, 1, &b, &b, RECEIPT_HASH);
-    env.expect_err(ix, &borrower, &[], E_PAGARE_NOT_COVERED);
+    let mut ix = env.annul_pagare_ix(&k, line_id, 0, [0x3c; 32]);
+    ix.accounts[0].pubkey = stranger.pubkey();
+    env.expect_err(ix, &stranger, &[], E_NOT_HOLDER);
 
     let before = env.pagare(&k, line_id, 0);
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &b, &b, RECEIPT_HASH);
-    let meta = env.send(ix, &borrower, &[]);
-    let now = env.now();
+    let ix = env.annul_pagare_ix(&k, line_id, 0, [0x3c; 32]);
+    let meta = env.send(ix, &council, &[]);
+    let ev: PagareAnnulled = find_event(&meta).expect("PagareAnnulled");
+    assert_eq!((ev.pool, ev.line_id, ev.draw_index, ev.document_hash), (k.pool, line_id, 0, [0x3c; 32]));
     let after = env.pagare(&k, line_id, 0);
-    assert_eq!((after.status, after.paid_at, after.cancel_receipt_hash, after.last_kind), (PAGARE_PAID, paid_at, RECEIPT_HASH, KIND_TERMINACION));
-    let expected = entry_hash(&after.asset, KIND_TERMINACION, &b, &k.pool, &RECEIPT_HASH, now, before.entry_count + 1);
-    assert_eq!(after.log_root, chain(&before.log_root, &expected));
-    let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
-    assert_eq!((ev.kind, ev.from, ev.to), (KIND_TERMINACION, b, k.pool));
-    let ev: PagareCancelled = find_event(&meta).expect("PagareCancelled");
-    assert_eq!((ev.holder, ev.receipt_hash, ev.by_borrower), (b, RECEIPT_HASH, true));
-    assert_eq!(env.account(&after.asset).data.len(), 1, "burnt");
+    assert_eq!((after.status, after.last_kind, after.entry_count), (PAGARE_OUTSTANDING, KIND_TERMINACION, before.entry_count + 1));
+    assert_eq!(env.asset_state(&after.asset).base.owner, k.pool, "nothing burnt, nothing moved");
 
-    // Under a procuración in force: the borrower still cancels and the pool PDA burns as owner.
-    let borrower = env.borrower(&k);
-    let b = borrower.pubkey();
-    let line_id = open(&mut env, &k, &borrower, &p);
-    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
-    let procurador = env.funded(1);
-    env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
+    // The line is still the line: the borrower pays it off and the título delivers.
     let interest = env.line(&k, line_id).interest_due;
-    env.mint_to(&k.asset_mint, &council, &b, interest);
-    env.repay(&k, line_id, &borrower, 2 * UNIT + interest);
-    env.warp(env.pagare(&k, line_id, 0).paid_at + grace + 1);
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &b, &b, RECEIPT_HASH);
-    env.send(ix, &borrower, &[]);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
+    env.repay(&k, line_id, &borrower, UNIT + interest);
+    // A paid título cannot be annulled: it is the debtor's.
+    let ix = env.annul_pagare_ix(&k, line_id, 0, [0x3d; 32]);
+    env.expect_err(ix, &council, &[], E_PAGARE_ALREADY_PAID);
+    env.deliver_pagare(&k, line_id, 0);
+}
+
+/// The aval who settles the título receives it alive (LGTOC 115, decision 38-f): the covered
+/// pagaré gets a `PagadoAval` entry and the `PAID_BY_AVAL` flag, and the delivery goes to the
+/// sponsor — the borrower is refused as recipient — who can then collect the whole sum from the
+/// suscriptor with the título in hand, outside the program.
+#[test]
+fn the_aval_who_settles_receives_the_live_titulo() {
+    use elote_pool::state::{KIND_PAGADO_AVAL, PAGARE_FLAG_PAID_BY_AVAL, SPONSOR_GUARANTOR};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let council = env.council.insecure_clone();
+    let borrower = env.borrower(&k);
+    let aval = env.funded(1);
+    env.create_ata(&aval.pubkey(), &k.asset_mint);
+    let mut p = env.line_params(2 * UNIT, 1_000);
+    p.sponsor = Some(aval.pubkey());
+    p.sponsor_role = SPONSOR_GUARANTOR;
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, Some(&aval));
+    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+
+    // The aval pays everything.
+    let line = env.line(&k, line_id);
+    let owed = line.drawn + line.interest_due;
+    env.mint_to(&k.asset_mint, &council, &aval.pubkey(), owed);
+    env.repay(&k, line_id, &aval, owed);
     let p0 = env.pagare(&k, line_id, 0);
-    assert_eq!(
-        (p0.status, p0.flags, p0.procurador),
-        (PAGARE_PAID, PAGARE_FLAG_BURN_DELEGATE, solana_pubkey::Pubkey::default()),
-        "the procuración ends with the title"
-    );
-    assert_eq!(env.account(&p0.asset).data.len(), 1, "burnt");
+    assert_eq!((p0.status, p0.last_kind, p0.flags & PAGARE_FLAG_PAID_BY_AVAL != 0), (PAGARE_PAID, KIND_PAGADO_AVAL, true));
+
+    // The delivery goes to the aval; the borrower is not the recipient of this one.
+    let ix = env.deliver_pagare_ix(&k, line_id, 0, &council.pubkey(), &borrower.pubkey());
+    env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
+    let ix = env.deliver_pagare_ix(&k, line_id, 0, &council.pubkey(), &aval.pubkey());
+    env.send(ix, &council, &[]);
+    let asset = env.asset_state(&p0.asset);
+    assert_eq!(asset.base.owner, aval.pubkey(), "the título is the aval's, alive");
+    assert!(!asset.plugin_list.permanent_freeze_delegate.as_ref().unwrap().permanent_freeze_delegate.frozen);
+    // The aval may transfer it to the suscriptor off-program once paid; Core alone governs now.
+    let ix = mpl_core::instructions::TransferV1Builder::new()
+        .asset(p0.asset)
+        .collection(Some(k.collection))
+        .payer(aval.pubkey())
+        .new_owner(borrower.pubkey())
+        .instruction();
+    env.send(ix, &aval, &[]);
+    assert_eq!(env.asset_state(&p0.asset).base.owner, borrower.pubkey());
 }
 
 /// The payment entries (art. 130, "en un solo acto"): every `repay` appends one entry to each
@@ -1160,7 +1025,7 @@ fn the_borrower_cancels_alone_after_the_cancel_grace() {
 #[test]
 fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     use elote_pool::events::{PagareEntry, PagarePayment};
-    use elote_pool::state::{KIND_ABONO, KIND_PAGADO, PAGARE_PAID_PENDING_CANCEL};
+    use elote_pool::state::{KIND_ABONO, KIND_PAGADO};
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
     let borrower = env.borrower(&k);
@@ -1207,7 +1072,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     let p1 = env.pagare(&k, line_id, 1);
     assert_eq!(
         (p0.status, p0.paid_at, p0.receipt_hash, p0.last_kind, p0.entry_count),
-        (PAGARE_PAID_PENDING_CANCEL, now, RECEIPT_HASH, KIND_PAGADO, 3),
+        (PAGARE_PAID, now, RECEIPT_HASH, KIND_PAGADO, 3),
         "the PAGADO mark at the moment of payment"
     );
     assert_eq!((p1.status, p1.last_kind, p1.entry_count), (PAGARE_OUTSTANDING, KIND_ABONO, 2));
@@ -1224,8 +1089,8 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     let line = env.line(&k, line_id);
     assert_eq!((line.pagares_paid, line.status), (3, LineStatus::Repaid));
     let (p1, p2) = (env.pagare(&k, line_id, 1), env.pagare(&k, line_id, 2));
-    assert_eq!((p1.status, p1.last_kind, p1.entry_count), (PAGARE_PAID_PENDING_CANCEL, KIND_PAGADO, 3));
-    assert_eq!((p2.status, p2.last_kind, p2.entry_count, p2.paid_at), (PAGARE_PAID_PENDING_CANCEL, KIND_PAGADO, 2, env.now()));
+    assert_eq!((p1.status, p1.last_kind, p1.entry_count), (PAGARE_PAID, KIND_PAGADO, 3));
+    assert_eq!((p2.status, p2.last_kind, p2.entry_count, p2.paid_at), (PAGARE_PAID, KIND_PAGADO, 2, env.now()));
 }
 
 /// `repay` takes exactly the sidecars `[pagares_paid ..= last_touched]`, consecutive and verified
@@ -1286,17 +1151,15 @@ fn repay_requires_exactly_the_sidecars_the_payment_touches() {
     env.expect_err(ix, &idle, &[], E_LINE_STATUS);
 }
 
-/// After the payment entries, `cancel_pagare` requires the PAGADO mark
-/// (`PAGARE_PAID_PENDING_CANCEL`) in place of the coverage rule; the payment's receipt and time
-/// stay on the sidecar and the cancellation's receipt is kept beside them.
+/// After the payment entries, `deliver_pagare` requires the PAGADO mark in place of the coverage
+/// rule; the payment's receipt and time stay on the sidecar and the Entrega entry chains over the
+/// same receipt.
 #[test]
-fn cancel_pagare_requires_the_payments_pagado_mark() {
-    use elote_pool::state::{KIND_TERMINACION, PAGARE_PAID_PENDING_CANCEL};
+fn deliver_pagare_requires_the_payments_pagado_mark() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
     let borrower = env.borrower(&k);
     let council = env.council.insecure_clone();
-    let a = council.pubkey();
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
@@ -1310,16 +1173,15 @@ fn cancel_pagare_requires_the_payments_pagado_mark() {
     let paid_at = env.now();
     env.warp(paid_at + 3_600);
     let p0 = env.pagare(&k, line_id, 0);
-    assert_eq!((p0.status, p0.paid_at, p0.receipt_hash), (PAGARE_PAID_PENDING_CANCEL, paid_at, payment));
-    // The uncovered one has no mark: no cancellation.
-    env.expect_cancel_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
-    // The marked one cancels; the payment's receipt and time stay, the cancellation's receipt beside.
-    let ix = env.cancel_pagare_ix(&k, line_id, 0, &a, &a, RECEIPT_HASH);
-    env.send(ix, &council, &[]);
+    assert_eq!((p0.status, p0.paid_at, p0.receipt_hash), (PAGARE_PAID, paid_at, payment));
+    // The uncovered one has no mark: no delivery.
+    env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    // The marked one delivers; the payment's receipt and time stay, the Entrega chains over them.
+    env.deliver_pagare(&k, line_id, 0);
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!(
-        (p0.status, p0.paid_at, p0.receipt_hash, p0.cancel_receipt_hash, p0.last_kind, p0.entry_count),
-        (PAGARE_PAID, paid_at, payment, RECEIPT_HASH, KIND_TERMINACION, 3)
+        (p0.status, p0.paid_at, p0.receipt_hash, p0.flags & PAGARE_FLAG_DELIVERED != 0, p0.last_kind, p0.entry_count),
+        (PAGARE_PAID, paid_at, payment, true, KIND_ENTREGA, 3)
     );
 }
 

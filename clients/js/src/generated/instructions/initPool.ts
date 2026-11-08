@@ -136,8 +136,6 @@ export type InitPoolInstructionData = {
   maxOutstandingPrincipal: bigint;
   /** At least `MIN_ACCELERATION_NOTICE_SECONDS`. */
   accelerationNoticeSeconds: number;
-  /** `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. */
-  cancelGraceSeconds: number;
   /** The lowest and highest FIX `post_fix` accepts (`fx::bounds_valid`); zero and zero for none. */
   minFixRate: bigint;
   maxFixRate: bigint;
@@ -152,8 +150,6 @@ export type InitPoolInstructionDataArgs = {
   maxOutstandingPrincipal: number | bigint;
   /** At least `MIN_ACCELERATION_NOTICE_SECONDS`. */
   accelerationNoticeSeconds: number;
-  /** `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. */
-  cancelGraceSeconds: number;
   /** The lowest and highest FIX `post_fix` accepts (`fx::bounds_valid`); zero and zero for none. */
   minFixRate: number | bigint;
   maxFixRate: number | bigint;
@@ -167,7 +163,6 @@ export function getInitPoolInstructionDataEncoder(): FixedSizeEncoder<InitPoolIn
       ["collectionPeriodSeconds", getU32Encoder()],
       ["maxOutstandingPrincipal", getU64Encoder()],
       ["accelerationNoticeSeconds", getU32Encoder()],
-      ["cancelGraceSeconds", getU32Encoder()],
       ["minFixRate", getU64Encoder()],
       ["maxFixRate", getU64Encoder()],
     ]),
@@ -182,7 +177,6 @@ export function getInitPoolInstructionDataDecoder(): FixedSizeDecoder<InitPoolIn
     ["collectionPeriodSeconds", getU32Decoder()],
     ["maxOutstandingPrincipal", getU64Decoder()],
     ["accelerationNoticeSeconds", getU32Decoder()],
-    ["cancelGraceSeconds", getU32Decoder()],
     ["minFixRate", getU64Decoder()],
     ["maxFixRate", getU64Decoder()],
   ]);
@@ -254,7 +248,6 @@ export type InitPoolAsyncInput<
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
   maxOutstandingPrincipal: InitPoolInstructionDataArgs["maxOutstandingPrincipal"];
   accelerationNoticeSeconds: InitPoolInstructionDataArgs["accelerationNoticeSeconds"];
-  cancelGraceSeconds: InitPoolInstructionDataArgs["cancelGraceSeconds"];
   minFixRate: InitPoolInstructionDataArgs["minFixRate"];
   maxFixRate: InitPoolInstructionDataArgs["maxFixRate"];
 };
@@ -615,7 +608,6 @@ export type InitPoolInput<
   collectionPeriodSeconds: InitPoolInstructionDataArgs["collectionPeriodSeconds"];
   maxOutstandingPrincipal: InitPoolInstructionDataArgs["maxOutstandingPrincipal"];
   accelerationNoticeSeconds: InitPoolInstructionDataArgs["accelerationNoticeSeconds"];
-  cancelGraceSeconds: InitPoolInstructionDataArgs["cancelGraceSeconds"];
   minFixRate: InitPoolInstructionDataArgs["minFixRate"];
   maxFixRate: InitPoolInstructionDataArgs["maxFixRate"];
 };

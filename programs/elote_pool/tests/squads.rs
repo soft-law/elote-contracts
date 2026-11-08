@@ -186,10 +186,10 @@ fn the_council_endorses_and_cancels_pagares_through_squads() {
     let c = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &c, &borrower.pubkey(), first);
     env.repay(&k, id, &borrower, first);
-    assert_eq!(env.pagare(&k, id, 0).status, elote_pool::state::PAGARE_PAID_PENDING_CANCEL);
-    let ix = env.cancel_pagare_ix(&k, id, 0, &council, &council, RECEIPT_HASH);
-    ok(&mut env, 2, ix, "cancel_pagare (council)");
     assert_eq!(env.pagare(&k, id, 0).status, elote_pool::state::PAGARE_PAID);
+    let ix = env.annul_pagare_ix(&k, id, 1, [0x3c; 32]);
+    ok(&mut env, 2, ix, "annul_pagare (council)");
+    assert_eq!(env.pagare(&k, id, 1).last_kind, elote_pool::state::KIND_TERMINACION);
 }
 
 #[test]

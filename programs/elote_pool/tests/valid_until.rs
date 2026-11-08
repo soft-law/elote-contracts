@@ -82,12 +82,10 @@ fn write_off_and_the_councils_cancellation_expire() {
     env.draw(&k, id, &borrower);
 
     // Repay one pagaré in full, then the council cancels it.
-    let (paid, _) = env.open_line_with(&k, &borrower, &env.line_params(UNIT, 0), None);
-    env.draw(&k, paid, &borrower);
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
-    env.repay(&k, paid, &borrower, UNIT);
-    expires(&mut env, &council, |env| env.cancel_pagare_ix(&k, paid, 0, &council.pubkey(), &council.pubkey(), RECEIPT_HASH));
-    assert_eq!(env.pagare(&k, paid, 0).status, elote_pool::state::PAGARE_PAID);
+    let (open, _) = env.open_line_with(&k, &borrower, &env.line_params(UNIT, 0), None);
+    env.draw(&k, open, &borrower);
+    expires(&mut env, &council, |env| env.annul_pagare_ix(&k, open, 0, [0x3c; 32]));
+    assert_eq!(env.pagare(&k, open, 0).last_kind, elote_pool::state::KIND_TERMINACION);
 
     env.warp(p.term_end + 1);
     expires(&mut env, &council, |env| env.write_off_ix(&k, id, &council.pubkey()));

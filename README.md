@@ -76,13 +76,13 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 
 | Account | Address | Holds |
 |---|---|---|
-| `Pool` | PDA `["pool", creator, asset_mint]` | the council (a Squads multisig vault), the `multisig` and any pending council, the creator; the asset, vault, share token and dead-shares account; the series' Metaplex Core collection; outstanding principal and running totals; the line cap (`max_line_bps`), the outstanding-principal cap, the collection period, the acceleration notice and the cancel grace; the FIX in force (`fix_rate`, `fix_date`, when posted), the FIX feeder and bounds, the realized FX; the asset's issuer controls (`asset_controls`), `permissioned` and the pause flag |
+| `Pool` | PDA `["pool", creator, asset_mint]` | the council (a Squads multisig vault), the `multisig` and any pending council, the creator; the asset, vault, share token and dead-shares account; the series' Metaplex Core collection; outstanding principal and running totals; the line cap (`max_line_bps`), the outstanding-principal cap, the collection period and the acceleration notice; the FIX in force (`fix_rate`, `fix_date`, when posted), the FIX feeder and bounds, the realized FX; the asset's issuer controls (`asset_controls`), `permissioned` and the pause flag |
 | share token | a mint the creator creates and hands to `init_pool` | classic SPL Token or Token-2022 with the asset's decimals, mint authority = the pool PDA, supply 0, no extension that takes or hides value; frozen by default (Token-2022 `DefaultAccountState`) for a permissioned series under Token ACL |
 | collection | a Metaplex Core collection the creator creates and hands to `init_pool` | the series' collection of pagaré assets; its update authority must be the pool PDA, so only the program mints into it |
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
 | dead shares | PDA token account `["dead", pool]`, owned by the pool PDA | the 1,000 shares locked by the first deposit |
 | `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | the borrower, sponsor and payer, the terms hash, agreement hash and expediente root, status, the principal, rate and term, what was drawn and repaid (in MXN and the USDC it cost), the draw window and first due date, the installment schedule (scheduled lines), late interest collected and settled, the payment cursor `pagares_paid`, and the acceleration (`accelerated_at`, a pending `acceleration_due_at`, the saved window) |
-| `Pagare` | PDA `["pagare", line, draw_index (u16 LE)]` | the program's record of one draw's pagaré: the asset's address, the signed pagaré's hash and how it was signed, the amount and the line's drawn total through it, when it was issued and when it is due, the registry (a hash chain of entries whose content is in the `PagareEntry` events), the procurador of record, the FIX and USDC the tranche was delivered at (`fix_rate`, `fix_date`, `usdc_delivered`, `delivery_hash`), and once paid the "PAGADO" mark (status, paid_at, the receipt hashes and the cancel grace fixed then); never closed; no folio |
+| `Pagare` | PDA `["pagare", line, draw_index (u16 LE)]` | the program's record of one draw's pagaré: the asset's address, the signed pagaré's hash and how it was signed, the amount and the line's drawn total through it, when it was issued and when it is due, the registry (a hash chain of entries whose content is in the `PagareEntry` events), the procurador of record, the FIX and USDC the tranche was delivered at (`fix_rate`, `fix_date`, `usdc_delivered`, `delivery_hash`), and once paid the "PAGADO" mark (status, paid_at, the payer's receipt hash) and the delivery, aval and judicial-hold flags; never closed; no folio |
 | pagaré asset | PDA `["pagare_asset", line, draw_index (u16 LE)]`, owned by the Metaplex Core program | the pagaré token itself: a Core asset in the series' collection, owned by the pool PDA and frozen by a permanent freeze delegate whose authority is the collection's (the pool PDA), with immutable metadata, locked attributes (pagaré hash, amount, currency, issue and due dates, line, draw index, certificate fingerprint, signature method) and an `AddBlocker`; no transfer or burn delegate at creation. The first endoso en procuración adds an owner-managed `BurnDelegate` whose authority is the program address `["procurador", pagare, procurador]` |
 
 Every parameter is a typed field (Borsh, no padding), and each account ends in `reserved` bytes,
@@ -101,7 +101,7 @@ more than 15 days ahead (`ProposalTooFar`). `pause` and `init_pool` do not.
 
 | Instruction | Signers | Effect |
 |---|---|---|
-| `init_pool(params)` | creator | creates the pool, its vault and its dead-shares account around an asset mint and a creator-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the council (vault 0 of an autonomous Squads v4 multisig of at most ten members with a majority threshold, which does not sign) and the series' Metaplex Core collection (a bare one with the pool PDA as update authority: no plugins, nothing minted); sets the line cap (largest line as a share of the NAV, 1 to 10,000 bps), the outstanding-principal cap, the collection period (at least 30 days), the acceleration notice (at least 7 days), the cancel grace (30 to 365 days) and the FIX bounds; there is no grace period on late payment; emits `PoolInitialized` |
+| `init_pool(params)` | creator | creates the pool, its vault and its dead-shares account around an asset mint and a creator-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the council (vault 0 of an autonomous Squads v4 multisig of at most ten members with a majority threshold, which does not sign) and the series' Metaplex Core collection (a bare one with the pool PDA as update authority: no plugins, nothing minted); sets the line cap (largest line as a share of the NAV, 1 to 10,000 bps), the outstanding-principal cap, the collection period (at least 30 days), the acceleration notice (at least 7 days), the provision (100%) and the FIX bounds; there is no grace period on late payment; emits `PoolInitialized` |
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit meets the minimum and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `request_line(line_id, terms)` | borrower, payer, sponsor if named | the borrower requests line `line_id` (the pool's next) on `terms`, in centavos of MXN; stored as `Requested` with the terms hash; a separate payer funds the account; moves no money; refused while paused |
@@ -118,11 +118,13 @@ more than 15 days ahead (`ProposalTooFar`). `pause` and `init_pool` do not.
 | `withdraw_acceleration(valid_until)` | council | withdraws a pending acceleration; draws stay suspended until `resume_draws` |
 | `accelerate_line(valid_until)` | council | fires a pending acceleration once its notice has run: the line moves to collection, as `mark_in_collection` (the provision included), without missed installments |
 | `write_off(valid_until)` | council | books a line's unpaid principal as a loss: an `Active` line after the term, or a line in collection once the pool's collection period has run from the mark and either its oldest missed due date or the term has passed. Never paused |
-| `endorse_pagare(draw_index, kind, to, endoso_hash, valid_until)` | council | endoso en procuración of a pagaré to `to` (`KIND_PROCURACION`, the only kind the pool makes): appends the entry and lends the power to extinguish it through an owner-managed `BurnDelegate` whose authority is the program address `["procurador", pagare, to]`, so the procurador can only extinguish it inside `cancel_pagare`; the asset stays with the pool. Refused when `to` is the zero key, the pool, the council, a member of it, the creator, the FIX feeder, or the line's borrower, payer or sponsor (`EndorseeInvalid`), on a written-off line, on a pagaré not outstanding, or while a procuración is in force |
+| `endorse_pagare(draw_index, kind, to, endoso_hash, valid_until)` | council | endoso en procuración of a pagaré to `to` (`KIND_PROCURACION`, the only kind the pool makes): appends the entry and names the procurador of record, who collects through `repay` and litigates with the entry; no power over the asset is lent (decision 38) and the asset stays with the pool. Refused when `to` is the zero key, the pool, the council, a member of it, the creator, the FIX feeder, or the line's borrower, payer or sponsor (`EndorseeInvalid`), on a written-off line, on a pagaré not outstanding, or while a procuración is in force |
 | `revoke_procuracion(draw_index, entry_hash, valid_until)` | council | revokes the procuración in force over the signed revocation's hash: appends the `Revocacion` entry and returns the burn delegate's authority to the owner; refused when none is in force |
-| `court_annotation(draw_index, kind, document_hash, valid_until)` | council | records a court's act on a pagaré (embargo, suspension, cancellation; or a constancia) as an entry of its registry; moves nothing; refused only on a burnt title |
+| `court_annotation(draw_index, kind, document_hash, valid_until)` | council | records a court's act on a pagaré as an entry of its registry: an `AnotacionJudicial` (an embargo must comprise the título, LGTOC 20) also holds the delivery and a `ConstanciaJudicial` lifts the hold; refused once the título was delivered |
 | `annotate_payment(draw_index, entry_count, receipt_hash, valid_until)` | council | attaches the real receipt to a payment entry of a pagaré's registry (a `Recibo` entry) when the payer's hash was zero or wrong; allowed whatever the pagaré's status; also replaces the provisional `receipt_hash` on the record while it carries the PAGADO mark and is not yet burnt |
-| `cancel_pagare(draw_index, receipt_hash, valid_until)` | the council (the holder), the procurador of record alone, or the line's borrower alone once the cancel grace has run | extinguishes a pagaré against the receipt's hash once a repayment has written its PAGADO mark (`PAGARE_PAID_PENDING_CANCEL`; `PagareNotCovered` otherwise), whatever the line's status; appends the `Terminacion` entry, keeps the cancellation's receipt beside the payment's (the record is never closed), ends any procuración, emits `PagareEntry` and `PagareCancelled`, then thaws the asset (`UpdatePluginV1`) and burns it (`BurnV1`) as its owner or, for the procurador, through the program address holding the burn delegate; the rent goes to the `payer`. Never paused |
+| `deliver_pagare(draw_index)` | anyone | delivers a paid título (decision 38, LGTOC 129-130): thaws the asset, renounces the `PermanentFreezeDelegate` to `None` (terminal: nobody can ever freeze it again) and transfers it to the line's borrower — or to the aval who settled it (LGTOC 115) — never to the sender; appends the `Entrega` entry and sets the `DELIVERED` flag. Refused before the payment (`PagareNotCovered`), twice (`PagareAlreadyDelivered`) or under a judicial hold (`DeliveryHeld`). The client sends it in the repayment's own transaction; a missed one can be sent any time. Never paused |
+| `burn_pagare(draw_index, document_hash)` | the delivered título's owner | optional: a `Terminacion` entry (a zero hash is allowed: the burn is the owner's unilateral act), then `BurnV1` with the owner as authority — Core itself refuses anyone else; the rent returns to the owner and the record stays |
+| `annul_pagare(draw_index, document_hash, valid_until)` | council | annuls an outstanding título issued in error: a `Terminacion` entry over the annulment document's own hash; nothing burns, no state moves, the debt follows the line — a título issued in error is annotated, never destroyed (decision 38). Refused once paid |
 | `pause(valid_until)` | council | pauses deposits, redemptions, requests, approvals and draws; repay and everything else stay open |
 | `resume(valid_until)` | council | ends a pause |
 | `propose_council(new_council, kind, valid_until)` / `accept_council(valid_until)` | council / the proposed council | hands the pool to a new council in two steps (`kind` 0, a Squads vault, the only kind taken; the zero key withdraws the proposal), each after the multisig check |
@@ -134,7 +136,6 @@ more than 15 days ahead (`ProposalTooFar`). `pause` and `init_pool` do not.
 | `set_outstanding_cap(max_outstanding_principal, valid_until)` | council | sets the pool-wide cap on the USDC lent out at once |
 | `set_collection_period(collection_period_seconds, valid_until)` | council | sets the seconds a line in collection waits, from its mark, before write-off; never below 30 days |
 | `set_acceleration_notice(acceleration_notice_seconds, valid_until)` | council | sets the notice between `propose_acceleration` and `accelerate_line`; at least seven days |
-| `set_cancel_grace(cancel_grace_seconds, valid_until)` | council | sets the wait from a pagaré's payment before its borrower may cancel it alone; 30 to 365 days; each pagaré keeps the grace in force at its payment |
 
 The 74 error codes are numbered from 6000 in the order of `PoolError` in
 `programs/elote_pool/src/errors.rs`, where they are grouped by domain.
@@ -193,7 +194,7 @@ the order listed for each instruction.
 
 | Event | Emitted by | Fields |
 |---|---|---|
-| `PoolInitialized` | `init_pool`, its only event | pool, council, creator, multisig, asset_mint, share_mint, collection, collection_period_seconds, max_line_bps, max_outstanding_principal, acceleration_notice_seconds, cancel_grace_seconds, asset_controls (bits: 0 freeze authority, 1 `Pausable`), permissioned, min_fix_rate, max_fix_rate |
+| `PoolInitialized` | `init_pool`, its only event | pool, council, creator, multisig, asset_mint, share_mint, collection, collection_period_seconds, max_line_bps, max_outstanding_principal, acceleration_notice_seconds, asset_controls (bits: 0 freeze authority, 1 `Pausable`), permissioned, min_fix_rate, max_fix_rate |
 | `Deposited` | `deposit`, then `NavUpdated` | pool, depositor, assets, shares, nav_after, supply_after |
 | `Redeemed` | `redeem`, then `NavUpdated` | pool, holder, shares, assets, nav_after, supply_after |
 | `LineRequested` | `request_line` | pool, line_id, borrower, payer, sponsor, sponsor_role (0 promoter, 1 guarantor), agreement_hash, expediente_root, pagare_template_hash, terms_hash, currency, principal, rate_bps, term_end, first_due_at, interval_seconds, installments, late_bps, max_missed (the schedule fields zero on a bullet line) |
@@ -203,7 +204,7 @@ the order listed for each instruction.
 | `LineCancelled` | `cancel_line` | pool, line_id |
 | `LineDrawn` | `draw`, first | pool, line_id, draw_index, amount_mxn, fix_rate, fix_date, usdc_delivered, drawn, available, interest_due, availability_end, outstanding_after (the pool's USDC cost) |
 | `PagareIssued` | `draw`, after `LineDrawn` | pool, line_id, draw_index, asset (the Core asset), pagare_hash, amount_mxn, delivery_hash, due_at, holder (the pool PDA) |
-| `PagareEntry` | every instruction that appends to a pagaré's registry: `draw` (the issuance entry, after `PagareIssued`), `repay`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `annotate_payment`, `cancel_pagare` | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
+| `PagareEntry` | every instruction that appends to a pagaré's registry: `draw` (the issuance entry, after `PagareIssued`), `repay`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `annotate_payment`, `deliver_pagare`, `burn_pagare`, `annul_pagare` | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
 | `FxRealized` | `repay` that applies principal, before `LineRepaid` | pool, line_id, receipt_hash, cost, received, delta (the deltas sum to `Pool.fx_realized`), nav_after |
 | `PagarePayment` | `repay` that took pagaré records, after its `PagareEntry` events | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, entries (draw_index, kind, entry_count, principal_applied; empty for an interest-only payment) |
 | `LateInterestCollected` | `repay` with late interest, before `LineRepaid` | pool, line_id, amount |
@@ -216,7 +217,9 @@ the order listed for each instruction.
 | `LineDrawsResumed` | `resume_draws` | pool, line_id, availability_end |
 | `LineWrittenOff` | `write_off`, then `NavUpdated` | pool, line_id, loss, loss_usdc, nav_after |
 | `NavUpdated` | `deposit`, `redeem`, `repay`, `write_off`, last in each | pool, total_assets, share_supply |
-| `PagareCancelled` | `cancel_pagare`, after its `PagareEntry` and before the burn | pool, line_id, draw_index, asset, receipt_hash, holder (the key that extinguished it), by_borrower (the borrower cancelled alone after the grace) |
+| `PagareDelivered` | `deliver_pagare`, after its `PagareEntry` | pool, line_id, draw_index, asset, recipient (the borrower, or the aval who settled it), payer, receipt_hash, entry_count, delivered_at |
+| `PagareBurned` | `burn_pagare`, after its `PagareEntry` | pool, line_id, draw_index, asset, owner, document_hash |
+| `PagareAnnulled` | `annul_pagare`, after its `PagareEntry` | pool, line_id, draw_index, asset, document_hash |
 | `PagareReceiptAnnotated` | `annotate_payment`, after its `PagareEntry` | pool, line_id, draw_index, entry_count (the `Recibo` entry's), payment_entry_count (the entry it annotates), receipt_hash |
 | `FixPosted` | `post_fix` | pool, fix_rate, fix_date, previous_rate, by, slot, posted_at, reference_rate, reference_at (the RedStone reference, zero when missing) |
 | `FxFeederSet` | `set_fx_feeder` | pool, fx_feeder |
@@ -228,7 +231,6 @@ the order listed for each instruction.
 | `OutstandingCapSet` | `set_outstanding_cap` | pool, max_outstanding_principal |
 | `CollectionPeriodSet` | `set_collection_period` | pool, collection_period_seconds |
 | `AccelerationNoticeSet` | `set_acceleration_notice` | pool, acceleration_notice_seconds |
-| `CancelGraceSet` | `set_cancel_grace` | pool, cancel_grace_seconds |
 | `PoolPaused` | `pause` | pool, by (the council) |
 | `PoolResumed` | `resume` | pool |
 
@@ -275,11 +277,11 @@ tests. `programs/elote_pool/tests/` holds:
 | `acceleration.rs` | 12 | `propose_acceleration` / `withdraw_acceleration` / `accelerate_line`, the notice, and the interplay with `suspend_draws` and `resume_draws` |
 | `known_limits.rs` | 12 | Documentation tests that pin the known design limits listed in SECURITY.md; they pass by design and must be inverted when a limit is removed |
 | `tranches.rs` | 15 | Tranched draws: the draw window, the payability floor, per-tranche interest, the cap on tranches, `suspend_draws`, `cancel_line` |
-| `pagare.rs` | 24 | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused; the registry entries; `cancel_pagare`: the PAGADO mark, the burn, coverage oldest first, the borrower's backstop, the procuración, the refusals |
+| `pagare.rs` | 24 | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused; the registry entries; the delivery to the borrower or the aval, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `core_capabilities.rs` | 8 | What Metaplex Core allows after an asset's creation: handing off or extinguishing the permanent delegates, thawing, moving the update authority off the collection, adding plugins and adapters, who writes and removes an AppData adapter and whether it follows the asset (the program uses none), the cost of `AddBlocker`, owner-managed delegates for the procuración and a burn delegate held by a program address; pinned against the Core binary so an upgrade that changes an answer fails here |
 | `layout.rs` | 1 | The account sizes (`Pool` 527, `CreditLine` 529, `Pagare` 399 bytes) and the zeroed `reserved` tail of each account |
 | `audit.rs`, `reaudit.rs` | 4, 4 | Regression tests of the findings of the 2026-11-01 audit and the 2026-11-02 re-audit |
-| `compute.rs` | 11 | Compute units of `init_pool`, `draw` (with the Core CPI), `repay` (one covering three pagaré records included), `cancel_pagare` (by the holder, by the borrower and by the procurador), `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `mark_in_collection` and `write_off`, at 18 and 120 installments, stay under 100,000 |
+| `compute.rs` | 11 | Compute units of `init_pool`, `draw` (with the Core CPI), `repay` (one covering three pagaré records included), `deliver_pagare` and `burn_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `mark_in_collection` and `write_off`, at 18 and 120 installments, stay under 100,000 |
 | `math_props.rs` | 7 | Property tests (proptest) over the share accounting and the arrears arithmetic |
 | `vectors.rs` | 1 | Evaluates the arrears arithmetic on 421 cases (44 accelerated) and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
 
@@ -404,11 +406,11 @@ names an existing key and warns when it already holds a pagaré under procuraci�
 (`pagaresUnderProcuracion` in the client). `--revoke` revokes the procuración in force. The procurador
 can never be the pool, the council, a curator or the borrower.
 
-`scripts/cancel-pagare.ts --pool <address> --line-id <n> --draw-index <n> --receipt-hash <64 hex>`
-extinguishes a pagaré a repayment marked paid: by default the council as holder (through Squads);
-`--borrower-keypair` cancels as the line's borrower alone once the cancel grace the payment fixed
-on the pagaré has run (refused before it); `--procurador-keypair` cancels as the procurador of record
-alone through its program address.
+`scripts/deliver-pagare.ts --pool <address> --line-id <n> --draw-index <n>` delivers a paid pagaré
+to the line's borrower — or to the aval who settled it — re-sending a delivery the repayment's own
+transaction missed; anyone may send it. With `--burn --owner-keypair <path>` the delivered título's
+owner burns the asset and takes the rent back; the record always stays. (`repay.ts` already appends
+one `deliver_pagare` per pagaré it covers, in the same transaction.)
 
 `scripts/key-to-base58.ts <keypair.json>` prints the base58 form of a keypair file's secret bytes,
 the format a wallet's private key import accepts. The output is a secret: use it for devnet demo keys only.
