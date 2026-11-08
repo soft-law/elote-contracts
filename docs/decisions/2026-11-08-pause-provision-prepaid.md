@@ -38,3 +38,16 @@ annotates and gates nothing. The pool's exits from delinquency are selling the p
 endoso en propiedad, kind 1, reserved for a future feature) or the write-off, at most at 3–6–12
 months of arrears (the collection period and the write-off are the council's, with the 30-day
 floor).
+
+## 40b. Deposits price at the unprovisioned NAV (Maple's dual price)
+
+The deposit gate tried first (refuse while impaired) was wrong — there will always be some
+portfolio in collection. Instead, decision 40b: deposits are priced at `Pool::entry_nav` (the
+vault plus the whole outstanding cost, the impaired book at par) and redemptions at the
+provisioned NAV — Maple v2's dual exchange rate, adopted for Maple's own stated reason. Whoever
+enters while a line is impaired buys that book at par, so a recovery hands the entrant nothing:
+the sandwich — flash or patient, with any capital — nets zero or less, and deposits are never
+gated. What an entrant does share pro rata is ordinary income (interest, late interest), like any
+holder. The front end must show both prices. Residuals, documented: redeeming before a
+foreseeable mark (inherent to objective marking) and the cash-basis interest jumps (minor at
+pilot size). `PoolImpaired` retired.

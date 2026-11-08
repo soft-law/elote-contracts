@@ -401,21 +401,18 @@ pub struct Deposit<'info> {
 }
 
 /// The first deposit locks `DEAD_SHARES` of its shares in the pool-owned dead account; the
-/// depositor receives the rest. `min_shares_out` is the depositor's slippage floor. Refused while
-/// any line in collection is provisioned (`PoolImpaired`): the gate keeps recoveries with the
-/// holders who bore the mark.
+/// depositor receives the rest. `min_shares_out` is the depositor's slippage floor. Deposits are
+/// priced at the NAV **with no provision** (`Pool::entry_nav`, decision 40b — Maple's dual
+/// price): the entrant buys any impaired book at par, so a recovery hands the entrant nothing
+/// and depositing just before one nets zero or less; redemptions price at the provisioned NAV.
 pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Result<()> {
     let pool = &ctx.accounts.pool;
     require!(!pool.paused, PoolError::Paused);
-    // While anything is provisioned, nobody mints shares: a newcomer at the provisioned NAV would
-    // take the recoveries — flash-amplified — from the holders who bore the mark (decision 40).
-    // Redemptions stay open; the gate lifts itself when the impairment clears.
-    require!(pool.impaired_principal == 0, PoolError::PoolImpaired);
     require!(assets > 0, PoolError::WrongAmount);
 
     // Price the deposit before any token moves.
     let supply = ctx.accounts.share_mint.supply;
-    let nav = pool.nav(ctx.accounts.vault.amount).ok_or(PoolError::Overflow)?;
+    let nav = pool.entry_nav(ctx.accounts.vault.amount).ok_or(PoolError::Overflow)?;
     if supply == 0 {
         // The share mint has the asset's decimals (fixed at `init_pool`), so it stands in for
         // the asset mint here.

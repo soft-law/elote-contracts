@@ -86,28 +86,43 @@ fn a_redemption_after_the_mark_prices_at_the_provisioned_nav() {
     assert!(shares > 0);
 }
 
-/// While anything is provisioned, deposits wait (the review's sandwich finding): a newcomer could
-/// otherwise mint shares at the provisioned NAV and take the recovery — flash-amplified — from the
-/// holders who bore the mark. Redemptions stay open; the gate lifts itself when the impairment
-/// clears, by recovery or by write-off.
+/// Decision 40b, Maple's dual price: a deposit is priced at the NAV with no provision (the vault
+/// plus the whole outstanding cost), a redemption at the provisioned NAV. Whoever enters while a
+/// line is impaired buys that book at par, so a later recovery hands them nothing: the sandwich —
+/// flash or patient — nets zero or less, and deposits are never gated.
 #[test]
-fn deposits_wait_while_anything_is_provisioned() {
+fn a_deposit_prices_at_the_unprovisioned_nav_and_a_recovery_hands_it_nothing() {
     let mut env = Env::new();
-    let (k, line_id, _, borrower) = marked(&mut env);
-    let newcomer = env.investor(&k, 2 * UNIT);
-    let ix = env.deposit_ix(&k, &newcomer.pubkey(), UNIT);
-    env.expect_err(ix, &newcomer, &[], ERR_BASE + elote_pool::errors::PoolError::PoolImpaired as u32);
+    let (k, line_id, outstanding, borrower) = marked(&mut env);
+    // Provisioned NAV 6.0, unprovisioned 10.0.
+    assert_eq!(env.nav(&k), 10 * UNIT - outstanding);
 
-    // The borrower pays the line off; the impairment clears and deposits reopen.
+    let newcomer = env.investor(&k, 2 * UNIT);
+    let supply_before = env.supply(&k);
+    let minted = env.deposit(&k, &newcomer, 2 * UNIT).shares;
+    // Shares priced against 10.0, not 6.0: 2.0 * supply / 10.0.
+    assert_eq!(minted, (u128::from(2 * UNIT) * u128::from(supply_before) / u128::from(10 * UNIT)) as u64);
+
+    // The borrower pays the line off in full. The provision reversal hands the entrant NOTHING
+    // (they bought the impaired book at par); what they do share, pro rata like any holder, is the
+    // payoff's interest and late interest — ordinary income, not the recovery.
     let line = env.line(&k, line_id);
     let owed = line.drawn - line.principal_repaid + line.interest_due - line.interest_repaid;
     let late = env.arrears(&k, line_id).late_due;
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed + late);
-    env.repay(&k, line_id, &borrower, owed + late);
+    let ev = env.repay(&k, line_id, &borrower, owed + late);
     assert_eq!(env.pool(&k).impaired_principal, 0);
-    let ix = env.deposit_ix(&k, &newcomer.pubkey(), UNIT);
-    env.send(ix, &newcomer, &[]);
+    let income = ev.usdc_received - outstanding; // interest + late; the principal leg is par
+    let supply = env.supply(&k);
+    let income_share = (u128::from(income) * u128::from(minted) / u128::from(supply)) as u64;
+    let out = env.redeem(&k, &newcomer, minted);
+    assert!(
+        out.assets <= 2 * UNIT + income_share,
+        "the reversal hands the entrant nothing beyond its income share: {} out of {} + {}",
+        out.assets, 2 * UNIT, income_share
+    );
+    assert!(out.assets >= 2 * UNIT, "and the full recovery costs the entrant nothing either");
 }
 
 #[test]
@@ -184,8 +199,8 @@ fn the_provision_rate_is_the_councils_alone() {
 }
 
 /// With the whole NAV lent to the marked line, the provisioned NAV is zero while shares exist:
-/// deposits refuse (the division by zero NAV), redemptions price at zero and refuse, and the
-/// borrower can still repay — the same shape as the total write-off, a month earlier.
+/// deposits stay open at the unprovisioned price (decision 40b), redemptions price at zero and
+/// refuse, and the borrower can still repay — the recovery reopens the exits.
 #[test]
 fn a_fully_impaired_pool_prices_like_a_written_off_one() {
     let mut env = Env::new();
@@ -202,11 +217,17 @@ fn a_fully_impaired_pool_prices_like_a_written_off_one() {
     env.send(i, &keeper, &[]);
     assert_eq!((env.nav(&k), env.supply(&k) > 0), (0, true));
 
-    let newcomer = env.investor(&k, UNIT);
-    let i = env.deposit_ix(&k, &newcomer.pubkey(), UNIT);
-    env.expect_err(i, &newcomer, &[], ERR_BASE + elote_pool::errors::PoolError::PoolImpaired as u32);
+    // At a zero provisioned NAV the exits refuse...
     let i = env.redeem_ix(&k, &investor.pubkey(), UNIT);
     env.expect_err(i, &investor, &[], E_WRONG_AMOUNT);
+    // ...but a deposit is still open, priced at the unprovisioned NAV (the whole outstanding at
+    // par): the entrant knowingly buys the impaired book, so the shares come from gross 2.0 — and
+    // the entrant's own cash is what lifts the provisioned NAV off zero.
+    let newcomer = env.investor(&k, UNIT);
+    let supply = env.supply(&k);
+    let minted = env.deposit(&k, &newcomer, UNIT).shares;
+    assert_eq!(minted, (u128::from(UNIT) * u128::from(supply) / u128::from(2 * UNIT)) as u64);
+    assert_eq!(env.nav(&k), UNIT, "the newcomer's cash is the provisioned NAV now");
     // The borrower's repayment still lands, and what it recovers reopens the pool.
     let ev = env.repay(&k, line_id, &borrower, UNIT);
     assert!(ev.usdc_received > 0);

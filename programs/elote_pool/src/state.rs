@@ -209,9 +209,18 @@ impl Pool {
             .and_then(|v| u64::try_from(v).ok())
     }
 
+    /// The NAV with no provision: the vault plus the whole principal lent out, the impaired cost
+    /// at par. Deposits are priced here (decision 40b, Maple's dual price): whoever enters while a
+    /// line is impaired buys that book at par, so a later recovery hands the entrant nothing and
+    /// the sandwich — flash or patient — nets zero or less, while deposits are never gated.
+    pub fn entry_nav(&self, vault_amount: u64) -> Option<u64> {
+        vault_amount.checked_add(self.outstanding_principal)
+    }
+
     /// Net asset value at `vault_amount`: the vault plus the principal lent out, minus the
     /// provision on the lines in collection, `impaired_principal * provision_bps / BPS` rounded
-    /// down (decision 40). `None` on overflow, or when the provision exceeds what the pool holds.
+    /// down (decision 40). Redemptions, the line caps and the invariant check price here. `None`
+    /// on overflow, or when the provision exceeds what the pool holds.
     pub fn nav(&self, vault_amount: u64) -> Option<u64> {
         let provision = (self.impaired_principal as u128)
             .checked_mul(self.provision_bps as u128)?
