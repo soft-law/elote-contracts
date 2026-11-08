@@ -186,6 +186,7 @@ pub const E_MAX_MISSED_TOO_LOW: u32 = ERR_BASE + PoolError::MaxMissedTooLow as u
 pub const E_SCHEDULE_ENDS_AFTER_TERM: u32 = ERR_BASE + PoolError::ScheduleEndsAfterTerm as u32;
 pub const E_NOT_SCHEDULED: u32 = ERR_BASE + PoolError::NotScheduled as u32;
 pub const E_NOT_ENOUGH_MISSED: u32 = ERR_BASE + PoolError::NotEnoughMissed as u32;
+pub const E_PROPOSAL_EXPIRED: u32 = ERR_BASE + PoolError::ProposalExpired as u32;
 pub const E_LATE_INTEREST_UNPAID: u32 = ERR_BASE + PoolError::LateInterestUnpaid as u32;
 pub const E_WRITE_OFF_TOO_EARLY: u32 = ERR_BASE + PoolError::WriteOffTooEarly as u32;
 pub const E_BORROWER_IS_COUNCIL: u32 = ERR_BASE + PoolError::BorrowerIsCouncil as u32;
@@ -858,7 +859,6 @@ impl Env {
         elote_pool::instructions::pool::InitPoolParams {
             max_line_bps,
             collection_period_seconds,
-            guardian: Pubkey::default(),
             max_outstanding_principal: HARNESS_MAX_OUTSTANDING,
             acceleration_notice_seconds: ACCELERATION_NOTICE,
             cancel_grace_seconds: CANCEL_GRACE,
@@ -1130,13 +1130,7 @@ impl Env {
     }
 
     pub fn pause_ix(&self, k: &PoolKeys, signer: &Pubkey) -> Instruction {
-        let (event_authority, program) = event_metas();
-        Instruction {
-            program_id: PROGRAM_ID,
-            accounts: elote_pool::accounts::Pause { signer: *signer, multisig: self.pool(k).multisig, pool: k.pool, event_authority, program }
-                .to_account_metas(None),
-            data: elote_pool::instruction::Pause {}.data(),
-        }
+        self.council_pool_ix(k, signer, elote_pool::instruction::Pause { valid_until: self.valid_until() }.data())
     }
 
     /// A council instruction on the pool (`resume` and the setters) with `data`.

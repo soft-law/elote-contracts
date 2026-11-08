@@ -47,7 +47,7 @@ pub enum PoolError {
     BorrowerIsCouncil,
     #[msg("A member of the council cannot be the borrower")]
     BorrowerIsCurator,
-    #[msg("The endorsee is missing, or is the pool, the council, a curator, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor")]
+    #[msg("The endorsee is missing, or is the pool, the council, a curator, the creator, the FIX feeder, or the line's borrower, payer or sponsor")]
     EndorseeInvalid,
 
     // Amounts and invariants.

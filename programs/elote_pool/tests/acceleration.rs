@@ -1,12 +1,12 @@
 //! The council's line instructions: suspension and resumption of draws, acceleration with notice,
-//! the pause by a member or the guardian, the pool limits, and the per-instruction multisig check.
+//! the pause, the pool limits, and the per-instruction multisig check.
 
 mod common;
 
 use common::*;
 use elote_pool::errors::PoolError;
 use elote_pool::events::{
-    AccelerationProposed, AccelerationWithdrawn, GuardianSet, LineAccelerated, LineDrawsResumed, LineInCollection, PoolPaused, PoolResumed,
+    AccelerationProposed, AccelerationWithdrawn, LineAccelerated, LineDrawsResumed, LineInCollection, PoolPaused, PoolResumed,
 };
 use elote_pool::instruction as ix;
 use elote_pool::state::LineStatus;
@@ -177,35 +177,33 @@ fn the_objective_mark_supersedes_a_pending_proposal() {
     assert!(line.accelerated_at != 0 && line.acceleration_due_at == 0, "route 1: the objective one");
 }
 
+/// Decision 39: the pause is a council decision like any other — a lone member, a stranger, and
+/// the retired guardian role have no pause of their own; the council votes it and votes it away.
 #[test]
-fn any_member_or_the_guardian_pauses_and_only_the_council_resumes() {
+fn the_pause_and_the_resume_are_the_councils_alone() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let council = env.council.insecure_clone();
     let curator = env.curators[0].insecure_clone();
     env.svm.airdrop(&curator.pubkey(), LAMPORTS_PER_SOL).unwrap();
     let stranger = env.funded(1);
-    let guardian = env.funded(1);
 
     let i = env.pause_ix(&k, &stranger.pubkey());
     env.expect_err(i, &stranger, &[], E_UNAUTHORIZED);
     let i = env.pause_ix(&k, &curator.pubkey());
-    let ev: PoolPaused = find_event(&env.send(i, &curator, &[])).expect("PoolPaused");
-    assert_eq!((ev.by, env.pool(&k).paused), (curator.pubkey(), true));
+    env.expect_err(i, &curator, &[], E_UNAUTHORIZED);
+    let i = env.pause_ix(&k, &council.pubkey());
+    let ev: PoolPaused = find_event(&env.send(i, &council, &[])).expect("PoolPaused");
+    assert_eq!((ev.by, env.pool(&k).paused), (council.pubkey(), true));
     let i = env.council_pool_ix(&k, &curator.pubkey(), ix::Resume { valid_until: env.valid_until() }.data());
     env.expect_err(i, &curator, &[], E_UNAUTHORIZED);
     let i = env.council_pool_ix(&k, &council.pubkey(), ix::Resume { valid_until: env.valid_until() }.data());
     assert!(find_event::<PoolResumed>(&env.send(i, &council, &[])).is_some());
     assert!(!env.pool(&k).paused);
 
-    let i = env.pause_ix(&k, &guardian.pubkey());
-    env.expect_err(i, &guardian, &[], E_UNAUTHORIZED);
-    let i = env.council_pool_ix(&k, &council.pubkey(), ix::SetGuardian { guardian: guardian.pubkey(), valid_until: env.valid_until() }.data());
-    let ev: GuardianSet = find_event(&env.send(i, &council, &[])).expect("GuardianSet");
-    assert_eq!(ev.guardian, guardian.pubkey());
-    let i = env.pause_ix(&k, &guardian.pubkey());
-    env.send(i, &guardian, &[]);
-    assert!(env.pool(&k).paused);
+    // A stale decision does not pause.
+    let i = env.council_pool_ix(&k, &council.pubkey(), ix::Pause { valid_until: env.now() - 1 }.data());
+    env.expect_err(i, &council, &[], E_PROPOSAL_EXPIRED);
 }
 
 #[test]

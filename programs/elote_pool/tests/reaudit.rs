@@ -87,10 +87,10 @@ fn n01_the_entry_counter_is_wide_enough() {
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
 
-/// N-03: the procurador is a third party: not the council (the holder), a curator, the guardian
-/// or the line's borrower.
+/// N-03: the procurador is a third party: not the council (the holder), a curator or the line's
+/// borrower. (The guardian role was retired by decision 39.)
 #[test]
-fn n03_the_council_its_curators_the_guardian_and_the_borrower_cannot_be_procurador() {
+fn n03_the_council_its_curators_and_the_borrower_cannot_be_procurador() {
     use elote_pool::state::KIND_PROCURACION;
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
@@ -107,21 +107,6 @@ fn n03_the_council_its_curators_the_guardian_and_the_borrower_cannot_be_procurad
     }
     assert_eq!(env.pagare(&k, line_id, 0).entry_count, 1, "nothing was appended");
 
-    // A pool with a guardian refuses it too.
-    let guardian = env.funded(1);
-    let asset = env.create_mint(&a, 6);
-    let k = env.pool_keys_for(&asset);
-    let mut params = env.init_params(BPS, COLLECTION_PERIOD);
-    params.guardian = guardian.pubkey();
-    let ix = env.init_pool_ix_params(&k, &env.multisig.clone(), params);
-    env.send(ix, &council, &[]);
-    let investor = env.investor(&k, 20 * UNIT);
-    env.deposit(&k, &investor, 20 * UNIT);
-    let borrower = env.borrower(&k);
-    let line_id = env.open_line_with(&k, &borrower, &p, None).0;
-    env.draw_amount(&k, line_id, &borrower, UNIT);
-    let ix = env.endorse_pagare_ix(&k, line_id, 0, &a, KIND_PROCURACION, guardian.pubkey(), [0x44; 32]);
-    env.expect_err(ix, &council, &[], E_ENDORSEE_INVALID);
 }
 
 /// N-04: the payer's `receipt_hash` on the PAGADO mark is provisional. The holder's annotation

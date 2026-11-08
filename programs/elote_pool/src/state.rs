@@ -167,8 +167,6 @@ pub struct Pool {
     /// none.
     pub pending_council: Pubkey,
     pub pending_council_kind: u8,
-    /// A key that may only pause the pool, beside every council member; the zero key when none.
-    pub guardian: Pubkey,
     /// The most principal the pool lends at once, in asset units; checked at every draw.
     pub max_outstanding_principal: u64,
     /// Seconds from `propose_acceleration` before `accelerate_line`; at least
@@ -524,7 +522,6 @@ mod tests {
             council_vault_bump: 0,
             pending_council: Pubkey::default(),
             pending_council_kind: 0,
-            guardian: Pubkey::default(),
             max_outstanding_principal: 0,
             acceleration_notice_seconds: 0,
             cancel_grace_seconds: 0,

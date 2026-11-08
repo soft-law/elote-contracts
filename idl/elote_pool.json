@@ -1612,11 +1612,11 @@
       ],
       "accounts": [
         {
-          "name": "signer",
-          "docs": [
-            "A member of the council's multisig, the stored guardian, or the council itself."
-          ],
-          "signer": true
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
         },
         {
           "name": "multisig"
@@ -1655,7 +1655,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "post_fix",
@@ -3035,77 +3040,6 @@
       ]
     },
     {
-      "name": "set_guardian",
-      "docs": [
-        "Sets the guardian, a key that may only pause (the zero key for none). Council only."
-      ],
-      "discriminator": [
-        147,
-        243,
-        50,
-        121,
-        154,
-        164,
-        50,
-        30
-      ],
-      "accounts": [
-        {
-          "name": "council",
-          "signer": true,
-          "relations": [
-            "pool"
-          ]
-        },
-        {
-          "name": "multisig"
-        },
-        {
-          "name": "pool",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  111,
-                  111,
-                  108
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool.creator",
-                "account": "Pool"
-              },
-              {
-                "kind": "account",
-                "path": "pool.asset_mint",
-                "account": "Pool"
-              }
-            ]
-          }
-        },
-        {
-          "name": "event_authority"
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": [
-        {
-          "name": "guardian",
-          "type": "pubkey"
-        },
-        {
-          "name": "valid_until",
-          "type": "i64"
-        }
-      ]
-    },
-    {
       "name": "set_max_line_bps",
       "docs": [
         "Sets the line cap, `1..=10_000` bps of the NAV, measured at every approval and draw. Council",
@@ -3792,19 +3726,6 @@
       ]
     },
     {
-      "name": "GuardianSet",
-      "discriminator": [
-        159,
-        49,
-        155,
-        156,
-        176,
-        88,
-        29,
-        190
-      ]
-    },
-    {
       "name": "LateInterestCollected",
       "discriminator": [
         222,
@@ -4224,7 +4145,7 @@
     {
       "code": 6018,
       "name": "EndorseeInvalid",
-      "msg": "The endorsee is missing, or is the pool, the council, a curator, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor"
+      "msg": "The endorsee is missing, or is the pool, the council, a curator, the creator, the FIX feeder, or the line's borrower, payer or sponsor"
     },
     {
       "code": 6019,
@@ -5124,25 +5045,6 @@
       }
     },
     {
-      "name": "GuardianSet",
-      "docs": [
-        "The zero key means no guardian."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "guardian",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
       "name": "InitPoolParams",
       "docs": [
         "The `init_pool` parameters."
@@ -5163,13 +5065,6 @@
               "At least `MIN_COLLECTION_PERIOD_SECONDS`."
             ],
             "type": "u32"
-          },
-          {
-            "name": "guardian",
-            "docs": [
-              "The zero key for none."
-            ],
-            "type": "pubkey"
           },
           {
             "name": "max_outstanding_principal",
@@ -6516,13 +6411,6 @@
             "type": "u8"
           },
           {
-            "name": "guardian",
-            "docs": [
-              "A key that may only pause the pool, beside every council member; the zero key when none."
-            ],
-            "type": "pubkey"
-          },
-          {
             "name": "max_outstanding_principal",
             "docs": [
               "The most principal the pool lends at once, in asset units; checked at every draw."
@@ -6647,10 +6535,6 @@
           },
           {
             "name": "multisig",
-            "type": "pubkey"
-          },
-          {
-            "name": "guardian",
             "type": "pubkey"
           },
           {

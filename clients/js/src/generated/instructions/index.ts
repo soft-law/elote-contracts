@@ -34,7 +34,6 @@ export * from "./setCancelGrace";
 export * from "./setCollectionPeriod";
 export * from "./setFixBounds";
 export * from "./setFxFeeder";
-export * from "./setGuardian";
 export * from "./setMaxLineBps";
 export * from "./setOutstandingCap";
 export * from "./suspendDraws";

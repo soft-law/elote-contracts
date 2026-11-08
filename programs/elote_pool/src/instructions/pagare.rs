@@ -242,7 +242,7 @@ pub struct EndorsePagare<'info> {
 /// power to extinguish the pagaré through an owner-managed `BurnDelegate` whose authority is the
 /// program address `["procurador", pagare, to]`. Nobody holds its key, so the burn can only happen
 /// inside `cancel_pagare`. Refused: `kind != KIND_PROCURACION` (`EndosoKindInvalid`); `to` the zero
-/// key, the pool, the council, the guardian, the pool's creator, the FIX feeder, the line's
+/// key, the pool, the council, the pool's creator, the FIX feeder, the line's
 /// borrower, rent payer or sponsor, or a member of the council's multisig (`EndorseeInvalid`); a
 /// zero `endoso_hash`
 /// (`DocumentHashRequired`); a `WrittenOff` line (`LineStatus`); a pagaré not outstanding
@@ -263,7 +263,6 @@ pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to
         to != Pubkey::default()
             && to != pool_key
             && to != pool.council
-            && to != pool.guardian
             && to != pool.creator
             && to != pool.fx_feeder
             && to != line.borrower

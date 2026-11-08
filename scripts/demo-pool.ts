@@ -190,7 +190,6 @@ await send("init_pool", admin, [
     shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
     maxLineBps,
     collectionPeriodSeconds: 30 * 86_400,
-    guardian: address("11111111111111111111111111111111"),
     maxOutstandingPrincipal: 2n ** 64n - 1n,
     accelerationNoticeSeconds: 7 * 86_400,
     cancelGraceSeconds: 30 * 86_400,

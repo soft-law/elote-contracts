@@ -51,7 +51,6 @@ export type PoolInitializedEvent = {
   council: Address;
   creator: Address;
   multisig: Address;
-  guardian: Address;
   assetMint: Address;
   shareMint: Address;
   collection: Address;
@@ -71,7 +70,6 @@ export type PoolInitializedEventArgs = {
   council: Address | HasAddress;
   creator: Address | HasAddress;
   multisig: Address | HasAddress;
-  guardian: Address | HasAddress;
   assetMint: Address | HasAddress;
   shareMint: Address | HasAddress;
   collection: Address | HasAddress;
@@ -94,7 +92,6 @@ export function getPoolInitializedEventEncoder(): FixedSizeEncoder<PoolInitializ
       ["council", getAddressEncoder()],
       ["creator", getAddressEncoder()],
       ["multisig", getAddressEncoder()],
-      ["guardian", getAddressEncoder()],
       ["assetMint", getAddressEncoder()],
       ["shareMint", getAddressEncoder()],
       ["collection", getAddressEncoder()],
@@ -120,7 +117,6 @@ export function getPoolInitializedEventDecoder(): FixedSizeDecoder<PoolInitializ
       ["council", getAddressDecoder()],
       ["creator", getAddressDecoder()],
       ["multisig", getAddressDecoder()],
-      ["guardian", getAddressDecoder()],
       ["assetMint", getAddressDecoder()],
       ["shareMint", getAddressDecoder()],
       ["collection", getAddressDecoder()],

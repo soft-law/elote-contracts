@@ -5,7 +5,6 @@
 //        [--council-keypairs <a.json,b.json>] [--yes]
 //
 //   --op set-fx-feeder --address <key>       the key that publishes the FIX (11111111111111111111111111111111 for none)
-//   --op set-guardian --address <key>        the key that may only pause (11111111111111111111111111111111 for none)
 //   --op set-max-line-bps --bps <1..10000>   the largest line as a share of the NAV
 //   --op set-outstanding-cap --usdc <amount> the most USDC the pool lends at once
 //   --op set-fix-bounds --min <18.0000> --max <22.0000>
@@ -20,7 +19,6 @@ import {
   getResumeInstructionAsync,
   getSetFixBoundsInstructionAsync,
   getSetFxFeederInstructionAsync,
-  getSetGuardianInstructionAsync,
   getSetMaxLineBpsInstructionAsync,
   getSetOutstandingCapInstructionAsync,
   parseFix,
@@ -42,9 +40,6 @@ let ix: Instruction;
 switch (op) {
   case "set-fx-feeder":
     ix = await getSetFxFeederInstructionAsync({ ...common, fxFeeder: address(required("address")) });
-    break;
-  case "set-guardian":
-    ix = await getSetGuardianInstructionAsync({ ...common, guardian: address(required("address")) });
     break;
   case "set-max-line-bps":
     ix = await getSetMaxLineBpsInstructionAsync({ ...common, maxLineBps: integer("bps", undefined, 1, 10_000) ?? fail("--bps is required") });
@@ -78,7 +73,7 @@ switch (op) {
   default:
     fail(`unknown --op ${op}`);
 }
-if (arg("address") !== undefined && !op.endsWith("feeder") && op !== "set-guardian") fail("--address goes with set-fx-feeder or set-guardian");
+if (arg("address") !== undefined && !op.endsWith("feeder")) fail("--address goes with set-fx-feeder");
 if ((arg("min") !== undefined || arg("max") !== undefined) && op !== "set-fix-bounds") fail("--min and --max go with set-fix-bounds");
 await councilExecute(c, council, op, [ix]).catch((e) => fail((e as Error).message));
 console.log(`\n${DISCLAIMER}`);

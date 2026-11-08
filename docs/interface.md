@@ -39,7 +39,6 @@ Signers: `creator`.
 |---|---|---|
 | `max_line_bps` | `u16` | `1..=BPS`; fixed for the pool's life. |
 | `collection_period_seconds` | `u32` | At least `MIN_COLLECTION_PERIOD_SECONDS`. |
-| `guardian` | `pubkey` | The zero key for none. |
 | `max_outstanding_principal` | `u64` | At least 1. |
 | `acceleration_notice_seconds` | `u32` | At least `MIN_ACCELERATION_NOTICE_SECONDS`. |
 | `cancel_grace_seconds` | `u32` | `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`. |
@@ -69,18 +68,6 @@ Signers: `new_council`. Signed by the proposed council (vault 0 of the new multi
 | Account | Writable | Signer | Notes |
 |---|---|---|---|
 | `new_council` |  | yes | The proposed authority: vault 0 of `multisig`, signing through Squads. |
-| `multisig` |  |  |  |
-| `pool` | yes |  |  |
-
-### `set_guardian(guardian: pubkey, valid_until: i64)`
-
-Sets the guardian, a key that may only pause (the zero key for none). Council only.
-
-Signers: `council`. Council instruction.
-
-| Account | Writable | Signer | Notes |
-|---|---|---|---|
-| `council` |  | yes |  |
 | `multisig` |  |  |  |
 | `pool` | yes |  |  |
 
@@ -194,15 +181,15 @@ The market reference is RedStone's MXNe price on Solana: account `8QuwResPgdQdja
 | `pool` | yes |  |  |
 | `fx_reference` |  |  | Fixed address `8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2`. RedStone's MXNe price account, the market reference the feeder's FIX is checked against. |
 
-### `pause()`
+### `pause(valid_until: i64)`
 
-Pauses deposits, redemptions, requests, approvals and draws. Any member of the council'"'"'s multisig alone, the guardian or the council; repayments and everything else go on.
+Pauses deposits, redemptions, requests, approvals and draws. Council only (decision 39); repayments and everything else go on.
 
-Signers: `signer`. Signed by any member of the council multisig (voter or not), the guardian, or the council; no `valid_until`. A member is read from `multisig` only while Squads v4 owns the account (`CouncilInvalid` otherwise); the guardian and the council do not need it.
+Signers: `council`. Council instruction.
 
 | Account | Writable | Signer | Notes |
 |---|---|---|---|
-| `signer` |  | yes | A member of the council's multisig, the stored guardian, or the council itself. |
+| `council` |  | yes |  |
 | `multisig` |  |  |  |
 | `pool` | yes |  |  |
 
@@ -500,7 +487,7 @@ Signers: `holder`, `payer`. The signer picks the branch: the council (multisig c
 
 ### `endorse_pagare(draw_index: u16, kind: u8, to: pubkey, endoso_hash: [u8; 32], valid_until: i64)`
 
-Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets the program address `["procurador", pagare, to]` burn the asset through an owner-managed `BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused with `to` the zero key, the pool, the council, a curator, the guardian, the pool's creator, the FIX feeder, or the line's borrower, rent payer or sponsor, or a procuración in force.
+Endorses outstanding pagaré `draw_index` en procuración to `to`: appends the entry and lets the program address `["procurador", pagare, to]` burn the asset through an owner-managed `BurnDelegate`. The council (the holder) signs; `kind` must be `KIND_PROCURACION`; refused with `to` the zero key, the pool, the council, a curator, the pool's creator, the FIX feeder, or the line's borrower, rent payer or sponsor, or a procuración in force.
 
 Signers: `holder`, `payer`. Council instruction.
 
@@ -672,7 +659,6 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | `council_vault_bump` | `u8` | The bump of the council's vault PDA `["multisig", multisig, "vault", 0]`. |
 | `pending_council` | `pubkey` | The authority `propose_council` named, until it signs `accept_council`; the zero key when none. |
 | `pending_council_kind` | `u8` |  |
-| `guardian` | `pubkey` | A key that may only pause the pool, beside every council member; the zero key when none. |
 | `max_outstanding_principal` | `u64` | The most principal the pool lends at once, in asset units; checked at every draw. |
 | `acceleration_notice_seconds` | `u32` | Seconds from `propose_acceleration` before `accelerate_line`; at least `MIN_ACCELERATION_NOTICE_SECONDS`. A proposal stores its own deadline. |
 | `cancel_grace_seconds` | `u32` | Seconds from a pagaré's payment before its borrower may cancel it alone, `MIN_CANCEL_GRACE_SECONDS..=MAX_CANCEL_GRACE_SECONDS`; each repayment fixes it on the pagarés it marks paid. |
@@ -701,7 +687,6 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`FixPosted`** `{ pool: pubkey, fix_rate: u64, fix_date: u32, previous_rate: u64, by: pubkey, slot: u64, posted_at: i64, reference_rate: u64, reference_at: i64 }`: A FIX publication: Banxico's rate for `fix_date` as published by `by` (the feeder or the council) at `slot`. Each one can be checked against the DOF. `reference_rate` (MXN per USD × 10^4) and `reference_at` are the market reference at the publication; zero and zero when it was missing (localnet, devnet) or, for the council, unreadable.
 - **`FxFeederSet`** `{ pool: pubkey, fx_feeder: pubkey }`: The zero key means no feeder: only the council publishes.
 - **`FxRealized`** `{ pool: pubkey, line_id: u64, receipt_hash: [u8; 32], cost: u64, received: u64, delta: i64, nav_after: u64 }`: The FX result of one repayment's principal, in USDC base units: `cost` is the pool's cost of the principal repaid (at each pagaré's FIX), `received` the USDC that paid it (its centavos at the FIX of the payment, rounded up), `delta = received - cost`. Emitted by `repay` before `LineRepaid`, with the same `receipt_hash`, whenever principal is applied; the deltas add up to `Pool.fx_realized`.
-- **`GuardianSet`** `{ pool: pubkey, guardian: pubkey }`: The zero key means no guardian.
 - **`LateInterestCollected`** `{ pool: pubkey, line_id: u64, amount: u64 }`: Late interest collected by a repayment of a scheduled line; it stays in the pool and raises the NAV like interest. Emitted before the `LineRepaid` of the same repayment.
 - **`LineAccelerated`** `{ pool: pubkey, line_id: u64, remaining: u64, interest_forgiven: u64 }`: The council accelerated the line after the notice: the same effect as `LineInCollection`, without missed installments.
 - **`LineApproved`** `{ pool: pubkey, line_id: u64, expediente_root: [u8; 32], terms_hash: [u8; 32], availability_end: i64 }`: The council approved exactly this expediente and these terms.
@@ -722,7 +707,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 - **`PagareIssued`** `{ pool: pubkey, line_id: u64, draw_index: u16, asset: pubkey, pagare_hash: [u8; 32], amount_mxn: u64, delivery_hash: [u8; 32], due_at: i64, holder: pubkey }`: Emitted by `draw` after `LineDrawn`: the pagaré issued as the Metaplex Core asset `asset`, owned by `holder` (the pool PDA) and frozen. `due_at` is the line's last due date at issuance.
 - **`PagarePayment`** `{ pool: pubkey, line_id: u64, payer: pubkey, receipt_hash: [u8; 32], late_part: u64, interest_part: u64, principal_part: u64, entries: Vec<PaymentEntry> }`: The payment entries of one `repay`: the payer's receipt hash (zero means "receipt to follow"), the payment's split and one `PaymentEntry` per sidecar touched, oldest first. Emitted after the `PagareEntry` of each entry.
 - **`PagareReceiptAnnotated`** `{ pool: pubkey, line_id: u64, draw_index: u16, entry_count: u32, payment_entry_count: u32, receipt_hash: [u8; 32] }`: A `Recibo` entry written by `annotate_payment`: the receipt attached to the payment entry `payment_entry_count` of the pagaré's chain, as entry `entry_count`.
-- **`PoolInitialized`** `{ pool: pubkey, council: pubkey, creator: pubkey, multisig: pubkey, guardian: pubkey, asset_mint: pubkey, share_mint: pubkey, collection: pubkey, collection_period_seconds: u32, max_line_bps: u16, max_outstanding_principal: u64, acceleration_notice_seconds: u32, cancel_grace_seconds: u32, asset_controls: u8, permissioned: bool, min_fix_rate: u64, max_fix_rate: u64 }`: Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits; `permissioned`: the share mint is frozen by default.
+- **`PoolInitialized`** `{ pool: pubkey, council: pubkey, creator: pubkey, multisig: pubkey, asset_mint: pubkey, share_mint: pubkey, collection: pubkey, collection_period_seconds: u32, max_line_bps: u16, max_outstanding_principal: u64, acceleration_notice_seconds: u32, cancel_grace_seconds: u32, asset_controls: u8, permissioned: bool, min_fix_rate: u64, max_fix_rate: u64 }`: Every parameter `init_pool` recorded. `asset_controls` are the `ASSET_CONTROL_*` bits; `permissioned`: the share mint is frozen by default.
 - **`PoolPaused`** `{ pool: pubkey, by: pubkey }`
 - **`PoolResumed`** `{ pool: pubkey }`
 - **`Redeemed`** `{ pool: pubkey, holder: pubkey, shares: u64, assets: u64, nav_after: u64, supply_after: u64 }`
@@ -750,7 +735,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6015 | `PagareAccountsMismatch` | The pagaré records passed are not the ones this payment touches, oldest first |
 | 6016 | `BorrowerIsCouncil` | The council cannot be the borrower |
 | 6017 | `BorrowerIsCurator` | A member of the council cannot be the borrower |
-| 6018 | `EndorseeInvalid` | The endorsee is missing, or is the pool, the council, a curator, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor |
+| 6018 | `EndorseeInvalid` | The endorsee is missing, or is the pool, the council, a curator, the creator, the FIX feeder, or the line's borrower, payer or sponsor |
 | 6019 | `WrongAmount` | Amount is zero or exceeds what is due |
 | 6020 | `Overflow` | Arithmetic overflow |
 | 6021 | `InvariantBroken` | A pool invariant does not hold after this instruction; the transaction is refused |

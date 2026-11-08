@@ -121,8 +121,6 @@ export type Pool = {
    */
   pendingCouncil: Address;
   pendingCouncilKind: number;
-  /** A key that may only pause the pool, beside every council member; the zero key when none. */
-  guardian: Address;
   /** The most principal the pool lends at once, in asset units; checked at every draw. */
   maxOutstandingPrincipal: bigint;
   /**
@@ -230,8 +228,6 @@ export type PoolArgs = {
    */
   pendingCouncil: Address | HasAddress;
   pendingCouncilKind: number;
-  /** A key that may only pause the pool, beside every council member; the zero key when none. */
-  guardian: Address | HasAddress;
   /** The most principal the pool lends at once, in asset units; checked at every draw. */
   maxOutstandingPrincipal: number | bigint;
   /**
@@ -303,7 +299,6 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["councilVaultBump", getU8Encoder()],
       ["pendingCouncil", getAddressEncoder()],
       ["pendingCouncilKind", getU8Encoder()],
-      ["guardian", getAddressEncoder()],
       ["maxOutstandingPrincipal", getU64Encoder()],
       ["accelerationNoticeSeconds", getU32Encoder()],
       ["cancelGraceSeconds", getU32Encoder()],
@@ -349,7 +344,6 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["councilVaultBump", getU8Decoder()],
     ["pendingCouncil", getAddressDecoder()],
     ["pendingCouncilKind", getU8Decoder()],
-    ["guardian", getAddressDecoder()],
     ["maxOutstandingPrincipal", getU64Decoder()],
     ["accelerationNoticeSeconds", getU32Decoder()],
     ["cancelGraceSeconds", getU32Decoder()],
@@ -433,5 +427,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 527;
+  return 495;
 }

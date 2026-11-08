@@ -247,18 +247,13 @@ pub mod elote_pool {
 
     /// Pauses deposits, redemptions, requests, approvals and draws. Any member of the council'"'"'s multisig alone,
     /// the guardian or the council; repayments and everything else go on.
-    pub fn pause(ctx: Context<Pause>) -> Result<()> {
-        instructions::pool::pause(ctx)
+    pub fn pause(ctx: Context<CouncilPool>, valid_until: i64) -> Result<()> {
+        instructions::pool::pause(ctx, valid_until)
     }
 
     /// Ends a pause. Council only.
     pub fn resume(ctx: Context<CouncilPool>, valid_until: i64) -> Result<()> {
         instructions::pool::resume(ctx, valid_until)
-    }
-
-    /// Sets the guardian, a key that may only pause (the zero key for none). Council only.
-    pub fn set_guardian(ctx: Context<CouncilPool>, guardian: Pubkey, valid_until: i64) -> Result<()> {
-        instructions::pool::set_guardian(ctx, guardian, valid_until)
     }
 
     /// Sets the line cap, `1..=10_000` bps of the NAV, measured at every approval and draw. Council

@@ -51,7 +51,7 @@ export const ELOTE_POOL_ERROR__PAGARE_ACCOUNTS_MISMATCH = 0x177f; // 6015
 export const ELOTE_POOL_ERROR__BORROWER_IS_COUNCIL = 0x1780; // 6016
 /** BorrowerIsCurator: A member of the council cannot be the borrower */
 export const ELOTE_POOL_ERROR__BORROWER_IS_CURATOR = 0x1781; // 6017
-/** EndorseeInvalid: The endorsee is missing, or is the pool, the council, a curator, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor */
+/** EndorseeInvalid: The endorsee is missing, or is the pool, the council, a curator, the creator, the FIX feeder, or the line's borrower, payer or sponsor */
 export const ELOTE_POOL_ERROR__ENDORSEE_INVALID = 0x1782; // 6018
 /** WrongAmount: Amount is zero or exceeds what is due */
 export const ELOTE_POOL_ERROR__WRONG_AMOUNT = 0x1783; // 6019
@@ -264,7 +264,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__COUNCIL_TOO_LARGE]: `The council multisig has more members than the program checks`,
     [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed document's hash is required`,
     [ELOTE_POOL_ERROR__DRAWS_NOT_SUSPENDED]: `The line's draws are not suspended`,
-    [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing, or is the pool, the council, a curator, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor`,
+    [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing, or is the pool, the council, a curator, the creator, the FIX feeder, or the line's borrower, payer or sponsor`,
     [ELOTE_POOL_ERROR__ENDOSO_KIND_INVALID]: `This kind of endoso is not one the program records`,
     [ELOTE_POOL_ERROR__ENTRY_NOT_FOUND]: `The referenced registry entry does not exist`,
     [ELOTE_POOL_ERROR__EXPEDIENTE_MISMATCH]: `The expediente root or the terms hash is not the one the borrower requested`,

@@ -10,7 +10,6 @@ pub struct PoolInitialized {
     pub council: Pubkey,
     pub creator: Pubkey,
     pub multisig: Pubkey,
-    pub guardian: Pubkey,
     pub asset_mint: Pubkey,
     pub share_mint: Pubkey,
     pub collection: Pubkey,
@@ -334,13 +333,6 @@ pub struct CouncilAccepted {
 #[event]
 pub struct PoolResumed {
     pub pool: Pubkey,
-}
-
-/// The zero key means no guardian.
-#[event]
-pub struct GuardianSet {
-    pub pool: Pubkey,
-    pub guardian: Pubkey,
 }
 
 #[event]

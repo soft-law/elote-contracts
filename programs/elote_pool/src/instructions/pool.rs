@@ -9,7 +9,7 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 use crate::errors::PoolError;
 use crate::events::{
     AccelerationNoticeSet, CancelGraceSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, FixBoundsSet, FixPosted, FxFeederSet,
-    GuardianSet, MaxLineBpsSet, NavUpdated, OutstandingCapSet, PoolInitialized, PoolPaused, PoolResumed, Redeemed,
+    MaxLineBpsSet, NavUpdated, OutstandingCapSet, PoolInitialized, PoolPaused, PoolResumed, Redeemed,
 };
 use crate::council;
 use crate::fx;
@@ -238,8 +238,6 @@ pub struct InitPoolParams {
     pub max_line_bps: u16,
     /// At least `MIN_COLLECTION_PERIOD_SECONDS`.
     pub collection_period_seconds: u32,
-    /// The zero key for none.
-    pub guardian: Pubkey,
     /// At least 1.
     pub max_outstanding_principal: u64,
     /// At least `MIN_ACCELERATION_NOTICE_SECONDS`.
@@ -298,7 +296,6 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         council_vault_bump,
         pending_council: Pubkey::default(),
         pending_council_kind: 0,
-        guardian: p.guardian,
         max_outstanding_principal: p.max_outstanding_principal,
         acceleration_notice_seconds: p.acceleration_notice_seconds,
         cancel_grace_seconds: p.cancel_grace_seconds,
@@ -319,7 +316,6 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         council,
         creator: pool.creator,
         multisig: pool.multisig,
-        guardian: p.guardian,
         asset_mint: pool.asset_mint,
         share_mint: pool.share_mint,
         collection: pool.collection,
@@ -594,39 +590,16 @@ pub fn redeem(ctx: Context<Redeem>, shares: u64, min_assets_out: u64) -> Result<
     Ok(())
 }
 
-#[event_cpi]
-#[derive(Accounts)]
-pub struct Pause<'info> {
-    /// A member of the council's multisig, the stored guardian, or the council itself.
-    pub signer: Signer<'info>,
-
-    /// CHECK: read by `council::is_member`.
-    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
-    pub multisig: UncheckedAccount<'info>,
-
-    #[account(
-        mut,
-        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
-        bump = pool.bump,
-    )]
-    pub pool: Account<'info, Pool>,
-}
-
-/// Any member of the council's multisig alone (a Squads council), the stored guardian, or the
-/// council pauses the pool (`Unauthorized` otherwise; a member only while Squads owns the
-/// multisig account, `CouncilInvalid`), so an emergency needs no vote. A paused
-/// pool refuses deposits, redemptions, requests, approvals and draws; repayments, the FIX, the pagaré
-/// instructions, collection and write-offs go on. Only the council resumes.
-pub fn pause(ctx: Context<Pause>) -> Result<()> {
-    let by = ctx.accounts.signer.key();
-    let pool = &ctx.accounts.pool;
-    let allowed = by == pool.council
-        || (pool.guardian != Pubkey::default() && by == pool.guardian)
-        || (pool.council_kind == COUNCIL_SQUADS && council::is_member(&ctx.accounts.multisig.to_account_info(), &by)?);
-    require!(allowed, PoolError::Unauthorized);
+/// Council only, like every administrative decision (decision 39): pauses the pool through a
+/// Squads vote; no member, and no other key, pauses alone. A paused pool refuses deposits,
+/// redemptions, requests, approvals and draws; repayments, the FIX, the pagaré instructions,
+/// collection and write-offs go on. Only the council resumes.
+pub fn pause(ctx: Context<CouncilPool>, valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
+    ctx.accounts.check_council()?;
     let pool = &mut ctx.accounts.pool;
     pool.paused = true;
-    emit_cpi!(PoolPaused { pool: pool.key(), by });
+    emit_cpi!(PoolPaused { pool: pool.key(), by: pool.council });
     Ok(())
 }
 
@@ -661,16 +634,6 @@ pub fn resume(ctx: Context<CouncilPool>, valid_until: i64) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     pool.paused = false;
     emit_cpi!(PoolResumed { pool: pool.key() });
-    Ok(())
-}
-
-/// Council only: the key that may pause alone besides the members; the zero key for none.
-pub fn set_guardian(ctx: Context<CouncilPool>, guardian: Pubkey, valid_until: i64) -> Result<()> {
-    council::fresh(valid_until)?;
-    ctx.accounts.check_council()?;
-    let pool = &mut ctx.accounts.pool;
-    pool.guardian = guardian;
-    emit_cpi!(GuardianSet { pool: pool.key(), guardian });
     Ok(())
 }
 

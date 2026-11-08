@@ -82,7 +82,7 @@ fn init_pool_makes_vault_0_of_the_multisig_the_council_and_the_creator_only_pays
     let pool = env.pool(&k);
     assert_eq!(pool.council, env.council.pubkey());
     assert_eq!((pool.creator, pool.multisig, pool.council_vault_bump), (creator.pubkey(), multisig, bump));
-    assert_eq!((pool.council_kind, pool.pending_council, pool.guardian), (COUNCIL_SQUADS, Pubkey::default(), Pubkey::default()));
+    assert_eq!((pool.council_kind, pool.pending_council), (COUNCIL_SQUADS, Pubkey::default()));
     assert_eq!((pool.acceleration_notice_seconds, pool.cancel_grace_seconds), (ACCELERATION_NOTICE, CANCEL_GRACE));
     assert_eq!(k.pool, pool_pda(&creator.pubkey(), &k.asset_mint).0, "the creator seeds the pool");
 
@@ -300,23 +300,27 @@ fn init_pool_refuses_the_share_mint_as_the_asset() {
     env.expect_err(ix, &creator, &[], ERR_BASE + PoolError::AssetIsShareMint as u32);
 }
 
-/// A member pauses alone only through the Squads multisig the pool names: the same bytes under
-/// another owner are not a multisig, so the member list is not read (`CouncilInvalid`). The
-/// guardian and the council pause without reading it.
+/// Decision 39: the pause is the council's and runs the multisig check like every council
+/// instruction: the same bytes under another owner are not a multisig (`CouncilInvalid`), and a
+/// lone member has no pause of their own.
 #[test]
-fn a_member_pauses_only_through_a_squads_owned_multisig() {
+fn the_council_pauses_only_through_a_squads_owned_multisig() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
     let curator = env.curators[0].insecure_clone();
     env.svm.airdrop(&curator.pubkey(), 1_000_000_000).unwrap();
+    let council = env.council.insecure_clone();
     let multisig = env.multisig;
-    let mut account = env.svm.get_account(&multisig).expect("the multisig");
-    account.owner = Pubkey::new_unique();
+    let account = env.svm.get_account(&multisig).expect("the multisig");
+    let mut corrupted = account.clone();
+    corrupted.owner = Pubkey::new_unique();
+    env.svm.set_account(multisig, corrupted).unwrap();
+    let ix = env.pause_ix(&k, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_COUNCIL_INVALID);
+    assert!(!env.pool(&k).paused);
     env.svm.set_account(multisig, account).unwrap();
     let ix = env.pause_ix(&k, &curator.pubkey());
-    env.expect_err(ix, &curator, &[], E_COUNCIL_INVALID);
-    assert!(!env.pool(&k).paused);
-    let council = env.council.insecure_clone();
+    env.expect_err(ix, &curator, &[], E_UNAUTHORIZED);
     let ix = env.pause_ix(&k, &council.pubkey());
     env.send(ix, &council, &[]);
     assert!(env.pool(&k).paused);

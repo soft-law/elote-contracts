@@ -342,15 +342,14 @@ fn the_council_line_instructions_and_the_pause_stay_under_the_ceiling() {
     let propose = env.council_line(&k, id, ix::ProposeAcceleration { valid_until: env.valid_until() }.data()).compute_units_consumed;
     env.warp(p.first_due_at() + 119 * p.interval());
     let accelerate = env.council_line(&k, id, ix::AccelerateLine { valid_until: env.valid_until() }.data()).compute_units_consumed;
-    let curator = env.curators[2].insecure_clone();
-    env.svm.airdrop(&curator.pubkey(), LAMPORTS_PER_SOL).unwrap();
-    let i = env.pause_ix(&k, &curator.pubkey());
-    let pause = env.send(i, &curator, &[]).compute_units_consumed;
+    let council = env.council.insecure_clone();
+    let i = env.pause_ix(&k, &council.pubkey());
+    let pause = env.send(i, &council, &[]).compute_units_consumed;
     println!("suspend_draws: {suspend} CU");
     println!("resume_draws: {resume} CU");
     println!("propose_acceleration: {propose} CU");
     println!("accelerate_line at 120 installments, all due: {accelerate} CU");
-    println!("pause by a member: {pause} CU");
+    println!("pause by the council: {pause} CU");
     for cu in [suspend, resume, propose, accelerate, pause] {
         assert!(cu < CEILING);
     }

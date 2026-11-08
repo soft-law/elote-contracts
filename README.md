@@ -38,7 +38,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
   Squads v4 multisig (at most ten members, a majority threshold). The program checks the multisig on
   every council instruction, and each decision carries a `valid_until` it is refused past, at most 15
   days ahead (Squads proposals never expire). The council can hand over to a new one in two steps
-  (`propose_council` / `accept_council`). A separate **guardian** key may only pause.
+  (`propose_council` / `accept_council`).
 - **Dead shares.** The first deposit (at least one whole unit, and at least 1,000 × `DEAD_SHARES`)
   locks 1,000 of its shares in a share token account owned by the pool, which nothing can move. The
   supply never falls below that floor, so a donation to the vault cannot round later deposits down to
@@ -67,7 +67,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 - **Optional sponsor.** A sponsor can be named on a line; it co-signs the request and may pay on the
   borrower's behalf. A promoter refers and trains; a guarantor takes liability (recorded only). It
   never touches the pool's money otherwise.
-- **Pause.** Any member of the council's multisig, the guardian or the council can pause deposits,
+- **Pause.** The council, by vote like any other decision, can pause deposits,
   redemptions, requests, approvals and draws; only the council resumes. Repayments, moving a line to
   collection, writing off an overdue line and unpausing are never blocked.
 
@@ -75,7 +75,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 
 | Account | Address | Holds |
 |---|---|---|
-| `Pool` | PDA `["pool", creator, asset_mint]` | the council (a Squads multisig vault), the `multisig` and any pending council, the guardian, the creator; the asset, vault, share token and dead-shares account; the series' Metaplex Core collection; outstanding principal and running totals; the line cap (`max_line_bps`), the outstanding-principal cap, the collection period, the acceleration notice and the cancel grace; the FIX in force (`fix_rate`, `fix_date`, when posted), the FIX feeder and bounds, the realized FX; the asset's issuer controls (`asset_controls`), `permissioned` and the pause flag |
+| `Pool` | PDA `["pool", creator, asset_mint]` | the council (a Squads multisig vault), the `multisig` and any pending council, the creator; the asset, vault, share token and dead-shares account; the series' Metaplex Core collection; outstanding principal and running totals; the line cap (`max_line_bps`), the outstanding-principal cap, the collection period, the acceleration notice and the cancel grace; the FIX in force (`fix_rate`, `fix_date`, when posted), the FIX feeder and bounds, the realized FX; the asset's issuer controls (`asset_controls`), `permissioned` and the pause flag |
 | share token | a mint the creator creates and hands to `init_pool` | classic SPL Token or Token-2022 with the asset's decimals, mint authority = the pool PDA, supply 0, no extension that takes or hides value; frozen by default (Token-2022 `DefaultAccountState`) for a permissioned series under Token ACL |
 | collection | a Metaplex Core collection the creator creates and hands to `init_pool` | the series' collection of pagaré assets; its update authority must be the pool PDA, so only the program mints into it |
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
@@ -117,15 +117,14 @@ more than 15 days ahead (`ProposalTooFar`). `pause` and `init_pool` do not.
 | `withdraw_acceleration(valid_until)` | council | withdraws a pending acceleration; draws stay suspended until `resume_draws` |
 | `accelerate_line(valid_until)` | council | fires a pending acceleration once its notice has run: the line moves to collection, as `mark_in_collection`, without missed installments |
 | `write_off(valid_until)` | council | books a line's unpaid principal as a loss: an `Active` line after the term, or a line in collection once the pool's collection period has run from the mark and either its oldest missed due date or the term has passed. Never paused |
-| `endorse_pagare(draw_index, kind, to, endoso_hash, valid_until)` | council | endoso en procuración of a pagaré to `to` (`KIND_PROCURACION`, the only kind the pool makes): appends the entry and lends the power to extinguish it through an owner-managed `BurnDelegate` whose authority is the program address `["procurador", pagare, to]`, so the procurador can only extinguish it inside `cancel_pagare`; the asset stays with the pool. Refused when `to` is the zero key, the pool, the council, a member of it, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor (`EndorseeInvalid`), on a written-off line, on a pagaré not outstanding, or while a procuración is in force |
+| `endorse_pagare(draw_index, kind, to, endoso_hash, valid_until)` | council | endoso en procuración of a pagaré to `to` (`KIND_PROCURACION`, the only kind the pool makes): appends the entry and lends the power to extinguish it through an owner-managed `BurnDelegate` whose authority is the program address `["procurador", pagare, to]`, so the procurador can only extinguish it inside `cancel_pagare`; the asset stays with the pool. Refused when `to` is the zero key, the pool, the council, a member of it, the creator, the FIX feeder, or the line's borrower, payer or sponsor (`EndorseeInvalid`), on a written-off line, on a pagaré not outstanding, or while a procuración is in force |
 | `revoke_procuracion(draw_index, entry_hash, valid_until)` | council | revokes the procuración in force over the signed revocation's hash: appends the `Revocacion` entry and returns the burn delegate's authority to the owner; refused when none is in force |
 | `court_annotation(draw_index, kind, document_hash, valid_until)` | council | records a court's act on a pagaré (embargo, suspension, cancellation; or a constancia) as an entry of its registry; moves nothing; refused only on a burnt title |
 | `annotate_payment(draw_index, entry_count, receipt_hash, valid_until)` | council | attaches the real receipt to a payment entry of a pagaré's registry (a `Recibo` entry) when the payer's hash was zero or wrong; allowed whatever the pagaré's status; also replaces the provisional `receipt_hash` on the record while it carries the PAGADO mark and is not yet burnt |
 | `cancel_pagare(draw_index, receipt_hash, valid_until)` | the council (the holder), the procurador of record alone, or the line's borrower alone once the cancel grace has run | extinguishes a pagaré against the receipt's hash once a repayment has written its PAGADO mark (`PAGARE_PAID_PENDING_CANCEL`; `PagareNotCovered` otherwise), whatever the line's status; appends the `Terminacion` entry, keeps the cancellation's receipt beside the payment's (the record is never closed), ends any procuración, emits `PagareEntry` and `PagareCancelled`, then thaws the asset (`UpdatePluginV1`) and burns it (`BurnV1`) as its owner or, for the procurador, through the program address holding the burn delegate; the rent goes to the `payer`. Never paused |
-| `pause()` | any member of the council's multisig, the guardian or the council | pauses deposits, redemptions, requests, approvals and draws; repay and everything else stay open |
+| `pause(valid_until)` | council | pauses deposits, redemptions, requests, approvals and draws; repay and everything else stay open |
 | `resume(valid_until)` | council | ends a pause |
 | `propose_council(new_council, kind, valid_until)` / `accept_council(valid_until)` | council / the proposed council | hands the pool to a new council in two steps (`kind` 0, a Squads vault, the only kind taken; the zero key withdraws the proposal), each after the multisig check |
-| `set_guardian(guardian, valid_until)` | council | sets the key that may only pause (the zero key for none) |
 | `set_fx_feeder(fx_feeder, valid_until)` | council | names the key that publishes the FIX within the daily band (the zero key for none; then only the council publishes) |
 | `post_fix(fix_rate, fix_date, valid_until)` | the FIX feeder or the council | publishes Banxico's FIX (`fix_rate` is MXN per USD × 10⁴, `fix_date` is `yyyymmdd`), within the pool's bounds; the feeder moves within 5% a day (one to three days) and against RedStone's MXNe reference, once per Mexico City day; the council publishes the rest, dated at most five days back |
 | `set_fix_bounds(min_fix_rate, max_fix_rate, valid_until)` | council | sets the lowest and highest FIX `post_fix` accepts (zero and zero for none) |
@@ -192,7 +191,7 @@ the order listed for each instruction.
 
 | Event | Emitted by | Fields |
 |---|---|---|
-| `PoolInitialized` | `init_pool`, its only event | pool, council, creator, multisig, guardian, asset_mint, share_mint, collection, collection_period_seconds, max_line_bps, max_outstanding_principal, acceleration_notice_seconds, cancel_grace_seconds, asset_controls (bits: 0 freeze authority, 1 `Pausable`), permissioned, min_fix_rate, max_fix_rate |
+| `PoolInitialized` | `init_pool`, its only event | pool, council, creator, multisig, asset_mint, share_mint, collection, collection_period_seconds, max_line_bps, max_outstanding_principal, acceleration_notice_seconds, cancel_grace_seconds, asset_controls (bits: 0 freeze authority, 1 `Pausable`), permissioned, min_fix_rate, max_fix_rate |
 | `Deposited` | `deposit`, then `NavUpdated` | pool, depositor, assets, shares, nav_after, supply_after |
 | `Redeemed` | `redeem`, then `NavUpdated` | pool, holder, shares, assets, nav_after, supply_after |
 | `LineRequested` | `request_line` | pool, line_id, borrower, payer, sponsor, sponsor_role (0 promoter, 1 guarantor), agreement_hash, expediente_root, pagare_template_hash, terms_hash, currency, principal, rate_bps, term_end, first_due_at, interval_seconds, installments, late_bps, max_missed (the schedule fields zero on a bullet line) |
@@ -222,13 +221,12 @@ the order listed for each instruction.
 | `FixBoundsSet` | `set_fix_bounds` | pool, min_fix_rate, max_fix_rate |
 | `CouncilProposed` | `propose_council` | pool, council, kind |
 | `CouncilAccepted` | `accept_council` | pool, old, new, kind |
-| `GuardianSet` | `set_guardian` | pool, guardian |
 | `MaxLineBpsSet` | `set_max_line_bps` | pool, max_line_bps |
 | `OutstandingCapSet` | `set_outstanding_cap` | pool, max_outstanding_principal |
 | `CollectionPeriodSet` | `set_collection_period` | pool, collection_period_seconds |
 | `AccelerationNoticeSet` | `set_acceleration_notice` | pool, acceleration_notice_seconds |
 | `CancelGraceSet` | `set_cancel_grace` | pool, cancel_grace_seconds |
-| `PoolPaused` | `pause` | pool, by (the member, guardian or council that paused) |
+| `PoolPaused` | `pause` | pool, by (the council) |
 | `PoolResumed` | `resume` | pool |
 
 ## Build and test
@@ -269,7 +267,7 @@ tests. `programs/elote_pool/tests/` holds:
 | File | Tests | What it checks |
 |---|---|---|
 | `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 21 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection |
-| `council.rs`, `valid_until.rs`, `squads.rs` | 17, 4, 6 | The Squads multisig check on every council instruction, council rotation, the guardian; `valid_until` refused past or too far ahead; the hand-built Squads v4 instructions |
+| `council.rs`, `valid_until.rs`, `squads.rs` | 17, 4, 6 | The Squads multisig check on every council instruction, council rotation; `valid_until` refused past or too far ahead; the hand-built Squads v4 instructions |
 | `fx.rs` | 25 | The FIX: the MXN↔USDC conversion, the daily band, the RedStone MXNe reference, the bounds, feeder versus council, one publication a day |
 | `acceleration.rs` | 12 | `propose_acceleration` / `withdraw_acceleration` / `accelerate_line`, the notice, and the interplay with `suspend_draws` and `resume_draws` |
 | `known_limits.rs` | 12 | Documentation tests that pin the known design limits listed in SECURITY.md; they pass by design and must be inverted when a limit is removed |
@@ -380,7 +378,7 @@ and runs `approve_line` through Squads with `valid_until` a day ahead.
 feeder with `--feeder-keypair`.
 
 `scripts/council-propose.ts --pool <address> --op <op>` runs one council decision on the pool's
-settings through Squads: `set-fx-feeder --address`, `set-guardian --address`, `set-max-line-bps
+settings through Squads: `set-fx-feeder --address`, `set-max-line-bps
 --bps`, `set-outstanding-cap --usdc`, `reject-line --line-id`, `resume`.
 
 `scripts/draw.ts --pool <address> --line-id <n> --borrower-keypair <path> --amount <MXN>` draws one
@@ -401,7 +399,7 @@ pagaré en procuración through the council. By default it makes a procurador ke
 case, never reused, or anyone could list the lines in collection from it. `--procurador <address>`
 names an existing key and warns when it already holds a pagaré under procuración
 (`pagaresUnderProcuracion` in the client). `--revoke` revokes the procuración in force. The procurador
-can never be the pool, the council, a curator, the guardian or the borrower.
+can never be the pool, the council, a curator or the borrower.
 
 `scripts/cancel-pagare.ts --pool <address> --line-id <n> --draw-index <n> --receipt-hash <64 hex>`
 extinguishes a pagaré a repayment marked paid: by default the council as holder (through Squads);

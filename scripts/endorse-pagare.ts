@@ -6,7 +6,7 @@
 //        --draw-index <n> ([--procurador <address>] [--endoso-hash <64 hex>] | --revoke [--revocation-hash <64 hex>])
 //        [--council-keypairs <a.json,b.json>] [--yes]
 //
-// --procurador       the endorsee: never the pool, the council, a curator, the guardian, the creator,
+// --procurador       the endorsee: never the pool, the council, a curator, the creator,
 //                    the FIX feeder, or the line's borrower, payer or sponsor
 //                    (the program refuses them). Without it the script creates a key for this case,
 //                    .demo-keys/procuradores/<pool>-<line>-<draw>.json, to hand to the collection
@@ -116,9 +116,9 @@ if (revoke) {
     console.log(`  a new procurador key for this case, ${procurador}, is in ${file}: hand it to the collection agency`);
   }
   const sponsor = lineData.sponsor.__option === "Some" ? lineData.sponsor.value : undefined;
-  const refused = [poolAddress, pool.council, pool.guardian, pool.creator, pool.fxFeeder, lineData.borrower, lineData.payer, sponsor];
+  const refused = [poolAddress, pool.council, pool.creator, pool.fxFeeder, lineData.borrower, lineData.payer, sponsor];
   if (refused.includes(procurador) || council.members.some((m) => m.address === procurador)) {
-    fail("the procurador cannot be the pool, the council, a curator, the guardian, the creator, the FIX feeder, or the line's borrower, payer or sponsor");
+    fail("the procurador cannot be the pool, the council, a curator, the creator, the FIX feeder, or the line's borrower, payer or sponsor");
   }
   const endosoHash = hash32("endoso-hash", "elote.fun demo endoso en procuración");
   await councilExecute(c, council, `endorse_pagare ${drawIndex} en procuración`, [

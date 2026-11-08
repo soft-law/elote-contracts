@@ -18,7 +18,6 @@ export * from "./fixBoundsSet";
 export * from "./fixPosted";
 export * from "./fxFeederSet";
 export * from "./fxRealized";
-export * from "./guardianSet";
 export * from "./lateInterestCollected";
 export * from "./lineAccelerated";
 export * from "./lineApproved";
