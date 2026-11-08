@@ -297,16 +297,22 @@ mainnet deployment the authority moves to a [Squads](https://squads.so) multisig
 published on chain (`anchor idl init`), and the build is verified. The program embeds a
 `security.txt` (see `SECURITY.md`).
 
-Reproduce and compare the on-chain build with [solana-verify](https://github.com/Ellipsis-Labs/solana-verifiable-build):
+Reproduce and compare the on-chain build. A deployed build is verified against a build of this
+source **with its cluster's feature** (no feature for mainnet, `devnet` for devnet — the asset
+allow-lists differ, so the bytes do; SECURITY.md), the same SBPF arch (`v0`) and the same
+platform-tools (`v1.54`). For the devnet program:
 
 ```sh
-solana-verify build --library-name elote_pool
+NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features devnet
 solana-verify get-executable-hash target/deploy/elote_pool.so
 solana-verify get-program-hash -u devnet BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM
 ```
 
-The two hashes match when the deployed program was built from this commit in the verify
-container. No deployment has been verified yet; the first one that is will be recorded here.
+The two hashes match when the deployed program was built from this commit with that toolchain.
+[solana-verify](https://github.com/Ellipsis-Labs/solana-verifiable-build)'s own `build` runs in a
+Docker container whose platform-tools must match (`solana-verify build --library-name elote_pool
+-- --features devnet`); until the container pins v1.54 and the v0 arch, the local build above is
+the reference. No deployment has been verified yet; the first one that is will be recorded here.
 
 ### Releasing the client
 

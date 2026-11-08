@@ -5,8 +5,15 @@
 // installments: one is missed and the next repayment collects late interest first.
 //
 //   npx tsx scripts/demo-pool.ts --cluster local|devnet --multisig <address> [--council-keypairs <a.json,b.json>]
-//        [--agreement-hash <64 hex>] [--sponsor]
+//        [--asset-mint <address> [--scale <n>]] [--agreement-hash <64 hex>] [--sponsor]
 //        [--schedule [--interval-seconds <n>]] [--max-line-bps <n>] [--yes]
+//
+// --asset-mint        an existing asset mint (a devnet build only accepts its allow-list: Circle's
+//                     devnet USDC and the Etherfuse sandbox mints); the wallets are funded by
+//                     transfer from the admin's balance instead of a fresh mint, so the admin must
+//                     hold enough of it (the faucet)
+// --scale             divide every demo amount by this (default 1; 1000 fits a 16-USDC faucet
+//                     balance: deposits of 10 and 5, a line of MXN 60)
 //
 // --agreement-hash    hash of the signed credit agreement recorded on the line (placeholder if absent)
 // --sponsor           the sponsor co-signs the opening and is named on the line
@@ -34,6 +41,7 @@ import {
   getInitializeMint2Instruction,
   getMintSize,
   getMintToInstruction,
+  getTransferInstruction,
 } from "@solana-program/token";
 import {
   FX_REFERENCE_ACCOUNT,
@@ -73,6 +81,7 @@ import {
   flag,
   fmt,
   fmtMxn,
+  integer,
   hash32,
   sendOrFail,
   sleep,
@@ -80,7 +89,7 @@ import {
 import { approveLine, councilExecute, loadCouncil } from "./lib/council.ts";
 import { ataOf, repayInParts } from "./lib/pool.ts";
 
-checkFlags(["cluster", "multisig", "council-keypairs", "agreement-hash", "sponsor", "schedule", "interval-seconds", "max-line-bps", "yes"]);
+checkFlags(["cluster", "multisig", "council-keypairs", "asset-mint", "scale", "agreement-hash", "sponsor", "schedule", "interval-seconds", "max-line-bps", "yes"]);
 const c = cluster();
 const withSponsor = flag("sponsor");
 const withSchedule = flag("schedule");
@@ -143,18 +152,31 @@ await send(
   )
 );
 
-// The test asset: a fresh 6-decimal SPL mint per run, so every run gets its own pool.
-console.log(`\nCreating the ${ASSET}`);
-const assetMint = await generateKeyPairSigner();
+// The demo's amounts, divided by --scale so a faucet-funded devnet run fits.
+const scale = BigInt(integer("scale", 1, 1, 1_000_000)!);
+const S = (n: bigint) => (n < scale ? 1n : n / scale);
+
+// The test asset: an existing mint with --asset-mint (funded by transfer from the admin), or a
+// fresh 6-decimal SPL mint per run, so every run gets its own pool.
+const givenMint = arg("asset-mint") !== undefined ? address(arg("asset-mint")!) : undefined;
 const mintSpace = BigInt(getMintSize());
 const mintRent = await c.rpc.getMinimumBalanceForRentExemption(mintSpace).send();
-await send(`create ${ASSET}`, admin, [
-  getCreateAccountInstruction({ payer: admin, newAccount: assetMint, lamports: mintRent, space: mintSpace, programAddress: TOKEN_PROGRAM_ADDRESS }),
-  getInitializeMint2Instruction({ mint: assetMint.address, decimals: 6, mintAuthority: admin.address }),
-]);
-console.log(`  ${ASSET} address ${assetMint.address}`);
+let assetMintAddress: Address;
+if (givenMint) {
+  assetMintAddress = givenMint;
+  console.log(`\nUsing the existing ${ASSET} mint ${assetMintAddress}`);
+} else {
+  console.log(`\nCreating the ${ASSET}`);
+  const assetMint = await generateKeyPairSigner();
+  await send(`create ${ASSET}`, admin, [
+    getCreateAccountInstruction({ payer: admin, newAccount: assetMint, lamports: mintRent, space: mintSpace, programAddress: TOKEN_PROGRAM_ADDRESS }),
+    getInitializeMint2Instruction({ mint: assetMint.address, decimals: 6, mintAuthority: admin.address }),
+  ]);
+  console.log(`  ${ASSET} address ${assetMint.address}`);
+  assetMintAddress = assetMint.address;
+}
 
-const [pool] = await findPoolPda({ creator: admin.address, assetMint: assetMint.address });
+const [pool] = await findPoolPda({ creator: admin.address, assetMint: assetMintAddress });
 
 // The share mint is supplied by the admin, with the pool PDA as mint authority and the asset's
 // decimals. The demo uses a classic SPL mint, which the program accepts; a production series uses
@@ -180,7 +202,7 @@ await send("init_pool", admin, [
   await getInitPoolInstructionAsync({
     creator: admin,
     multisig,
-    assetMint: assetMint.address,
+    assetMint: assetMintAddress,
     pool,
     shareMint,
     vault,
@@ -219,16 +241,24 @@ await councilExecute(c, council, `post_fix 18.3740 for ${mexicoCityDate(await ch
 
 console.log(`\nIssuing ${ASSET} to the investors and the sponsor`);
 const issue: Instruction[] = [];
-for (const [w, amount] of [
-  [investorA, 10_000n * UNIT],
-  [investorB, 5_000n * UNIT],
-  [sponsor, 720n * UNIT],
-] as const) {
-  issue.push(await getCreateAssociatedTokenIdempotentInstructionAsync({ payer: admin, owner: w.address, mint: assetMint.address }));
-  issue.push(getMintToInstruction({ mint: assetMint.address, token: await ataOf(w.address, assetMint.address), mintAuthority: admin, amount }));
+const allocations = [
+  [investorA, S(10_000n) * UNIT],
+  [investorB, S(5_000n) * UNIT],
+  [sponsor, S(720n * UNIT)],
+] as const;
+for (const [w, amount] of allocations) {
+  issue.push(await getCreateAssociatedTokenIdempotentInstructionAsync({ payer: admin, owner: w.address, mint: assetMintAddress }));
+  if (givenMint) {
+    const total = allocations.reduce((a, [, n]) => a + n, 0n);
+    const held = (await fetchToken(c.rpc, await ataOf(admin.address, assetMintAddress), { commitment: "confirmed" }).catch(() => fail(`the admin holds no ${ASSET}: fund ${admin.address} from the faucet`)))!.data.amount;
+    if (held < total) fail(`the admin holds ${fmt(held)} ${ASSET}, the demo needs ${fmt(total)}: fund ${admin.address} or raise --scale`);
+    issue.push(getTransferInstruction({ source: await ataOf(admin.address, assetMintAddress), destination: await ataOf(w.address, assetMintAddress), authority: admin, amount }));
+  } else {
+    issue.push(getMintToInstruction({ mint: assetMintAddress, token: await ataOf(w.address, assetMintAddress), mintAuthority: admin, amount }));
+  }
 }
-issue.push(await getCreateAssociatedTokenIdempotentInstructionAsync({ payer: admin, owner: borrower.address, mint: assetMint.address }));
-await send(`issue ${ASSET}: A 10,000, B 5,000, sponsor 720`, admin, issue);
+issue.push(await getCreateAssociatedTokenIdempotentInstructionAsync({ payer: admin, owner: borrower.address, mint: assetMintAddress }));
+await send(`issue ${ASSET}: A ${fmt(S(10_000n) * UNIT)}, B ${fmt(S(5_000n) * UNIT)}, sponsor ${fmt(S(720n * UNIT))}`, admin, issue);
 
 async function snapshot() {
   const p = await fetchPool(c.rpc, pool, { commitment: "confirmed" });
@@ -249,12 +279,12 @@ async function deposit(label: string, who: KeyPairSigner, assets: bigint) {
     await getDepositInstructionAsync({
       depositor: who,
       pool,
-      assetMint: assetMint.address,
+      assetMint: assetMintAddress,
       shareMint,
       vault,
       tokenProgram: TOKEN_PROGRAM_ADDRESS,
       shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
-      depositorAssetAccount: await ataOf(who.address, assetMint.address),
+      depositorAssetAccount: await ataOf(who.address, assetMintAddress),
       depositorShareAccount: await ataOf(who.address, shareMint),
       deadShares,
       assets,
@@ -264,11 +294,11 @@ async function deposit(label: string, who: KeyPairSigner, assets: bigint) {
 }
 
 console.log("\nDeposits");
-await deposit(`investor A deposits 10,000 ${ASSET}`, investorA, 10_000n * UNIT);
-await deposit(`investor B deposits 5,000 ${ASSET}`, investorB, 5_000n * UNIT);
+await deposit(`investor A deposits ${fmt(S(10_000n) * UNIT)} ${ASSET}`, investorA, S(10_000n) * UNIT);
+await deposit(`investor B deposits ${fmt(S(5_000n) * UNIT)} ${ASSET}`, investorB, S(5_000n) * UNIT);
 const before = await snapshot();
 
-console.log(`\nCredit line: MXN 60,000 at 12%${withSponsor ? ", co-signed by the sponsor" : ""}, drawn as USDC at the FIX`);
+console.log(`\nCredit line: MXN ${fmtMxn(S(60_000n) * CENTAVOS)} at 12%${withSponsor ? ", co-signed by the sponsor" : ""}, drawn as USDC at the FIX`);
 const { lineCount } = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
 const [line] = await findLinePda({ pool, lineId: lineCount });
 const termEnd = BigInt(Math.floor(Date.now() / 1000) + 90 * 86_400);
@@ -280,7 +310,7 @@ await send("request_line", admin, [
     pool,
     line,
     lineId: lineCount,
-    principal: 60_000n * CENTAVOS,
+    principal: S(60_000n) * CENTAVOS,
     rateBps: 1_200,
     lateBps: 10_000,
     termEnd,
@@ -293,7 +323,7 @@ await send("request_line", admin, [
   }),
 ]);
 await approveLine(c, council, pool, lineCount).catch((e) => fail((e as Error).message));
-const borrowerAsset = await ataOf(borrower.address, assetMint.address);
+const borrowerAsset = await ataOf(borrower.address, assetMintAddress);
 
 /** A draw: the borrower receives `amount`; the admin pays the pagaré's rent as the app's relayer. */
 async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
@@ -301,7 +331,7 @@ async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
     borrower,
     pool,
     line: lineAddress,
-    assetMint: assetMint.address,
+    assetMint: assetMintAddress,
     vault,
     borrowerAssetAccount: borrowerAsset,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
@@ -316,8 +346,8 @@ async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
   });
 }
 
-await send(`draw: MXN 60,000 as ${fmt(usdcForMxn(60_000n * CENTAVOS, FIX))} ${ASSET} to the borrower, pagaré 0 minted`, borrower, [
-  await drawIx(line, 0, 60_000n * CENTAVOS),
+await send(`draw: MXN ${fmtMxn(S(60_000n) * CENTAVOS)} as ${fmt(usdcForMxn(S(60_000n) * CENTAVOS, FIX))} ${ASSET} to the borrower, pagaré 0 minted`, borrower, [
+  await drawIx(line, 0, S(60_000n) * CENTAVOS),
 ]);
 const drawn = await snapshot();
 const poolData = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
@@ -325,23 +355,23 @@ const noReceipt = new Uint8Array(32); // the demo has no receipt: "to follow"
 console.log(`\nRepayments (interest is taken first)`);
 const borrowerHolds = (await fetchToken(c.rpc, borrowerAsset, { commitment: "confirmed" })).data.amount;
 await repayInParts(c, { pool, poolData, line, payer: borrower, amount: borrowerHolds, receiptHash: noReceipt });
-await repayInParts(c, { pool, poolData, line, payer: sponsor, amount: 720n * UNIT, receiptHash: noReceipt });
+await repayInParts(c, { pool, poolData, line, payer: sponsor, amount: S(720n * UNIT), receiptHash: noReceipt });
 const repaid = await snapshot();
 const status = (await fetchCreditLine(c.rpc, line, { commitment: "confirmed" })).data.status;
 
 console.log("\nRedemption");
-const redeemShares = 4_000n * UNIT;
-await send("investor A redeems 4,000 shares", investorA, [
+const redeemShares = S(4_000n) * UNIT;
+await send(`investor A redeems ${fmt(redeemShares)} shares`, investorA, [
   await getRedeemInstructionAsync({
     holder: investorA,
     pool,
-    assetMint: assetMint.address,
+    assetMint: assetMintAddress,
     shareMint,
     vault,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
     shareTokenProgram: TOKEN_PROGRAM_ADDRESS,
     holderShareAccount: await ataOf(investorA.address, shareMint),
-    holderAssetAccount: await ataOf(investorA.address, assetMint.address),
+    holderAssetAccount: await ataOf(investorA.address, assetMintAddress),
     shares: redeemShares,
     minAssetsOut: (redeemShares * repaid.nav) / repaid.supply,
   }),
@@ -367,9 +397,9 @@ console.log(`\n${DISCLAIMER}`);
 
 async function scheduleDemo() {
   const installments = 6;
-  const principal = 6_000n * CENTAVOS;
+  const principal = S(6_000n) * CENTAVOS;
   const label = intervalSeconds === MONTH_SECONDS ? "monthly" : `every ${intervalSeconds} s (a compressed demo month)`;
-  console.log(`\nInstallment line: MXN 6,000 at 12%, ${installments} installments ${label}, late interest 100% a year, collection after 3 missed`);
+  console.log(`\nInstallment line: MXN ${fmtMxn(principal)} at 12%, ${installments} installments ${label}, late interest 100% a year, collection after 3 missed`);
   const { lineCount: id } = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
   const [sLine] = await findLinePda({ pool, lineId: id });
   // The calendar comes from the contract: the first installment one interval from now, the draw
@@ -396,7 +426,7 @@ async function scheduleDemo() {
     }),
   ]);
   await approveLine(c, council, pool, id).catch((e) => fail((e as Error).message));
-  await send(`draw: MXN 6,000 to the borrower, pagaré 0 minted`, borrower, [await drawIx(sLine, 0, principal)]);
+  await send(`draw: MXN ${fmtMxn(principal)} to the borrower, pagaré 0 minted`, borrower, [await drawIx(sLine, 0, principal)]);
 
   const read = async () => {
     const l = (await fetchCreditLine(c.rpc, sLine, { commitment: "confirmed" })).data;
