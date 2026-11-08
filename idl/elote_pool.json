@@ -6350,7 +6350,32 @@
           },
           {
             "name": "principal_applied",
+            "docs": [
+              "Principal applied to this pagaré, in centavos of MXN."
+            ],
             "type": "u64"
+          },
+          {
+            "name": "accessory_applied",
+            "docs": [
+              "Ordinary and late interest the payment settled, annotated once, on the oldest pagaré",
+              "touched (interest is owed by the line, not by a tranche); zero on the others."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "principal_balance",
+            "docs": [
+              "The pagaré's unpaid principal after this entry; zero when it was covered."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "by_borrower",
+            "docs": [
+              "The suscriptor himself paid."
+            ],
+            "type": "bool"
           }
         ]
       }

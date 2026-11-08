@@ -212,7 +212,15 @@ pub struct PaymentEntry {
     pub draw_index: u16,
     pub kind: u8,
     pub entry_count: u32,
+    /// Principal applied to this pagaré, in centavos of MXN.
     pub principal_applied: u64,
+    /// Ordinary and late interest the payment settled, annotated once, on the oldest pagaré
+    /// touched (interest is owed by the line, not by a tranche); zero on the others.
+    pub accessory_applied: u64,
+    /// The pagaré's unpaid principal after this entry; zero when it was covered.
+    pub principal_balance: u64,
+    /// The suscriptor himself paid.
+    pub by_borrower: bool,
 }
 
 /// The payment entries of one `repay`: the payer's receipt hash (zero means "receipt

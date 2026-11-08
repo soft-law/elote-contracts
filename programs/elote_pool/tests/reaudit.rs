@@ -27,11 +27,12 @@ fn set_entry_count(env: &mut Env, k: &PoolKeys, line_id: u64, draw_index: u16, c
     env.svm.set_account(sidecar, acc).unwrap();
 }
 
-/// N-01: a payment that applies no principal to a pagaré writes no entry on it, so a stranger's
-/// one-unit payments (interest first) cannot grow the registry; the payment is still recorded in
-/// `PagarePayment`. A payment that moves principal still writes its `Abono`.
+/// Inverted 2026-11-08 (decision 38, LGTOC 17): a payment of accessories alone now leaves its
+/// `Abono` on the oldest outstanding pagaré, stating zero principal, the accessories applied and
+/// the balance. The registry grows one entry per real payment — the chain is constant-size, so
+/// that is the record working, not a risk (N-01's remedy reversed; the u32 counter stays).
 #[test]
-fn n01_an_interest_only_payment_appends_no_registry_entry() {
+fn n01_an_interest_only_payment_appends_its_abono() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
     let borrower = env.borrower(&k);
@@ -43,26 +44,29 @@ fn n01_an_interest_only_payment_appends_no_registry_entry() {
     env.mint_to(&k.asset_mint, &council, &stranger.pubkey(), 1_000);
 
     let before = env.pagare(&k, line_id, 0);
-    for _ in 0..5 {
+    for i in 0..5u32 {
         let ix = env.repay_ix(&k, line_id, &stranger.pubkey(), 1);
         let meta = env.send(ix, &stranger, &[]);
-        let ev: PagarePayment = find_event(&meta).expect("the payment is still recorded");
+        let ev: PagarePayment = find_event(&meta).expect("the payment is recorded");
         assert_eq!((ev.payer, ev.interest_part, ev.principal_part), (stranger.pubkey(), 1, 0));
-        assert!(ev.entries.is_empty(), "no entry on a pagaré the payment applied no principal to");
+        let e: Vec<_> = ev.entries.iter().map(|e| (e.draw_index, e.kind, e.principal_applied, e.accessory_applied, e.by_borrower)).collect();
+        assert_eq!(e, vec![(0, KIND_ABONO, 0, 1, false)], "the accessory-only Abono, by a third party");
+        assert_eq!(env.pagare(&k, line_id, 0).entry_count, before.entry_count + i + 1);
     }
     let after = env.pagare(&k, line_id, 0);
-    assert_eq!((after.entry_count, after.log_root), (before.entry_count, before.log_root));
+    assert_ne!(after.log_root, before.log_root);
 
-    // Interest cleared plus one unit of principal: one Abono.
+    // Interest cleared plus one unit of principal: one Abono stating both.
     let line = env.line(&k, line_id);
-    let amount = line.interest_due - line.interest_repaid + 1;
+    let rest = line.interest_due - line.interest_repaid;
+    let amount = rest + 1;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), amount);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), amount);
     let meta = env.send(ix, &borrower, &[]);
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
-    let e: Vec<_> = ev.entries.iter().map(|e| (e.draw_index, e.kind, e.principal_applied)).collect();
-    assert_eq!(e, vec![(0, KIND_ABONO, 1)]);
-    assert_eq!(env.pagare(&k, line_id, 0).entry_count, before.entry_count + 1);
+    let e: Vec<_> = ev.entries.iter().map(|e| (e.draw_index, e.kind, e.principal_applied, e.accessory_applied, e.by_borrower)).collect();
+    assert_eq!(e, vec![(0, KIND_ABONO, 1, rest, true)]);
+    assert_eq!(env.pagare(&k, line_id, 0).entry_count, before.entry_count + 6);
 }
 
 /// N-01: the entry counter does not saturate in any practical range: a sidecar past 65 535

@@ -788,7 +788,12 @@ pub struct Repay<'info> {
 /// than `MAX_SIDECARS_PER_REPAY` (`TooManySidecars`): a larger payment is split. A covered pagaré
 /// gets a `Pagado` entry, status `PAGARE_PAID_PENDING_CANCEL`, `paid_at`, `receipt_hash` and the
 /// pool's `cancel_grace_seconds`, fixed for the borrower's exit (only the burn waits), and the cursor `pagares_paid` moves past it. The uncovered one gets an `Abono`
-/// entry only if the payment applied principal to it. `receipt_hash` is the payer's, unverified and
+/// entry when the payment applied principal to it, and the oldest pagaré touched also when it only
+/// settled accessories. Every payment entry commits, through `registry::annotation_hash`, the
+/// principal applied to that pagaré, the accessories settled (annotated once, on the oldest
+/// touched), the pagaré's unpaid principal after it and whether the suscriptor paid (decision 38,
+/// LGTOC 17 and 130); the preimages travel in `PagarePayment.entries`. `receipt_hash` is the
+/// payer's, unverified and
 /// provisional until the holder annotates the real one (`annotate_payment`); zero means "receipt to
 /// follow".
 ///
@@ -924,24 +929,33 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         line.closed_at = now;
     }
 
-    // The payment entries, oldest first; the cursor moves past every pagaré marked paid.
+    // The payment entries, oldest first; the cursor moves past every pagaré marked paid. Every
+    // entry commits the amount applied and the balance (decision 38, LGTOC 17 and 130): the
+    // accessories are annotated once, on the oldest pagaré touched, so a payment of interest or
+    // late interest alone also leaves its entry there.
     let cancel_grace = pool.cancel_grace_seconds;
     let payer_key = ctx.accounts.payer.key();
+    let by_borrower = payer_key == line.borrower;
+    let accessory_total = interest_part.checked_add(late_part).ok_or(PoolError::Overflow)?;
     let pool_key = pool.key();
     let line_id = line.line_id;
     let mut entries: Vec<PaymentEntry> = Vec::with_capacity(touched.len());
     let mut floor = principal_before;
-    for sidecar in touched.iter_mut() {
+    for (i, sidecar) in touched.iter_mut().enumerate() {
         let covered = sidecar.drawn_through <= principal_after;
         let kind = if covered { KIND_PAGADO } else { KIND_ABONO };
         let ceiling = sidecar.drawn_through.min(principal_after);
         let principal_applied = ceiling.saturating_sub(floor);
         floor = floor.max(ceiling);
-        // No entry without principal: otherwise anyone could grow the chain one unit at a time.
-        if principal_applied == 0 {
+        let accessory_applied = if i == 0 { accessory_total } else { 0 };
+        // An entry states what was applied to this pagaré, in principal or in accessories;
+        // nothing applied, nothing entered.
+        if principal_applied == 0 && accessory_applied == 0 {
             continue;
         }
-        let hash = registry::append(sidecar, kind, &payer_key, &pool_key, &receipt_hash, now).ok_or(PoolError::Overflow)?;
+        let principal_balance = sidecar.amount_mxn.min(sidecar.drawn_through.saturating_sub(principal_after));
+        let annotation = registry::annotation_hash(&receipt_hash, principal_applied, accessory_applied, principal_balance, by_borrower);
+        let hash = registry::append(sidecar, kind, &payer_key, &pool_key, &annotation, now).ok_or(PoolError::Overflow)?;
         if covered {
             sidecar.status = PAGARE_PAID_PENDING_CANCEL;
             sidecar.paid_at = now;
@@ -962,7 +976,15 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
             recorded_at: now,
             stated_at: now,
         });
-        entries.push(PaymentEntry { draw_index: sidecar.draw_index, kind, entry_count: sidecar.entry_count, principal_applied });
+        entries.push(PaymentEntry {
+            draw_index: sidecar.draw_index,
+            kind,
+            entry_count: sidecar.entry_count,
+            principal_applied,
+            accessory_applied,
+            principal_balance,
+            by_borrower,
+        });
         sidecar.exit(ctx.program_id)?;
     }
     if !touched.is_empty() {

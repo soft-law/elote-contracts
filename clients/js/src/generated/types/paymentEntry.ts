@@ -8,6 +8,8 @@
 
 import {
   combineCodec,
+  getBooleanDecoder,
+  getBooleanEncoder,
   getStructDecoder,
   getStructEncoder,
   getU16Decoder,
@@ -31,14 +33,34 @@ export type PaymentEntry = {
   drawIndex: number;
   kind: number;
   entryCount: number;
+  /** Principal applied to this pagaré, in centavos of MXN. */
   principalApplied: bigint;
+  /**
+   * Ordinary and late interest the payment settled, annotated once, on the oldest pagaré
+   * touched (interest is owed by the line, not by a tranche); zero on the others.
+   */
+  accessoryApplied: bigint;
+  /** The pagaré's unpaid principal after this entry; zero when it was covered. */
+  principalBalance: bigint;
+  /** The suscriptor himself paid. */
+  byBorrower: boolean;
 };
 
 export type PaymentEntryArgs = {
   drawIndex: number;
   kind: number;
   entryCount: number;
+  /** Principal applied to this pagaré, in centavos of MXN. */
   principalApplied: number | bigint;
+  /**
+   * Ordinary and late interest the payment settled, annotated once, on the oldest pagaré
+   * touched (interest is owed by the line, not by a tranche); zero on the others.
+   */
+  accessoryApplied: number | bigint;
+  /** The pagaré's unpaid principal after this entry; zero when it was covered. */
+  principalBalance: number | bigint;
+  /** The suscriptor himself paid. */
+  byBorrower: boolean;
 };
 
 export function getPaymentEntryEncoder(): FixedSizeEncoder<PaymentEntryArgs> {
@@ -47,6 +69,9 @@ export function getPaymentEntryEncoder(): FixedSizeEncoder<PaymentEntryArgs> {
     ["kind", getU8Encoder()],
     ["entryCount", getU32Encoder()],
     ["principalApplied", getU64Encoder()],
+    ["accessoryApplied", getU64Encoder()],
+    ["principalBalance", getU64Encoder()],
+    ["byBorrower", getBooleanEncoder()],
   ]);
 }
 
@@ -56,6 +81,9 @@ export function getPaymentEntryDecoder(): FixedSizeDecoder<PaymentEntry> {
     ["kind", getU8Decoder()],
     ["entryCount", getU32Decoder()],
     ["principalApplied", getU64Decoder()],
+    ["accessoryApplied", getU64Decoder()],
+    ["principalBalance", getU64Decoder()],
+    ["byBorrower", getBooleanDecoder()],
   ]);
 }
 

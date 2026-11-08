@@ -8,6 +8,27 @@ use solana_sha256_hasher::hashv;
 
 use crate::state::Pagare;
 
+/// The domain of a payment entry's annotation hash (LGTOC 17, 130: every abono states the amount
+/// and the balance).
+pub const PAYMENT_DOMAIN: &[u8] = b"elote.pago.v1";
+
+/// What a payment entry commits (decision 38): the receipt, the principal applied to this pagaré,
+/// the accessories (ordinary and late interest) the payment settled, the pagaré's unpaid principal
+/// after it, and whether the suscriptor himself paid. The preimages travel in the `PaymentEntry`
+/// of the `PagarePayment` event, so anyone can replay
+/// `annotation_hash -> entry_hash -> log_root`.
+pub fn annotation_hash(receipt_hash: &[u8; 32], principal_applied: u64, accessory_applied: u64, principal_balance: u64, by_borrower: bool) -> [u8; 32] {
+    hashv(&[
+        PAYMENT_DOMAIN,
+        receipt_hash,
+        &principal_applied.to_le_bytes(),
+        &accessory_applied.to_le_bytes(),
+        &principal_balance.to_le_bytes(),
+        &[u8::from(by_borrower)],
+    ])
+    .to_bytes()
+}
+
 /// `sha256(asset || kind || from || to || hash || stated_at LE || entry_count LE)`: the asset first,
 /// so two pagarés with the same facts never share a chain.
 pub fn entry_hash(asset: &Pubkey, kind: u8, from: &Pubkey, to: &Pubkey, hash: &[u8; 32], stated_at: i64, entry_count: u32) -> [u8; 32] {
