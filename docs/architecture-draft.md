@@ -1,5 +1,7 @@
 # `elote_pool` architecture (draft rewrite)
 
+> **Stale (2026-11-08):** this architecture draft predates decisions 38–41: the paid pagaré is now delivered to its debtor (cancel_pagare, the cancel grace and the procurador's burn are gone; deliver_pagare, burn_pagare and annul_pagare exist), the pause is the council's alone (no guardian), the mark provisions the NAV in full, and a line paid ahead reaches collection after its last due date. README.md, SECURITY.md and docs/interface.md are current; bring this file to them before relying on it.
+
 > **Draft.** A section-by-section rewrite of [ARCHITECTURE.md](../ARCHITECTURE.md), which still
 > describes v1 (admin, attestor, `open_line`). This file describes the code as it is on
 > `council/pr4` at `9355049`, as merged into `integration/pr4-fixes` (`964bd3e`; the merge

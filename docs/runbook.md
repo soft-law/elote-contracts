@@ -1,5 +1,7 @@
 # Operations runbook: `elote_pool`
 
+> **Stale (2026-11-08):** this runbook predates decisions 38–41: the paid pagaré is now delivered to its debtor (cancel_pagare, the cancel grace and the procurador's burn are gone; deliver_pagare, burn_pagare and annul_pagare exist), the pause is the council's alone (no guardian), the mark provisions the NAV in full, and a line paid ahead reaches collection after its last due date. README.md, SECURITY.md and docs/interface.md are current; bring this file to them before relying on it.
+
 Status: **draft for the owner's approval**. Nothing here is in force until Mario signs it off.
 Names and contact details are placeholders in angle brackets; fill them in before the first
 mainnet pool.
