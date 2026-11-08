@@ -28,3 +28,13 @@ installments, or every remaining one when fewer than `max_missed` remain
 (`missed >= min(max_missed, installments − covered)`). A borrower who prepaid early installments
 and stopped is marked one second after the last due date; before, the line could only leave by
 write-off after the term or by the council's acceleration. Option A of the 2026-11-05 report.
+
+## 38-g. The judicial stage runs off chain (amendment, same day)
+
+The embargo arises when the collection is enforced in court — and by then the caso is an off-chain
+lawsuit; that stage is not recorded on the pagaré and the pool does not mention it. The judicial
+hold introduced earlier today (a counter gating `deliver_pagare`) is removed: `court_annotation`
+annotates and gates nothing. The pool's exits from delinquency are selling the portfolio (the
+endoso en propiedad, kind 1, reserved for a future feature) or the write-off, at most at 3–6–12
+months of arrears (the collection period and the write-off are the council's, with the 30-day
+floor).

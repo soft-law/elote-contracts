@@ -81,7 +81,7 @@ export type Pagare = {
   certFingerprint: ReadonlyUint8Array;
   /** `SIGNATURE_*`. */
   signatureMethod: number;
-  /** `PAGARE_OUTSTANDING`, `PAGARE_PAID_PENDING_CANCEL` or `PAGARE_PAID`; never reverts. */
+  /** `PAGARE_OUTSTANDING` or `PAGARE_PAID`; never reverts. */
   status: number;
   /** When the repayment that covered it landed; zero while outstanding. */
   paidAt: bigint;
@@ -117,12 +117,6 @@ export type Pagare = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
-  /**
-   * Court acts holding the título (LGTOC 20): each `AnotacionJudicial` adds one, each
-   * `ConstanciaJudicial` releases one, and `deliver_pagare` waits for zero — one court's
-   * release never frees another court's embargo.
-   */
-  judicialHolds: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -153,7 +147,7 @@ export type PagareArgs = {
   certFingerprint: ReadonlyUint8Array;
   /** `SIGNATURE_*`. */
   signatureMethod: number;
-  /** `PAGARE_OUTSTANDING`, `PAGARE_PAID_PENDING_CANCEL` or `PAGARE_PAID`; never reverts. */
+  /** `PAGARE_OUTSTANDING` or `PAGARE_PAID`; never reverts. */
   status: number;
   /** When the repayment that covered it landed; zero while outstanding. */
   paidAt: number | bigint;
@@ -189,12 +183,6 @@ export type PagareArgs = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
-  /**
-   * Court acts holding the título (LGTOC 20): each `AnotacionJudicial` adds one, each
-   * `ConstanciaJudicial` releases one, and `deliver_pagare` waits for zero — one court's
-   * release never frees another court's embargo.
-   */
-  judicialHolds: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -227,7 +215,6 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["fixDate", getU32Encoder()],
       ["usdcDelivered", getU64Encoder()],
       ["deliveryHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["judicialHolds", getU8Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 28)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
@@ -261,7 +248,6 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["fixDate", getU32Decoder()],
     ["usdcDelivered", getU64Decoder()],
     ["deliveryHash", fixDecoderSize(getBytesDecoder(), 32)],
-    ["judicialHolds", getU8Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 28)],
   ]);
 }
@@ -333,5 +319,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 364;
+  return 363;
 }

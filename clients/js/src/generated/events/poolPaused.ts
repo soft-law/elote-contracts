@@ -38,13 +38,13 @@ export function getPoolPausedEventDiscriminatorBytes(): ReadonlyUint8Array {
 
 export type PoolPausedEvent = {
   pool: Address;
-  /** The member, guardian or council that paused. */
+  /** The council (decision 39: nobody pauses alone). */
   by: Address;
 };
 
 export type PoolPausedEventArgs = {
   pool: Address | HasAddress;
-  /** The member, guardian or council that paused. */
+  /** The council (decision 39: nobody pauses alone). */
   by: Address | HasAddress;
 };
 

@@ -1830,7 +1830,7 @@
       "name": "pause",
       "docs": [
         "Pauses deposits, redemptions, requests, approvals and draws. Any member of the council'\"'\"'s multisig alone,",
-        "the guardian or the council; repayments and everything else go on."
+        "repayments and everything else go on."
       ],
       "discriminator": [
         211,
@@ -4669,7 +4669,7 @@
     {
       "code": 6075,
       "name": "DeliveryHeld",
-      "msg": "A court act holds this título; a ConstanciaJudicial must lift it before the delivery"
+      "msg": "Retired: no court act gates the delivery (decision 38-g)"
     },
     {
       "code": 6076,
@@ -6065,7 +6065,7 @@
           {
             "name": "status",
             "docs": [
-              "`PAGARE_OUTSTANDING`, `PAGARE_PAID_PENDING_CANCEL` or `PAGARE_PAID`; never reverts."
+              "`PAGARE_OUTSTANDING` or `PAGARE_PAID`; never reverts."
             ],
             "type": "u8"
           },
@@ -6165,15 +6165,6 @@
                 32
               ]
             }
-          },
-          {
-            "name": "judicial_holds",
-            "docs": [
-              "Court acts holding the título (LGTOC 20): each `AnotacionJudicial` adds one, each",
-              "`ConstanciaJudicial` releases one, and `deliver_pagare` waits for zero — one court's",
-              "release never frees another court's embargo."
-            ],
-            "type": "u8"
           },
           {
             "name": "reserved",
@@ -6935,7 +6926,7 @@
           {
             "name": "by",
             "docs": [
-              "The member, guardian or council that paused."
+              "The council (decision 39: nobody pauses alone)."
             ],
             "type": "pubkey"
           }

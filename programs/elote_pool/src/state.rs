@@ -363,8 +363,8 @@ pub const PAGARE_FLAG_DELIVERED: u8 = 1 << 2;
 /// that covered the título, so the delivery goes to the aval, who collects from the suscriptor
 /// with the live título (LGTOC 115).
 pub const PAGARE_FLAG_PAID_BY_AVAL: u8 = 1 << 3;
-// `Pagare::flags` bit 4 was a single-bit judicial hold, replaced by the `judicial_holds` counter
-// before any deployment; never reuse it.
+// `Pagare::flags` bit 4 was briefly a judicial hold, retired with decision 38-g (the judicial
+// stage runs off chain); never reuse it.
 
 /// Registry entry kinds (`Pagare::last_kind`, `PagareEntry::kind`).
 // Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso, and 10 was the
@@ -438,10 +438,6 @@ pub struct Pagare {
     /// `sha256(pagare_hash || fix_rate || fix_date || usdc_delivered)`: the delivery the borrower
     /// instructed, kept apart from the pagaré, which promises MXN only.
     pub delivery_hash: [u8; 32],
-    /// Court acts holding the título (LGTOC 20): each `AnotacionJudicial` adds one, each
-    /// `ConstanciaJudicial` releases one, and `deliver_pagare` waits for zero — one court's
-    /// release never frees another court's embargo.
-    pub judicial_holds: u8,
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 28],
 }

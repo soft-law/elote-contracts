@@ -176,7 +176,8 @@ pub enum PoolError {
     FixAlreadyPostedToday,
     #[msg("This pagaré was already delivered")]
     PagareAlreadyDelivered,
-    #[msg("A court act holds this título; a ConstanciaJudicial must lift it before the delivery")]
+    /// Retired (decision 38-g): the judicial stage runs off chain and no court act gates the pool.
+    #[msg("Retired: no court act gates the delivery (decision 38-g)")]
     DeliveryHeld,
     #[msg("Deposits wait while lines in collection are provisioned; redemptions stay open")]
     PoolImpaired,

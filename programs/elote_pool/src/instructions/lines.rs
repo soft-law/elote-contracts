@@ -659,7 +659,6 @@ pub fn draw(
         fix_date,
         usdc_delivered: usdc,
         delivery_hash: delivery,
-        judicial_holds: 0,
         reserved: [0; 28],
     };
     // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.

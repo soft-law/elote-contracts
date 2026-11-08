@@ -466,7 +466,7 @@ Signers: `council`. Council instruction.
 
 ### `deliver_pagare(draw_index: u16)`
 
-Delivers paid pagaré `draw_index` (decision 38, LGTOC 129-130): the pool thaws the asset, renounces the `PermanentFreezeDelegate` to `None` (terminal) and transfers it to the line's borrower — or to the aval who settled it (LGTOC 115) — never to the sender. Anyone may send it, in the repayment's own transaction or later; refused before the payment (`PagareNotCovered`), twice (`PagareAlreadyDelivered`) or under a judicial hold (`DeliveryHeld`). Appends the `Entrega` entry and sets the `DELIVERED` flag. Never paused.
+Delivers paid pagaré `draw_index` (decision 38, LGTOC 129-130): the pool thaws the asset, renounces the `PermanentFreezeDelegate` to `None` (terminal) and transfers it to the line's borrower — or to the aval who settled it (LGTOC 115) — never to the sender. Anyone may send it, in the repayment's own transaction or later; refused before the payment (`PagareNotCovered`) or twice (`PagareAlreadyDelivered`). Appends the `Entrega` entry and sets the `DELIVERED` flag. Never paused.
 
 Signers: `payer`. Anyone; pays what the CPIs may need.
 
@@ -543,7 +543,7 @@ Signers: `holder`. Council instruction.
 
 ### `court_annotation(draw_index: u16, kind: u8, document_hash: [u8; 32], valid_until: i64)`
 
-Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo, suspension — it also holds the delivery, LGTOC 20) or `KIND_CONSTANCIA_JUDICIAL` (it lifts the hold), over the court document's hash. The council signs; refused once the título was delivered; moves nothing else.
+Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash, and moves nothing else — the judicial stage of a collection runs off chain (decision 38-g). The council signs; refused once the título was delivered.
 
 Signers: `holder`. Council instruction.
 
@@ -809,7 +809,7 @@ The program's record of one pagaré, beside the Core asset `draw` mints. It hold
 | 6072 | `FixOffReference` | The FIX is too far from the FX reference for the feeder; the council must publish it |
 | 6073 | `FixAlreadyPostedToday` | A FIX was already published today in Mexico City; the feeder publishes once a day |
 | 6074 | `PagareAlreadyDelivered` | This pagaré was already delivered |
-| 6075 | `DeliveryHeld` | A court act holds this título; a ConstanciaJudicial must lift it before the delivery |
+| 6075 | `DeliveryHeld` | Retired: no court act gates the delivery (decision 38-g) |
 
 ## Compute
 

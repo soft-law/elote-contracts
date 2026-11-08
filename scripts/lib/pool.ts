@@ -105,12 +105,6 @@ export async function repayInParts(
         const drawIndex = l.pagaresPaid + i;
         if (drawnThrough[drawIndex] > principalAfter) break;
         const record = (await fetchPagare(c.rpc, records[i], { commitment: "confirmed" })).data;
-        // A court hold blocks the delivery, never the payment: pay anyway and leave that one for
-        // deliver-pagare.ts once a ConstanciaJudicial lifts the hold.
-        if (record.judicialHolds > 0) {
-          console.log(`  pagaré ${drawIndex} is under ${record.judicialHolds} court hold(s): paid, not delivered`);
-          continue;
-        }
         deliveries.push(
           await getDeliverPagareInstructionAsync({
             payer,

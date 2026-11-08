@@ -72,8 +72,8 @@ pub struct DeliverPagare<'info> {
 /// transfers it to the line's borrower, or to the aval when the aval's payment covered it
 /// (`PAGARE_FLAG_PAID_BY_AVAL`, LGTOC 115) — never to whoever pays or sends this. Anyone may call
 /// it, in the repayment's own transaction or later: the council is not in the path. Refused before
-/// the payment (`PagareNotCovered`), twice (`PagareAlreadyDelivered`), and while a court act holds
-/// the título (`DeliveryHeld`). The transfer itself returns every owner-managed plugin to the new
+/// the payment (`PagareNotCovered`) and twice (`PagareAlreadyDelivered`). The transfer itself
+/// returns every owner-managed plugin to the new
 /// owner, so no revocation is needed; after the CPIs, an `Entrega` entry over the payment's
 /// receipt hash and the `DELIVERED` flag record it.
 pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()> {
@@ -82,7 +82,6 @@ pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()
     let pagare = &ctx.accounts.pagare;
     require!(pagare.status == PAGARE_PAID, PoolError::PagareNotCovered);
     require!(pagare.flags & PAGARE_FLAG_DELIVERED == 0, PoolError::PagareAlreadyDelivered);
-    require!(pagare.judicial_holds == 0, PoolError::DeliveryHeld);
     let line = &ctx.accounts.line;
     let to = if pagare.flags & PAGARE_FLAG_PAID_BY_AVAL != 0 {
         line.sponsor.ok_or(PoolError::WrongAccount)?
@@ -531,11 +530,11 @@ pub struct CourtAnnotation<'info> {
 
 /// A court's act on the title, `AnotacionJudicial` or `ConstanciaJudicial` (`AnnotationKindInvalid`),
 /// over the court document's hash; the council signs. Appends the entry
-/// (from and to the pool: there is no counterparty); an `AnotacionJudicial` also holds the título
-/// (an embargo must comprise it, LGTOC 20: `deliver_pagare` waits for every hold to lift) and a
-/// `ConstanciaJudicial` releases one hold. Allowed on any line status, beside a procuración and on a
-/// paid título whose delivery is pending; refused only once the título was delivered
-/// (`PagareAlreadyPaid`): from then on it is the owner's.
+/// (from and to the pool: there is no counterparty) and moves nothing else: the judicial stage of
+/// a collection runs off chain (decision 38-g), so no court act gates any pool instruction.
+/// Allowed on any line status, beside a procuración and on a paid título whose delivery is
+/// pending; refused only once the título was delivered (`PagareAlreadyPaid`): from then on it is
+/// the owner's.
 pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
     let pool = &ctx.accounts.pool;
@@ -550,12 +549,6 @@ pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8
     let now = Clock::get()?.unix_timestamp;
     let pool_key = ctx.accounts.pool.key();
     let hash = registry::append(pagare, kind, &pool_key, &pool_key, &document_hash, now).ok_or(PoolError::Overflow)?;
-    if kind == KIND_ANOTACION_JUDICIAL {
-        pagare.judicial_holds = pagare.judicial_holds.checked_add(1).ok_or(PoolError::Overflow)?;
-    } else {
-        // A constancia that lifts nothing (any court certificate) releases nothing.
-        pagare.judicial_holds = pagare.judicial_holds.saturating_sub(1);
-    }
     emit_cpi!(PagareEntry {
         pool: pool_key,
         line_id: ctx.accounts.line.line_id,

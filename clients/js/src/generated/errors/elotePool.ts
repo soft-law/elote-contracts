@@ -165,7 +165,7 @@ export const ELOTE_POOL_ERROR__FIX_OFF_REFERENCE = 0x17b8; // 6072
 export const ELOTE_POOL_ERROR__FIX_ALREADY_POSTED_TODAY = 0x17b9; // 6073
 /** PagareAlreadyDelivered: This pagaré was already delivered */
 export const ELOTE_POOL_ERROR__PAGARE_ALREADY_DELIVERED = 0x17ba; // 6074
-/** DeliveryHeld: A court act holds this título; a ConstanciaJudicial must lift it before the delivery */
+/** DeliveryHeld: Retired: no court act gates the delivery (decision 38-g) */
 export const ELOTE_POOL_ERROR__DELIVERY_HELD = 0x17bb; // 6075
 /** PoolImpaired: Deposits wait while lines in collection are provisioned; redemptions stay open */
 export const ELOTE_POOL_ERROR__POOL_IMPAIRED = 0x17bc; // 6076
@@ -271,7 +271,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__COUNCIL_INVALID]: `The council is not the vault of an autonomous Squads v4 multisig with a majority threshold`,
     [ELOTE_POOL_ERROR__COUNCIL_KIND_INVALID]: `This council kind is not accepted`,
     [ELOTE_POOL_ERROR__COUNCIL_TOO_LARGE]: `The council multisig has more members than the program checks`,
-    [ELOTE_POOL_ERROR__DELIVERY_HELD]: `A court act holds this título; a ConstanciaJudicial must lift it before the delivery`,
+    [ELOTE_POOL_ERROR__DELIVERY_HELD]: `Retired: no court act gates the delivery (decision 38-g)`,
     [ELOTE_POOL_ERROR__DOCUMENT_HASH_REQUIRED]: `The signed document's hash is required`,
     [ELOTE_POOL_ERROR__DRAWS_NOT_SUSPENDED]: `The line's draws are not suspended`,
     [ELOTE_POOL_ERROR__ENDORSEE_INVALID]: `The endorsee is missing, or is the pool, the council, a curator, the creator, the FIX feeder, or the line's borrower, payer or sponsor`,

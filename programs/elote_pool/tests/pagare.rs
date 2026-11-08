@@ -536,20 +536,10 @@ fn deliver_pagare_requires_the_mark_the_recipient_and_the_right_accounts() {
     let ix = env.deliver_pagare_ix_raw(&k, line_id, 0, &a, &borrower.pubkey(), pagare_asset_pda(&line_key, 0).0, other);
     env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
 
-    // An embargo holds the delivery (LGTOC 20). Holds count: two courts' anotaciones need two
-    // constancias — one release never frees the other court's embargo.
+    // Court acts annotate and gate nothing (decision 38-g: the judicial stage runs off chain);
+    // a paid, undelivered título still takes them, and the delivery below proceeds regardless.
     let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_ANOTACION_JUDICIAL, [0x66; 32]);
     env.send(ix, &council, &[]);
-    env.expect_deliver_err(&k, line_id, 0, ERR_BASE + elote_pool::errors::PoolError::DeliveryHeld as u32);
-    let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_ANOTACION_JUDICIAL, [0x68; 32]);
-    env.send(ix, &council, &[]);
-    assert_eq!(env.pagare(&k, line_id, 0).judicial_holds, 2);
-    let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_CONSTANCIA_JUDICIAL, [0x67; 32]);
-    env.send(ix, &council, &[]);
-    env.expect_deliver_err(&k, line_id, 0, ERR_BASE + elote_pool::errors::PoolError::DeliveryHeld as u32);
-    let ix = env.court_annotation_ix(&k, line_id, 0, &a, elote_pool::state::KIND_CONSTANCIA_JUDICIAL, [0x69; 32]);
-    env.send(ix, &council, &[]);
-    assert_eq!(env.pagare(&k, line_id, 0).judicial_holds, 0);
 
     // Nothing happened yet: the title keeps the repayment's mark and its asset; now it delivers,
     // a stranger sending, to the borrower.
@@ -826,8 +816,8 @@ fn revoke_procuracion_appends_the_entry_and_clears_the_record() {
 /// A court's act on a title (embargo, suspension, cancellation; the constancia of art. 28): the
 /// council records the document's hash as an entry; nothing moves on the sidecar or
 /// the asset. Allowed on any line status, written-off included, and beside a procuración in force;
-/// refused only on a delivered title, which is the owner's; an anotación holds the delivery and
-/// a constancia lifts the hold.
+/// refused only on a delivered title, which is the owner's. No court act gates anything: the
+/// judicial stage of a collection runs off chain (decision 38-g).
 #[test]
 fn court_annotations_append_the_entry_and_move_nothing() {
     use elote_pool::events::PagareEntry;
@@ -860,10 +850,9 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     let expected = entry_hash(&after.asset, KIND_ANOTACION_JUDICIAL, &k.pool, &k.pool, &embargo, now, 2);
     assert_eq!((after.entry_count, after.last_kind), (2, KIND_ANOTACION_JUDICIAL));
     assert_eq!(after.log_root, chain(&before.log_root, &expected));
-    assert_eq!((after.flags, after.judicial_holds), (before.flags, 1), "the anotación holds the delivery");
     assert_eq!(
-        (after.status, after.procurador, after.paid_at, after.receipt_hash, after.amount_mxn, after.due_at),
-        (before.status, before.procurador, before.paid_at, before.receipt_hash, before.amount_mxn, before.due_at),
+        (after.status, after.flags, after.procurador, after.paid_at, after.receipt_hash, after.amount_mxn, after.due_at),
+        (before.status, before.flags, before.procurador, before.paid_at, before.receipt_hash, before.amount_mxn, before.due_at),
         "nothing else on the sidecar moves"
     );
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
@@ -875,10 +864,8 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     assert_eq!(asset.base.owner, k.pool, "the asset stays with the pool");
     assert!(asset.plugin_list.permanent_freeze_delegate.as_ref().unwrap().permanent_freeze_delegate.frozen, "and stays frozen");
 
-    // The constancia (art. 28) chains on — and lifts the hold — and both coexist with a
-    // procuración in force.
+    // The constancia (art. 28) chains on, and both coexist with a procuración in force.
     env.court_annotation(&k, line_id, 0, KIND_CONSTANCIA_JUDICIAL, [0x6b; 32]);
-    assert_eq!(env.pagare(&k, line_id, 0).judicial_holds, 0, "the constancia lifted the hold");
     let procurador = env.funded(1);
     env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
     env.court_annotation(&k, line_id, 0, KIND_ANOTACION_JUDICIAL, [0x6c; 32]);
@@ -905,7 +892,7 @@ fn court_annotations_append_the_entry_and_move_nothing() {
     env.expect_err(ix, &council, &[], E_PAGARE_ALREADY_PAID);
     env.court_annotation(&k, line_id, 1, KIND_ANOTACION_JUDICIAL, embargo);
     assert_eq!(env.pagare(&k, line_id, 1).last_kind, KIND_ANOTACION_JUDICIAL);
-    env.expect_deliver_err(&k, line_id, 1, ERR_BASE + PoolError::DeliveryHeld as u32);
+    env.deliver_pagare(&k, line_id, 1);
 }
 
 /// The procurador collects through `repay`, like any payer, and the settling payment itself ends
