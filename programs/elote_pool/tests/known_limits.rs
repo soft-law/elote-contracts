@@ -171,11 +171,12 @@ fn limit_total_write_off_leaves_a_pool_that_cannot_take_deposits() {
     env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
 }
 
-/// Collection needs `covered + max_missed <= installments`. On a short schedule a borrower who
-/// pays early installments and then stops can never be moved to collection; only the write-off
-/// after the term remains.
+/// Inverted 2026-11-08 (decision 41). Collection used to need `covered + max_missed <=
+/// installments`, so a borrower who paid early installments ahead and then stopped could never be
+/// moved to collection. Now the requirement clamps to the installments that remain: the line is
+/// marked once every remaining installment is missed, one second after the last due date.
 #[test]
-fn limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installments() {
+fn collection_is_reachable_when_the_final_installments_are_the_missed_ones() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool_capped(BPS); // a line of 6 of 10
     let investor = env.investor(&k, 10 * UNIT);
@@ -190,11 +191,38 @@ fn limit_collection_is_unreachable_when_covered_plus_max_missed_exceeds_installm
     env.warp(p.term_end + 10 * 365 * 86_400);
     assert_eq!(env.arrears(&k, line_id).missed, 2);
     let ix = env.mark_in_collection_ix(&k, line_id);
+    env.send(ix, &investor, &[]);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
+}
+
+/// Decision 41: a line with four of six installments paid ahead and the two final ones unpaid is
+/// marked only after the last due date, not a second before.
+#[test]
+fn a_line_paid_ahead_is_marked_only_after_its_last_due_date() {
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool_capped(BPS);
+    let investor = env.investor(&k, 10 * UNIT);
+    env.deposit(&k, &investor, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000); // six installments, max_missed 3
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw(&k, line_id, &borrower);
+    let line = env.line(&k, line_id);
+    let total = line.drawn + line.interest_due;
+    env.repay(&k, line_id, &borrower, (total * 4).div_ceil(6)); // four installments, paid ahead
+    assert_eq!(env.arrears(&k, line_id).covered, 4);
+
+    // At the last due date exactly, the final installment is not yet missed.
+    env.warp(p.term_end);
+    let ix = env.mark_in_collection_ix(&k, line_id);
     env.expect_err(ix, &investor, &[], E_NOT_ENOUGH_MISSED);
-    let council = env.council.insecure_clone();
-    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
-    env.send(ix, &council, &[]);
-    assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
+
+    // One second past it, both remaining installments are missed and the mark lands.
+    env.warp(p.term_end + 1);
+    assert_eq!(env.arrears(&k, line_id).missed, 2);
+    let ix = env.mark_in_collection_ix(&k, line_id);
+    env.send(ix, &investor, &[]);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
 }
 
 /// Inverted 2026-10-31. The first-deposit minimum is derived from the asset's

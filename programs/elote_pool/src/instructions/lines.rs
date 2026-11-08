@@ -1044,9 +1044,10 @@ pub struct MarkInCollection<'info> {
 }
 
 /// Anyone may move an active scheduled line to `InCollection` once `max_missed` installments are
-/// missed, past the due date of the last of them: with `covered` installments paid,
-/// `now > anchor + (covered + max_missed) * interval`, where the anchor is one interval before
-/// `first_due_at`. The mark accelerates the balance (vencimiento anticipado):
+/// missed — or every remaining one, when fewer than `max_missed` remain (decision 41) — past the
+/// due date of the last of them: with `covered` installments paid,
+/// `now > anchor + min(covered + max_missed, installments) * interval`, where the anchor is one
+/// interval before `first_due_at`. The mark accelerates the balance (vencimiento anticipado):
 /// `accelerated_at = now`, from which every installment is due and late interest runs on all
 /// remaining principal, and the ordinary interest of the installments not yet due is forgiven
 /// (`interest_due` shrinks to the share of the installments due, never below what was repaid; no
@@ -1060,8 +1061,13 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     let s = line.schedule().ok_or(PoolError::NotScheduled)?;
     require!(line.status == LineStatus::Active, PoolError::LineStatus);
     let a = line_arrears(line, now)?;
-    let k = a.covered.checked_add(u16::from(s.max_missed)).ok_or(PoolError::Overflow)?;
-    require!(k <= s.installments, PoolError::NotEnoughMissed);
+    // With installments paid ahead, the requirement clamps to the ones that remain: `max_missed`
+    // missed installments, or every remaining one when fewer remain (decision 41). A fully
+    // covered schedule has nothing to miss.
+    let k = a.covered.checked_add(u16::from(s.max_missed)).ok_or(PoolError::Overflow)?.min(s.installments);
+    let remaining = s.installments.checked_sub(a.covered).ok_or(PoolError::NotEnoughMissed)?;
+    let needed = u16::from(s.max_missed).min(remaining);
+    require!(needed > 0 && a.missed >= needed, PoolError::NotEnoughMissed);
     let anchor = line.anchor().ok_or(PoolError::Overflow)?;
     let last_missed_due = s.interval_seconds.checked_mul(i64::from(k)).and_then(|span| anchor.checked_add(span)).ok_or(PoolError::Overflow)?;
     require!(now > last_missed_due, PoolError::NotEnoughMissed);
