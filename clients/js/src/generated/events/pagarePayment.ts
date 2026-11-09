@@ -56,6 +56,8 @@ export type PagarePaymentEvent = {
   latePart: bigint;
   interestPart: bigint;
   principalPart: bigint;
+  /** The ordinary interest the line still owes after the payment, reserved by every entry. */
+  interestReserved: bigint;
   entries: Array<PaymentEntry>;
 };
 
@@ -67,6 +69,8 @@ export type PagarePaymentEventArgs = {
   latePart: number | bigint;
   interestPart: number | bigint;
   principalPart: number | bigint;
+  /** The ordinary interest the line still owes after the payment, reserved by every entry. */
+  interestReserved: number | bigint;
   entries: Array<PaymentEntryArgs>;
 };
 
@@ -81,6 +85,7 @@ export function getPagarePaymentEventEncoder(): Encoder<PagarePaymentEventArgs> 
       ["latePart", getU64Encoder()],
       ["interestPart", getU64Encoder()],
       ["principalPart", getU64Encoder()],
+      ["interestReserved", getU64Encoder()],
       ["entries", getArrayEncoder(getPaymentEntryEncoder())],
     ]),
     [getConstantEncoder(PAGARE_PAYMENT_EVENT_DISCRIMINATOR)],
@@ -98,6 +103,7 @@ export function getPagarePaymentEventDecoder(): Decoder<PagarePaymentEvent> {
       ["latePart", getU64Decoder()],
       ["interestPart", getU64Decoder()],
       ["principalPart", getU64Decoder()],
+      ["interestReserved", getU64Decoder()],
       ["entries", getArrayDecoder(getPaymentEntryDecoder())],
     ]),
     [getConstantDecoder(PAGARE_PAYMENT_EVENT_DISCRIMINATOR)],

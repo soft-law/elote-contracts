@@ -70,9 +70,11 @@ fn open_draw_repay_full_cycle_raises_share_value() {
     assert_eq!(line.drawn_at, env.now());
     assert_eq!((line.drawn, line.draws, line.interest_due), (4 * UNIT, 1, 400_000));
 
-    // The borrower earns the interest elsewhere. Late interest, then interest, then principal.
+    // The borrower earns the interest elsewhere and pays at the term, the interest fully accrued.
+    // Late interest, then the accrued interest, then principal.
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 400_000);
+    env.warp(p.term_end);
 
     let ev = env.repay(&k, 0, &borrower, 2 * UNIT);
     assert_eq!(ev.payer, borrower.pubkey());
@@ -176,8 +178,10 @@ fn sponsor_pays_interest_on_behalf() {
     p.sponsor = Some(sponsor.pubkey());
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, Some(&sponsor));
     env.draw(&k, line_id, &borrower);
+    env.warp(p.term_end);
 
-    // Interest is paid first, by whoever pays: the sponsor's 0.4 covers it all.
+    // The accrued interest is paid first, by whoever pays: at the term the sponsor's 0.4 covers
+    // it all.
     let ev = env.repay(&k, line_id, &sponsor, 400_000);
     assert_eq!(ev.payer, sponsor.pubkey());
     assert_eq!((ev.principal_part, ev.interest_part, ev.remaining), (0, 400_000, 4 * UNIT));
@@ -208,7 +212,8 @@ fn repay_clamps_overpayment_and_rejects_wrong_status() {
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 0);
     env.expect_err(ix, &borrower, &[], E_WRONG_AMOUNT);
 
-    // Paused: a borrower can still repay.
+    // Paused: a borrower can still repay. At the term, the interest fully accrued.
+    env.warp(env.line(&k, line_id).term_end);
     env.set_paused(&k, true);
     let ev = env.repay(&k, line_id, &borrower, UNIT);
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (400_000, 600_000, 3_400_000));
@@ -284,13 +289,12 @@ fn write_off_after_term_lowers_nav_once() {
     env.expect_err(ix, &council, &[], E_LINE_STATUS);
 
     env.draw(&k, line_id, &borrower);
-    // 1.0 repaid: 0.4 of interest first, then 0.6 of principal.
-    env.repay(&k, line_id, &borrower, UNIT);
-    assert_eq!(env.nav(&k), 10_400_000);
-
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     env.expect_err(ix, &council, &[], E_TERM_NOT_ENDED);
     env.warp(p.term_end);
+    // 1.0 repaid at the term: the 0.4 of interest accrued first, then 0.6 of principal.
+    env.repay(&k, line_id, &borrower, UNIT);
+    assert_eq!(env.nav(&k), 10_400_000);
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     env.expect_err(ix, &council, &[], E_TERM_NOT_ENDED);
 

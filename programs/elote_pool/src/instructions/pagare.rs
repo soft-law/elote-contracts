@@ -131,7 +131,10 @@ pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()
     let pool_key = ctx.accounts.pool.key();
     let receipt_hash = ctx.accounts.pagare.receipt_hash;
     let pagare = &mut ctx.accounts.pagare;
-    let hash = registry::append(pagare, KIND_ENTREGA, &pool_key, &to, &receipt_hash, now).ok_or(PoolError::Overflow)?;
+    let line = &ctx.accounts.line;
+    let interest_reserved = line.interest_due.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
+    let delivery = registry::delivery_hash(&receipt_hash, interest_reserved);
+    let hash = registry::append(pagare, KIND_ENTREGA, &pool_key, &to, &delivery, now).ok_or(PoolError::Overflow)?;
     pagare.flags |= PAGARE_FLAG_DELIVERED;
     let entry_count = pagare.entry_count;
     let asset_key = pagare.asset;
@@ -157,6 +160,7 @@ pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()
         recipient: to,
         payer: ctx.accounts.payer.key(),
         receipt_hash,
+        interest_reserved,
         entry_count,
         delivered_at: now,
     });

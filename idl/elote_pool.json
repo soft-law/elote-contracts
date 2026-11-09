@@ -6352,6 +6352,13 @@
             }
           },
           {
+            "name": "interest_reserved",
+            "docs": [
+              "The ordinary interest the line still owes at the delivery, reserved by the entry."
+            ],
+            "type": "u64"
+          },
+          {
             "name": "entry_count",
             "type": "u32"
           },
@@ -6523,6 +6530,13 @@
           },
           {
             "name": "principal_part",
+            "type": "u64"
+          },
+          {
+            "name": "interest_reserved",
+            "docs": [
+              "The ordinary interest the line still owes after the payment, reserved by every entry."
+            ],
             "type": "u64"
           },
           {

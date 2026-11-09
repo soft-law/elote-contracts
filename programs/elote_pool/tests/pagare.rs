@@ -411,14 +411,15 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     env.deliver_pagare(&k, line_id, 1);
     assert_eq!(env.collection_state(&k.collection).current_size, 3, "delivered, not burnt");
 
-    // At 10%, two tranches of 1.0 with 0.1 of interest each: a repayment of 1.0 settles the 0.2
-    // of interest and only 0.8 of principal, so the first pagaré is not covered until 0.2 more
-    // arrives.
+    // At 10%, two tranches of 1.0 with 0.1 of interest each, at the term: a repayment of 1.0
+    // settles the 0.2 of interest accrued and only 0.8 of principal, so the first pagaré is not
+    // covered until 0.2 more arrives.
     let borrower = env.borrower(&k);
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.warp(p.term_end);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let ev = env.repay(&k, line_id, &borrower, UNIT);
     assert_eq!((ev.interest_part, ev.principal_part), (200_000, 800_000));
@@ -591,7 +592,7 @@ fn entry_hash(asset: &solana_pubkey::Pubkey, kind: u8, from: &solana_pubkey::Pub
 }
 
 /// What a payment entry commits (decision 38): domain, receipt, amounts, balance, who paid.
-fn annotation(receipt: &[u8; 32], principal_applied: u64, accessory_applied: u64, principal_balance: u64, by_borrower: bool) -> [u8; 32] {
+fn annotation(receipt: &[u8; 32], principal_applied: u64, accessory_applied: u64, principal_balance: u64, by_borrower: bool, interest_reserved: u64) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(b"elote.pago.v1");
@@ -600,7 +601,81 @@ fn annotation(receipt: &[u8; 32], principal_applied: u64, accessory_applied: u64
     h.update(accessory_applied.to_le_bytes());
     h.update(principal_balance.to_le_bytes());
     h.update([u8::from(by_borrower)]);
+    h.update(interest_reserved.to_le_bytes());
     h.finalize().into()
+}
+
+/// What a delivery entry commits (decision 46): domain, receipt, the interest reserved.
+fn delivery(receipt: &[u8; 32], interest_reserved: u64) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b"elote.entrega.v1");
+    h.update(receipt);
+    h.update(interest_reserved.to_le_bytes());
+    h.finalize().into()
+}
+
+/// Decision 46: a line of four pagarés settles in two payments for what one would pay. The payment
+/// on account takes the accrued interest and then principal; the pagaré it covers is paid while
+/// the line still owes interest, so its entry and its delivery reserve that interest (CCom 364).
+/// The forgiveness of decision 44 comes once, with the payment that settles.
+#[test]
+fn a_split_settlement_reserves_the_interest_on_every_titulo_it_covers() {
+    use elote_pool::events::{EarlySettlement, PagareDelivered, PagarePayment};
+    use elote_pool::state::KIND_PAGADO;
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let b = borrower.pubkey();
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    for _ in 0..4 {
+        env.draw_amount(&k, line_id, &borrower, UNIT);
+    }
+    let line = env.line(&k, line_id);
+    let fixed = line.interest_due;
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &b, fixed);
+    env.warp(line.drawn_at + (line.term_end - line.drawn_at) / 2);
+    let balance = env.token_balance(&k.asset_ata(&b));
+
+    // On account: the accrued interest and two and a half pagarés.
+    let before0 = env.pagare(&k, line_id, 0);
+    let amount = 2 * UNIT + UNIT / 2 + fixed / 2;
+    let ix = env.repay_ix(&k, line_id, &b, amount);
+    let meta = env.send(ix, &borrower, &[]);
+    let now = env.now();
+    assert!(find_event::<EarlySettlement>(&meta).is_none());
+    let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
+    let line = env.line(&k, line_id);
+    assert!(ev.interest_part > 0 && ev.interest_part < fixed, "the accrued interest, not all of it");
+    assert_eq!(ev.principal_part, amount - ev.interest_part);
+    let reserved = fixed - ev.interest_part;
+    assert_eq!((line.pagares_paid, line.interest_due - line.interest_repaid, ev.interest_reserved), (2, reserved, reserved));
+    let p0 = env.pagare(&k, line_id, 0);
+    let pagado = annotation(&RECEIPT_HASH, UNIT, ev.interest_part, 0, true, reserved);
+    assert_eq!(p0.log_root, chain(&before0.log_root, &entry_hash(&p0.asset, KIND_PAGADO, &b, &k.pool, &pagado, now, 2)));
+
+    // The título leaves with the reservation in its own registry.
+    let meta = env.deliver_pagare(&k, line_id, 0);
+    let now = env.now();
+    let ev: PagareDelivered = find_event(&meta).expect("PagareDelivered");
+    assert_eq!(ev.interest_reserved, reserved);
+    let d0 = env.pagare(&k, line_id, 0);
+    assert_eq!(d0.log_root, chain(&p0.log_root, &entry_hash(&d0.asset, KIND_ENTREGA, &k.pool, &b, &delivery(&RECEIPT_HASH, reserved), now, 3)));
+
+    // The settling payment: the interest accrued since, the rest forgiven, nothing left to reserve.
+    let ix = env.repay_ix(&k, line_id, &b, 4 * UNIT);
+    let meta = env.send(ix, &borrower, &[]);
+    let settled: EarlySettlement = find_event(&meta).expect("EarlySettlement");
+    let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.pagares_paid, ev.interest_reserved), (LineStatus::Repaid, 4, 0));
+    assert_eq!(settled.interest_forgiven, fixed - line.interest_due);
+    assert!(settled.interest_forgiven > 0 && line.interest_due < fixed);
+    assert_eq!(balance - env.token_balance(&k.asset_ata(&b)), 4 * UNIT + line.interest_due, "what one settling payment pays");
+    let meta = env.deliver_pagare(&k, line_id, 3);
+    assert_eq!(find_event::<PagareDelivered>(&meta).expect("PagareDelivered").interest_reserved, 0);
 }
 
 fn chain(root: &[u8; 32], entry: &[u8; 32]) -> [u8; 32] {
@@ -918,6 +993,7 @@ fn the_payment_ends_the_procuracion_and_the_procurador_keeps_no_record() {
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.procuracion(&k, line_id, 0, &pr, ENDOSO_HASH);
     env.procuracion(&k, line_id, 1, &pr, ENDOSO_HASH);
+    env.warp(p.term_end);
     let interest = env.line(&k, line_id).interest_due;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     let meta = env.send(env.repay_ix_full(&k, line_id, &borrower.pubkey(), UNIT + interest, RECEIPT_HASH, &env.payment_sidecars(&k, line_id, UNIT + interest)), &borrower, &[]);
@@ -1053,6 +1129,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    env.warp(p.term_end);
     let line = env.line(&k, line_id);
     assert_eq!((line.draws, line.pagares_paid), (3, 0));
     let interest = line.interest_due;
@@ -1069,7 +1146,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     let now = env.now();
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!((p0.entry_count, p0.status, p0.last_kind), (2, PAGARE_OUTSTANDING, KIND_ABONO));
-    assert_eq!(p0.log_root, chain(&before.log_root, &entry_hash(&p0.asset, KIND_ABONO, &b, &k.pool, &annotation(&[0; 32], 0, half, UNIT, true), now, 2)));
+    assert_eq!(p0.log_root, chain(&before.log_root, &entry_hash(&p0.asset, KIND_ABONO, &b, &k.pool, &annotation(&[0; 32], 0, half, UNIT, true, interest - half), now, 2)));
     assert!(find_event::<PagareEntry>(&meta).is_some());
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
     assert_eq!((ev.payer, ev.receipt_hash, ev.late_part, ev.interest_part, ev.principal_part), (b, [0; 32], 0, half, 0));
@@ -1093,7 +1170,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
         "the PAGADO mark at the moment of payment"
     );
     assert_eq!((p1.status, p1.last_kind, p1.entry_count), (PAGARE_OUTSTANDING, KIND_ABONO, 2));
-    assert_eq!(p1.log_root, chain(&before1.log_root, &entry_hash(&p1.asset, KIND_ABONO, &b, &k.pool, &annotation(&RECEIPT_HASH, UNIT / 2, 0, UNIT / 2, true), now, 2)));
+    assert_eq!(p1.log_root, chain(&before1.log_root, &entry_hash(&p1.asset, KIND_ABONO, &b, &k.pool, &annotation(&RECEIPT_HASH, UNIT / 2, 0, UNIT / 2, true, 0), now, 2)));
     assert_eq!(env.pagare(&k, line_id, 2).entry_count, 1, "untouched");
     assert_eq!(env.line(&k, line_id).pagares_paid, 1);
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");

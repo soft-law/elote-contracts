@@ -36,6 +36,38 @@ export function bulletAccruedInterest(drawn: bigint, drawTimeWeight: bigint, rat
   return (span * BigInt(rateBps)) / (BPS * SECONDS_PER_YEAR);
 }
 
+/**
+ * The ordinary interest a `repay` at `now` takes before principal, after late interest. While the
+ * line can draw, or once it is in collection, all the interest it still owes. On an active line
+ * that can draw nothing more, the interest accrued to `now` and not yet repaid (decision 46): the
+ * rest stays owed, and the payment that also repays all the principal settles the line and has
+ * it forgiven (decision 44). `status` is `LineStatus` (2 `Active`).
+ *
+ * The program reads its own clock: quote `now` a little ahead, since what the quote exceeds the
+ * accrual by falls on principal.
+ */
+export function repayInterestLeft(
+  line: {
+    status: number;
+    principal: bigint;
+    drawn: bigint;
+    availabilityEnd: bigint;
+    interestDue: bigint;
+    interestRepaid: bigint;
+    drawTimeWeight: bigint;
+    rateBps: number;
+  },
+  now: bigint
+): bigint {
+  const canDraw = line.status === 2 && now < line.availabilityEnd && line.principal > line.drawn;
+  if (line.status !== 2 || canDraw) return line.interestDue - line.interestRepaid;
+  const accrued = max(
+    min(bulletAccruedInterest(line.drawn, line.drawTimeWeight, line.rateBps, now), line.interestDue),
+    line.interestRepaid
+  );
+  return accrued - line.interestRepaid;
+}
+
 export function lineSchedule(line: Schedule): Schedule | null {
   if (line.installments === 0) return null;
   const { intervalSeconds, installments, lateBps, maxMissed, lateCollected, latePaidUntil } = line;
@@ -124,14 +156,18 @@ export function lineArrears(
     s.lateBps === 0
       ? 0n
       : (BPS * SECONDS_PER_YEAR + BigInt(s.lateBps) - 1n) / BigInt(s.lateBps);
+  const unpaid = total > paid ? total - paid : 0n;
+  const principalLeft = line.drawn - line.principalRepaid;
   let overdue = 0n;
   let overduePrincipal = 0n;
   let weighted = 0n;
   let firstMissedDue: bigint | null = null;
   for (let k = covered + 1n; k <= due; k++) {
     const part = cumulative(k) - max(paid, cumulative(k - 1n));
-    // Late interest accrues on the principal share of each part only (decision 11).
-    const partPrincipal = (part * line.drawn) / total;
+    // Late interest accrues on the principal share of each part only (decision 11), and on no
+    // more than its share of the principal still unpaid (decision 46).
+    const scheduled = (part * line.drawn) / total;
+    const partPrincipal = unpaid === 0n ? 0n : min(scheduled, (part * principalLeft) / unpaid);
     const dueAt = anchor + k * s.intervalSeconds;
     // Once accelerated, an installment not yet due is exigible at the mark and accrues from it.
     const exigibleAt = accelerated ? min(dueAt, line.acceleratedAt) : dueAt;

@@ -1702,8 +1702,22 @@ impl Env {
             return vec![];
         }
         let late = self.arrears(k, line_id).late_due;
-        let interest_left = line.interest_due - line.interest_repaid;
-        let remaining = (line.drawn - line.principal_repaid) + interest_left;
+        let mut interest_left = line.interest_due - line.interest_repaid;
+        let mut remaining = (line.drawn - line.principal_repaid) + interest_left;
+        // Decisions 44 and 46: on an active line that can draw nothing more, the accrued interest.
+        let now = self.now();
+        if line.status == elote_pool::state::LineStatus::Active && !(now < line.availability_end && line.available().unwrap() > 0) {
+            let accrued = elote_pool::math::bullet_accrued_interest(line.drawn, line.draw_time_weight, line.rate_bps, now)
+                .unwrap()
+                .min(line.interest_due)
+                .max(line.interest_repaid);
+            let cut_left = accrued - line.interest_repaid;
+            let settle_total = (line.drawn - line.principal_repaid) + cut_left;
+            interest_left = cut_left;
+            if amount.saturating_sub(late) >= settle_total {
+                remaining = settle_total;
+            }
+        }
         let rest = amount.saturating_sub(late).min(remaining);
         let principal_after = line.principal_repaid + (rest - rest.min(interest_left));
         let line_key = line_pda(&k.pool, line_id).0;
@@ -1828,6 +1842,7 @@ impl Env {
             grace: 0,
             late_paid_until: line.late_paid_until,
             principal: line.drawn,
+            principal_left: line.drawn - line.principal_repaid,
             late_collected: line.late_collected,
             accelerated_at: line.accelerated_at,
         };

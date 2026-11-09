@@ -17,6 +17,7 @@ import {
   getRepayInstructionAsync,
   fetchPool,
   lineLateDue,
+  repayInterestLeft,
   mxnForUsdc,
   usdcCeilForMxn,
   repayPrincipalCap,
@@ -81,8 +82,11 @@ export async function repayInParts(
       // Late interest grows by the second until the part lands: quote it 30 s ahead. The program
       // takes only what is due; the excess falls on principal, and if that moves the records the
       // part touches, the retry below rebuilds it.
-      const late = lineLateDue(l, (await chainNow(c)) + 30n);
-      const interestLeft = l.interestDue - l.interestRepaid;
+      const quotedAt = (await chainNow(c)) + 30n;
+      const late = lineLateDue(l, quotedAt);
+      // The interest the program takes before principal: on a line that can draw nothing more,
+      // the interest accrued, quoted ahead like the late interest (decision 46).
+      const interestLeft = repayInterestLeft(l, quotedAt);
       const principalLeft = l.drawn - l.principalRepaid;
       const drawnThrough = await drawnThroughOf(c, line, l.draws);
       const cap = drawnThrough.length

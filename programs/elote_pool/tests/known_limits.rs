@@ -418,6 +418,7 @@ fn limit_a_payment_landing_first_makes_an_in_flight_repay_retry() {
     for _ in 0..3 {
         env.draw_amount(&k, line_id, &borrower, UNIT);
     }
+    env.warp(p.term_end);
     let council = env.council.insecure_clone();
     let amount = env.line(&k, line_id).interest_due + UNIT - 1;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 10 * UNIT);

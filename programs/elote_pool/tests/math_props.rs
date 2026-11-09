@@ -98,16 +98,18 @@ proptest! {
         collected_share in 0..=10_000u64,
         watermark in 0..=10_000i64,
         now_num in -100..=130i64,
+        left_share in 0..=10_000u64,
     ) {
         prop_assume!(total >= u64::from(n));
         let interest = total / 10_000 * interest_share;
         let principal = total - interest;
         let late_collected = principal / 10_000 * collected_share;
+        let principal_left = principal / 10_000 * left_share;
         let paid = (total / 10_000).max(1) * paid_num; // up to 120% of the total
         let now = anchor + interval * now_num; // from before the first due date to past the last
         let late_paid_until = if watermark == 0 { 0 } else { anchor + (now - anchor) * watermark / 10_000 };
         let t = ScheduleTerms {
-            total, anchor, interval, installments: n, late_bps, grace, late_paid_until, principal, late_collected, accelerated_at: 0,
+            total, anchor, interval, installments: n, late_bps, grace, late_paid_until, principal, principal_left, late_collected, accelerated_at: 0,
         };
         let Arrears { due, covered, missed, overdue, overdue_principal, late_due, first_missed_due } =
             arrears(&t, paid, now).expect("valid terms never overflow");
@@ -117,6 +119,7 @@ proptest! {
         prop_assert!(overdue <= total.saturating_sub(paid));
         prop_assert!(overdue_principal <= overdue);
         prop_assert!(overdue_principal <= principal);
+        prop_assert!(overdue_principal <= principal_left, "never more principal than is left unpaid");
         prop_assert!(late_due <= overdue_principal);
         prop_assert!(late_due <= principal - late_collected);
         prop_assert_eq!(first_missed_due.is_some(), missed > 0);

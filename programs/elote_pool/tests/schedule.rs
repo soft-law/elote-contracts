@@ -228,6 +228,26 @@ fn an_early_settlement_pays_only_the_interest_accrued_to_the_payment() {
     assert_eq!(line.interest_due, 60_000, "the fixed interest was cut to the accrual");
 }
 
+/// Decision 46 (candidate): the reduction of decision 44 does not depend on how the settlement is
+/// split. A payment on account before the settling one pays the interest accrued, not the whole
+/// interest fixed at the draws.
+#[test]
+fn a_settlement_in_two_payments_pays_what_one_payment_pays() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
+    env.warp(t0 + p.interval() / 2);
+    let before = borrower_balance(&env, &k, &b);
+    let first = env.repay(&k, line_id, &b, 1_000_000);
+    assert_eq!((first.interest_part, first.principal_part), (60_000, 940_000), "the accrued interest, then principal");
+    env.repay(&k, line_id, &b, 6_000_000);
+    let line = env.line(&k, line_id);
+    assert_eq!(line.status, LineStatus::Repaid);
+    assert_eq!(line.interest_due, 60_000, "the fixed interest was cut to the accrual");
+    assert_eq!(before - borrower_balance(&env, &k, &b), 6_060_000, "what a single settling payment pays");
+}
+
 /// While the line can still draw, a full payment neither closes it nor touches the fixed
 /// interest: the settlement of decision 44 is only for a line that can draw nothing more.
 #[test]
@@ -290,28 +310,56 @@ fn late_interest_accrues_from_the_due_date_and_is_collected_first() {
     let ix = env.repay_ix(&k, line_id, &b.pubkey(), 9_999);
     env.expect_err(ix, &b, &[], E_LATE_INTEREST_UNPAID);
 
-    // Late interest, then the whole interest, then principal.
+    // Late interest, then the interest accrued (720_000 * (1/6 + 1/100)), then principal.
     let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1_120_000 + 10_000);
     let meta = env.send(ix, &b, &[]);
     let ev: LateInterestCollected = find_event(&meta).expect("LateInterestCollected");
     assert_eq!((ev.pool, ev.line_id, ev.amount), (k.pool, line_id, 10_000));
     let ev: LineRepaid = find_event(&meta).expect("LineRepaid");
-    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (720_000, 400_000, 5_600_000));
-    assert_eq!(ev.nav_after, nav0 + 10_000 + 720_000, "late interest raises the NAV like interest");
-    assert_eq!(env.nav(&k), nav0 + 10_000 + 720_000);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (127_200, 992_800, 5_600_000));
+    assert_eq!(ev.nav_after, nav0 + 10_000 + 127_200, "late interest raises the NAV like interest");
+    assert_eq!(env.nav(&k), nav0 + 10_000 + 127_200);
     let pool = env.pool(&k);
-    assert_eq!(pool.interest_collected, 720_000, "late interest is not ordinary interest");
-    assert_eq!(pool.outstanding_principal, 5_600_000);
+    assert_eq!(pool.interest_collected, 127_200, "late interest is not ordinary interest");
+    assert_eq!(pool.outstanding_principal, 5_007_200);
     let l = env.line(&k, line_id);
     assert_eq!((l.late_collected, l.late_paid_until), (10_000, env.now()));
     let a = env.arrears(&k, line_id);
     assert_eq!((a.missed, a.late_due), (0, 0));
 
-    // The settled period is never charged again: a day later nothing is overdue or late.
+    // The settled period is never charged again: a day later nothing is overdue or late, and
+    // the unit goes to the day's ordinary interest.
     env.warp(env.now() + 24 * 3600);
     let ev = env.repay(&k, line_id, &b, 1);
-    assert_eq!((ev.interest_part, ev.principal_part), (0, 1));
+    assert_eq!((ev.interest_part, ev.principal_part), (1, 0));
     assert_eq!(env.line(&k, line_id).late_collected, 10_000);
+}
+
+/// Decision 46: a payment on account can repay principal ahead of the schedule, so late interest
+/// runs on the share of the overdue part that is principal still unpaid, never on the ordinary
+/// interest it carries. 5.0 of 6.0 repaid at the draw; the last two installments (1.72) go unpaid
+/// with 1.0 of principal in them.
+#[test]
+fn late_interest_runs_on_no_more_principal_than_is_left_unpaid() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
+    let ev = env.repay(&k, line_id, &b, 5 * UNIT);
+    assert_eq!((ev.interest_part, ev.principal_part), (0, 5 * UNIT), "nothing accrued yet");
+
+    env.warp(t0 + 6 * p.interval() + YEAR / 100);
+    let a = env.arrears(&k, line_id);
+    assert_eq!((a.missed, a.overdue), (2, 1_720_000));
+    // 600_000 and 1_120_000 unpaid, each with 1_000_000 / 1_720_000 of principal.
+    assert_eq!(a.overdue_principal, 348_837 + 651_162);
+    // The first for a sixth of a year and 1%, the second for 1%, at 100% a year.
+    assert_eq!(a.late_due, (348_837 * (YEAR as u64 / 6 + YEAR as u64 / 100) + 651_162 * (YEAR as u64 / 100)) / YEAR as u64);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 2 * UNIT);
+    let meta = env.send(ix, &b, &[]);
+    let ev: LateInterestCollected = find_event(&meta).expect("LateInterestCollected");
+    assert_eq!(ev.amount, a.late_due, "what the program charges");
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
 
 #[test]
@@ -343,30 +391,32 @@ fn late_interest_is_capped_and_overpayment_stays_with_the_payer() {
     assert_eq!(line.late_collected, late);
 }
 
-/// One repayment order for every line: late interest, then interest, then principal, and never
-/// more than is due.
+/// One repayment order for every line that can draw nothing more: late interest, then the interest
+/// accrued, then principal, and never more than is due (decision 46).
 #[test]
-fn repayment_order_is_interest_first_and_clamps_overpayment_on_every_line() {
+fn repayment_order_is_accrued_interest_first_and_clamps_overpayment_on_every_line() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let p2 = env.scheduled_params(4 * UNIT, 1_000, 4, 10_000);
-    let (b, v2, _) = drawn(&mut env, &k, &p2, UNIT);
+    let (b, v2, t0) = drawn(&mut env, &k, &p2, UNIT);
     let p1 = env.line_params(4 * UNIT, 1_000);
     let v1 = open(&mut env, &k, &b, &p1);
     env.draw(&k, v1, &b);
 
+    // A quarter of the year in, 0.1 of the 0.4 fixed has accrued on each.
+    env.warp(t0 + p2.interval());
     let ev = env.repay(&k, v2, &b, 500_000);
-    assert_eq!((ev.interest_part, ev.principal_part), (400_000, 100_000));
+    assert_eq!((ev.interest_part, ev.principal_part), (100_000, 400_000));
     let ev = env.repay(&k, v1, &b, 500_000);
-    assert_eq!((ev.interest_part, ev.principal_part), (400_000, 100_000), "a bullet line too");
+    assert_eq!((ev.interest_part, ev.principal_part), (100_000, 400_000), "a bullet line too");
 
     // Both take what is due and leave the surplus with the payer.
     let before = borrower_balance(&env, &k, &b);
     let ev = env.repay(&k, v1, &b, 4 * UNIT);
-    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (0, 3_900_000, 0));
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (0, 3_600_000, 0));
     let ev = env.repay(&k, v2, &b, 4 * UNIT);
-    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (0, 3_900_000, 0));
-    assert_eq!(before - borrower_balance(&env, &k, &b), 2 * 3_900_000);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (0, 3_600_000, 0));
+    assert_eq!(before - borrower_balance(&env, &k, &b), 2 * 3_600_000);
     assert_eq!(env.line(&k, v1).status, LineStatus::Repaid);
     assert_eq!(env.line(&k, v2).status, LineStatus::Repaid);
 }

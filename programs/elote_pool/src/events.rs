@@ -105,6 +105,8 @@ pub struct PagareDelivered {
     pub recipient: Pubkey,
     pub payer: Pubkey,
     pub receipt_hash: [u8; 32],
+    /// The ordinary interest the line still owes at the delivery, reserved by the entry.
+    pub interest_reserved: u64,
     pub entry_count: u32,
     pub delivered_at: i64,
 }
@@ -274,6 +276,8 @@ pub struct PagarePayment {
     pub late_part: u64,
     pub interest_part: u64,
     pub principal_part: u64,
+    /// The ordinary interest the line still owes after the payment, reserved by every entry.
+    pub interest_reserved: u64,
     pub entries: Vec<PaymentEntry>,
 }
 

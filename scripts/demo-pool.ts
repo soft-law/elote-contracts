@@ -462,6 +462,6 @@ async function scheduleDemo() {
   await repayInParts(c, { pool, poolData, line: sLine, payer: borrower, amount: usdcCeilForMxn(a.overdue + installment + 2n * a.lateDue, FIX), receiptHash: noReceipt });
   ({ l, a } = await read());
   console.log(`  late interest collected MXN ${fmtMxn(l.lateCollected - lateBefore)}; missed installments now ${a.missed}`);
-  console.log(`  repaid: interest MXN ${fmtMxn(l.interestRepaid)}, principal MXN ${fmtMxn(l.principalRepaid)} (late interest first, then interest, then principal)`);
+  console.log(`  repaid: interest MXN ${fmtMxn(l.interestRepaid)}, principal MXN ${fmtMxn(l.principalRepaid)} (late interest first, then the interest accrued, then principal)`);
   console.log(`  line status ${LineStatus[l.status]}; once 3 installments are missed, past the third one's due date, anyone may call mark_in_collection`);
 }

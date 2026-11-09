@@ -39,6 +39,7 @@ fn n01_an_interest_only_payment_appends_its_abono() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = env.open_line_with(&k, &borrower, &p, None).0;
     env.draw_amount(&k, line_id, &borrower, 4 * UNIT);
+    env.warp(p.term_end);
     let council = env.council.insecure_clone();
     let stranger = env.funded(1);
     env.mint_to(&k.asset_mint, &council, &stranger.pubkey(), 1_000);

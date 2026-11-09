@@ -18,6 +18,7 @@
     "overdue_principal": "0",
     "paid": "0",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -39,6 +40,7 @@
     "overdue_principal": "100",
     "paid": "0",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -60,6 +62,7 @@
     "overdue_principal": "150",
     "paid": "150",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -81,6 +84,7 @@
     "overdue_principal": "0",
     "paid": "400",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -102,6 +106,7 @@
     "overdue_principal": "600",
     "paid": "0",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -123,6 +128,7 @@
     "overdue_principal": "23021280",
     "paid": "0",
     "principal": "34531920",
+    "principal_left": "34531920",
     "total": "34531920"
   },
   {
@@ -144,6 +150,7 @@
     "overdue_principal": "11510640",
     "paid": "0",
     "principal": "34531920",
+    "principal_left": "34531920",
     "total": "34531920"
   },
   {
@@ -165,6 +172,7 @@
     "overdue_principal": "23021280",
     "paid": "0",
     "principal": "34531920",
+    "principal_left": "34531920",
     "total": "34531920"
   },
   {
@@ -186,6 +194,7 @@
     "overdue_principal": "23021280",
     "paid": "0",
     "principal": "34531920",
+    "principal_left": "34531920",
     "total": "34531920"
   },
   {
@@ -207,6 +216,7 @@
     "overdue_principal": "600",
     "paid": "0",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -228,6 +238,7 @@
     "overdue_principal": "498",
     "paid": "0",
     "principal": "500",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -249,6 +260,7 @@
     "overdue_principal": "498",
     "paid": "0",
     "principal": "500",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -270,6 +282,7 @@
     "overdue_principal": "140",
     "paid": "60",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -291,6 +304,7 @@
     "overdue_principal": "83",
     "paid": "0",
     "principal": "500",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -312,6 +326,7 @@
     "overdue_principal": "33",
     "paid": "60",
     "principal": "500",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -333,6 +348,7 @@
     "overdue_principal": "498",
     "paid": "0",
     "principal": "500",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -354,6 +370,7 @@
     "overdue_principal": "500",
     "paid": "100",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -375,6 +392,7 @@
     "overdue_principal": "300",
     "paid": "300",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -396,6 +414,7 @@
     "overdue_principal": "0",
     "paid": "600",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -417,6 +436,7 @@
     "overdue_principal": "500",
     "paid": "100",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -438,6 +458,7 @@
     "overdue_principal": "500",
     "paid": "100",
     "principal": "600",
+    "principal_left": "600",
     "total": "600"
   },
   {
@@ -459,6 +480,7 @@
     "overdue_principal": "4000",
     "paid": "0",
     "principal": "4000",
+    "principal_left": "4100",
     "total": "4100"
   },
   {
@@ -480,6 +502,7 @@
     "overdue_principal": "4000",
     "paid": "0",
     "principal": "4000",
+    "principal_left": "4100",
     "total": "4100"
   },
   {
@@ -501,6 +524,7 @@
     "overdue_principal": "3902",
     "paid": "100",
     "principal": "4000",
+    "principal_left": "4100",
     "total": "4100"
   },
   {
@@ -522,6 +546,7 @@
     "overdue_principal": "1951",
     "paid": "2100",
     "principal": "4000",
+    "principal_left": "4100",
     "total": "4100"
   },
   {
@@ -543,6 +568,7 @@
     "overdue_principal": "4000",
     "paid": "0",
     "principal": "4000",
+    "principal_left": "4100",
     "total": "4100"
   },
   {
@@ -564,6 +590,7 @@
     "overdue_principal": "4000",
     "paid": "0",
     "principal": "4000",
+    "principal_left": "4100",
     "total": "4100"
   },
   {
@@ -585,6 +612,7 @@
     "overdue_principal": "0",
     "paid": "41085685950387",
     "principal": "15146713470110",
+    "principal_left": "3371658418422",
     "total": "36106587531275"
   },
   {
@@ -606,6 +634,7 @@
     "overdue_principal": "0",
     "paid": "135373792734270",
     "principal": "6663932088692",
+    "principal_left": "3034754669232",
     "total": "135171036185018"
   },
   {
@@ -627,6 +656,7 @@
     "overdue_principal": "45508513357635",
     "paid": "151017604789816",
     "principal": "108044903503739",
+    "principal_left": "98817868741100",
     "total": "260915004827777"
   },
   {
@@ -648,6 +678,7 @@
     "overdue_principal": "13448202182963",
     "paid": "19873086855898",
     "principal": "21349741518023",
+    "principal_left": "21349741518023",
     "total": "53696532985175"
   },
   {
@@ -669,6 +700,7 @@
     "overdue_principal": "0",
     "paid": "8311588364947",
     "principal": "13355483371818",
+    "principal_left": "4284439065096",
     "total": "32353399634554"
   },
   {
@@ -690,6 +722,7 @@
     "overdue_principal": "0",
     "paid": "253724689470604",
     "principal": "23328322075977",
+    "principal_left": "23328322075977",
     "total": "212268626683845"
   },
   {
@@ -711,6 +744,7 @@
     "overdue_principal": "0",
     "paid": "59042108935917",
     "principal": "40217736206525",
+    "principal_left": "40217736206525",
     "total": "74463499732352"
   },
   {
@@ -729,9 +763,10 @@
     "missed": 24,
     "now": "2338684831",
     "overdue": "36755602149605",
-    "overdue_principal": "8211201521328",
+    "overdue_principal": "5782551559708",
     "paid": "11798693952300",
     "principal": "10847029750645",
+    "principal_left": "5782551559725",
     "total": "48554296101905"
   },
   {
@@ -753,6 +788,7 @@
     "overdue_principal": "18277531095240",
     "paid": "107946062907180",
     "principal": "46602578005865",
+    "principal_left": "32631125115600",
     "total": "177601288108425"
   },
   {
@@ -774,6 +810,7 @@
     "overdue_principal": "0",
     "paid": "71379493228746",
     "principal": "35104049351224",
+    "principal_left": "4570547225370",
     "total": "188934603577918"
   },
   {
@@ -795,6 +832,7 @@
     "overdue_principal": "0",
     "paid": "42340903111602",
     "principal": "19668501071735",
+    "principal_left": "10705565132401",
     "total": "42729743789801"
   },
   {
@@ -816,6 +854,7 @@
     "overdue_principal": "0",
     "paid": "317822889585078",
     "principal": "176596056148171",
+    "principal_left": "176596056148171",
     "total": "277841498026659"
   },
   {
@@ -837,6 +876,7 @@
     "overdue_principal": "0",
     "paid": "295497885483300",
     "principal": "127300858062896",
+    "principal_left": "127300858062896",
     "total": "256241662758696"
   },
   {
@@ -858,6 +898,7 @@
     "overdue_principal": "0",
     "paid": "224992568106075",
     "principal": "89226862611040",
+    "principal_left": "32532114107606",
     "total": "193508702253565"
   },
   {
@@ -879,6 +920,7 @@
     "overdue_principal": "4908974549810",
     "paid": "12278690982462",
     "principal": "7508373431619",
+    "principal_left": "7508373431619",
     "total": "35467045013002"
   },
   {
@@ -900,6 +942,7 @@
     "overdue_principal": "0",
     "paid": "186849782015",
     "principal": "180590114510",
+    "principal_left": "79170704224",
     "total": "268655331684"
   },
   {
@@ -921,6 +964,7 @@
     "overdue_principal": "1564712048423",
     "paid": "184400160266091",
     "principal": "7281117023006",
+    "principal_left": "3566291116396",
     "total": "234874742418296"
   },
   {
@@ -942,6 +986,7 @@
     "overdue_principal": "0",
     "paid": "28071016844125",
     "principal": "11609554496329",
+    "principal_left": "11609554496329",
     "total": "103012905857034"
   },
   {
@@ -963,6 +1008,7 @@
     "overdue_principal": "0",
     "paid": "190603647729525",
     "principal": "2539940877967",
+    "principal_left": "2182825183678",
     "total": "180137650259442"
   },
   {
@@ -984,6 +1030,7 @@
     "overdue_principal": "6314334446339",
     "paid": "56374056143370",
     "principal": "50313421880784",
+    "principal_left": "50313421880784",
     "total": "112860973261476"
   },
   {
@@ -1005,6 +1052,7 @@
     "overdue_principal": "1154051960267",
     "paid": "62700966782886",
     "principal": "17550638117134",
+    "principal_left": "17550638117134",
     "total": "128013407077837"
   },
   {
@@ -1026,6 +1074,7 @@
     "overdue_principal": "40077337702867",
     "paid": "41643516806025",
     "principal": "71630630387211",
+    "principal_left": "71630630387211",
     "total": "94536928053726"
   },
   {
@@ -1047,6 +1096,7 @@
     "overdue_principal": "0",
     "paid": "46321326109268",
     "principal": "23420617054546",
+    "principal_left": "13710429221070",
     "total": "123787616545178"
   },
   {
@@ -1068,6 +1118,7 @@
     "overdue_principal": "51051374665092",
     "paid": "11833455837372",
     "principal": "54206173991377",
+    "principal_left": "54206173991377",
     "total": "203323983460941"
   },
   {
@@ -1081,14 +1132,15 @@
     "interval": "6564332",
     "late_bps": 9076,
     "late_collected": "0",
-    "late_due": "16850710765542",
+    "late_due": "9593240338382",
     "late_paid_until": "0",
     "missed": 9,
     "now": "2086534375",
     "overdue": "35952017843238",
-    "overdue_principal": "16850710765542",
+    "overdue_principal": "9593240338382",
     "paid": "24017986894365",
     "principal": "28107941224554",
+    "principal_left": "9593240338386",
     "total": "59970004737603"
   },
   {
@@ -1110,6 +1162,7 @@
     "overdue_principal": "0",
     "paid": "12208168672456",
     "principal": "1574881034897",
+    "principal_left": "1251085490232",
     "total": "11362777995483"
   },
   {
@@ -1123,14 +1176,15 @@
     "interval": "9198377",
     "late_bps": 3597,
     "late_collected": "0",
-    "late_due": "14332032672059",
+    "late_due": "4436757431233",
     "late_paid_until": "0",
     "missed": 32,
     "now": "2638783022",
     "overdue": "91578483491958",
-    "overdue_principal": "14332032672059",
+    "overdue_principal": "4436757431233",
     "paid": "43036368027747",
     "principal": "21067224271020",
+    "principal_left": "4436757431262",
     "total": "134614851519705"
   },
   {
@@ -1152,6 +1206,7 @@
     "overdue_principal": "17086724622582",
     "paid": "25045061486280",
     "principal": "25885054722853",
+    "principal_left": "19281777260928",
     "total": "73683617200493"
   },
   {
@@ -1173,6 +1228,7 @@
     "overdue_principal": "0",
     "paid": "207916295213550",
     "principal": "37526355721876",
+    "principal_left": "12717681953508",
     "total": "184404696420406"
   },
   {
@@ -1194,6 +1250,7 @@
     "overdue_principal": "18381172347522",
     "paid": "55180675867935",
     "principal": "62542267245659",
+    "principal_left": "29788881886412",
     "total": "78148528357154"
   },
   {
@@ -1215,6 +1272,7 @@
     "overdue_principal": "0",
     "paid": "119629133103928",
     "principal": "191973323893953",
+    "principal_left": "81435083994138",
     "total": "221371452828449"
   },
   {
@@ -1236,6 +1294,7 @@
     "overdue_principal": "0",
     "paid": "101886925056955",
     "principal": "44345723045283",
+    "principal_left": "44345723045283",
     "total": "159173449550653"
   },
   {
@@ -1257,6 +1316,7 @@
     "overdue_principal": "6321073162434",
     "paid": "108653920107435",
     "principal": "102354555661604",
+    "principal_left": "102354555661604",
     "total": "134890031179808"
   },
   {
@@ -1278,6 +1338,7 @@
     "overdue_principal": "0",
     "paid": "122831716684320",
     "principal": "11319855533076",
+    "principal_left": "3349545251327",
     "total": "118781275206516"
   },
   {
@@ -1299,6 +1360,7 @@
     "overdue_principal": "0",
     "paid": "236822558260990",
     "principal": "116814722567377",
+    "principal_left": "105647235083264",
     "total": "204686740079428"
   },
   {
@@ -1320,6 +1382,7 @@
     "overdue_principal": "0",
     "paid": "91726757169996",
     "principal": "134494277918670",
+    "principal_left": "134494277918670",
     "total": "159580301278314"
   },
   {
@@ -1341,6 +1404,7 @@
     "overdue_principal": "0",
     "paid": "39807889184961",
     "principal": "12997005963418",
+    "principal_left": "12997005963418",
     "total": "48623292033799"
   },
   {
@@ -1362,6 +1426,7 @@
     "overdue_principal": "8950591094190",
     "paid": "1535174079192",
     "principal": "16546569683352",
+    "principal_left": "16546569683352",
     "total": "36206935839042"
   },
   {
@@ -1375,14 +1440,15 @@
     "interval": "1927549",
     "late_bps": 6000,
     "late_collected": "0",
-    "late_due": "38778324654302",
+    "late_due": "2781757209054",
     "late_paid_until": "0",
     "missed": 69,
     "now": "2118275518",
     "overdue": "68380046994580",
-    "overdue_principal": "38778324654302",
+    "overdue_principal": "2781757209054",
     "paid": "10864415855364",
     "principal": "44939534886508",
+    "principal_left": "2781757209072",
     "total": "79244462849944"
   },
   {
@@ -1404,6 +1470,7 @@
     "overdue_principal": "0",
     "paid": "140139758557148",
     "principal": "1875631272729",
+    "principal_left": "447525621022",
     "total": "231559415993210"
   },
   {
@@ -1425,6 +1492,7 @@
     "overdue_principal": "0",
     "paid": "143370398897572",
     "principal": "66976633354500",
+    "principal_left": "66976633354500",
     "total": "155398221228680"
   },
   {
@@ -1446,6 +1514,7 @@
     "overdue_principal": "0",
     "paid": "49514836421550",
     "principal": "178723036373200",
+    "principal_left": "178723036373200",
     "total": "204184892462962"
   },
   {
@@ -1459,14 +1528,15 @@
     "interval": "2692678",
     "late_bps": 7528,
     "late_collected": "23797435026048",
-    "late_due": "19439183851581",
+    "late_due": "8945656444176",
     "late_paid_until": "0",
     "missed": 54,
     "now": "1478442392",
     "overdue": "25942961516607",
-    "overdue_principal": "22655988292547",
+    "overdue_principal": "8945656444176",
     "paid": "23566507025040",
     "principal": "43236618877629",
+    "principal_left": "8945656444203",
     "total": "49509468541647"
   },
   {
@@ -1488,6 +1558,7 @@
     "overdue_principal": "0",
     "paid": "184284970019459",
     "principal": "142620051318051",
+    "principal_left": "55450675949328",
     "total": "188103470477697"
   },
   {
@@ -1509,6 +1580,7 @@
     "overdue_principal": "208475089823",
     "paid": "23852896139224",
     "principal": "12409231466174",
+    "principal_left": "12409231466174",
     "total": "24260472072369"
   },
   {
@@ -1530,6 +1602,7 @@
     "overdue_principal": "0",
     "paid": "33721544811380",
     "principal": "11192419830321",
+    "principal_left": "7606368516468",
     "total": "206121912056006"
   },
   {
@@ -1551,6 +1624,7 @@
     "overdue_principal": "6555919184206",
     "paid": "2068184480208",
     "principal": "6921367382011",
+    "principal_left": "6921367382011",
     "total": "39170160612224"
   },
   {
@@ -1572,6 +1646,7 @@
     "overdue_principal": "0",
     "paid": "179057708072460",
     "principal": "72880480645234",
+    "principal_left": "66139036180800",
     "total": "269827769858749"
   },
   {
@@ -1593,6 +1668,7 @@
     "overdue_principal": "14857509533573",
     "paid": "254773352204976",
     "principal": "181632145886962",
+    "principal_left": "65823489666912",
     "total": "277470433680034"
   },
   {
@@ -1614,6 +1690,7 @@
     "overdue_principal": "0",
     "paid": "119295434398824",
     "principal": "76717321165002",
+    "principal_left": "76717321165002",
     "total": "159827752418202"
   },
   {
@@ -1635,6 +1712,7 @@
     "overdue_principal": "3004869609112",
     "paid": "3250789027783",
     "principal": "9969364557706",
+    "principal_left": "9969364557706",
     "total": "41730282773953"
   },
   {
@@ -1656,6 +1734,7 @@
     "overdue_principal": "0",
     "paid": "3751213954806",
     "principal": "8916754521077",
+    "principal_left": "8916754521077",
     "total": "9995241027135"
   },
   {
@@ -1677,6 +1756,7 @@
     "overdue_principal": "3825069492389",
     "paid": "32672621940258",
     "principal": "4615746943869",
+    "principal_left": "4615746943869",
     "total": "190733344663097"
   },
   {
@@ -1698,6 +1778,7 @@
     "overdue_principal": "0",
     "paid": "28196208180300",
     "principal": "44789838747252",
+    "principal_left": "11161627814008",
     "total": "64818869385672"
   },
   {
@@ -1719,6 +1800,7 @@
     "overdue_principal": "8366943325971",
     "paid": "34052495132607",
     "principal": "36048872575635",
+    "principal_left": "36048872575635",
     "total": "81484793336443"
   },
   {
@@ -1740,6 +1822,7 @@
     "overdue_principal": "0",
     "paid": "19052775266490",
     "principal": "9324126938948",
+    "principal_left": "9324126938948",
     "total": "18304136109608"
   },
   {
@@ -1761,6 +1844,7 @@
     "overdue_principal": "12132263549934",
     "paid": "30567891233802",
     "principal": "24524486657104",
+    "principal_left": "13741069869995",
     "total": "60494540343268"
   },
   {
@@ -1782,6 +1866,7 @@
     "overdue_principal": "0",
     "paid": "75595321107073",
     "principal": "53901711727778",
+    "principal_left": "29004511076532",
     "total": "74676796516860"
   },
   {
@@ -1803,6 +1888,7 @@
     "overdue_principal": "0",
     "paid": "7230207501517",
     "principal": "4605348424966",
+    "principal_left": "4605348424966",
     "total": "8614568693292"
   },
   {
@@ -1824,6 +1910,7 @@
     "overdue_principal": "0",
     "paid": "280208952234558",
     "principal": "92012427419305",
+    "principal_left": "16028564854822",
     "total": "235687570225417"
   },
   {
@@ -1837,14 +1924,15 @@
     "interval": "8818036",
     "late_bps": 2917,
     "late_collected": "0",
-    "late_due": "49262371254",
+    "late_due": "4973696055",
     "late_paid_until": "0",
     "missed": 3,
     "now": "1473120958",
     "overdue": "664412876166",
-    "overdue_principal": "661755224659",
+    "overdue_principal": "66813051559",
     "paid": "11095107053030",
     "principal": "22974483627884",
+    "principal_left": "1203862941688",
     "total": "23066750630404"
   },
   {
@@ -1866,6 +1954,7 @@
     "overdue_principal": "1333941329636",
     "paid": "109350137885136",
     "principal": "2910084865323",
+    "principal_left": "2045207639608",
     "total": "246617361045051"
   },
   {
@@ -1887,6 +1976,7 @@
     "overdue_principal": "66669590663088",
     "paid": "42616150242416",
     "principal": "102948719364896",
+    "principal_left": "102948719364896",
     "total": "120931186848004"
   },
   {
@@ -1908,6 +1998,7 @@
     "overdue_principal": "0",
     "paid": "33603218608482",
     "principal": "217165440084380",
+    "principal_left": "217165440084380",
     "total": "218344500386432"
   },
   {
@@ -1929,6 +2020,7 @@
     "overdue_principal": "0",
     "paid": "169146400246472",
     "principal": "183925212001659",
+    "principal_left": "183925212001659",
     "total": "199983920845111"
   },
   {
@@ -1950,6 +2042,7 @@
     "overdue_principal": "0",
     "paid": "115090001863476",
     "principal": "223781671454664",
+    "principal_left": "223781671454664",
     "total": "266597178286432"
   },
   {
@@ -1971,6 +2064,7 @@
     "overdue_principal": "0",
     "paid": "45546942341012",
     "principal": "38329254851429",
+    "principal_left": "38329254851429",
     "total": "49033203083793"
   },
   {
@@ -1984,14 +2078,15 @@
     "interval": "3890890",
     "late_bps": 6497,
     "late_collected": "0",
-    "late_due": "48464262579548",
+    "late_due": "39149097657123",
     "late_paid_until": "1486752879",
     "missed": 25,
     "now": "1588993796",
     "overdue": "62197462241497",
-    "overdue_principal": "48464262579548",
+    "overdue_principal": "39149097657123",
     "paid": "46482359946386",
     "principal": "84683317450539",
+    "principal_left": "39149097657135",
     "total": "108679822187883"
   },
   {
@@ -2013,6 +2108,7 @@
     "overdue_principal": "285398854821",
     "paid": "9636061022502",
     "principal": "4154277356050",
+    "principal_left": "2071322686710",
     "total": "10346892541240"
   },
   {
@@ -2034,6 +2130,7 @@
     "overdue_principal": "107561419310543",
     "paid": "143910597766544",
     "principal": "237757337110139",
+    "principal_left": "237757337110139",
     "total": "262802406443871"
   },
   {
@@ -2055,6 +2152,7 @@
     "overdue_principal": "0",
     "paid": "213056528397129",
     "principal": "74085620438384",
+    "principal_left": "37820709229515",
     "total": "241478554230620"
   },
   {
@@ -2076,6 +2174,7 @@
     "overdue_principal": "0",
     "paid": "2145064427442",
     "principal": "2672442150389",
+    "principal_left": "2672442150389",
     "total": "19751974474598"
   },
   {
@@ -2097,6 +2196,7 @@
     "overdue_principal": "0",
     "paid": "159953456164268",
     "principal": "19574105222837",
+    "principal_left": "19574105222837",
     "total": "147395370598485"
   },
   {
@@ -2118,6 +2218,7 @@
     "overdue_principal": "0",
     "paid": "5093084748475",
     "principal": "6678117991227",
+    "principal_left": "5557529791278",
     "total": "116546561752952"
   },
   {
@@ -2139,6 +2240,7 @@
     "overdue_principal": "4443157709689",
     "paid": "116791202946354",
     "principal": "12863803444007",
+    "principal_left": "12863803444007",
     "total": "178416136493078"
   },
   {
@@ -2160,6 +2262,7 @@
     "overdue_principal": "0",
     "paid": "178948959791364",
     "principal": "113923812947972",
+    "principal_left": "113923812947972",
     "total": "152712885986892"
   },
   {
@@ -2173,14 +2276,15 @@
     "interval": "9102209",
     "late_bps": 3554,
     "late_collected": "0",
-    "late_due": "408445825745",
+    "late_due": "8633451926",
     "late_paid_until": "1721831711",
     "missed": 7,
     "now": "1838649462",
     "overdue": "24075102196411",
-    "overdue_principal": "1340983193650",
+    "overdue_principal": "28344796805",
     "paid": "45388672040229",
     "principal": "9479373960474",
+    "principal_left": "146930296380",
     "total": "170186246879815"
   },
   {
@@ -2202,6 +2306,7 @@
     "overdue_principal": "0",
     "paid": "29928996788480",
     "principal": "37480677337646",
+    "principal_left": "13582997464392",
     "total": "40841971600326"
   },
   {
@@ -2223,6 +2328,7 @@
     "overdue_principal": "21185389325769",
     "paid": "66779761435816",
     "principal": "71717634805626",
+    "principal_left": "34840426985840",
     "total": "94776839967894"
   },
   {
@@ -2244,6 +2350,7 @@
     "overdue_principal": "47625965737652",
     "paid": "118589848935149",
     "principal": "138086302506386",
+    "principal_left": "130878197509500",
     "total": "181025566996414"
   },
   {
@@ -2265,6 +2372,7 @@
     "overdue_principal": "0",
     "paid": "43760137614050",
     "principal": "28234237754326",
+    "principal_left": "15099670348700",
     "total": "39078529759951"
   },
   {
@@ -2286,6 +2394,7 @@
     "overdue_principal": "7267698611701",
     "paid": "31126556499744",
     "principal": "8438057136524",
+    "principal_left": "8438057136524",
     "total": "224416413123212"
   },
   {
@@ -2299,14 +2408,15 @@
     "interval": "5478932",
     "late_bps": 3256,
     "late_collected": "4055928604768",
-    "late_due": "76804576172",
+    "late_due": "67578636752",
     "late_paid_until": "1254833473",
     "missed": 9,
     "now": "1260871257",
     "overdue": "5379030100740",
-    "overdue_principal": "1473316345013",
+    "overdue_principal": "1296338253058",
     "paid": "989700778530",
     "principal": "14652921262052",
+    "principal_left": "12654262800136",
     "total": "53497339385870"
   },
   {
@@ -2328,6 +2438,7 @@
     "overdue_principal": "5465098587414",
     "paid": "60330162912536",
     "principal": "32414582361924",
+    "principal_left": "22336888704276",
     "total": "72564545243216"
   },
   {
@@ -2349,6 +2460,7 @@
     "overdue_principal": "0",
     "paid": "52865999734336",
     "principal": "109870810283611",
+    "principal_left": "73448636672180",
     "total": "153859137769195"
   },
   {
@@ -2370,6 +2482,7 @@
     "overdue_principal": "0",
     "paid": "143486370754773",
     "principal": "17896076715453",
+    "principal_left": "9916216105011",
     "total": "127102817571597"
   },
   {
@@ -2391,6 +2504,7 @@
     "overdue_principal": "0",
     "paid": "109462550902545",
     "principal": "50599710220259",
+    "principal_left": "32879691700956",
     "total": "106346595659989"
   },
   {
@@ -2412,6 +2526,7 @@
     "overdue_principal": "0",
     "paid": "256189487606370",
     "principal": "23517528946880",
+    "principal_left": "23517528946880",
     "total": "229663368548384"
   },
   {
@@ -2433,6 +2548,7 @@
     "overdue_principal": "21404245332717",
     "paid": "250569936182256",
     "principal": "254509456963229",
+    "principal_left": "254509456963229",
     "total": "273577831842477"
   },
   {
@@ -2454,6 +2570,7 @@
     "overdue_principal": "0",
     "paid": "34876102382000",
     "principal": "63030628674179",
+    "principal_left": "23075513156087",
     "total": "126822190485619"
   },
   {
@@ -2475,6 +2592,7 @@
     "overdue_principal": "122912209638700",
     "paid": "111281877988850",
     "principal": "221463440785991",
+    "principal_left": "214509488739508",
     "total": "250071635936383"
   },
   {
@@ -2488,14 +2606,15 @@
     "interval": "5135153",
     "late_bps": 6129,
     "late_collected": "0",
-    "late_due": "33992023444258",
+    "late_due": "28289460165665",
     "late_paid_until": "0",
     "missed": 75,
     "now": "1697191146",
     "overdue": "141256699425099",
-    "overdue_principal": "36740867525149",
+    "overdue_principal": "30577153196223",
     "paid": "4579639848680",
     "principal": "45814012494120",
+    "principal_left": "37136838524394",
     "total": "176139994187902"
   },
   {
@@ -2517,6 +2636,7 @@
     "overdue_principal": "0",
     "paid": "75941438156570",
     "principal": "61695124461026",
+    "principal_left": "24270861962564",
     "total": "83360524874739"
   },
   {
@@ -2538,6 +2658,7 @@
     "overdue_principal": "0",
     "paid": "124812362475900",
     "principal": "29019733867004",
+    "principal_left": "29019733867004",
     "total": "114611903102084"
   },
   {
@@ -2559,6 +2680,7 @@
     "overdue_principal": "0",
     "paid": "28906303901685",
     "principal": "53464475754609",
+    "principal_left": "53464475754609",
     "total": "97491750095253"
   },
   {
@@ -2580,6 +2702,7 @@
     "overdue_principal": "0",
     "paid": "1630332102784",
     "principal": "21173151944",
+    "principal_left": "17776976740",
     "total": "6616607567752"
   },
   {
@@ -2601,6 +2724,7 @@
     "overdue_principal": "5582011820130",
     "paid": "147968407266960",
     "principal": "57134204912312",
+    "principal_left": "15134850880659",
     "total": "163990255200632"
   },
   {
@@ -2622,6 +2746,7 @@
     "overdue_principal": "0",
     "paid": "140139183909924",
     "principal": "43146400864165",
+    "principal_left": "35509487907780",
     "total": "203809167990682"
   },
   {
@@ -2643,6 +2768,7 @@
     "overdue_principal": "13244795506325",
     "paid": "8543704424871",
     "principal": "36667357132269",
+    "principal_left": "36667357132269",
     "total": "50050992534791"
   },
   {
@@ -2664,6 +2790,7 @@
     "overdue_principal": "318877536144",
     "paid": "14159775291618",
     "principal": "1256687753273",
+    "principal_left": "1256687753273",
     "total": "20500615748411"
   },
   {
@@ -2685,6 +2812,7 @@
     "overdue_principal": "0",
     "paid": "58272291280406",
     "principal": "230517548997814",
+    "principal_left": "74802944647255",
     "total": "265115064976399"
   },
   {
@@ -2706,6 +2834,7 @@
     "overdue_principal": "0",
     "paid": "4957268390568",
     "principal": "17228425028498",
+    "principal_left": "12395851801890",
     "total": "69722480883050"
   },
   {
@@ -2719,14 +2848,15 @@
     "interval": "6727173",
     "late_bps": 7579,
     "late_collected": "482457028975",
-    "late_due": "4010147416342",
+    "late_due": "485112755734",
     "late_paid_until": "2397338924",
     "missed": 8,
     "now": "2472706807",
     "overdue": "34510735057028",
-    "overdue_principal": "4010147416342",
+    "overdue_principal": "485112755734",
     "paid": "41671903029760",
     "principal": "8852422551684",
+    "principal_left": "485112755740",
     "total": "76182638086788"
   },
   {
@@ -2748,6 +2878,7 @@
     "overdue_principal": "0",
     "paid": "230373736719760",
     "principal": "190429669693206",
+    "principal_left": "190429669693206",
     "total": "193153128809286"
   },
   {
@@ -2769,6 +2900,7 @@
     "overdue_principal": "133225722783605",
     "paid": "60744731261196",
     "principal": "192634069957090",
+    "principal_left": "162852842735730",
     "total": "196967351694270"
   },
   {
@@ -2782,14 +2914,15 @@
     "interval": "292402",
     "late_bps": 9879,
     "late_collected": "0",
-    "late_due": "43959065535007",
+    "late_due": "21032932124695",
     "late_paid_until": "0",
     "missed": 66,
     "now": "1237447332",
     "overdue": "152185888658136",
-    "overdue_principal": "104490831153003",
+    "overdue_principal": "49995342997996",
     "paid": "53276361453523",
     "principal": "141070380927185",
+    "principal_left": "49995342998048",
     "total": "205462250111659"
   },
   {
@@ -2811,6 +2944,7 @@
     "overdue_principal": "0",
     "paid": "19177849903288",
     "principal": "65193483917623",
+    "principal_left": "4159344273458",
     "total": "80041109781813"
   },
   {
@@ -2832,6 +2966,7 @@
     "overdue_principal": "0",
     "paid": "169948916797329",
     "principal": "166503875556013",
+    "principal_left": "166503875556013",
     "total": "193541643095686"
   },
   {
@@ -2853,6 +2988,7 @@
     "overdue_principal": "0",
     "paid": "157113821434214",
     "principal": "65990705696806",
+    "principal_left": "38136028818251",
     "total": "207192168584076"
   },
   {
@@ -2874,6 +3010,7 @@
     "overdue_principal": "61716915025090",
     "paid": "147040965102402",
     "principal": "150309096500624",
+    "principal_left": "150309096500624",
     "total": "249475678835549"
   },
   {
@@ -2895,6 +3032,7 @@
     "overdue_principal": "57508978838865",
     "paid": "55534829189502",
     "principal": "80839160582314",
+    "principal_left": "80839160582314",
     "total": "192428375575357"
   },
   {
@@ -2916,6 +3054,7 @@
     "overdue_principal": "53273809079867",
     "paid": "21399619657280",
     "principal": "69730116596450",
+    "principal_left": "54201219625407",
     "total": "90676354481330"
   },
   {
@@ -2937,6 +3076,7 @@
     "overdue_principal": "1703229360795",
     "paid": "4872188798610",
     "principal": "6104764721824",
+    "principal_left": "5285505294576",
     "total": "6757543415230"
   },
   {
@@ -2958,6 +3098,7 @@
     "overdue_principal": "0",
     "paid": "42639949651296",
     "principal": "69106125299678",
+    "principal_left": "32680286649641",
     "total": "193466196242750"
   },
   {
@@ -2971,14 +3112,15 @@
     "interval": "7360240",
     "late_bps": 7991,
     "late_collected": "15857774338928",
-    "late_due": "38725076134914",
+    "late_due": "27777708501455",
     "late_paid_until": "2073845454",
     "missed": 45,
     "now": "2667876440",
     "overdue": "96268075153021",
-    "overdue_principal": "41847732269942",
+    "overdue_principal": "30017606792859",
     "paid": "141520797109040",
     "principal": "108022985962793",
+    "principal_left": "33357498064448",
     "total": "248500082724409"
   },
   {
@@ -2992,14 +3134,15 @@
     "interval": "897400",
     "late_bps": 6364,
     "late_collected": "0",
-    "late_due": "36135710112260",
+    "late_due": "34946401025494",
     "late_paid_until": "0",
     "missed": 49,
     "now": "1589712879",
     "overdue": "95031930122030",
-    "overdue_principal": "89035415331502",
+    "overdue_principal": "86105055635547",
     "paid": "100143556392616",
     "principal": "214260100451052",
+    "principal_left": "116471790604620",
     "total": "228690469047476"
   },
   {
@@ -3021,6 +3164,7 @@
     "overdue_principal": "0",
     "paid": "212772802568790",
     "principal": "181501807144134",
+    "principal_left": "76829714962362",
     "total": "209731693024626"
   },
   {
@@ -3042,6 +3186,7 @@
     "overdue_principal": "0",
     "paid": "141114590722080",
     "principal": "105443958076044",
+    "principal_left": "105443958076044",
     "total": "126446765888712"
   },
   {
@@ -3063,6 +3208,7 @@
     "overdue_principal": "7482746463082",
     "paid": "86179031501184",
     "principal": "92265677654038",
+    "principal_left": "92265677654038",
     "total": "93784994565910"
   },
   {
@@ -3084,6 +3230,7 @@
     "overdue_principal": "0",
     "paid": "64945329443217",
     "principal": "41886101167749",
+    "principal_left": "39155127364368",
     "total": "54681594212889"
   },
   {
@@ -3105,6 +3252,7 @@
     "overdue_principal": "65468997595312",
     "paid": "72737664355317",
     "principal": "132395955493712",
+    "principal_left": "116243648920220",
     "total": "163492165339478"
   },
   {
@@ -3126,6 +3274,7 @@
     "overdue_principal": "0",
     "paid": "154569034297193",
     "principal": "23487766933907",
+    "principal_left": "19093205737397",
     "total": "271221327079645"
   },
   {
@@ -3147,6 +3296,7 @@
     "overdue_principal": "0",
     "paid": "174878455283792",
     "principal": "264489099247880",
+    "principal_left": "264489099247880",
     "total": "264806867488856"
   },
   {
@@ -3168,6 +3318,7 @@
     "overdue_principal": "578868553375",
     "paid": "151413578850296",
     "principal": "4862974662988",
+    "principal_left": "4862974662988",
     "total": "194518986198238"
   },
   {
@@ -3189,6 +3340,7 @@
     "overdue_principal": "0",
     "paid": "310245482797830",
     "principal": "147035261079356",
+    "principal_left": "117378248912181",
     "total": "270484291897952"
   },
   {
@@ -3210,6 +3362,7 @@
     "overdue_principal": "0",
     "paid": "69699334142438",
     "principal": "43866072048916",
+    "principal_left": "43866072048916",
     "total": "229425063011404"
   },
   {
@@ -3231,6 +3384,7 @@
     "overdue_principal": "0",
     "paid": "117019315498722",
     "principal": "88390529818023",
+    "principal_left": "74955169278880",
     "total": "112800574038115"
   },
   {
@@ -3244,14 +3398,15 @@
     "interval": "9096805",
     "late_bps": 5947,
     "late_collected": "128700638580660",
-    "late_due": "8360744364249",
+    "late_due": "4893091370953",
     "late_paid_until": "1137263123",
     "missed": 7,
     "now": "1873271061",
     "overdue": "93064117292803",
-    "overdue_principal": "90830578477784",
+    "overdue_principal": "4893091370953",
     "paid": "47367627527786",
     "principal": "137061382944909",
+    "principal_left": "4893091370958",
     "total": "140431744820589"
   },
   {
@@ -3273,6 +3428,7 @@
     "overdue_principal": "0",
     "paid": "174293971988448",
     "principal": "110767740187300",
+    "principal_left": "26373798936858",
     "total": "158104111026688"
   },
   {
@@ -3294,6 +3450,7 @@
     "overdue_principal": "0",
     "paid": "40346671378790",
     "principal": "58955544305782",
+    "principal_left": "29448294377850",
     "total": "117628779535346"
   },
   {
@@ -3315,6 +3472,7 @@
     "overdue_principal": "0",
     "paid": "288148122687560",
     "principal": "181366877950910",
+    "principal_left": "181366877950910",
     "total": "260061482576592"
   },
   {
@@ -3336,6 +3494,7 @@
     "overdue_principal": "0",
     "paid": "56331117118832",
     "principal": "165953427160633",
+    "principal_left": "165953427160633",
     "total": "264341234723417"
   },
   {
@@ -3357,6 +3516,7 @@
     "overdue_principal": "1548000183796",
     "paid": "202453882009896",
     "principal": "24263325751860",
+    "principal_left": "7946239183125",
     "total": "216250675087884"
   },
   {
@@ -3378,6 +3538,7 @@
     "overdue_principal": "0",
     "paid": "122203500885180",
     "principal": "102800853535614",
+    "principal_left": "6599814796626",
     "total": "122879337240630"
   },
   {
@@ -3399,6 +3560,7 @@
     "overdue_principal": "0",
     "paid": "87769818251416",
     "principal": "77569261246231",
+    "principal_left": "8253369395936",
     "total": "86592164819433"
   },
   {
@@ -3420,6 +3582,7 @@
     "overdue_principal": "0",
     "paid": "86804368580544",
     "principal": "76347930447570",
+    "principal_left": "10856675708568",
     "total": "83852751726510"
   },
   {
@@ -3441,6 +3604,7 @@
     "overdue_principal": "0",
     "paid": "140679956563040",
     "principal": "95015346747415",
+    "principal_left": "95015346747415",
     "total": "216831005805855"
   },
   {
@@ -3462,6 +3626,7 @@
     "overdue_principal": "6148556652711",
     "paid": "54374423510992",
     "principal": "19463725227469",
+    "principal_left": "17996160338412",
     "total": "134790340884397"
   },
   {
@@ -3483,6 +3648,7 @@
     "overdue_principal": "0",
     "paid": "39676940739171",
     "principal": "188522091029592",
+    "principal_left": "188522091029592",
     "total": "205900055733204"
   },
   {
@@ -3504,6 +3670,7 @@
     "overdue_principal": "0",
     "paid": "50135251034904",
     "principal": "34043476287756",
+    "principal_left": "26768385398964",
     "total": "48689182329612"
   },
   {
@@ -3525,6 +3692,7 @@
     "overdue_principal": "0",
     "paid": "19838914684701",
     "principal": "54273889760892",
+    "principal_left": "8618693693888",
     "total": "57487437517701"
   },
   {
@@ -3546,6 +3714,7 @@
     "overdue_principal": "115614302212359",
     "paid": "76067650013760",
     "principal": "183748096329879",
+    "principal_left": "183748096329879",
     "total": "205144687204839"
   },
   {
@@ -3567,6 +3736,7 @@
     "overdue_principal": "0",
     "paid": "12986520735480",
     "principal": "16473844653994",
+    "principal_left": "16473844653994",
     "total": "27351560105764"
   },
   {
@@ -3580,14 +3750,15 @@
     "interval": "5429713",
     "late_bps": 4292,
     "late_collected": "0",
-    "late_due": "3385263756942",
+    "late_due": "302527660509",
     "late_paid_until": "1424375532",
     "missed": 18,
     "now": "1656984437",
     "overdue": "74729884227642",
-    "overdue_principal": "3385263756942",
+    "overdue_principal": "302527660509",
     "paid": "78091964905430",
     "principal": "6922829768661",
+    "principal_left": "302527660512",
     "total": "152821849133072"
   },
   {
@@ -3609,6 +3780,7 @@
     "overdue_principal": "0",
     "paid": "219656608294221",
     "principal": "30059044922569",
+    "principal_left": "8846376919956",
     "total": "183398687733622"
   },
   {
@@ -3630,6 +3802,7 @@
     "overdue_principal": "0",
     "paid": "84439145484954",
     "principal": "56159746730487",
+    "principal_left": "4846586142799",
     "total": "88677951571206"
   },
   {
@@ -3651,6 +3824,7 @@
     "overdue_principal": "18619555238815",
     "paid": "16936514713250",
     "principal": "28513867134381",
+    "principal_left": "28513867134381",
     "total": "48808399750431"
   },
   {
@@ -3664,14 +3838,15 @@
     "interval": "4773304",
     "late_bps": 8259,
     "late_collected": "0",
-    "late_due": "15222795864460",
+    "late_due": "11282935946295",
     "late_paid_until": "1768178782",
     "missed": 16,
     "now": "2014510386",
     "overdue": "18422843839245",
-    "overdue_principal": "15222795864460",
+    "overdue_principal": "11282935946295",
     "paid": "35698319022456",
     "principal": "44720316872919",
+    "principal_left": "11282935946301",
     "total": "54121162861701"
   },
   {
@@ -3693,6 +3868,7 @@
     "overdue_principal": "0",
     "paid": "171540072680718",
     "principal": "87468087416936",
+    "principal_left": "59889399449627",
     "total": "184570768972053"
   },
   {
@@ -3714,6 +3890,7 @@
     "overdue_principal": "0",
     "paid": "89979669614500",
     "principal": "30104242906084",
+    "principal_left": "14546370169280",
     "total": "107438411489388"
   },
   {
@@ -3735,6 +3912,7 @@
     "overdue_principal": "0",
     "paid": "217316942937744",
     "principal": "201772461802031",
+    "principal_left": "32788025042500",
     "total": "254827559737817"
   },
   {
@@ -3756,6 +3934,7 @@
     "overdue_principal": "46514779578076",
     "paid": "77197697949294",
     "principal": "91690872418234",
+    "principal_left": "91690872418234",
     "total": "156682967221090"
   },
   {
@@ -3777,6 +3956,7 @@
     "overdue_principal": "0",
     "paid": "86230288749760",
     "principal": "41627203260260",
+    "principal_left": "3900468945462",
     "total": "117160718419187"
   },
   {
@@ -3790,14 +3970,15 @@
     "interval": "4886226",
     "late_bps": 933,
     "late_collected": "0",
-    "late_due": "289521290953",
+    "late_due": "121140349202",
     "late_paid_until": "0",
     "missed": 11,
     "now": "1844201387",
     "overdue": "66833404189609",
-    "overdue_principal": "1149534554643",
+    "overdue_principal": "480983684865",
     "paid": "92597426406672",
     "principal": "2742210292429",
+    "principal_left": "480983684866",
     "total": "159430830596281"
   },
   {
@@ -3819,6 +4000,7 @@
     "overdue_principal": "0",
     "paid": "72077574143250",
     "principal": "139106562739150",
+    "principal_left": "102938856420200",
     "total": "150255522508650"
   },
   {
@@ -3840,6 +4022,7 @@
     "overdue_principal": "0",
     "paid": "113505840659250",
     "principal": "76142322043439",
+    "principal_left": "63913865120376",
     "total": "108868061255189"
   },
   {
@@ -3861,6 +4044,7 @@
     "overdue_principal": "60572949384983",
     "paid": "41278983135424",
     "principal": "99234844989847",
+    "principal_left": "99234844989847",
     "total": "105952215448743"
   },
   {
@@ -3882,6 +4066,7 @@
     "overdue_principal": "116639325511164",
     "paid": "4999340413200",
     "principal": "120869767368876",
+    "principal_left": "120869767368876",
     "total": "142838297527452"
   },
   {
@@ -3903,6 +4088,7 @@
     "overdue_principal": "0",
     "paid": "6659377507176",
     "principal": "3644852147552",
+    "principal_left": "1954005232254",
     "total": "6204003649052"
   },
   {
@@ -3924,6 +4110,7 @@
     "overdue_principal": "0",
     "paid": "58373238162300",
     "principal": "25918865449234",
+    "principal_left": "8296628827344",
     "total": "159402616506334"
   },
   {
@@ -3945,6 +4132,7 @@
     "overdue_principal": "0",
     "paid": "45756558479638",
     "principal": "58198954511731",
+    "principal_left": "20928344041796",
     "total": "100829789516559"
   },
   {
@@ -3966,6 +4154,7 @@
     "overdue_principal": "0",
     "paid": "166900098696678",
     "principal": "149888114979575",
+    "principal_left": "51216768885249",
     "total": "154795120292768"
   },
   {
@@ -3987,6 +4176,7 @@
     "overdue_principal": "115864561062197",
     "paid": "61785335383176",
     "principal": "157810625254127",
+    "principal_left": "144712343354250",
     "total": "232450471723419"
   },
   {
@@ -4008,6 +4198,7 @@
     "overdue_principal": "0",
     "paid": "81698718594051",
     "principal": "75620735197243",
+    "principal_left": "75620735197243",
     "total": "98349245931666"
   },
   {
@@ -4021,14 +4212,15 @@
     "interval": "6126692",
     "late_bps": 3158,
     "late_collected": "0",
-    "late_due": "129538867892038",
+    "late_due": "68959668979397",
     "late_paid_until": "1442081371",
     "missed": 52,
     "now": "1545367596",
     "overdue": "169761663907424",
-    "overdue_principal": "155654469637379",
+    "overdue_principal": "82862239542678",
     "paid": "1102401808556",
     "principal": "165703642347355",
+    "principal_left": "87673797162094",
     "total": "180721607968831"
   },
   {
@@ -4050,6 +4242,7 @@
     "overdue_principal": "310238813253",
     "paid": "37557120837090",
     "principal": "2049133508745",
+    "principal_left": "713303371350",
     "total": "44257743150900"
   },
   {
@@ -4071,6 +4264,7 @@
     "overdue_principal": "0",
     "paid": "40424035230832",
     "principal": "25062128924020",
+    "principal_left": "13721515583700",
     "total": "48307881497008"
   },
   {
@@ -4092,6 +4286,7 @@
     "overdue_principal": "0",
     "paid": "140454846991594",
     "principal": "57864819584499",
+    "principal_left": "2725433002218",
     "total": "126342400828939"
   },
   {
@@ -4113,6 +4308,7 @@
     "overdue_principal": "10375638319838",
     "paid": "197272300552840",
     "principal": "70011054780222",
+    "principal_left": "70011054780222",
     "total": "231594623805482"
   },
   {
@@ -4134,6 +4330,7 @@
     "overdue_principal": "0",
     "paid": "102469352564592",
     "principal": "23963554725062",
+    "principal_left": "23963554725062",
     "total": "186341794086374"
   },
   {
@@ -4155,6 +4352,7 @@
     "overdue_principal": "0",
     "paid": "29942785624512",
     "principal": "50149920728342",
+    "principal_left": "50149920728342",
     "total": "70753274163734"
   },
   {
@@ -4176,6 +4374,7 @@
     "overdue_principal": "7883855537284",
     "paid": "2063420411547",
     "principal": "8980357144282",
+    "principal_left": "8980357144282",
     "total": "16899430075084"
   },
   {
@@ -4197,6 +4396,7 @@
     "overdue_principal": "2740404868118",
     "paid": "235866142300952",
     "principal": "198580062820842",
+    "principal_left": "53517326929990",
     "total": "239166641961454"
   },
   {
@@ -4218,6 +4418,7 @@
     "overdue_principal": "1787868213223",
     "paid": "6737576387802",
     "principal": "3470914797714",
+    "principal_left": "2558758383188",
     "total": "13894774987710"
   },
   {
@@ -4239,6 +4440,7 @@
     "overdue_principal": "0",
     "paid": "48691180236160",
     "principal": "32409238389028",
+    "principal_left": "8620857409080",
     "total": "44184374081348"
   },
   {
@@ -4260,6 +4462,7 @@
     "overdue_principal": "0",
     "paid": "33562350071823",
     "principal": "5983474257481",
+    "principal_left": "1636480207375",
     "total": "109788518395226"
   },
   {
@@ -4273,14 +4476,15 @@
     "interval": "3540408",
     "late_bps": 3572,
     "late_collected": "0",
-    "late_due": "9673864185312",
+    "late_due": "1781589444096",
     "late_paid_until": "0",
     "missed": 55,
     "now": "1337469048",
     "overdue": "74220525169608",
-    "overdue_principal": "10969793621238",
+    "overdue_principal": "2020254589597",
     "paid": "10943588622015",
     "principal": "12587256019785",
+    "principal_left": "2020254589605",
     "total": "85164113791623"
   },
   {
@@ -4302,6 +4506,7 @@
     "overdue_principal": "0",
     "paid": "19734851533929",
     "principal": "74950242758924",
+    "principal_left": "74950242758924",
     "total": "191786701014216"
   },
   {
@@ -4315,14 +4520,15 @@
     "interval": "4906405",
     "late_bps": 1604,
     "late_collected": "0",
-    "late_due": "308760215292",
+    "late_due": "104737006910",
     "late_paid_until": "1455700958",
     "missed": 54,
     "now": "1846407801",
     "overdue": "120478000911600",
-    "overdue_principal": "506007606973",
+    "overdue_principal": "171646862528",
     "paid": "82699227125970",
     "principal": "881789175236",
+    "principal_left": "181295853352",
     "total": "209949802305576"
   },
   {
@@ -4344,6 +4550,7 @@
     "overdue_principal": "0",
     "paid": "115721528749732",
     "principal": "9191396858935",
+    "principal_left": "6377910274215",
     "total": "204708170446179"
   },
   {
@@ -4365,6 +4572,7 @@
     "overdue_principal": "0",
     "paid": "204313061843790",
     "principal": "153492480668993",
+    "principal_left": "153492480668993",
     "total": "174701207225501"
   },
   {
@@ -4383,9 +4591,10 @@
     "missed": 34,
     "now": "1314719860",
     "overdue": "100019362799573",
-    "overdue_principal": "11912306111492",
+    "overdue_principal": "9932979794960",
     "paid": "177426858546930",
     "principal": "33043844968097",
+    "principal_left": "9932979794976",
     "total": "277446221346503"
   },
   {
@@ -4399,14 +4608,15 @@
     "interval": "7581222",
     "late_bps": 9661,
     "late_collected": "0",
-    "late_due": "14112740229547",
+    "late_due": "966926104159",
     "late_paid_until": "0",
     "missed": 47,
     "now": "2014437527",
     "overdue": "132883116313892",
-    "overdue_principal": "15002503833659",
+    "overdue_principal": "1027887734669",
     "paid": "27506885271460",
     "principal": "31689054567118",
+    "principal_left": "1958383571808",
     "total": "280682502774385"
   },
   {
@@ -4428,6 +4638,7 @@
     "overdue_principal": "0",
     "paid": "143668237496232",
     "principal": "27604629701441",
+    "principal_left": "27604629701441",
     "total": "144375678326657"
   },
   {
@@ -4449,6 +4660,7 @@
     "overdue_principal": "0",
     "paid": "34929789534360",
     "principal": "16364073337077",
+    "principal_left": "4113928035162",
     "total": "63084322802757"
   },
   {
@@ -4470,6 +4682,7 @@
     "overdue_principal": "0",
     "paid": "15740571151606",
     "principal": "12718855494657",
+    "principal_left": "12718855494657",
     "total": "14106982579545"
   },
   {
@@ -4491,6 +4704,7 @@
     "overdue_principal": "40867753746792",
     "paid": "13558474343794",
     "principal": "50212254264873",
+    "principal_left": "47827172182650",
     "total": "72855853545105"
   },
   {
@@ -4512,6 +4726,7 @@
     "overdue_principal": "0",
     "paid": "22670604269460",
     "principal": "24665011556440",
+    "principal_left": "3014064411410",
     "total": "50491323547150"
   },
   {
@@ -4533,6 +4748,7 @@
     "overdue_principal": "0",
     "paid": "225934026432180",
     "principal": "158333743216323",
+    "principal_left": "158333743216323",
     "total": "257035297425603"
   },
   {
@@ -4554,6 +4770,7 @@
     "overdue_principal": "0",
     "paid": "125255120563125",
     "principal": "68183320744571",
+    "principal_left": "56837616168864",
     "total": "222675769894253"
   },
   {
@@ -4567,14 +4784,15 @@
     "interval": "2222732",
     "late_bps": 5671,
     "late_collected": "0",
-    "late_due": "21438046472541",
+    "late_due": "8744503201726",
     "late_paid_until": "0",
     "missed": 42,
     "now": "1834117054",
     "overdue": "73797980906361",
-    "overdue_principal": "31858588359180",
+    "overdue_principal": "12995005317586",
     "paid": "46634157803819",
     "principal": "85631501174243",
+    "principal_left": "26717028365040",
     "total": "198358816699170"
   },
   {
@@ -4588,14 +4806,15 @@
     "interval": "801072",
     "late_bps": 9109,
     "late_collected": "0",
-    "late_due": "26757297171",
+    "late_due": "25805331960",
     "late_paid_until": "1329343983",
     "missed": 91,
     "now": "1334313354",
     "overdue": "138606195566063",
-    "overdue_principal": "194048673941",
+    "overdue_principal": "187144853070",
     "paid": "8596645944184",
     "principal": "206083978361",
+    "principal_left": "187144853157",
     "total": "147202841510247"
   },
   {
@@ -4617,6 +4836,7 @@
     "overdue_principal": "0",
     "paid": "61201479828000",
     "principal": "22679829218426",
+    "principal_left": "20942554292514",
     "total": "87330878757051"
   },
   {
@@ -4638,6 +4858,7 @@
     "overdue_principal": "17397815118767",
     "paid": "50102744588754",
     "principal": "30194056088468",
+    "principal_left": "19058488197696",
     "total": "118222615835486"
   },
   {
@@ -4659,6 +4880,7 @@
     "overdue_principal": "0",
     "paid": "1612683876601",
     "principal": "821366944143",
+    "principal_left": "291338853618",
     "total": "14309528630781"
   },
   {
@@ -4672,14 +4894,15 @@
     "interval": "2482977",
     "late_bps": 3678,
     "late_collected": "75021040833479",
-    "late_due": "2801863879967",
+    "late_due": "1019539436073",
     "late_paid_until": "1220794222",
     "missed": 11,
     "now": "1327562482",
     "overdue": "11357338799674",
-    "overdue_principal": "9265316992930",
+    "overdue_principal": "3371454312805",
     "paid": "89686600638068",
     "principal": "82431645794736",
+    "principal_left": "3371454312811",
     "total": "101043939437742"
   },
   {
@@ -4701,6 +4924,7 @@
     "overdue_principal": "0",
     "paid": "96424296732504",
     "principal": "110015258444452",
+    "principal_left": "110015258444452",
     "total": "238437924666328"
   },
   {
@@ -4722,6 +4946,7 @@
     "overdue_principal": "0",
     "paid": "4090279752762",
     "principal": "91596998331299",
+    "principal_left": "91596998331299",
     "total": "157925859186899"
   },
   {
@@ -4743,6 +4968,7 @@
     "overdue_principal": "4785574078498",
     "paid": "6029563108630",
     "principal": "5358985530223",
+    "principal_left": "5358985530223",
     "total": "56351057090964"
   },
   {
@@ -4764,6 +4990,7 @@
     "overdue_principal": "0",
     "paid": "124624819149778",
     "principal": "102260509603524",
+    "principal_left": "89058677810640",
     "total": "236659360334931"
   },
   {
@@ -4785,6 +5012,7 @@
     "overdue_principal": "2587489347138",
     "paid": "35566895762332",
     "principal": "32182703311162",
+    "principal_left": "32182703311162",
     "total": "38676485171205"
   },
   {
@@ -4806,6 +5034,7 @@
     "overdue_principal": "17808403904996",
     "paid": "105340770663300",
     "principal": "44554425579257",
+    "principal_left": "44554425579257",
     "total": "175480211006357"
   },
   {
@@ -4827,6 +5056,7 @@
     "overdue_principal": "0",
     "paid": "34382347225620",
     "principal": "46111075670687",
+    "principal_left": "36801249492227",
     "total": "121793649407847"
   },
   {
@@ -4848,6 +5078,7 @@
     "overdue_principal": "0",
     "paid": "2913252304896",
     "principal": "19444441823718",
+    "principal_left": "19444441823718",
     "total": "37932972727446"
   },
   {
@@ -4869,6 +5100,7 @@
     "overdue_principal": "0",
     "paid": "59340581113749",
     "principal": "11537447937891",
+    "principal_left": "5356837073899",
     "total": "119807351334812"
   },
   {
@@ -4890,6 +5122,7 @@
     "overdue_principal": "0",
     "paid": "124721369739655",
     "principal": "17155375445794",
+    "principal_left": "16067724637104",
     "total": "105312310858329"
   },
   {
@@ -4911,6 +5144,7 @@
     "overdue_principal": "9398662151015",
     "paid": "71527860106868",
     "principal": "23596942382511",
+    "principal_left": "11265180292212",
     "total": "118876284040571"
   },
   {
@@ -4932,6 +5166,7 @@
     "overdue_principal": "0",
     "paid": "276704871878500",
     "principal": "155012935184088",
+    "principal_left": "13455122773624",
     "total": "246639515006588"
   },
   {
@@ -4953,6 +5188,7 @@
     "overdue_principal": "0",
     "paid": "37925648581799",
     "principal": "118712573351418",
+    "principal_left": "83549909123730",
     "total": "143061669498616"
   },
   {
@@ -4974,6 +5210,7 @@
     "overdue_principal": "0",
     "paid": "3355977802808",
     "principal": "7466806395082",
+    "principal_left": "7466806395082",
     "total": "8880597520266"
   },
   {
@@ -4995,6 +5232,7 @@
     "overdue_principal": "0",
     "paid": "214425290036130",
     "principal": "132292287237693",
+    "principal_left": "20822806010002",
     "total": "205486621986969"
   },
   {
@@ -5016,6 +5254,7 @@
     "overdue_principal": "0",
     "paid": "193325812684200",
     "principal": "56719133933486",
+    "principal_left": "43299386842162",
     "total": "255721974450476"
   },
   {
@@ -5029,14 +5268,15 @@
     "interval": "4544566",
     "late_bps": 4124,
     "late_collected": "0",
-    "late_due": "3988263066274",
+    "late_due": "842861878893",
     "late_paid_until": "0",
     "missed": 46,
     "now": "1362323614",
     "overdue": "5487428542750",
-    "overdue_principal": "3988263066274",
+    "overdue_principal": "842861878893",
     "paid": "671301583080",
     "principal": "4476165057046",
+    "principal_left": "842861878915",
     "total": "6158730125830"
   },
   {
@@ -5058,6 +5298,7 @@
     "overdue_principal": "19407501366",
     "paid": "23297021833254",
     "principal": "13862497877648",
+    "principal_left": "4046463128253",
     "total": "23329683397310"
   },
   {
@@ -5079,6 +5320,7 @@
     "overdue_principal": "0",
     "paid": "94017902427108",
     "principal": "137441238738091",
+    "principal_left": "137441238738091",
     "total": "219976374420475"
   },
   {
@@ -5100,6 +5342,7 @@
     "overdue_principal": "36995837325899",
     "paid": "17860616504968",
     "principal": "83625310408923",
+    "principal_left": "83625310408923",
     "total": "113328784939076"
   },
   {
@@ -5113,14 +5356,15 @@
     "interval": "3077662",
     "late_bps": 8984,
     "late_collected": "0",
-    "late_due": "199874397518",
+    "late_due": "38247943918",
     "late_paid_until": "0",
     "missed": 1,
     "now": "2277577799",
     "overdue": "200576414963",
-    "overdue_principal": "199874397518",
+    "overdue_principal": "38247943918",
     "paid": "409634751708",
     "principal": "608075427611",
+    "principal_left": "38247943918",
     "total": "610211166671"
   },
   {
@@ -5142,6 +5386,7 @@
     "overdue_principal": "0",
     "paid": "145152370579276",
     "principal": "102882820659322",
+    "principal_left": "102882820659322",
     "total": "175537998048078"
   },
   {
@@ -5163,6 +5408,7 @@
     "overdue_principal": "76443031335374",
     "paid": "6573627818010",
     "principal": "80424020342101",
+    "principal_left": "77625264432168",
     "total": "132800561987013"
   },
   {
@@ -5184,6 +5430,7 @@
     "overdue_principal": "2649197555312",
     "paid": "70839801516204",
     "principal": "33032388429926",
+    "principal_left": "13113858202740",
     "total": "77016526988204"
   },
   {
@@ -5197,14 +5444,15 @@
     "interval": "6605110",
     "late_bps": 2524,
     "late_collected": "0",
-    "late_due": "43189138125509",
+    "late_due": "37090219485822",
     "late_paid_until": "1981672383",
     "missed": 8,
     "now": "2385768390",
     "overdue": "50602387961870",
-    "overdue_principal": "43189138125509",
+    "overdue_principal": "37090219485822",
     "paid": "44801812568888",
     "principal": "81427485153113",
+    "principal_left": "37090219485825",
     "total": "95404200530758"
   },
   {
@@ -5226,6 +5474,7 @@
     "overdue_principal": "32863950502994",
     "paid": "55309721199546",
     "principal": "51237839885910",
+    "principal_left": "51237839885910",
     "total": "154237928611668"
   },
   {
@@ -5247,6 +5496,7 @@
     "overdue_principal": "48868127693582",
     "paid": "20728267767360",
     "principal": "58948284309724",
+    "principal_left": "52746924791640",
     "total": "121217940169916"
   },
   {
@@ -5260,14 +5510,15 @@
     "interval": "8872522",
     "late_bps": 9318,
     "late_collected": "0",
-    "late_due": "12975704649258",
+    "late_due": "12654378124261",
     "late_paid_until": "0",
     "missed": 44,
     "now": "2121203244",
     "overdue": "68958095246726",
-    "overdue_principal": "13812306479413",
+    "overdue_principal": "13470262593305",
     "paid": "81326170564800",
     "principal": "34585205873449",
+    "principal_left": "17842507708333",
     "total": "172667028804809"
   },
   {
@@ -5289,6 +5540,7 @@
     "overdue_principal": "0",
     "paid": "13757004330524",
     "principal": "3576364083743",
+    "principal_left": "937007388960",
     "total": "114260833311140"
   },
   {
@@ -5310,6 +5562,7 @@
     "overdue_principal": "0",
     "paid": "156776645233080",
     "principal": "150174510268104",
+    "principal_left": "150174510268104",
     "total": "192482069043096"
   },
   {
@@ -5331,6 +5584,7 @@
     "overdue_principal": "23948098884070",
     "paid": "105203838060233",
     "principal": "54415130387569",
+    "principal_left": "54415130387569",
     "total": "187897549673137"
   },
   {
@@ -5352,6 +5606,7 @@
     "overdue_principal": "65150628656909",
     "paid": "28993225824948",
     "principal": "85298021283105",
+    "principal_left": "81817862011776",
     "total": "122748627545559"
   },
   {
@@ -5373,6 +5628,7 @@
     "overdue_principal": "0",
     "paid": "37057751000952",
     "principal": "60940153994399",
+    "principal_left": "60940153994399",
     "total": "166776557168135"
   },
   {
@@ -5394,6 +5650,7 @@
     "overdue_principal": "0",
     "paid": "30924915627920",
     "principal": "19549354798700",
+    "principal_left": "13911320868564",
     "total": "109275320247764"
   },
   {
@@ -5415,6 +5672,7 @@
     "overdue_principal": "0",
     "paid": "28107063364204",
     "principal": "44426516113835",
+    "principal_left": "43573527000688",
     "total": "120527715977293"
   },
   {
@@ -5436,6 +5694,7 @@
     "overdue_principal": "0",
     "paid": "226995941942172",
     "principal": "5359879232840",
+    "principal_left": "5359879232840",
     "total": "202259593641380"
   },
   {
@@ -5457,6 +5716,7 @@
     "overdue_principal": "94901776037812",
     "paid": "49118285995506",
     "principal": "128837599832606",
+    "principal_left": "128837599832606",
     "total": "186477927096125"
   },
   {
@@ -5470,14 +5730,15 @@
     "interval": "4594408",
     "late_bps": 9033,
     "late_collected": "0",
-    "late_due": "28961635740",
+    "late_due": "21748002929",
     "late_paid_until": "1728707440",
     "missed": 63,
     "now": "1857190060",
     "overdue": "10100281074096",
-    "overdue_principal": "31310875192",
+    "overdue_principal": "23512104478",
     "paid": "5086167961050",
     "principal": "53087955083",
+    "principal_left": "28025128805",
     "total": "17125144656668"
   },
   {
@@ -5499,6 +5760,7 @@
     "overdue_principal": "0",
     "paid": "31446292817316",
     "principal": "61745137087666",
+    "principal_left": "57052506661920",
     "total": "155060615477512"
   },
   {
@@ -5520,6 +5782,7 @@
     "overdue_principal": "0",
     "paid": "89820143100546",
     "principal": "28388367054119",
+    "principal_left": "743775216710",
     "total": "147779110079672"
   },
   {
@@ -5541,6 +5804,7 @@
     "overdue_principal": "2294374012044",
     "paid": "23506213583439",
     "principal": "3046572848229",
+    "principal_left": "3046572848229",
     "total": "95205401316309"
   },
   {
@@ -5562,6 +5826,7 @@
     "overdue_principal": "0",
     "paid": "118608982135476",
     "principal": "29058317093479",
+    "principal_left": "19806148928544",
     "total": "196339980360199"
   },
   {
@@ -5583,6 +5848,7 @@
     "overdue_principal": "31759599757016",
     "paid": "61750156281001",
     "principal": "70124971856394",
+    "principal_left": "35777760637870",
     "total": "112868134319591"
   },
   {
@@ -5604,6 +5870,7 @@
     "overdue_principal": "0",
     "paid": "2052422731776",
     "principal": "3555532728662",
+    "principal_left": "605862775488",
     "total": "5172436322294"
   },
   {
@@ -5625,6 +5892,7 @@
     "overdue_principal": "132401288695103",
     "paid": "65219819056630",
     "principal": "175087660267931",
+    "principal_left": "175087660267931",
     "total": "267513613853106"
   },
   {
@@ -5646,6 +5914,7 @@
     "overdue_principal": "0",
     "paid": "33839636651488",
     "principal": "3126104226699",
+    "principal_left": "3126104226699",
     "total": "176616057685763"
   },
   {
@@ -5667,6 +5936,7 @@
     "overdue_principal": "0",
     "paid": "316211747069256",
     "principal": "166859878693968",
+    "principal_left": "99765521468751",
     "total": "266890400977524"
   },
   {
@@ -5688,6 +5958,7 @@
     "overdue_principal": "0",
     "paid": "87966728040476",
     "principal": "72327095286634",
+    "principal_left": "72327095286634",
     "total": "124124069480638"
   },
   {
@@ -5709,6 +5980,7 @@
     "overdue_principal": "39849445614400",
     "paid": "170606921575272",
     "principal": "137317179913075",
+    "principal_left": "103839251447942",
     "total": "240359145648943"
   },
   {
@@ -5730,6 +6002,7 @@
     "overdue_principal": "17443201869344",
     "paid": "56288383345260",
     "principal": "40352047377506",
+    "principal_left": "29945254353277",
     "total": "111132050047982"
   },
   {
@@ -5751,6 +6024,7 @@
     "overdue_principal": "0",
     "paid": "98480251568870",
     "principal": "58787320310980",
+    "principal_left": "15743244379018",
     "total": "208910164556610"
   },
   {
@@ -5772,6 +6046,7 @@
     "overdue_principal": "0",
     "paid": "5184925054973",
     "principal": "32689527496275",
+    "principal_left": "12372986154965",
     "total": "49999277294073"
   },
   {
@@ -5793,6 +6068,7 @@
     "overdue_principal": "0",
     "paid": "55777368099972",
     "principal": "36645359351788",
+    "principal_left": "1429169014650",
     "total": "88451265625422"
   },
   {
@@ -5814,6 +6090,7 @@
     "overdue_principal": "0",
     "paid": "39027874363104",
     "principal": "29342542849755",
+    "principal_left": "29342542849755",
     "total": "71637067489947"
   },
   {
@@ -5835,6 +6112,7 @@
     "overdue_principal": "0",
     "paid": "199559762268529",
     "principal": "235811736785008",
+    "principal_left": "213621852349002",
     "total": "267542247315974"
   },
   {
@@ -5856,6 +6134,7 @@
     "overdue_principal": "0",
     "paid": "2436085365832",
     "principal": "4337123702347",
+    "principal_left": "905157716190",
     "total": "5066733296107"
   },
   {
@@ -5877,6 +6156,7 @@
     "overdue_principal": "0",
     "paid": "19850051225594",
     "principal": "5253260435516",
+    "principal_left": "3434056343091",
     "total": "18002948697774"
   },
   {
@@ -5898,6 +6178,7 @@
     "overdue_principal": "0",
     "paid": "30093930314496",
     "principal": "86842235832556",
+    "principal_left": "86842235832556",
     "total": "87077344663138"
   },
   {
@@ -5919,6 +6200,7 @@
     "overdue_principal": "0",
     "paid": "33107206964580",
     "principal": "10816054743118",
+    "principal_left": "10816054743118",
     "total": "193836106358788"
   },
   {
@@ -5940,6 +6222,7 @@
     "overdue_principal": "0",
     "paid": "250770305368512",
     "principal": "68028114762849",
+    "principal_left": "1612266319812",
     "total": "277892625638625"
   },
   {
@@ -5961,6 +6244,7 @@
     "overdue_principal": "181455874003767",
     "paid": "17284173598692",
     "principal": "198485970250614",
+    "principal_left": "198485970250614",
     "total": "201447244748292"
   },
   {
@@ -5974,14 +6258,15 @@
     "interval": "8318658",
     "late_bps": 6105,
     "late_collected": "0",
-    "late_due": "47142882546602",
+    "late_due": "4286689626038",
     "late_paid_until": "0",
     "missed": 45,
     "now": "2212806326",
     "overdue": "145998397468433",
-    "overdue_principal": "47142882546602",
+    "overdue_principal": "4286689626038",
     "paid": "19739367848421",
     "principal": "53516724425453",
+    "principal_left": "4286689626042",
     "total": "165737765316854"
   },
   {
@@ -6003,6 +6288,7 @@
     "overdue_principal": "0",
     "paid": "35399320558954",
     "principal": "11970540734649",
+    "principal_left": "8451201755380",
     "total": "72155158097518"
   },
   {
@@ -6021,9 +6307,10 @@
     "missed": 4,
     "now": "1509133494",
     "overdue": "218598932044221",
-    "overdue_principal": "89909740750943",
+    "overdue_principal": "69911715998445",
     "paid": "14151208547872",
     "principal": "95730132826760",
+    "principal_left": "69911715998446",
     "total": "232750140592093"
   },
   {
@@ -6045,6 +6332,7 @@
     "overdue_principal": "0",
     "paid": "48805789007052",
     "principal": "63146603698579",
+    "principal_left": "18160963221244",
     "total": "67170092222557"
   },
   {
@@ -6066,6 +6354,7 @@
     "overdue_principal": "0",
     "paid": "71457087669048",
     "principal": "92796533409027",
+    "principal_left": "92796533409027",
     "total": "93923616810747"
   },
   {
@@ -6087,6 +6376,7 @@
     "overdue_principal": "0",
     "paid": "321192846255638",
     "principal": "210206861491357",
+    "principal_left": "210206861491357",
     "total": "269841927460017"
   },
   {
@@ -6100,14 +6390,15 @@
     "interval": "5291789",
     "late_bps": 9666,
     "late_collected": "0",
-    "late_due": "1518388351126",
+    "late_due": "579856279872",
     "late_paid_until": "0",
     "missed": 42,
     "now": "1451715275",
     "overdue": "3666296970539",
-    "overdue_principal": "1671098160385",
+    "overdue_principal": "638174523576",
     "paid": "1300239157525",
     "principal": "4527494337717",
+    "principal_left": "1502675368127",
     "total": "9933072256167"
   },
   {
@@ -6129,6 +6420,7 @@
     "overdue_principal": "3314749217304",
     "paid": "65462178412689",
     "principal": "8505899967104",
+    "principal_left": "8505899967104",
     "total": "107262294632945"
   },
   {
@@ -6150,6 +6442,7 @@
     "overdue_principal": "0",
     "paid": "34437745867350",
     "principal": "82997133437124",
+    "principal_left": "46304100740597",
     "total": "86635838660844"
   },
   {
@@ -6163,14 +6456,15 @@
     "interval": "1087429",
     "late_bps": 5650,
     "late_collected": "0",
-    "late_due": "12158546105256",
+    "late_due": "11514078405551",
     "late_paid_until": "0",
     "missed": 26,
     "now": "1292388284",
     "overdue": "72109227435004",
-    "overdue_principal": "44318331182226",
+    "overdue_principal": "41969223591192",
     "paid": "110769868259433",
     "principal": "112397492215511",
+    "principal_left": "41969223591214",
     "total": "182879095694437"
   },
   {
@@ -6192,6 +6486,7 @@
     "overdue_principal": "4236681591380",
     "paid": "34734195815440",
     "principal": "10846599055825",
+    "principal_left": "10846599055825",
     "total": "56997367601545"
   },
   {
@@ -6213,6 +6508,7 @@
     "overdue_principal": "4964695173368",
     "paid": "126734894536248",
     "principal": "82196939905722",
+    "principal_left": "79509099965270",
     "total": "134881752385350"
   },
   {
@@ -6234,6 +6530,7 @@
     "overdue_principal": "34775207803655",
     "paid": "41092328533015",
     "principal": "51298433107203",
+    "principal_left": "51298433107203",
     "total": "127576307152188"
   },
   {
@@ -6255,6 +6552,7 @@
     "overdue_principal": "0",
     "paid": "38270732095578",
     "principal": "88158897240640",
+    "principal_left": "33791305312092",
     "total": "130974442490621"
   },
   {
@@ -6276,6 +6574,7 @@
     "overdue_principal": "0",
     "paid": "7528429343435",
     "principal": "56928643582557",
+    "principal_left": "56928643582557",
     "total": "163306493350747"
   },
   {
@@ -6297,6 +6596,7 @@
     "overdue_principal": "0",
     "paid": "93580089811000",
     "principal": "119029805541148",
+    "principal_left": "119029805541148",
     "total": "203434977851113"
   },
   {
@@ -6318,6 +6618,7 @@
     "overdue_principal": "0",
     "paid": "44663935999691",
     "principal": "169522854162308",
+    "principal_left": "85439518496640",
     "total": "256541849516100"
   },
   {
@@ -6331,14 +6632,15 @@
     "interval": "6208330",
     "late_bps": 246,
     "late_collected": "0",
-    "late_due": "58067162150229",
+    "late_due": "56281528756292",
     "late_paid_until": "0",
     "missed": 12,
     "now": "2445505899",
     "overdue": "147618261116960",
-    "overdue_principal": "118906509330491",
+    "overdue_principal": "115249994599019",
     "paid": "25642608737800",
     "principal": "139561630668935",
+    "principal_left": "115249994599028",
     "total": "173260869854760"
   },
   {
@@ -6352,14 +6654,15 @@
     "interval": "6308712",
     "late_bps": 7928,
     "late_collected": "0",
-    "late_due": "324163641991",
+    "late_due": "104531170687",
     "late_paid_until": "2013574989",
     "missed": 16,
     "now": "2095901158",
     "overdue": "1530459650272",
-    "overdue_principal": "438476690152",
+    "overdue_principal": "141393036737",
     "paid": "1710752049984",
     "principal": "2901897352792",
+    "principal_left": "777708489800",
     "total": "10128786563352"
   },
   {
@@ -6381,6 +6684,7 @@
     "overdue_principal": "24435564860987",
     "paid": "13756319195130",
     "principal": "36967571647919",
+    "principal_left": "26794095924672",
     "total": "40579112675549"
   },
   {
@@ -6402,6 +6706,7 @@
     "overdue_principal": "3759653328484",
     "paid": "49270097785002",
     "principal": "6149253072331",
+    "principal_left": "5156763624502",
     "total": "126788723073436"
   },
   {
@@ -6423,6 +6728,7 @@
     "overdue_principal": "0",
     "paid": "73919084446240",
     "principal": "6253353518077",
+    "principal_left": "1634626607514",
     "total": "96651522559092"
   },
   {
@@ -6444,6 +6750,7 @@
     "overdue_principal": "13606206316291",
     "paid": "83656233411004",
     "principal": "121955837884931",
+    "principal_left": "121955837884931",
     "total": "174247518048735"
   },
   {
@@ -6465,6 +6772,7 @@
     "overdue_principal": "0",
     "paid": "91114919780337",
     "principal": "177420332283598",
+    "principal_left": "16127508204252",
     "total": "265718634537917"
   },
   {
@@ -6486,6 +6794,7 @@
     "overdue_principal": "0",
     "paid": "45030419411976",
     "principal": "5491315848184",
+    "principal_left": "2564444497280",
     "total": "81473528881672"
   },
   {
@@ -6507,6 +6816,7 @@
     "overdue_principal": "0",
     "paid": "37567696679220",
     "principal": "64918174861667",
+    "principal_left": "27350027068518",
     "total": "74687269743659"
   },
   {
@@ -6528,6 +6838,7 @@
     "overdue_principal": "0",
     "paid": "2720129987562",
     "principal": "8008870789144",
+    "principal_left": "5935374135058",
     "total": "12025331513484"
   },
   {
@@ -6549,6 +6860,7 @@
     "overdue_principal": "0",
     "paid": "9768128069491",
     "principal": "31671458863521",
+    "principal_left": "13780251749986",
     "total": "157804976891698"
   },
   {
@@ -6570,6 +6882,7 @@
     "overdue_principal": "0",
     "paid": "17313728388552",
     "principal": "65783596733208",
+    "principal_left": "12715969247909",
     "total": "214278816699378"
   },
   {
@@ -6591,6 +6904,7 @@
     "overdue_principal": "66192337337229",
     "paid": "13195424934028",
     "principal": "75960910416126",
+    "principal_left": "75960910416126",
     "total": "102608280986632"
   },
   {
@@ -6612,6 +6926,7 @@
     "overdue_principal": "0",
     "paid": "159965444411825",
     "principal": "32791434807843",
+    "principal_left": "32791434807843",
     "total": "155926936759318"
   },
   {
@@ -6633,6 +6948,7 @@
     "overdue_principal": "0",
     "paid": "160795427583288",
     "principal": "30140631584675",
+    "principal_left": "15832873768974",
     "total": "151308391449827"
   },
   {
@@ -6654,6 +6970,7 @@
     "overdue_principal": "34284819449625",
     "paid": "859626531624",
     "principal": "82648216849438",
+    "principal_left": "82648216849438",
     "total": "88621291924846"
   },
   {
@@ -6675,6 +6992,7 @@
     "overdue_principal": "0",
     "paid": "60689405471940",
     "principal": "97934456593356",
+    "principal_left": "27627310204039",
     "total": "168301179909546"
   },
   {
@@ -6696,6 +7014,7 @@
     "overdue_principal": "7805317774668",
     "paid": "226296778051818",
     "principal": "161936053308204",
+    "principal_left": "161936053308204",
     "total": "237756648518043"
   },
   {
@@ -6717,6 +7036,7 @@
     "overdue_principal": "0",
     "paid": "101800730832787",
     "principal": "99115054519869",
+    "principal_left": "99115054519869",
     "total": "169979513835596"
   },
   {
@@ -6738,6 +7058,7 @@
     "overdue_principal": "0",
     "paid": "5574610491552",
     "principal": "7326392981246",
+    "principal_left": "1629389798752",
     "total": "9254001489530"
   },
   {
@@ -6759,6 +7080,7 @@
     "overdue_principal": "0",
     "paid": "28757639241198",
     "principal": "19418909253593",
+    "principal_left": "1996263870900",
     "total": "25219362665393"
   },
   {
@@ -6780,6 +7102,7 @@
     "overdue_principal": "0",
     "paid": "75321189503807",
     "principal": "50500871431684",
+    "principal_left": "42380331304056",
     "total": "253010377910848"
   },
   {
@@ -6801,6 +7124,7 @@
     "overdue_principal": "0",
     "paid": "144329862797487",
     "principal": "46194449512795",
+    "principal_left": "17734049166889",
     "total": "171027210332662"
   },
   {
@@ -6814,14 +7138,15 @@
     "interval": "5325376",
     "late_bps": 9940,
     "late_collected": "32611555519488",
-    "late_due": "780223795347",
+    "late_due": "444330839315",
     "late_paid_until": "0",
     "missed": 4,
     "now": "1939954554",
     "overdue": "4942616533470",
-    "overdue_principal": "3551269979324",
+    "overdue_principal": "2022418157403",
     "paid": "70450034267970",
     "principal": "74934640448450",
+    "principal_left": "13847921553312",
     "total": "104293166942060"
   },
   {
@@ -6843,6 +7168,7 @@
     "overdue_principal": "0",
     "paid": "115834629443940",
     "principal": "65209507571001",
+    "principal_left": "58655952059215",
     "total": "164795318600981"
   },
   {
@@ -6864,6 +7190,7 @@
     "overdue_principal": "0",
     "paid": "134623292309984",
     "principal": "103688070074077",
+    "principal_left": "63695581444001",
     "total": "132712236111334"
   },
   {
@@ -6885,6 +7212,7 @@
     "overdue_principal": "0",
     "paid": "212762248860216",
     "principal": "154242041735076",
+    "principal_left": "136951508852067",
     "total": "235304411489936"
   },
   {
@@ -6906,6 +7234,7 @@
     "overdue_principal": "0",
     "paid": "144573096232950",
     "principal": "86039013842885",
+    "principal_left": "86039013842885",
     "total": "160191796387187"
   },
   {
@@ -6927,6 +7256,7 @@
     "overdue_principal": "17855226841280",
     "paid": "79112265756784",
     "principal": "64412795239741",
+    "principal_left": "32766788933501",
     "total": "109452498281961"
   },
   {
@@ -6948,6 +7278,7 @@
     "overdue_principal": "0",
     "paid": "279006228050175",
     "principal": "58304282950250",
+    "principal_left": "12273051560975",
     "total": "249804125750200"
   },
   {
@@ -6969,6 +7300,7 @@
     "overdue_principal": "0",
     "paid": "19877496134912",
     "principal": "53743302355353",
+    "principal_left": "45085256341415",
     "total": "59728053295011"
   },
   {
@@ -6990,6 +7322,7 @@
     "overdue_principal": "145869728442",
     "paid": "719795980284",
     "principal": "325674766248",
+    "principal_left": "325674766248",
     "total": "1303742044656"
   },
   {
@@ -7011,6 +7344,7 @@
     "overdue_principal": "2876803127323",
     "paid": "178093804349685",
     "principal": "26563279106450",
+    "principal_left": "5798763827530",
     "total": "199723903050800"
   },
   {
@@ -7029,9 +7363,10 @@
     "missed": 18,
     "now": "1832527457",
     "overdue": "58742225608444",
-    "overdue_principal": "11366620657964",
+    "overdue_principal": "4498279662812",
     "paid": "33838114196900",
     "principal": "17914295756644",
+    "principal_left": "4498279662825",
     "total": "92580339805344"
   },
   {
@@ -7053,6 +7388,7 @@
     "overdue_principal": "5154427606157",
     "paid": "9074511830040",
     "principal": "9866821601108",
+    "principal_left": "9866821601108",
     "total": "19000234157013"
   },
   {
@@ -7074,6 +7410,7 @@
     "overdue_principal": "0",
     "paid": "150169691420944",
     "principal": "84048054235519",
+    "principal_left": "68793332387255",
     "total": "239657981844231"
   },
   {
@@ -7095,6 +7432,7 @@
     "overdue_principal": "0",
     "paid": "243052182516468",
     "principal": "201568923045508",
+    "principal_left": "201568923045508",
     "total": "275819544395296"
   },
   {
@@ -7116,6 +7454,7 @@
     "overdue_principal": "0",
     "paid": "19557743166528",
     "principal": "27631475381926",
+    "principal_left": "6673001304270",
     "total": "102719239324846"
   },
   {
@@ -7137,6 +7476,7 @@
     "overdue_principal": "26564264508650",
     "paid": "96490975230174",
     "principal": "103865835683055",
+    "principal_left": "103865835683055",
     "total": "193059174131115"
   },
   {
@@ -7158,6 +7498,7 @@
     "overdue_principal": "0",
     "paid": "310429182476270",
     "principal": "192750496707949",
+    "principal_left": "49016451310810",
     "total": "268305257110125"
   },
   {
@@ -7179,6 +7520,7 @@
     "overdue_principal": "0",
     "paid": "113356115143285",
     "principal": "143446140927387",
+    "principal_left": "143446140927387",
     "total": "159544145175040"
   },
   {
@@ -7200,6 +7542,7 @@
     "overdue_principal": "1678861167671",
     "paid": "55914095973057",
     "principal": "17183839984184",
+    "principal_left": "17183839984184",
     "total": "61968409594877"
   },
   {
@@ -7221,6 +7564,7 @@
     "overdue_principal": "21212863389032",
     "paid": "130360190855361",
     "principal": "80018345485052",
+    "principal_left": "54988607013856",
     "total": "177384937892873"
   },
   {
@@ -7242,6 +7586,7 @@
     "overdue_principal": "0",
     "paid": "59889573607968",
     "principal": "142253767727358",
+    "principal_left": "142253767727358",
     "total": "160303997888646"
   },
   {
@@ -7263,6 +7608,7 @@
     "overdue_principal": "5589950782022",
     "paid": "190767513692976",
     "principal": "129822516925371",
+    "principal_left": "129822516925371",
     "total": "241845225270435"
   },
   {
@@ -7284,6 +7630,7 @@
     "overdue_principal": "11749850506676",
     "paid": "32025375214464",
     "principal": "40572688200131",
+    "principal_left": "13741969493340",
     "total": "45080764666131"
   },
   {
@@ -7305,6 +7652,7 @@
     "overdue_principal": "0",
     "paid": "69645978030860",
     "principal": "105523117037254",
+    "principal_left": "59662770368762",
     "total": "180196579640070"
   },
   {
@@ -7326,6 +7674,7 @@
     "overdue_principal": "3228841083964",
     "paid": "45019020462152",
     "principal": "8829207229763",
+    "principal_left": "8829207229763",
     "total": "70974334640547"
   },
   {
@@ -7339,14 +7688,15 @@
     "interval": "3905462",
     "late_bps": 2744,
     "late_collected": "0",
-    "late_due": "20317903412062",
+    "late_due": "13532095170405",
     "late_paid_until": "1433981593",
     "missed": 17,
     "now": "1509480032",
     "overdue": "63770772864353",
-    "overdue_principal": "30928824841491",
+    "overdue_principal": "20599162855327",
     "paid": "60272745634291",
     "principal": "60161106476294",
+    "principal_left": "20599162855328",
     "total": "124043518498644"
   },
   {
@@ -7368,6 +7718,7 @@
     "overdue_principal": "22738474150142",
     "paid": "45222747142290",
     "principal": "58695080403458",
+    "principal_left": "58695080403458",
     "total": "73821004153793"
   },
   {
@@ -7389,6 +7740,7 @@
     "overdue_principal": "977153827350",
     "paid": "20163597250214",
     "principal": "4673141207371",
+    "principal_left": "4673141207371",
     "total": "25494496466253"
   },
   {
@@ -7402,14 +7754,15 @@
     "interval": "602097",
     "late_bps": 3899,
     "late_collected": "0",
-    "late_due": "57133985069123",
+    "late_due": "42936756679524",
     "late_paid_until": "0",
     "missed": 4,
     "now": "1517097913",
     "overdue": "97808182576491",
-    "overdue_principal": "70441453092512",
+    "overdue_principal": "52937450939684",
     "paid": "183492313743013",
     "principal": "202592617451966",
+    "principal_left": "52937450939685",
     "total": "281300496319504"
   },
   {
@@ -7431,6 +7784,7 @@
     "overdue_principal": "0",
     "paid": "172481229327428",
     "principal": "28996326349006",
+    "principal_left": "18029915718212",
     "total": "223392344689542"
   },
   {
@@ -7452,6 +7806,7 @@
     "overdue_principal": "2122916906385",
     "paid": "207692779048160",
     "principal": "9828319010752",
+    "principal_left": "9828319010752",
     "total": "264914258992223"
   },
   {
@@ -7473,6 +7828,7 @@
     "overdue_principal": "0",
     "paid": "150178602595986",
     "principal": "78865936903229",
+    "principal_left": "50955281831090",
     "total": "152900226637475"
   },
   {
@@ -7494,6 +7850,7 @@
     "overdue_principal": "24962101060165",
     "paid": "2257306161500",
     "principal": "26913316506262",
+    "principal_left": "26913316506262",
     "total": "31135257409702"
   },
   {
@@ -7512,9 +7869,10 @@
     "missed": 2,
     "now": "1390772420",
     "overdue": "3518687396430",
-    "overdue_principal": "3345919845265",
+    "overdue_principal": "52813962268",
     "paid": "168883315243262",
     "principal": "179974385818846",
+    "principal_left": "305956455877",
     "total": "189267415941500"
   },
   {
@@ -7536,6 +7894,7 @@
     "overdue_principal": "0",
     "paid": "232216272222588",
     "principal": "28615023878359",
+    "principal_left": "7022126857698",
     "total": "209941481087155"
   },
   {
@@ -7557,6 +7916,7 @@
     "overdue_principal": "0",
     "paid": "97909518943643",
     "principal": "32955673828697",
+    "principal_left": "32955673828697",
     "total": "97704339834038"
   },
   {
@@ -7578,6 +7938,7 @@
     "overdue_principal": "0",
     "paid": "189023194400438",
     "principal": "48468768300614",
+    "principal_left": "44213210443260",
     "total": "250096843618996"
   },
   {
@@ -7599,6 +7960,7 @@
     "overdue_principal": "58584586484278",
     "paid": "9146871902086",
     "principal": "64992884939001",
+    "principal_left": "64992884939001",
     "total": "92767463513895"
   },
   {
@@ -7620,6 +7982,7 @@
     "overdue_principal": "49205375728114",
     "paid": "91357721541450",
     "principal": "135297871010072",
+    "principal_left": "112689596764229",
     "total": "201007088109962"
   },
   {
@@ -7641,6 +8004,7 @@
     "overdue_principal": "0",
     "paid": "135927969373098",
     "principal": "42181879438592",
+    "principal_left": "29881643388212",
     "total": "193052079786662"
   },
   {
@@ -7662,6 +8026,7 @@
     "overdue_principal": "0",
     "paid": "24603204230742",
     "principal": "214389774205759",
+    "principal_left": "214389774205759",
     "total": "223462345429811"
   },
   {
@@ -7683,6 +8048,7 @@
     "overdue_principal": "0",
     "paid": "40966827821175",
     "principal": "48644036416243",
+    "principal_left": "8162469309598",
     "total": "50112327615216"
   },
   {
@@ -7704,6 +8070,7 @@
     "overdue_principal": "0",
     "paid": "14415649890920",
     "principal": "61375123100894",
+    "principal_left": "61375123100894",
     "total": "197474656043662"
   },
   {
@@ -7725,6 +8092,7 @@
     "overdue_principal": "0",
     "paid": "48411490978881",
     "principal": "101170553784578",
+    "principal_left": "16278342103202",
     "total": "255739519170926"
   },
   {
@@ -7746,6 +8114,7 @@
     "overdue_principal": "0",
     "paid": "70835840508964",
     "principal": "96495299183753",
+    "principal_left": "30145131463832",
     "total": "151293978022597"
   },
   {
@@ -7767,6 +8136,7 @@
     "overdue_principal": "4182506835868",
     "paid": "165944711988816",
     "principal": "30484743692659",
+    "principal_left": "26875350037104",
     "total": "192332767729039"
   },
   {
@@ -7788,6 +8158,7 @@
     "overdue_principal": "0",
     "paid": "277747482340204",
     "principal": "57991784807202",
+    "principal_left": "197172068320",
     "total": "251264232261594"
   },
   {
@@ -7809,6 +8180,7 @@
     "overdue_principal": "128288328448139",
     "paid": "12797863905216",
     "principal": "150366414241975",
+    "principal_left": "150366414241975",
     "total": "169732943042839"
   },
   {
@@ -7830,6 +8202,7 @@
     "overdue_principal": "0",
     "paid": "76211318029940",
     "principal": "17618084646918",
+    "principal_left": "12519410945184",
     "total": "64701008605138"
   },
   {
@@ -7851,6 +8224,7 @@
     "overdue_principal": "62605393329347",
     "paid": "64114802594248",
     "principal": "135713763601969",
+    "principal_left": "135713763601969",
     "total": "153678817349015"
   },
   {
@@ -7872,6 +8246,7 @@
     "overdue_principal": "54085513465653",
     "paid": "182941637553312",
     "principal": "163301671086255",
+    "principal_left": "67214967816528",
     "total": "273537137494725"
   },
   {
@@ -7893,6 +8268,7 @@
     "overdue_principal": "0",
     "paid": "65909831419581",
     "principal": "184811837382159",
+    "principal_left": "147830988720262",
     "total": "186133384411470"
   },
   {
@@ -7914,6 +8290,7 @@
     "overdue_principal": "0",
     "paid": "230725733887419",
     "principal": "91929948278305",
+    "principal_left": "91929948278305",
     "total": "209503072638261"
   },
   {
@@ -7935,6 +8312,7 @@
     "overdue_principal": "0",
     "paid": "76509933066084",
     "principal": "34454298365500",
+    "principal_left": "34454298365500",
     "total": "127325566760244"
   },
   {
@@ -7956,6 +8334,7 @@
     "overdue_principal": "0",
     "paid": "43518838986180",
     "principal": "776901922514",
+    "principal_left": "135491694848",
     "total": "123317764208054"
   },
   {
@@ -7977,6 +8356,7 @@
     "overdue_principal": "0",
     "paid": "214065079610996",
     "principal": "152553154867597",
+    "principal_left": "152553154867597",
     "total": "179074016746791"
   },
   {
@@ -7990,14 +8370,15 @@
     "interval": "7027620",
     "late_bps": 2748,
     "late_collected": "89624712661444",
-    "late_due": "11520257793842",
+    "late_due": "1722675028809",
     "late_paid_until": "1452902130",
     "missed": 11,
     "now": "1657383384",
     "overdue": "50223112209965",
-    "overdue_principal": "40469783819091",
+    "overdue_principal": "6051625515163",
     "paid": "122371314222483",
     "principal": "218011950042693",
+    "principal_left": "17855178708276",
     "total": "270553425218475"
   },
   {
@@ -8019,6 +8400,7 @@
     "overdue_principal": "0",
     "paid": "14906244458896",
     "principal": "23552774552968",
+    "principal_left": "23552774552968",
     "total": "25230610125948"
   },
   {
@@ -8040,6 +8422,7 @@
     "overdue_principal": "0",
     "paid": "12599543356423",
     "principal": "10172551359137",
+    "principal_left": "9852115982475",
     "total": "10729407614096"
   },
   {
@@ -8061,6 +8444,7 @@
     "overdue_principal": "0",
     "paid": "97614013039025",
     "principal": "5963052500547",
+    "principal_left": "5963052500547",
     "total": "82590754757597"
   },
   {
@@ -8082,6 +8466,7 @@
     "overdue_principal": "0",
     "paid": "105171525519236",
     "principal": "167237765426141",
+    "principal_left": "167237765426141",
     "total": "268568757710124"
   },
   {
@@ -8103,6 +8488,7 @@
     "overdue_principal": "5062706073100",
     "paid": "79929505438380",
     "principal": "15157802612863",
+    "principal_left": "14011872732684",
     "total": "120014272434954"
   },
   {
@@ -8124,6 +8510,7 @@
     "overdue_principal": "0",
     "paid": "88767040334400",
     "principal": "40130099485728",
+    "principal_left": "40130099485728",
     "total": "184931334031218"
   },
   {
@@ -8145,6 +8532,7 @@
     "overdue_principal": "4628158343226",
     "paid": "141902352411105",
     "principal": "73385831960564",
+    "principal_left": "73385831960564",
     "total": "230773056459464"
   },
   {
@@ -8166,6 +8554,7 @@
     "overdue_principal": "0",
     "paid": "160180229531160",
     "principal": "104464411501205",
+    "principal_left": "74493571840650",
     "total": "219786264458120"
   },
   {
@@ -8179,14 +8568,15 @@
     "interval": "6564280",
     "late_bps": 5394,
     "late_collected": "55204330304442",
-    "late_due": "7415014138172",
+    "late_due": "6910485393778",
     "late_paid_until": "2116353759",
     "missed": 17,
     "now": "2144618893",
     "overdue": "25404111588631",
-    "overdue_principal": "18748234352674",
+    "overdue_principal": "17472576213485",
     "paid": "23206894128341",
     "principal": "71749844439310",
+    "principal_left": "50906514623085",
     "total": "97222011433970"
   },
   {
@@ -8208,6 +8598,7 @@
     "overdue_principal": "0",
     "paid": "160219293287640",
     "principal": "29937389864834",
+    "principal_left": "7927420834928",
     "total": "159580969413518"
   },
   {
@@ -8229,6 +8620,7 @@
     "overdue_principal": "262058575833",
     "paid": "69220425344656",
     "principal": "2681363326766",
+    "principal_left": "2681363326766",
     "total": "206258716768886"
   },
   {
@@ -8250,6 +8642,7 @@
     "overdue_principal": "0",
     "paid": "30652567638197",
     "principal": "19032585911543",
+    "principal_left": "3111827796285",
     "total": "82822392977037"
   },
   {
@@ -8271,6 +8664,7 @@
     "overdue_principal": "0",
     "paid": "181732291534192",
     "principal": "7813",
+    "principal_left": "0",
     "total": "231594611367813"
   },
   {
@@ -8292,6 +8686,7 @@
     "overdue_principal": "5706444614171",
     "paid": "11790130946517",
     "principal": "7388896301886",
+    "principal_left": "7388896301886",
     "total": "51779231218219"
   },
   {
@@ -8313,6 +8708,7 @@
     "overdue_principal": "0",
     "paid": "26722154615310",
     "principal": "2954805966134",
+    "principal_left": "38412477480",
     "total": "33051520861250"
   },
   {
@@ -8334,6 +8730,7 @@
     "overdue_principal": "0",
     "paid": "211867064139192",
     "principal": "70142144744704",
+    "principal_left": "13705775082196",
     "total": "236168837521264"
   },
   {
@@ -8355,6 +8752,7 @@
     "overdue_principal": "0",
     "paid": "35013114424062",
     "principal": "9036694809994",
+    "principal_left": "9036694809994",
     "total": "81558617348722"
   },
   {
@@ -8376,6 +8774,7 @@
     "overdue_principal": "6895385648177",
     "paid": "112113115825505",
     "principal": "61842023718029",
+    "principal_left": "61842023718029",
     "total": "126182460138316"
   },
   {
@@ -8389,14 +8788,15 @@
     "interval": "9734144",
     "late_bps": 6785,
     "late_collected": "46662496195494",
-    "late_due": "21516046121133",
+    "late_due": "10734413644654",
     "late_paid_until": "0",
     "missed": 14,
     "now": "2277178167",
     "overdue": "36364826062892",
-    "overdue_principal": "25182642048764",
+    "overdue_principal": "12563688276870",
     "paid": "229654384312421",
     "principal": "184218303186538",
+    "principal_left": "12563688276876",
     "total": "266019210375313"
   },
   {
@@ -8418,6 +8818,7 @@
     "overdue_principal": "0",
     "paid": "103654125582510",
     "principal": "90458514602478",
+    "principal_left": "90458514602478",
     "total": "94592193456243"
   },
   {
@@ -8439,6 +8840,7 @@
     "overdue_principal": "0",
     "paid": "6113389252568",
     "principal": "241796993026568",
+    "principal_left": "241796993026568",
     "total": "276623948089840"
   },
   {
@@ -8460,6 +8862,7 @@
     "overdue_principal": "0",
     "paid": "202893219468654",
     "principal": "111884138067292",
+    "principal_left": "56613373858360",
     "total": "220201019613451"
   },
   {
@@ -8481,6 +8884,7 @@
     "overdue_principal": "0",
     "paid": "192896120127123",
     "principal": "82481922631044",
+    "principal_left": "82481922631044",
     "total": "187843139671947"
   },
   {
@@ -8494,14 +8898,15 @@
     "interval": "2933985",
     "late_bps": 8939,
     "late_collected": "19109186968592",
-    "late_due": "1554509642237",
+    "late_due": "1506639814765",
     "late_paid_until": "2125573290",
     "missed": 10,
     "now": "2181652306",
     "overdue": "7173539622592",
-    "overdue_principal": "4824205396368",
+    "overdue_principal": "4675648016126",
     "paid": "58126804468544",
     "principal": "51898932567161",
+    "principal_left": "12414224668352",
     "total": "77173133925961"
   },
   {
@@ -8523,6 +8928,7 @@
     "overdue_principal": "0",
     "paid": "65353741355904",
     "principal": "165817737382635",
+    "principal_left": "165817737382635",
     "total": "217266427386219"
   },
   {
@@ -8544,6 +8950,7 @@
     "overdue_principal": "0",
     "paid": "135355216662729",
     "principal": "165247932233751",
+    "principal_left": "165247932233751",
     "total": "250148247397917"
   },
   {
@@ -8565,6 +8972,7 @@
     "overdue_principal": "0",
     "paid": "265530275699704",
     "principal": "96360648281717",
+    "principal_left": "15514064373080",
     "total": "236700192284529"
   },
   {
@@ -8586,6 +8994,7 @@
     "overdue_principal": "0",
     "paid": "50676568991580",
     "principal": "119556529817909",
+    "principal_left": "95908248213582",
     "total": "209234388900449"
   },
   {
@@ -8607,6 +9016,7 @@
     "overdue_principal": "0",
     "paid": "86186599383258",
     "principal": "36992989230622",
+    "principal_left": "32942256909315",
     "total": "126169813186246"
   },
   {
@@ -8628,6 +9038,7 @@
     "overdue_principal": "0",
     "paid": "52755803989320",
     "principal": "50043132770257",
+    "principal_left": "44633470117563",
     "total": "56513983929097"
   },
   {
@@ -8649,6 +9060,7 @@
     "overdue_principal": "0",
     "paid": "95038355068496",
     "principal": "53407956851370",
+    "principal_left": "13816638437095",
     "total": "116840859441346"
   },
   {
@@ -8670,6 +9082,7 @@
     "overdue_principal": "0",
     "paid": "179248491205560",
     "principal": "174663064686655",
+    "principal_left": "110317191651888",
     "total": "231587197940307"
   },
   {
@@ -8691,6 +9104,7 @@
     "overdue_principal": "46268431803126",
     "paid": "74805121918746",
     "principal": "96432746562935",
+    "principal_left": "96432746562935",
     "total": "143800695736397"
   },
   {
@@ -8712,6 +9126,7 @@
     "overdue_principal": "0",
     "paid": "39648451774889",
     "principal": "107746558977747",
+    "principal_left": "17519590488522",
     "total": "124017678379891"
   },
   {
@@ -8733,6 +9148,7 @@
     "overdue_principal": "0",
     "paid": "170174917398340",
     "principal": "14434339827138",
+    "principal_left": "14434339827138",
     "total": "156554661827334"
   },
   {
@@ -8754,6 +9170,7 @@
     "overdue_principal": "29255010160419",
     "paid": "17262491813748",
     "principal": "32141298791944",
+    "principal_left": "32141298791944",
     "total": "192232648262872"
   },
   {
@@ -8775,6 +9192,7 @@
     "overdue_principal": "0",
     "paid": "58741549999434",
     "principal": "41252011476447",
+    "principal_left": "10271750856030",
     "total": "149355580989771"
   },
   {
@@ -8796,6 +9214,7 @@
     "overdue_principal": "0",
     "paid": "58453697135622",
     "principal": "27397798839359",
+    "principal_left": "12819430072557",
     "total": "75894179610149"
   },
   {
@@ -8817,6 +9236,7 @@
     "overdue_principal": "0",
     "paid": "291024116376266",
     "principal": "4030466618395",
+    "principal_left": "4030466618395",
     "total": "244270703697510"
   },
   {
@@ -8838,6 +9258,7 @@
     "overdue_principal": "12638622772021",
     "paid": "19981439258295",
     "principal": "19042674056248",
+    "principal_left": "19042674056248",
     "total": "59415519658423"
   },
   {
@@ -8859,6 +9280,7 @@
     "overdue_principal": "0",
     "paid": "175555856263680",
     "principal": "127141617660231",
+    "principal_left": "41956733827800",
     "total": "206633540805991"
   },
   {
@@ -8872,14 +9294,15 @@
     "interval": "1946910",
     "late_bps": 7975,
     "late_collected": "0",
-    "late_due": "16761985828603",
+    "late_due": "10415667961166",
     "late_paid_until": "0",
     "missed": 4,
     "now": "1621287216",
     "overdue": "67862290801501",
-    "overdue_principal": "16761985828603",
+    "overdue_principal": "10415667961166",
     "paid": "168509324661434",
     "principal": "58383789021555",
+    "principal_left": "10415667961168",
     "total": "236371615462935"
   },
   {
@@ -8901,6 +9324,7 @@
     "overdue_principal": "26305354871460",
     "paid": "50336319876750",
     "principal": "47949972420532",
+    "principal_left": "47949972420532",
     "total": "111511563758032"
   },
   {
@@ -8922,6 +9346,7 @@
     "overdue_principal": "0",
     "paid": "23671012237259",
     "principal": "13607752850472",
+    "principal_left": "2279298602375",
     "total": "45617676317199"
   },
   {
@@ -8943,6 +9368,7 @@
     "overdue_principal": "0",
     "paid": "8357330282792",
     "principal": "137947326700534",
+    "principal_left": "58613819114830",
     "total": "171256768094039"
   },
   {
@@ -8964,6 +9390,7 @@
     "overdue_principal": "29273414323296",
     "paid": "114775357355720",
     "principal": "80532088919637",
+    "principal_left": "80532088919637",
     "total": "180322635283589"
   }
 ]

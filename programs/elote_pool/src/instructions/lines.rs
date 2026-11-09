@@ -778,6 +778,9 @@ pub struct Repay<'info> {
 /// must cover the late interest due (`LateInterestUnpaid`; on a bullet line, from `term_end` or
 /// from its acceleration); the payment
 /// settles late interest, then interest, then principal, and debits the payer only what is due.
+/// On an active line that can draw nothing more, the interest a payment on account takes is the
+/// interest accrued to that moment (decision 46); the rest is taken, or forgiven, by the payment
+/// that settles the line (decision 44).
 /// What is owed is what was drawn plus the interest fixed at each draw.
 ///
 /// The line becomes `Repaid` only when nothing is due and nothing can be drawn (window closed,
@@ -844,9 +847,13 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
                 .max(line.interest_repaid);
             let cut_left = accrued.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
             let settle_total = principal_left.checked_add(cut_left).ok_or(PoolError::Overflow)?;
-            if settle_total > 0 && amount.checked_sub(late_part).ok_or(PoolError::Overflow)? >= settle_total {
+            if amount.checked_sub(late_part).ok_or(PoolError::Overflow)? >= settle_total {
                 settlement_forgiven = line.interest_due.checked_sub(accrued).ok_or(PoolError::Overflow)?;
                 pair = (cut_left, settle_total);
+            } else {
+                // Decision 46: a payment on account takes the interest accrued, then principal;
+                // the interest not yet accrued stays owed until a payment settles the line.
+                pair = (cut_left, remaining);
             }
         }
         pair
@@ -964,6 +971,9 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     // late interest alone also leaves its entry there.
     let payer_key = ctx.accounts.payer.key();
     let by_borrower = payer_key == line.borrower;
+    // The ordinary interest the line still owes: every payment entry reserves it (decision 46,
+    // CCom 364: principal received without reserving the interest extinguishes it).
+    let interest_reserved = line.interest_due.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
     // The aval's settling payment is its own mark, and the título then goes to the aval
     // (LGTOC 115, decision 38-f).
     let by_aval = !by_borrower && line.sponsor == Some(payer_key) && line.sponsor_role == SPONSOR_GUARANTOR;
@@ -991,7 +1001,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
             continue;
         }
         let principal_balance = sidecar.amount_mxn.min(sidecar.drawn_through.saturating_sub(principal_after));
-        let annotation = registry::annotation_hash(&receipt_hash, principal_applied, accessory_applied, principal_balance, by_borrower);
+        let annotation = registry::annotation_hash(&receipt_hash, principal_applied, accessory_applied, principal_balance, by_borrower, interest_reserved);
         let hash = registry::append(sidecar, kind, &payer_key, &pool_key, &annotation, now).ok_or(PoolError::Overflow)?;
         // The payment entry's own number: a Terminacion may chain right after it, and the
         // PaymentEntry must name the entry whose preimages it carries.
@@ -1053,7 +1063,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         sidecar.exit(ctx.program_id)?;
     }
     if !touched.is_empty() {
-        emit_cpi!(PagarePayment { pool: pool_key, line_id, payer: payer_key, receipt_hash, late_part, interest_part, principal_part, entries });
+        emit_cpi!(PagarePayment { pool: pool_key, line_id, payer: payer_key, receipt_hash, late_part, interest_part, principal_part, interest_reserved, entries });
     }
 
     ctx.accounts.vault.reload()?;
@@ -1118,6 +1128,7 @@ fn line_arrears(line: &CreditLine, now: i64) -> Result<Arrears> {
         grace: 0,
         late_paid_until: line.late_paid_until,
         principal: line.drawn,
+        principal_left: line.drawn.checked_sub(line.principal_repaid).ok_or(PoolError::Overflow)?,
         late_collected: line.late_collected,
         accelerated_at: line.accelerated_at,
     };

@@ -3,11 +3,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { bulletAccruedInterest, lineArrears, lineLateDue, lineSchedule, maxLinePrincipal } from "../src/schedule";
+import { bulletAccruedInterest, lineArrears, lineLateDue, lineSchedule, maxLinePrincipal, repayInterestLeft } from "../src/schedule";
 
 type Vector = {
   total: string;
   principal: string;
+  principal_left: string;
   anchor: string;
   interval: string;
   installments: number;
@@ -41,8 +42,9 @@ test("lineArrears agrees with math::arrears on every vector", () => {
       {
         drawn: BigInt(v.principal),
         interestDue: BigInt(v.total) - BigInt(v.principal),
-        principalRepaid: BigInt(v.paid),
-        interestRepaid: 0n,
+        // Only the sum and the principal left unpaid matter to the arrears.
+        principalRepaid: BigInt(v.principal) - BigInt(v.principal_left),
+        interestRepaid: BigInt(v.paid) - (BigInt(v.principal) - BigInt(v.principal_left)),
         // The vectors anchor the calendar one interval before the first due date.
         firstDueAt: BigInt(v.anchor) + BigInt(v.interval),
         acceleratedAt: BigInt(v.accelerated_at),
@@ -130,6 +132,32 @@ test("lateDue is never negative when lateCollected exceeds the principal (R-24)"
   );
   assert.equal(a.overdue, 600n);
   assert.equal(a.lateDue, 0n);
+});
+
+test("repayInterestLeft is the accrued interest once the line can draw nothing more", () => {
+  const year = 31_536_000n;
+  const t0 = 1_800_000_000n;
+  // 6.0 drawn in full at t0 at 12% over a year: 720_000 fixed, 60_000 accrued a month in
+  // (programs/elote_pool/tests/schedule.rs::a_settlement_in_two_payments_pays_what_one_payment_pays).
+  const line = {
+    status: 2,
+    principal: 6_000_000n,
+    drawn: 6_000_000n,
+    availabilityEnd: t0 + year,
+    interestDue: 720_000n,
+    interestRepaid: 0n,
+    drawTimeWeight: 6_000_000n * t0,
+    rateBps: 1_200,
+  };
+  const now = t0 + year / 12n;
+  assert.equal(repayInterestLeft(line, now), 60_000n);
+  assert.equal(repayInterestLeft({ ...line, interestRepaid: 60_000n }, now), 0n);
+  assert.equal(repayInterestLeft({ ...line, interestRepaid: 100_000n }, now), 0n, "never below what was repaid");
+  assert.equal(repayInterestLeft(line, t0 + 2n * year), 720_000n, "never above the interest fixed");
+  // While it can draw, and in collection, all the interest still owed.
+  assert.equal(repayInterestLeft({ ...line, principal: 8_000_000n }, now), 720_000n);
+  assert.equal(repayInterestLeft({ ...line, principal: 8_000_000n, availabilityEnd: now }, now), 60_000n, "window closed");
+  assert.equal(repayInterestLeft({ ...line, status: 5, interestRepaid: 20_000n }, now), 700_000n);
 });
 
 test("bulletAccruedInterest matches the program's unit case", () => {

@@ -171,6 +171,9 @@ pub struct ScheduleTerms {
     /// The principal the installments repay (the line's `drawn`): the share of each installment
     /// that late interest accrues on, and the lifetime cap on late interest.
     pub principal: u64,
+    /// The principal still unpaid (`drawn - principal_repaid`): an overdue part carries no more
+    /// principal than its share of what is left (decision 46).
+    pub principal_left: u64,
     /// Late interest collected so far.
     pub late_collected: u64,
     /// When the balance was accelerated (`mark_in_collection`); zero when it was not.
@@ -205,7 +208,10 @@ fn principal_share(part: u64, principal: u64, total: u64) -> Option<u64> {
 /// Arrears of a scheduled line that has repaid `paid` (principal plus interest) by `now`.
 ///
 /// Late interest accrues on the principal share of each overdue part separately (no interest on
-/// overdue interest): the unpaid part of installment `k` accrues from
+/// overdue interest): the smaller of the installment's own proportion (`principal / total`) and
+/// the proportion of what is left unpaid (`principal_left / (total - paid)`), since a payment on
+/// account may have repaid principal ahead of the schedule (decision 46). The unpaid part of
+/// installment `k` accrues from
 /// `start_k = max(due_k + grace, late_paid_until)` until `now`, at `late_bps` a year, and never
 /// beyond its own amount. Once the balance is accelerated (`accelerated_at > 0`, set by
 /// `mark_in_collection`) every installment counts as due, so `overdue` is the whole unpaid balance,
@@ -229,7 +235,15 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
     // Every installment but the first overdue one (partly paid) and the last (the rounding
     // remainder) is the regular installment, so its principal share is computed once.
     let base = installment_amount(t.total, t.installments)?;
-    let base_share = principal_share(base, t.principal, t.total)?;
+    // The proportion of principal in an overdue part: the schedule's, or that of what is left
+    // unpaid when smaller (decision 46). One proportion for every part, chosen once.
+    let unpaid = t.total.saturating_sub(paid);
+    let (share_of, share_total) = if (t.principal_left as u128) * (t.total as u128) < (t.principal as u128) * (unpaid as u128) {
+        (t.principal_left, unpaid)
+    } else {
+        (t.principal, t.total)
+    };
+    let base_share = principal_share(base, share_of, share_total)?;
     let cap = seconds_cap(t.late_bps);
     let mut k = covered;
     // What was due before installment k is what was due through k - 1: carried, not recomputed.
@@ -239,7 +253,7 @@ pub fn arrears(t: &ScheduleTerms, paid: u64, now: i64) -> Option<Arrears> {
         let upto = cumulative_due(t.total, t.installments, k)?;
         let part = upto.checked_sub(paid.max(before))?;
         before = upto;
-        let part_principal = if part == base { base_share } else { principal_share(part, t.principal, t.total)? };
+        let part_principal = if part == base { base_share } else { principal_share(part, share_of, share_total)? };
         let due_at = t.anchor.checked_add(t.interval.checked_mul(i64::from(k))?)?;
         let grace_end = due_at.checked_add(i64::from(t.grace))?;
         let (exigible_at, accrual_from) =
@@ -442,6 +456,7 @@ mod tests {
             grace,
             late_paid_until: 0,
             principal: total,
+            principal_left: total,
             late_collected: 0,
             accelerated_at: 0,
         }
@@ -568,6 +583,7 @@ mod tests {
             grace,
             late_paid_until: 0,
             principal: 4_000_000,
+            principal_left: 4_000_000,
             late_collected: 0,
             accelerated_at: 0,
         };

@@ -31,6 +31,7 @@ fn case(t: &ScheduleTerms, paid: u64, now: i64) -> Value {
     json!({
         "total": t.total.to_string(),
         "principal": t.principal.to_string(),
+        "principal_left": t.principal_left.to_string(),
         "anchor": t.anchor.to_string(),
         "interval": t.interval.to_string(),
         "installments": t.installments,
@@ -63,6 +64,7 @@ fn hand_cases() -> Vec<Value> {
         grace,
         late_paid_until: 0,
         principal: total,
+        principal_left: total,
         late_collected: 0,
         accelerated_at: 0,
     };
@@ -130,6 +132,8 @@ fn generated_cases() -> Vec<Value> {
     let mut r = Lcg(0x5EED_2026_1019);
     // A second stream for the acceleration, so the 400 original cases keep their values.
     let mut acc = Lcg(0xACCE_55ED_2026_1102);
+    // A third for the principal left unpaid (decision 46): all of it in one case of three.
+    let mut left = Lcg(0x1EF7_2026_1110);
     (0..400)
         .map(|_| {
             let n = r.range(1, 120) as u16;
@@ -157,6 +161,7 @@ fn generated_cases() -> Vec<Value> {
                 grace,
                 late_paid_until,
                 principal,
+                principal_left: if left.range(0, 2) == 0 { principal } else { principal / 10_000 * left.range(0, 10_000) },
                 late_collected,
                 accelerated_at: if acc.range(0, 5) == 0 && now > anchor { anchor + (now - anchor) * (acc.range(0, 10_000) as i64) / 10_000 } else { 0 },
             };

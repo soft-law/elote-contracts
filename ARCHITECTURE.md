@@ -444,6 +444,7 @@ stays as the PAGADO mark and the registry.
 | `REFERENCE_PROGRAM` | `REDSTBDUecGjwXd6YGPzHSvEUBHQqVRfCcjUVgPiHsr` | `fx` | RedStone's Solana price adapter |
 | `REFERENCE_ACCOUNT` | `8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2` | `fx` | its MXNe `PriceData`, PDA `["price", "MXNe"]` (seeds zero-padded to 32 bytes) |
 | `PAYMENT_DOMAIN` | `"elote.pago.v1"` | `registry` | domain of a payment entry's annotation hash |
+| `DELIVERY_DOMAIN` | `"elote.entrega.v1"` | `registry` | domain of a delivery entry's hash |
 | `TERMS_DOMAIN` | `"elote_pool:terms:v1"` | `terms` | domain of the terms hash |
 
 ## 4. Instructions
@@ -798,6 +799,12 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   `interest_repaid`), `interest_due` is cut to that accrual before the waterfall: the interest the
   draws fixed beyond it is forgiven — the counterpart, at the debtor's will, of the forgiveness
   the mark applies at the debtor's default. `EarlySettlement { interest_forgiven }` is emitted.
+  **Payment on account (decision 46):** on the same line, a payment that does not settle takes,
+  after late interest, the interest accrued and not yet repaid, then principal; the interest not
+  yet accrued stays owed, so the payments of a split settlement add up to what one would pay and
+  only the last one forgives. Every payment entry commits `interest_reserved = interest_due −
+  interest_repaid` after the payment (CCom 364: principal received without reserving the
+  interest extinguishes it).
   `line.principal_repaid`, `interest_repaid`, `usdc_cost_repaid += cost`; when `late_part > 0`,
   `late_collected += late_part` and `late_paid_until = now` (an accrual that rounds to zero keeps
   running); `status = Repaid`, `closed_at = now` when nothing remains and the line cannot draw. The
@@ -913,10 +920,13 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
   frozen asset whose freeze authority is `None` can never be thawed or moved
   (`tests/core_capabilities.rs::only_the_permanent_freeze_delegate_thaws_and_a_frozen_asset_with_no_delegate_is_stuck`),
   and it runs while the pool still owns the asset.
-- **Writes, after the CPIs:** the `Entrega` entry (pool → recipient, over the record's
-  `receipt_hash`); `flags |= DELIVERED`.
-- **Events:** `PagareEntry`, `PagareDelivered { recipient, payer, receipt_hash, entry_count,
-  delivered_at }`.
+- **Writes, after the CPIs:** the `Entrega` entry (pool → recipient, over
+  `delivery_hash = sha256("elote.entrega.v1" ‖ receipt_hash ‖ interest_reserved u64)`, where
+  `interest_reserved` is the line's `interest_due − interest_repaid` at this moment: the título
+  leaves with the interest still owed reserved in its own registry, decision 46);
+  `flags |= DELIVERED`.
+- **Events:** `PagareEntry`, `PagareDelivered { recipient, payer, receipt_hash,
+  interest_reserved, entry_count, delivered_at }`.
 
 #### `burn_pagare(draw_index: u16, document_hash: [u8; 32])`
 
@@ -1175,7 +1185,10 @@ arrears is stored. There is no grace period on late payment (decision 36): `line
 ### 7.2 Late interest (moratorio)
 
 Late interest accrues at `late_bps` a year (365 days) on the **principal share** of each overdue
-part, `p_k = part_k × drawn / total` rounded down (no interest on overdue interest), from `start_k
+part, `p_k = part_k × drawn / total` rounded down (no interest on overdue interest) — or
+`part_k × (drawn − principal_repaid) / (total − paid)` when that proportion is the smaller one: a
+payment on account may repay principal ahead of the schedule (decision 46), and an overdue part
+never carries more principal than its share of what is left unpaid — from `start_k
 = max(due_k, late_paid_until)` to `now`:
 
 ```
@@ -1339,7 +1352,7 @@ recorded_at = now`.
 | `Pagado` | 9 | `repay` (covers it) | payer | pool | annotation hash |
 | `Recibo` | 11 | `annotate_payment` | council | pool | `receipt_hash` |
 | `PagadoAval` | 12 | `repay` (covers it, paid by the aval) | aval | pool | annotation hash |
-| `Entrega` | 13 | `deliver_pagare` | pool | borrower or aval | the record's `receipt_hash` |
+| `Entrega` | 13 | `deliver_pagare` | pool | borrower or aval | `delivery_hash` (the record's `receipt_hash` and the interest reserved) |
 
 Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso; 10 was the holder's
 cancellation request and is retired. None is reused.
@@ -1349,7 +1362,8 @@ balance). Each `Abono`, `Pagado` or `PagadoAval` entry's hash is
 
 ```
 annotation_hash = sha256("elote.pago.v1" ‖ receipt_hash ‖ principal_applied u64 ‖
-                         accessory_applied u64 ‖ principal_balance u64 ‖ by_borrower u8)
+                         accessory_applied u64 ‖ principal_balance u64 ‖ by_borrower u8 ‖
+                         interest_reserved u64)
 ```
 
 integers little endian, built by `registry::annotation_hash`. For each record `repay` takes,
@@ -1362,6 +1376,8 @@ oldest first:
   also leaves its entry there;
 - `principal_balance` = the pagaré's unpaid principal after the payment, zero when covered;
 - `by_borrower` = the payer is the line's borrower;
+- `interest_reserved` = the ordinary interest the line still owes after the payment, the same on
+  every entry of the payment and published once, in `PagarePayment.interest_reserved`;
 - the kind: `PagadoAval` when the payment covers the pagaré and the payer is the line's sponsor
   with `SPONSOR_GUARANTOR` (and not the borrower); `Pagado` when it covers it; `Abono` otherwise;
 - a record with nothing applied, in principal or accessories, gets no entry.
@@ -1512,7 +1528,7 @@ procuración, the pause by council vote): `endorse_pagare` 17 618 (same again af
 | `LineDrawn` | `draw` | pool, line_id, draw_index, amount_mxn, fix_rate, fix_date, usdc_delivered, drawn, available, interest_due, availability_end, outstanding_after |
 | `PagareIssued` | `draw` | pool, line_id, draw_index, asset, pagare_hash, amount_mxn, delivery_hash, due_at, holder (the pool PDA) |
 | `PagareEntry` | `draw`, `repay`, `deliver_pagare`, `burn_pagare`, `annul_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `annotate_payment` | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
-| `PagarePayment` | `repay` that took pagaré records | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, entries: `Vec<PaymentEntry { draw_index, kind, entry_count, principal_applied, accessory_applied, principal_balance, by_borrower }>` |
+| `PagarePayment` | `repay` that took pagaré records | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, interest_reserved, entries: `Vec<PaymentEntry { draw_index, kind, entry_count, principal_applied, accessory_applied, principal_balance, by_borrower }>` |
 | `LateInterestCollected` | `repay` with late interest | pool, line_id, amount |
 | `EarlySettlement` | `repay` that settles an active line able to draw nothing more, forgiving the fixed interest beyond the accrual (decision 44) | pool, line_id, payer, interest_forgiven, settled_at |
 | `FxRealized` | `repay` that applies principal or realizes a non-zero delta | pool, line_id, receipt_hash, cost, received, delta, nav_after |
@@ -1524,7 +1540,7 @@ procuración, the pause by council vote): `endorse_pagare` 17 618 (same again af
 | `AccelerationProposed` | `propose_acceleration` | pool, line_id, due_at |
 | `AccelerationWithdrawn` | `withdraw_acceleration`, `mark_in_collection` (superseding a proposal) | pool, line_id |
 | `LineAccelerated` | `accelerate_line` | pool, line_id, remaining, interest_forgiven, impaired_principal |
-| `PagareDelivered` | `deliver_pagare` | pool, line_id, draw_index, asset, recipient (the borrower or the aval), payer (whoever sent it), receipt_hash, entry_count, delivered_at |
+| `PagareDelivered` | `deliver_pagare` | pool, line_id, draw_index, asset, recipient (the borrower or the aval), payer (whoever sent it), receipt_hash, interest_reserved, entry_count, delivered_at |
 | `PagareBurned` | `burn_pagare` | pool, line_id, draw_index, asset, owner, document_hash |
 | `PagareAnnulled` | `annul_pagare` | pool, line_id, draw_index, asset, document_hash |
 | `PagareReceiptAnnotated` | `annotate_payment` | pool, line_id, draw_index, entry_count (the `Recibo`'s), payment_entry_count (the entry it annotates), receipt_hash |
@@ -1683,7 +1699,7 @@ functions in each file.
 | `tests/pool.rs` | 22 | LiteSVM | `init_pool` and the mint and collection policies, deposits and redemptions, dead shares, rounding and slippage, a Token-2022 asset cycle, `NavUpdated` |
 | `tests/lines.rs` | 11 | LiteSVM | the line cycle end to end, sponsor, overpayment, liquidity, write-off, the bullet window, the line cap |
 | `tests/requests.rs` | 7 | LiteSVM | request, approval of the exact terms, the 15-day window, members as borrowers, reject and withdraw returning rent, the pause on requests |
-| `tests/schedule.rs` | 21 | LiteSVM, clock warped | schedule validation, installments, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing |
+| `tests/schedule.rs` | 25 | LiteSVM, clock warped | schedule validation, installments, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing |
 | `tests/tranches.rs` | 15 | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, per-tranche interest, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
 | `tests/acceleration.rs` | 12 | LiteSVM | suspension and resumption, acceleration with notice on bullet and scheduled lines, the objective mark superseding a proposal, pool limits and floors, the pause |
 | `tests/provision.rs` | 9 | LiteSVM | decisions 40 and 40b: the mark and the council's acceleration provision the NAV, redemptions at the provisioned NAV, deposits at the unprovisioned NAV and a recovery handing the entrant nothing, recoveries, the write-off, the rate the council's alone |
@@ -1691,7 +1707,7 @@ functions in each file.
 | `tests/valid_until.rs` | 4 | LiteSVM | `valid_until` refused past or too far ahead |
 | `tests/squads.rs` | 6 | LiteSVM + Squads v4 | council instructions through the real `vault_transaction_execute`, stale proposals, a multisig lowered below a majority, the rotation |
 | `tests/fx.rs` | 25 | LiteSVM | the FIX: conversions, the daily band, the RedStone reference, the bounds, feeder versus council, one publication a day, draws and repayments at the FIX, FX gains and losses |
-| `tests/pagare.rs` | 23 | LiteSVM + Core 0.15.3 | one frozen asset and one record per draw, every plugin read back through `mpl-core`, the registry and payment entries, the delivery to the borrower or the aval, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
+| `tests/pagare.rs` | 24 | LiteSVM + Core 0.15.3 | one frozen asset and one record per draw, every plugin read back through `mpl-core`, the registry and payment entries, the delivery to the borrower or the aval, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `tests/core_capabilities.rs` | 8 | LiteSVM + Core 0.15.3 | what Core allows after an asset's creation (§9.1) |
 | `tests/known_limits.rs` | 13 | LiteSVM | documentation tests that pin current behaviour and the known limits SECURITY.md lists; they are inverted when a limit is removed |
 | `tests/audit.rs`, `tests/reaudit.rs` | 4, 4 | LiteSVM | regressions of the 2026-11-01 audit and the 2026-11-02 re-audit |
