@@ -105,6 +105,7 @@ export type CreditLine = {
    */
   interestDue: bigint;
   principalRepaid: bigint;
+  /** Ordinary interest settled: repaid, or condoned by the council (decision 50). */
   interestRepaid: bigint;
   /**
    * The index of the oldest pagaré no repayment has marked paid. `repay` requires the records
@@ -212,6 +213,7 @@ export type CreditLineArgs = {
    */
   interestDue: number | bigint;
   principalRepaid: number | bigint;
+  /** Ordinary interest settled: repaid, or condoned by the council (decision 50). */
   interestRepaid: number | bigint;
   /**
    * The index of the oldest pagaré no repayment has marked paid. `repay` requires the records

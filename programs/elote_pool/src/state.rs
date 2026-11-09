@@ -301,6 +301,7 @@ pub struct CreditLine {
     /// SECONDS_PER_YEAR)`; `mark_in_collection` cuts it to the share of the installments then due.
     pub interest_due: u64,
     pub principal_repaid: u64,
+    /// Ordinary interest settled: repaid, or condoned by the council (decision 50).
     pub interest_repaid: u64,
     /// The index of the oldest pagaré no repayment has marked paid. `repay` requires the records
     /// `[pagares_paid ..= last_touched]` and moves it.

@@ -887,7 +887,9 @@ line, and sends what does not fit there right after (§9.4).
   interest_repaid`, and something to condone — `interest > 0` or late interest accrued
   (`WrongAmount`).
 - **Writes:** when late interest has accrued, `late_paid_until = now` (it is condoned, not
-  collected: `late_collected` is untouched); `interest_due −= interest`. Principal is never
+  collected: `late_collected` is untouched); `interest_repaid += interest` — the condoned interest
+  counts as settled, so what is payable now falls by it and the installments it covers count as
+  paid, while `pool.interest_collected` does not move. Principal is never
   condoned (a loss of principal is `write_off`). When the line then owes nothing and can draw
   nothing more: `status = Repaid`, `closed_at = now`, and `deliver_pagare` opens (decision 49). A
   settlement negotiated in collection is the quita first, then the debtor's payment of what is
@@ -1750,7 +1752,7 @@ functions in each file.
 | `tests/pool.rs` | 22 | LiteSVM | `init_pool` and the mint and collection policies, deposits and redemptions, dead shares, rounding and slippage, a Token-2022 asset cycle, `NavUpdated` |
 | `tests/lines.rs` | 11 | LiteSVM | the line cycle end to end, sponsor, overpayment, liquidity, write-off, the bullet window, the line cap |
 | `tests/requests.rs` | 7 | LiteSVM | request, approval of the exact terms, the 15-day window, members as borrowers, reject and withdraw returning rent, the pause on requests |
-| `tests/schedule.rs` | 36 | LiteSVM, clock warped | schedule validation, installments, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing |
+| `tests/schedule.rs` | 38 | LiteSVM, clock warped | schedule validation, installments, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing |
 | `tests/tranches.rs` | 15 | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, per-tranche interest, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
 | `tests/acceleration.rs` | 12 | LiteSVM | suspension and resumption, acceleration with notice on bullet and scheduled lines, the objective mark superseding a proposal, pool limits and floors, the pause |
 | `tests/provision.rs` | 9 | LiteSVM | decisions 40 and 40b: the mark and the council's acceleration provision the NAV, redemptions at the provisioned NAV, deposits at the unprovisioned NAV and a recovery handing the entrant nothing, recoveries, the write-off, the rate the council's alone |

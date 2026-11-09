@@ -1390,7 +1390,8 @@ pub fn resume_draws(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
 /// Council only: condones interest of an `Active` or `InCollection` line (decision 50; CCF 2209,
 /// 2210: remitting an accessory leaves the principal owed). All the late interest accrued to now
 /// is condoned — the watermark moves and nothing is collected — together with `interest` of the
-/// ordinary interest still owed (`WrongAmount` above it, or when there is nothing to condone).
+/// ordinary interest still owed (`WrongAmount` above it, or when there is nothing to condone),
+/// which counts from then on as settled (`interest_repaid`), without reaching `interest_collected`.
 /// `document_hash` commits the written record of the quita (`DocumentHashRequired`). Principal is
 /// never condoned. A line left owing nothing that can draw nothing more closes (`Repaid`), and its
 /// títulos may then leave (decision 49). It moves no funds and the pause does not block it.
@@ -1407,7 +1408,9 @@ pub fn condone_interest(ctx: Context<CouncilLine>, interest: u64, document_hash:
     if late_interest > 0 {
         line.late_paid_until = now;
     }
-    line.interest_due = line.interest_due.checked_sub(interest).ok_or(PoolError::Overflow)?;
+    // Condoned interest counts as settled: what is payable now falls by it, and the installments
+    // it covers count as paid. Lowering `interest_due` would only take it off the far end.
+    line.interest_repaid = line.interest_repaid.checked_add(interest).ok_or(PoolError::Overflow)?;
     let remaining = line
         .drawn
         .checked_sub(line.principal_repaid)

@@ -279,12 +279,12 @@ the Solana 3.x runtime inside LiteSVM 0.11 cannot load. Moving to v3 goes togeth
 The integration tests run the compiled program in LiteSVM 0.11.0, which loads SPL Token, Token-2022
 and the Associated Token Account program by default; the harness adds Metaplex Core from
 `programs/elote_pool/tests/fixtures/` (pinned by sha256, see the README there).
-There are 287 Rust tests (unit tests in `src/` and integration tests in 19 binaries) and 25 JS
+There are 289 Rust tests (unit tests in `src/` and integration tests in 19 binaries) and 25 JS
 tests. `programs/elote_pool/tests/` holds:
 
 | File | Tests | What it checks |
 |---|---|---|
-| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 36 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection |
+| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 38 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection |
 | `council.rs`, `valid_until.rs`, `squads.rs` | 17, 4, 6 | The Squads multisig check on every council instruction, council rotation; `valid_until` refused past or too far ahead; the hand-built Squads v4 instructions |
 | `fx.rs` | 25 | The FIX: the MXN↔USDC conversion, the daily band, the RedStone MXNe reference, the bounds, feeder versus council, one publication a day |
 | `acceleration.rs` | 12 | `propose_acceleration` / `withdraw_acceleration` / `accelerate_line`, the notice, and the interplay with `suspend_draws` and `resume_draws` |

@@ -1139,7 +1139,7 @@ fn a_quita_then_the_principal_settles_the_line_and_the_titulo_leaves() {
     let ev: InterestCondoned = find_event(&meta).expect("InterestCondoned");
     assert_eq!((ev.interest, ev.remaining), (720_000, 6 * UNIT));
     let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.interest_due), (LineStatus::Active, 0), "the principal is still owed");
+    assert_eq!((line.status, line.interest_due - line.interest_repaid), (LineStatus::Active, 0), "the principal is still owed");
     let ix = env.deliver_pagare_ix(&k, line_id, 0, &b.pubkey(), &b.pubkey());
     env.expect_err(ix, &b, &[], E_PAGARE_NOT_COVERED);
 
@@ -1170,8 +1170,54 @@ fn a_quita_that_leaves_nothing_owed_closes_the_line() {
     let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 330_000, DOCUMENT_HASH);
     env.send(ix, &council, &[]);
     let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.closed_at, line.interest_due, line.interest_repaid), (LineStatus::Repaid, env.now(), 30_000, 30_000));
+    assert_eq!((line.status, line.closed_at, line.interest_due, line.interest_repaid), (LineStatus::Repaid, env.now(), 360_000, 360_000));
     env.deliver_pagare(&k, line_id, 0);
+}
+
+/// A partial quita before the interest has all accrued takes off what is payable now, not the far
+/// end of the interest fixed: two months in, 240_000 accrued and unpaid; 240_000 condoned leaves
+/// no interest payable today, and the installments it covers count as paid.
+#[test]
+fn a_partial_quita_lowers_what_is_payable_now() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, 0);
+    env.warp(t0 + 2 * p.interval());
+    let council = env.council.insecure_clone();
+    let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 240_000, DOCUMENT_HASH);
+    let meta = env.send(ix, &council, &[]);
+    let ev: elote_pool::events::InterestCondoned = find_event(&meta).expect("InterestCondoned");
+    assert_eq!((ev.interest, ev.remaining), (240_000, 6_480_000));
+    let ev = env.repay(&k, line_id, &b, UNIT);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (0, UNIT, 5_480_000));
+    // A month later one more month has accrued, and no more.
+    env.warp(t0 + 5 * p.interval() / 2);
+    let late = env.arrears(&k, line_id).late_due;
+    let ev = env.repay(&k, line_id, &b, late + 70_000);
+    assert_eq!((ev.interest_part, ev.principal_part), (60_000, 10_000));
+}
+
+/// A quita on a line that can still draw does not reach the interest of a later draw.
+#[test]
+fn a_quita_on_an_open_line_leaves_the_next_draw_its_interest() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (b, line_id, t0) = half_drawn(&mut env, &k, &p);
+    env.warp(t0 + p.interval() / 2);
+    let council = env.council.insecure_clone();
+    let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 30_000, DOCUMENT_HASH);
+    env.send(ix, &council, &[]);
+    env.draw_amount(&k, line_id, &b, UNIT);
+    let line = env.line(&k, line_id);
+    // 1.0 more for the eleven months to the last due date: 110_000 on top of the 360_000.
+    assert_eq!((line.interest_due, line.interest_repaid), (470_000, 30_000));
+    let ev = env.repay(&k, line_id, &b, UNIT);
+    assert_eq!((ev.interest_part, ev.principal_part), (0, UNIT), "the month condoned is not charged again");
+    env.warp(t0 + p.interval());
+    let ev = env.repay(&k, line_id, &b, 100_000);
+    assert_eq!(ev.interest_part, 30_000 + 10_000, "half a month on 3.0 and on the new 1.0");
 }
 
 /// The quita is the council's, against a written record, and never more than is owed.
