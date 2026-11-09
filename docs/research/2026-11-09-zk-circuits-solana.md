@@ -179,3 +179,16 @@ privados, el camino a mirar es una auditor key (CT o C-SPL) sobre un token propi
 cuando haya un emisor de USDC/MEXe con la extensión activa y un año sin kill-switch. Si algún día
 hace falta un circuito, circom + snarkjs + `groth16-solana` es el único stack con auditorías y
 uso en producción en Solana.
+
+## Adenda (mismo día): Helius "Solana Privacy Rings"
+
+helius.dev/docs/privacy resultó ser un producto, no documentación: transferencias confidenciales
+(monto y activo ocultos; en rings anónimos también las partes) sobre SOL/SPL/Token-2022 con
+Groth16 y UTXOs cifrados (AES-256-CTR), en una sola transacción Solana. Estado: **beta, solo
+devnet**, auditorías "en curso", sin precios publicados. Dos sabores: el *Default Ring* es sin
+permisos y **sin visibilidad de auditor** — inservible para un vehículo de crédito con KYC — y
+los *Custom Rings* (enterprise, vía ventas) traen view key de auditor, divulgación selectiva,
+whitelist/freeze/pausa. La generación de pruebas corre por defecto en el RPC de Helius (confianza
+en el proveedor). Esto confirma a dónde lleva Helius lo de Light tras la compra, y es el candidato
+concreto para el único trigger del veredicto (§8): si un regulador pidiera montos privados, el
+camino sería un Custom Ring con auditor key — hoy, wait-and-see igual que todo lo demás.
