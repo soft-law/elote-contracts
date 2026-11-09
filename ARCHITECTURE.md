@@ -945,7 +945,7 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
   (`tests/core_capabilities.rs::only_the_permanent_freeze_delegate_thaws_and_a_frozen_asset_with_no_delegate_is_stuck`),
   and it runs while the pool still owns the asset.
 - **Writes, after the CPIs:** the `Entrega` entry (pool → recipient, over
-  `delivery_hash = sha256("elote.entrega.v1" ‖ receipt_hash ‖ interest_reserved u64)`, where
+  `entrega_hash = sha256("elote.entrega.v1" ‖ receipt_hash ‖ interest_reserved u64)`, where
   `interest_reserved` is the line's `interest_due − interest_repaid` at this moment: the título
   leaves with the interest still owed reserved in its own registry, decision 46);
   `flags |= DELIVERED`.
@@ -1376,7 +1376,7 @@ recorded_at = now`.
 | `Pagado` | 9 | `repay` (covers it) | payer | pool | annotation hash |
 | `Recibo` | 11 | `annotate_payment` | council | pool | `receipt_hash` |
 | `PagadoAval` | 12 | `repay` (covers it, paid by the aval) | aval | pool | annotation hash |
-| `Entrega` | 13 | `deliver_pagare` | pool | borrower or aval | `delivery_hash` (the record's `receipt_hash` and the interest reserved) |
+| `Entrega` | 13 | `deliver_pagare` | pool | borrower or aval | `entrega_hash` (the record's `receipt_hash` and the interest reserved) |
 
 Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso; 10 was the holder's
 cancellation request and is retired. None is reused.

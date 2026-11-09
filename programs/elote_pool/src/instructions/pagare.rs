@@ -75,7 +75,7 @@ pub struct DeliverPagare<'info> {
 /// the payment (`PagareNotCovered`) and twice (`PagareAlreadyDelivered`). The transfer itself
 /// returns every owner-managed plugin to the new
 /// owner, so no revocation is needed; after the CPIs, an `Entrega` entry over the payment's
-/// receipt hash and the interest the line still owes (`registry::delivery_hash`, decision 46) and the `DELIVERED` flag record it.
+/// receipt hash and the interest the line still owes (`registry::entrega_hash`, decision 46) and the `DELIVERED` flag record it.
 pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()> {
     use mpl_core::instructions::{ApprovePluginAuthorityV1CpiBuilder, TransferV1CpiBuilder, UpdatePluginV1CpiBuilder};
     use mpl_core::types::{PermanentFreezeDelegate, Plugin, PluginAuthority, PluginType};
@@ -133,7 +133,7 @@ pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()
     let pagare = &mut ctx.accounts.pagare;
     let line = &ctx.accounts.line;
     let interest_reserved = line.interest_due.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
-    let delivery = registry::delivery_hash(&receipt_hash, interest_reserved);
+    let delivery = registry::entrega_hash(&receipt_hash, interest_reserved);
     let hash = registry::append(pagare, KIND_ENTREGA, &pool_key, &to, &delivery, now).ok_or(PoolError::Overflow)?;
     pagare.flags |= PAGARE_FLAG_DELIVERED;
     let entry_count = pagare.entry_count;

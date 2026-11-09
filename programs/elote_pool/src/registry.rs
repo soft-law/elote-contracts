@@ -43,7 +43,7 @@ pub const DELIVERY_DOMAIN: &[u8] = b"elote.entrega.v1";
 
 /// What an `Entrega` entry commits: the payment's receipt and the ordinary interest the line still
 /// owes when the título leaves (decision 46), zero when none.
-pub fn delivery_hash(receipt_hash: &[u8; 32], interest_reserved: u64) -> [u8; 32] {
+pub fn entrega_hash(receipt_hash: &[u8; 32], interest_reserved: u64) -> [u8; 32] {
     hashv(&[DELIVERY_DOMAIN, receipt_hash, &interest_reserved.to_le_bytes()]).to_bytes()
 }
 

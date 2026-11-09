@@ -357,7 +357,9 @@ fn a_payment_when_nothing_is_payable_while_the_line_can_draw_is_refused() {
 /// repaid (`bullet_accrued_interest` reads `drawn` and `draw_time_weight`). A borrower who repays
 /// all the principal a month in, while the line can still draw, keeps accruing on it until the
 /// window closes and a payment settles the line: 60_000 for 3.0 held one month, where a month is
-/// 30_000. Settling at will would be decision 45, not adopted.
+/// 30_000. Settling at will is `renounce_availability` (decision 45). The first payment covers the
+/// only pagaré, reserving the interest still owed; the interest paid afterwards has no título left
+/// to annotate, so it leaves no `PagarePayment` and only `LineRepaid` records it.
 #[test]
 fn interest_keeps_accruing_on_principal_repaid_while_the_line_can_draw() {
     let mut env = Env::new();
@@ -368,9 +370,14 @@ fn interest_keeps_accruing_on_principal_repaid_while_the_line_can_draw() {
     env.warp(t0 + p.interval() / 2);
     let ev = env.repay(&k, line_id, &b, 4 * UNIT);
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (30_000, 3_000_000, 330_000));
+    let line = env.line(&k, line_id);
+    assert_eq!((line.pagares_paid, line.draws), (1, 1), "the pagaré is paid while the line owes interest");
     // Half a month later, with no principal left, half a month more is payable.
     env.warp(t0 + 3 * p.interval() / 4);
-    let ev = env.repay(&k, line_id, &b, UNIT);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), UNIT);
+    let meta = env.send(ix, &b, &[]);
+    assert!(find_event::<elote_pool::events::PagarePayment>(&meta).is_none(), "no record left to take the entry");
+    let ev: LineRepaid = find_event(&meta).expect("LineRepaid");
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (15_000, 0, 315_000));
     assert_eq!(env.line(&k, line_id).status, LineStatus::Active);
     // At the first due date the window closes: the settling payment takes the last half month and
