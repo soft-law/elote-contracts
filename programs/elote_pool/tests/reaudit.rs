@@ -129,7 +129,10 @@ fn n04_the_holders_correction_is_the_recibo_entry_not_a_rewrite() {
     let council = env.council.insecure_clone();
     let a = council.pubkey();
 
-    // A stranger's payment covers pagaré 0 with a hash of its own.
+    // A stranger's payment covers pagaré 0 with a hash of its own and settles the line, whose
+    // borrower renounced the rest: the delivery below needs a line that owes nothing (decision 49).
+    let ix = env.renounce_availability_ix(&k, line_id, &borrower.pubkey());
+    env.send(ix, &borrower, &[]);
     let stranger = env.funded(1);
     let amount = env.line(&k, line_id).interest_due + UNIT;
     env.mint_to(&k.asset_mint, &council, &stranger.pubkey(), amount);
@@ -138,6 +141,7 @@ fn n04_the_holders_correction_is_the_recibo_entry_not_a_rewrite() {
     env.send(ix, &stranger, &[]);
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!((p0.status, p0.receipt_hash), (PAGARE_PAID, [0x66; 32]));
+    assert_eq!(env.line(&k, line_id).status, elote_pool::state::LineStatus::Repaid);
     let payment_entry = p0.entry_count;
 
     // The holder's correction appends; the field stands.

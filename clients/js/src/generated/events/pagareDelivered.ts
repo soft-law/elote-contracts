@@ -54,8 +54,6 @@ export type PagareDeliveredEvent = {
   recipient: Address;
   payer: Address;
   receiptHash: ReadonlyUint8Array;
-  /** The ordinary interest the line still owes at the delivery, reserved by the entry. */
-  interestReserved: bigint;
   entryCount: number;
   deliveredAt: bigint;
 };
@@ -68,8 +66,6 @@ export type PagareDeliveredEventArgs = {
   recipient: Address | HasAddress;
   payer: Address | HasAddress;
   receiptHash: ReadonlyUint8Array;
-  /** The ordinary interest the line still owes at the delivery, reserved by the entry. */
-  interestReserved: number | bigint;
   entryCount: number;
   deliveredAt: number | bigint;
 };
@@ -85,7 +81,6 @@ export function getPagareDeliveredEventEncoder(): FixedSizeEncoder<PagareDeliver
       ["recipient", getAddressEncoder()],
       ["payer", getAddressEncoder()],
       ["receiptHash", fixEncoderSize(getBytesEncoder(), 32)],
-      ["interestReserved", getU64Encoder()],
       ["entryCount", getU32Encoder()],
       ["deliveredAt", getI64Encoder()],
     ]),
@@ -104,7 +99,6 @@ export function getPagareDeliveredEventDecoder(): FixedSizeDecoder<PagareDeliver
       ["recipient", getAddressDecoder()],
       ["payer", getAddressDecoder()],
       ["receiptHash", fixDecoderSize(getBytesDecoder(), 32)],
-      ["interestReserved", getU64Decoder()],
       ["entryCount", getU32Decoder()],
       ["deliveredAt", getI64Decoder()],
     ]),

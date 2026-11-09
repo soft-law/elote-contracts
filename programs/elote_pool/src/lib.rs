@@ -159,8 +159,9 @@ pub mod elote_pool {
 
     /// Delivers paid pagaré `draw_index` to the line's borrower — or to the aval who settled it
     /// (LGTOC 115) — thawing the asset, renouncing the freeze forever and transferring it. Anyone
-    /// may call it, in the repayment's transaction or later; refused before the payment, twice, or
-    /// twice. Never paused (decision 38; no court act gates it, 38-g).
+    /// may call it, in the settling repayment's transaction or later; refused before the payment,
+    /// twice, or while the line owes anything (decision 49). Never paused (decision 38; no court
+    /// act gates it, 38-g).
     pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()> {
         instructions::pagare::deliver_pagare(ctx, draw_index)
     }

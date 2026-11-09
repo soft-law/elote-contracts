@@ -944,8 +944,9 @@
       "docs": [
         "Delivers paid pagaré `draw_index` to the line's borrower — or to the aval who settled it",
         "(LGTOC 115) — thawing the asset, renouncing the freeze forever and transferring it. Anyone",
-        "may call it, in the repayment's transaction or later; refused before the payment, twice, or",
-        "twice. Never paused (decision 38; no court act gates it, 38-g)."
+        "may call it, in the settling repayment's transaction or later; refused before the payment,",
+        "twice, or while the line owes anything (decision 49). Never paused (decision 38; no court",
+        "act gates it, 38-g)."
       ],
       "discriminator": [
         92,
@@ -4739,6 +4740,11 @@
       "code": 6076,
       "name": "PoolImpaired",
       "msg": "Retired: deposits price at the unprovisioned NAV instead of waiting (decision 40b)"
+    },
+    {
+      "code": 6077,
+      "name": "BalanceOutstanding",
+      "msg": "The line still owes principal or interest; no título leaves until it owes nothing"
     }
   ],
   "types": [
@@ -6395,7 +6401,8 @@
       "name": "PagareDelivered",
       "docs": [
         "The paid título left the pool: `deliver_pagare` thawed the asset, renounced the freeze and",
-        "transferred it to `recipient` — the suscriptor, or the aval who settled it (decision 38).",
+        "transferred it to `recipient` — the suscriptor, or the aval who settled it (decision 38) — once",
+        "the line owed nothing (decision 49).",
         "`payer` is whoever sent the instruction; anyone may."
       ],
       "type": {
@@ -6433,13 +6440,6 @@
                 32
               ]
             }
-          },
-          {
-            "name": "interest_reserved",
-            "docs": [
-              "The ordinary interest the line still owes at the delivery, reserved by the entry."
-            ],
-            "type": "u64"
           },
           {
             "name": "entry_count",

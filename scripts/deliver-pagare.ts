@@ -1,6 +1,8 @@
 // Delivers a paid pagaré (decision 38, LGTOC 129-130): the pool thaws the Core asset, renounces
 // the freeze forever and transfers it to the line's borrower — or to the aval who settled it
-// (LGTOC 115). Anyone may send it; the recipient is the debtor's, never the sender's, choice.
+// (LGTOC 115). Anyone may send it; the recipient is the debtor's, never the sender's, choice. Only
+// once the line owes nothing (decision 49): repay.ts delivers then with the settling payment, and
+// this re-sends a delivery that did not land.
 // With --burn, the delivered título's owner burns the asset instead (a Terminacion entry first);
 // the record is never closed.
 //
@@ -27,12 +29,13 @@ import {
   cluster,
   confirmCluster,
   fail,
+  fmtMxn,
   integer,
   loadSigner,
   required,
   sendOrFail,
 } from "./lib/cli.ts";
-import { loadLine, loadPool } from "./lib/pool.ts";
+import { lineOwes, loadLine, loadPool } from "./lib/pool.ts";
 
 const PAGARE_PAID = 1; // state::PAGARE_*
 const PAGARE_FLAG_DELIVERED = 1 << 2; // state::PAGARE_FLAG_*
@@ -74,6 +77,11 @@ if (burn) {
   console.log(`  pagaré ${drawIndex}: asset burnt by its owner; the record stays (${after.entryCount} registry entries)`);
 } else {
   if ((before.flags & PAGARE_FLAG_DELIVERED) !== 0) fail(`pagaré ${drawIndex} is already delivered`);
+  if (lineOwes(l) > 0n)
+    fail(
+      `line ${lineId} still owes MXN ${fmtMxn(l.drawn - l.principalRepaid)} of principal and MXN ${fmtMxn(l.interestDue - l.interestRepaid)} ` +
+        `of interest: no título leaves until it owes nothing (decision 49)`
+    );
   const byAval = (before.flags & PAGARE_FLAG_PAID_BY_AVAL) !== 0;
   const sponsor = l.sponsor.__option === "Some" ? l.sponsor.value : undefined;
   const recipient = byAval ? (sponsor ?? fail("the aval paid but the line names no sponsor")) : l.borrower;

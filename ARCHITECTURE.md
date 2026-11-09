@@ -11,7 +11,7 @@ needs fixing. Code is cited by item name (`council::check`, `fx::within_band`,
 `instructions/lines.rs::repay`), not by line number.
 
 Program id `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM`, Anchor 1.2.1, Solana 4.1.2, Rust
-1.89.0. 37 instructions, 3 account types, 41 events, 77 error codes (five of them retired and kept
+1.89.0. 37 instructions, 3 account types, 41 events, 78 error codes (five of them retired and kept
 so nothing renumbers). Decision numbers (32–41, 38-g, 40b) follow the
 owner review of 2026-10-31 and the record of 2026-11-08 in the decision register (private docs repo).
 
@@ -30,7 +30,7 @@ programs/elote_pool/src/
 ├── terms.rs      LineTerms and the terms hash the council approves
 ├── math.rs       pure arithmetic: share pricing, tranche interest, installments, arrears
 ├── registry.rs   the pagaré registry: payment annotation hashes, entry hashes, the hash chain
-├── errors.rs     PoolError (77 codes, 6000..=6076)
+├── errors.rs     PoolError (78 codes, 6000..=6077)
 ├── events.rs     39 events, all emitted through emit_cpi!
 └── instructions/
     ├── pool.rs   init_pool, deposit, redeem, pause, resume, the council's pool setters,
@@ -166,9 +166,9 @@ NAV, which is the `nav_after` of every event and `NavUpdated.total_assets`.
 | council member | a key in the multisig's member list | nothing alone (decision 39); votes in Squads. Cannot be a borrower (`BorrowerIsCurator` at `approve_line`) or a procurador (`EndorseeInvalid`) |
 | fx_feeder | `Pool.fx_feeder` (the zero key for none), set by `set_fx_feeder` | `post_fix` for a later date, within the band from the FIX in force, within 2% of the RedStone reference, within the pool's FIX bounds, once per Mexico City day (§6) |
 | creator | `Pool.creator`: signer and payer of `init_pool`, a seed of the pool's address | nothing after `init_pool`; cannot be a procurador |
-| borrower | `CreditLine.borrower` | `request_line`, `withdraw_request`, `draw` its approved line alone (signing the FIX); receives its paid pagarés from `deliver_pagare` and, as their owner, may `burn_pagare` them |
+| borrower | `CreditLine.borrower` | `request_line`, `withdraw_request`, `draw` its approved line alone (signing the FIX); receives its paid pagarés from `deliver_pagare` once the line owes nothing (decision 49) and, as their owner, may `burn_pagare` them |
 | payer (relayer) | any signer passed as `payer` | funds the rent of a request (`CreditLine.payer`, refunded on reject or withdraw) and of the pagaré asset and its record at `draw`; sends `deliver_pagare` and pays what its CPIs need. The `payer` of `repay` is a different role: whoever's USDC moves |
-| sponsor | `CreditLine.sponsor`, `sponsor_role` 0 promoter or 1 guarantor | co-signs `request_line` when named (`SponsorRequired`). A guarantor (aval) whose payment covers a pagaré receives that título at `deliver_pagare` (LGTOC 115); otherwise the role is recorded, not enforced |
+| sponsor | `CreditLine.sponsor`, `sponsor_role` 0 promoter or 1 guarantor | co-signs `request_line` when named (`SponsorRequired`). A guarantor (aval) whose payment covers a pagaré receives that título at `deliver_pagare` once the line owes nothing (LGTOC 115, decision 49); otherwise the role is recorded, not enforced |
 | procurador | `Pagare.procurador`, named by `endorse_pagare` | nothing over the asset (decision 38): it collects through `repay` like any payer and litigates with the registry entry as the endorsement |
 | investor | holder of shares | `deposit`, `redeem`. When `Pool.permissioned` (share mint `DefaultAccountState = Frozen`), the share mint's freeze authority (Token ACL in production) thaws each investor's share account first; the program records `permissioned`, not who holds that authority |
 | anyone | | `repay` any drawn line, `mark_in_collection`, `deliver_pagare` |
@@ -444,7 +444,6 @@ stays as the PAGADO mark and the registry.
 | `REFERENCE_PROGRAM` | `REDSTBDUecGjwXd6YGPzHSvEUBHQqVRfCcjUVgPiHsr` | `fx` | RedStone's Solana price adapter |
 | `REFERENCE_ACCOUNT` | `8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2` | `fx` | its MXNe `PriceData`, PDA `["price", "MXNe"]` (seeds zero-padded to 32 bytes) |
 | `PAYMENT_DOMAIN` | `"elote.pago.v1"` | `registry` | domain of a payment entry's annotation hash |
-| `DELIVERY_DOMAIN` | `"elote.entrega.v1"` | `registry` | domain of a delivery entry's hash |
 | `TERMS_DOMAIN` | `"elote_pool:terms:v1"` | `terms` | domain of the terms hash |
 
 ## 4. Instructions
@@ -831,8 +830,9 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
 
 A payment on a zero debt of a line that cannot draw is the closing repayment: it must still credit
 at least one centavo (`amount > 0`), moves nothing (`usdc_received = 0`) and sets `Repaid`. The
-delivery of the títulos the payment covered is a separate instruction, `deliver_pagare`, which the
-client appends to the same transaction (§9.4).
+delivery of the títulos is a separate instruction, `deliver_pagare`, refused until the line owes
+nothing (decision 49): the client appends it to the transaction of the payment that settles the
+line, and sends what does not fit there right after (§9.4).
 
 #### `mark_in_collection()`
 
@@ -931,12 +931,17 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
 - **Accounts:** `payer` (signer, mut: anyone; pays what the CPIs may need); `pool`; `line`;
   `pagare` (mut); `asset` (mut); `collection` (mut); `recipient` (does not sign);
   `mpl_core_program`; `system_program`.
-- **Checks:** `status == PAGARE_PAID` (`PagareNotCovered`); not delivered yet
-  (`PagareAlreadyDelivered`); `recipient` is the line's sponsor when `PAID_BY_AVAL` is set (the
-  aval settled it, LGTOC 115), else the line's borrower (`WrongAccount`): never whoever sends or
-  pays for the instruction. No council, no pause check and no line status check: the delivery is
-  the debtor's right, not a decision, and a pagaré paid on a line later written off is still
-  delivered.
+- **Checks, in this order:** `status == PAGARE_PAID` (`PagareNotCovered`); not delivered yet
+  (`PagareAlreadyDelivered`); the line owes nothing, `(drawn − principal_repaid) + (interest_due −
+  interest_repaid) == 0` (`BalanceOutstanding`, decision 49); `recipient` is the line's sponsor
+  when `PAID_BY_AVAL` is set (the aval settled it, LGTOC 115), else the line's borrower
+  (`WrongAccount`): never whoever sends or pays for the instruction. The pagaré promises interest
+  until maturity and interest is owed by the line, not by one pagaré, so a pagaré whose principal
+  is covered while the line still owes is not paid in full and the holder keeps it (LGTOC 17 and
+  130). The balance test holds in every line status: an `Active` line that can still draw and
+  owes nothing delivers; a line in collection delivers once a payment settles it; a written-off
+  line still owes and takes no payment, so its títulos are never delivered. No council and no
+  pause check: the delivery is the debtor's right, not a decision.
 - **CPIs, in this order and no other** (the pool PDA signs, as the collection's update authority
   and the asset's owner): Core `UpdatePluginV1` sets `PermanentFreezeDelegate { frozen: false }`;
   `ApprovePluginAuthorityV1` moves that plugin's authority to `None`, so nobody can ever freeze the
@@ -944,13 +949,11 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
   frozen asset whose freeze authority is `None` can never be thawed or moved
   (`tests/core_capabilities.rs::only_the_permanent_freeze_delegate_thaws_and_a_frozen_asset_with_no_delegate_is_stuck`),
   and it runs while the pool still owns the asset.
-- **Writes, after the CPIs:** the `Entrega` entry (pool → recipient, over
-  `entrega_hash = sha256("elote.entrega.v1" ‖ receipt_hash ‖ interest_reserved u64)`, where
-  `interest_reserved` is the line's `interest_due − interest_repaid` at this moment: the título
-  leaves with the interest still owed reserved in its own registry, decision 46);
+- **Writes, after the CPIs:** the `Entrega` entry (pool → recipient, over the record's
+  `receipt_hash`: the line owes nothing, so there is no interest left to reserve, decision 49);
   `flags |= DELIVERED`.
-- **Events:** `PagareEntry`, `PagareDelivered { recipient, payer, receipt_hash,
-  interest_reserved, entry_count, delivered_at }`.
+- **Events:** `PagareEntry`, `PagareDelivered { recipient, payer, receipt_hash, entry_count,
+  delivered_at }`.
 
 #### `burn_pagare(draw_index: u16, document_hash: [u8; 32])`
 
@@ -1097,10 +1100,13 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
    on the oldest one it touches. Status unchanged.
    annul_pagare (C): OUTSTANDING only; a Terminacion entry, nothing else changes.
    court_annotation: any state before DELIVERED. annotate_payment: any state.
+   deliver_pagare: PAID, and only once the line owes nothing (decision 49).
 ```
 
-The status never reverts and the record is never closed. `deliver_pagare` requires `PAID` whatever
-the line's status, so a covered pagaré is delivered on a line in collection or written off as well.
+The status never reverts and the record is never closed. `deliver_pagare` requires `PAID` and a
+line that owes nothing, whatever its status (decision 49): every covered pagaré of a line waits for
+the payment that settles it, in collection as well, and those of a written-off line, which still
+owes and takes no payment, are never delivered.
 
 ## 6. The FIX (`fx.rs`, `post_fix`)
 
@@ -1376,7 +1382,7 @@ recorded_at = now`.
 | `Pagado` | 9 | `repay` (covers it) | payer | pool | annotation hash |
 | `Recibo` | 11 | `annotate_payment` | council | pool | `receipt_hash` |
 | `PagadoAval` | 12 | `repay` (covers it, paid by the aval) | aval | pool | annotation hash |
-| `Entrega` | 13 | `deliver_pagare` | pool | borrower or aval | `entrega_hash` (the record's `receipt_hash` and the interest reserved) |
+| `Entrega` | 13 | `deliver_pagare` | pool | borrower or aval | the record's `receipt_hash` |
 
 Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso; 10 was the holder's
 cancellation request and is retired. None is reused.
@@ -1419,12 +1425,15 @@ holder's correction arrives as a `Recibo` entry (`annotate_payment`); no field i
   covering payment by the aval sets `PAID_BY_AVAL`. A procuración in force ends in the same
   instruction with a `Terminacion` entry from the pool to the procurador over the payment's
   annotation hash; the procurador's own collection is this repayment.
-- **Delivered** (`deliver_pagare`, LGTOC 129–130): anyone sends it, in the repayment's own
-  transaction (the client appends one per pagaré covered) or later. The pool thaws the asset,
-  renounces the freeze to `None` and transfers it to the borrower, or to the aval who settled it
-  (LGTOC 115: the aval collects from the suscriptor with the live título). The council is not in
-  the path and nothing gates it: neither the pause, nor the line's status, nor a court annotation.
-  `Entrega` entry, `DELIVERED` flag.
+- **Delivered** (`deliver_pagare`, LGTOC 129–130): only once the line owes nothing, principal
+  and interest (decision 49): a covered pagaré of a line that still owes is not paid in full, since
+  it promises interest until maturity, and stays with the pool. Anyone sends it, in the settling
+  repayment's own transaction (the client appends a delivery for every título not yet delivered,
+  as many as fit, and sends the rest right after) or later. The pool thaws the asset, renounces the
+  freeze to `None` and transfers it to the borrower, or to the aval who settled it (LGTOC 115: the
+  aval collects from the suscriptor with the live título). The council is not in the path and
+  neither the pause nor a court annotation gates it. `Entrega` entry over the record's
+  `receipt_hash`, `DELIVERED` flag.
 - **Burnt** (`burn_pagare`): the delivered título's owner, read from the Core account, optionally
   writes a `Terminacion` and burns the asset; the rent returns to the owner and the record stays.
 - **Annulled** (`annul_pagare`): the council annotates an outstanding título issued in error with a
@@ -1489,8 +1498,8 @@ included for a council instruction.
 | `resume_draws` | 13 892 |
 | `propose_acceleration` | 14 587 |
 | `accelerate_line`, 120 installments, all due | 49 255 |
-| `deliver_pagare`, 120 installments | 67 653 |
-| `deliver_pagare` after a procuración | 67 559 |
+| `deliver_pagare`, 120 installments | 67 666 |
+| `deliver_pagare` after a procuración | 67 572 |
 | `burn_pagare` | 30 568 |
 | `court_annotation`, 120 installments | 17 690 |
 | `annotate_payment`, 120 installments | 20 368 |
@@ -1565,7 +1574,7 @@ procuración, the pause by council vote): `endorse_pagare` 17 618 (same again af
 | `AccelerationProposed` | `propose_acceleration` | pool, line_id, due_at |
 | `AccelerationWithdrawn` | `withdraw_acceleration`, `mark_in_collection` (superseding a proposal) | pool, line_id |
 | `LineAccelerated` | `accelerate_line` | pool, line_id, remaining, interest_forgiven, impaired_principal |
-| `PagareDelivered` | `deliver_pagare` | pool, line_id, draw_index, asset, recipient (the borrower or the aval), payer (whoever sent it), receipt_hash, interest_reserved, entry_count, delivered_at |
+| `PagareDelivered` | `deliver_pagare` | pool, line_id, draw_index, asset, recipient (the borrower or the aval), payer (whoever sent it), receipt_hash, entry_count, delivered_at |
 | `PagareBurned` | `burn_pagare` | pool, line_id, draw_index, asset, owner, document_hash |
 | `PagareAnnulled` | `annul_pagare` | pool, line_id, draw_index, asset, document_hash |
 | `PagareReceiptAnnotated` | `annotate_payment` | pool, line_id, draw_index, entry_count (the `Recibo`'s), payment_entry_count (the entry it annotates), receipt_hash |
@@ -1579,7 +1588,7 @@ entry, then a `Terminacion` that follows it), `PagarePayment`, `LateInterestColl
 `annotate_payment` emits `PagareEntry`, then `PagareReceiptAnnotated`; `write_off` emits
 `LineWrittenOff`, then `NavUpdated`.
 
-### 11.2 Errors (77, `errors.rs`, numbered from 6000 in declaration order)
+### 11.2 Errors (78, `errors.rs`, numbered from 6000 in declaration order)
 
 Squads v4 also numbers its errors from 6000 (its `NotAMember` is 6005, which is `CouncilTooLarge`
 here). Decode an error by the program that
@@ -1667,6 +1676,7 @@ route, decision 38), 6075 (the judicial hold, decision 38-g) and 6076 (the depos
 | 6074 | `PagareAlreadyDelivered` | Appended | This pagaré was already delivered |
 | 6075 | `DeliveryHeld` | Appended | Retired: no court act gates the delivery (decision 38-g) |
 | 6076 | `PoolImpaired` | Appended | Retired: deposits price at the unprovisioned NAV instead of waiting (decision 40b) |
+| 6077 | `BalanceOutstanding` | Appended | The line still owes principal or interest; no título leaves until it owes nothing |
 
 ## 12. Toolchain, build and tests
 
@@ -1732,7 +1742,7 @@ functions in each file.
 | `tests/valid_until.rs` | 4 | LiteSVM | `valid_until` refused past or too far ahead |
 | `tests/squads.rs` | 6 | LiteSVM + Squads v4 | council instructions through the real `vault_transaction_execute`, stale proposals, a multisig lowered below a majority, the rotation |
 | `tests/fx.rs` | 25 | LiteSVM | the FIX: conversions, the daily band, the RedStone reference, the bounds, feeder versus council, one publication a day, draws and repayments at the FIX, FX gains and losses |
-| `tests/pagare.rs` | 24 | LiteSVM + Core 0.15.3 | one frozen asset and one record per draw, every plugin read back through `mpl-core`, the registry and payment entries, the delivery to the borrower or the aval, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
+| `tests/pagare.rs` | 26 | LiteSVM + Core 0.15.3 | one frozen asset and one record per draw, every plugin read back through `mpl-core`, the registry and payment entries, the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `tests/core_capabilities.rs` | 8 | LiteSVM + Core 0.15.3 | what Core allows after an asset's creation (§9.1) |
 | `tests/known_limits.rs` | 13 | LiteSVM | documentation tests that pin current behaviour and the known limits SECURITY.md lists; they are inverted when a limit is removed |
 | `tests/audit.rs`, `tests/reaudit.rs` | 4, 4 | LiteSVM | regressions of the 2026-11-01 audit and the 2026-11-02 re-audit |

@@ -169,6 +169,8 @@ export const ELOTE_POOL_ERROR__PAGARE_ALREADY_DELIVERED = 0x17ba; // 6074
 export const ELOTE_POOL_ERROR__DELIVERY_HELD = 0x17bb; // 6075
 /** PoolImpaired: Retired: deposits price at the unprovisioned NAV instead of waiting (decision 40b) */
 export const ELOTE_POOL_ERROR__POOL_IMPAIRED = 0x17bc; // 6076
+/** BalanceOutstanding: The line still owes principal or interest; no título leaves until it owes nothing */
+export const ELOTE_POOL_ERROR__BALANCE_OUTSTANDING = 0x17bd; // 6077
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -180,6 +182,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__ASSET_NOT_LISTED
   | typeof ELOTE_POOL_ERROR__AVAILABILITY_ENDED
+  | typeof ELOTE_POOL_ERROR__BALANCE_OUTSTANDING
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_COUNCIL
   | typeof ELOTE_POOL_ERROR__BORROWER_IS_CURATOR
   | typeof ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED
@@ -261,6 +264,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED]: `The asset mint carries a Token-2022 extension the pool does not accept`,
     [ELOTE_POOL_ERROR__ASSET_NOT_LISTED]: `The asset mint is not on this cluster's allow-list`,
     [ELOTE_POOL_ERROR__AVAILABILITY_ENDED]: `The draw window of this line has closed`,
+    [ELOTE_POOL_ERROR__BALANCE_OUTSTANDING]: `The line still owes principal or interest; no título leaves until it owes nothing`,
     [ELOTE_POOL_ERROR__BORROWER_IS_COUNCIL]: `The council cannot be the borrower`,
     [ELOTE_POOL_ERROR__BORROWER_IS_CURATOR]: `A member of the council cannot be the borrower`,
     [ELOTE_POOL_ERROR__CANCEL_GRACE_NOT_ELAPSED]: `Retired: the cancellation route is gone (decision 38)`,

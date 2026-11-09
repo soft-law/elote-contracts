@@ -94,7 +94,8 @@ pub struct PagareEntry {
 }
 
 /// The paid título left the pool: `deliver_pagare` thawed the asset, renounced the freeze and
-/// transferred it to `recipient` — the suscriptor, or the aval who settled it (decision 38).
+/// transferred it to `recipient` — the suscriptor, or the aval who settled it (decision 38) — once
+/// the line owed nothing (decision 49).
 /// `payer` is whoever sent the instruction; anyone may.
 #[event]
 pub struct PagareDelivered {
@@ -105,8 +106,6 @@ pub struct PagareDelivered {
     pub recipient: Pubkey,
     pub payer: Pubkey,
     pub receipt_hash: [u8; 32],
-    /// The ordinary interest the line still owes at the delivery, reserved by the entry.
-    pub interest_reserved: u64,
     pub entry_count: u32,
     pub delivered_at: i64,
 }

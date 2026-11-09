@@ -1,6 +1,18 @@
-// Reads of the pool, its lines and their pagaré records, and the repayment split the program's
-// compute ceiling asks of clients (at most `MAX_SIDECARS_PER_REPAY` records per `repay`).
-import { type Address, type KeyPairSigner } from "@solana/kit";
+// Reads of the pool, its lines and their pagaré records, the repayment split the program's
+// compute ceiling asks of clients (at most `MAX_SIDECARS_PER_REPAY` records per `repay`), and the
+// delivery of the títulos once the line owes nothing (decision 49).
+import {
+  type Address,
+  type Blockhash,
+  type Instruction,
+  type KeyPairSigner,
+  appendTransactionMessageInstructions,
+  createTransactionMessage,
+  isTransactionMessageWithinSizeLimit,
+  pipe,
+  setTransactionMessageFeePayerSigner,
+  setTransactionMessageLifetimeUsingBlockhash,
+} from "@solana/kit";
 import { TOKEN_PROGRAM_ADDRESS, fetchToken, findAssociatedTokenPda } from "@solana-program/token";
 import {
   type CreditLine,
@@ -54,12 +66,88 @@ export async function drawnThroughOf(c: Cluster, line: Address, draws: number): 
 export const ataOf = async (owner: Address, mint: Address) =>
   (await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
 
+const PAGARE_PAID = 1; // state::PAGARE_*
+const PAGARE_FLAG_DELIVERED = 1 << 2; // state::PAGARE_FLAG_*
+const PAGARE_FLAG_PAID_BY_AVAL = 1 << 3;
+const SPONSOR_GUARANTOR = 1; // state::SPONSOR_*
+
+/** Whether `instructions` fit one transaction of the shape `send` builds, paid by `feePayer`. */
+export function fitsOneTransaction(feePayer: KeyPairSigner, instructions: Instruction[]): boolean {
+  const message = pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayerSigner(feePayer, m),
+    // The size does not depend on which blockhash: any 32 bytes stand in for the real one.
+    (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash: "11111111111111111111111111111111" as Blockhash, lastValidBlockHeight: 0n }, m),
+    (m) => appendTransactionMessageInstructions(instructions, m)
+  );
+  return isTransactionMessageWithinSizeLimit(message);
+}
+
+/** What the line owes in principal and ordinary interest: no título leaves until it is zero (decision 49). */
+export const lineOwes = (l: CreditLine) => l.drawn - l.principalRepaid + (l.interestDue - l.interestRepaid);
+
+/**
+ * A `deliver_pagare` for every pagaré of the line not yet delivered, oldest first: those already
+ * marked paid go to whoever their mark names (the aval when `PAID_BY_AVAL`, else the borrower);
+ * the others, which the settling payment is about to mark, to its payer's side (`byAval`).
+ */
+async function pendingDeliveries(
+  c: Cluster,
+  args: { pool: Address; poolData: Pool; line: Address; l: CreditLine; payer: KeyPairSigner; byAval: boolean }
+): Promise<{ drawIndex: number; ix: Instruction }[]> {
+  const { pool, poolData, line, l, payer, byAval } = args;
+  const sponsor = l.sponsor.__option === "Some" ? l.sponsor.value : undefined;
+  const out = [];
+  for (let drawIndex = 0; drawIndex < l.draws; drawIndex++) {
+    const [pagare] = await findPagarePda({ line, drawIndex });
+    const record = (await fetchPagare(c.rpc, pagare, { commitment: "confirmed" })).data;
+    if ((record.flags & PAGARE_FLAG_DELIVERED) !== 0) continue;
+    const toAval = record.status === PAGARE_PAID ? (record.flags & PAGARE_FLAG_PAID_BY_AVAL) !== 0 : byAval;
+    const recipient = toAval ? (sponsor ?? fail("the aval paid but the line names no sponsor")) : l.borrower;
+    const ix = await getDeliverPagareInstructionAsync({
+      payer,
+      pool,
+      line,
+      pagare,
+      asset: record.asset,
+      collection: poolData.collection,
+      recipient,
+      drawIndex,
+    });
+    out.push({ drawIndex, ix });
+  }
+  return out;
+}
+
+/**
+ * Once the line owes nothing, delivers every paid título not yet delivered (decision 49), in as
+ * many transactions as their size takes; does nothing while the line owes anything. Returns how
+ * many were delivered.
+ */
+export async function deliverPending(c: Cluster, args: { pool: Address; poolData: Pool; line: Address; payer: KeyPairSigner }): Promise<number> {
+  const l = (await fetchCreditLine(c.rpc, args.line, { commitment: "confirmed" })).data;
+  if (lineOwes(l) > 0n) return 0;
+  const pending = await pendingDeliveries(c, { ...args, l, byAval: false });
+  let delivered = 0;
+  while (pending.length) {
+    let n = 1;
+    while (n < pending.length && fitsOneTransaction(args.payer, pending.slice(0, n + 1).map((d) => d.ix))) n++;
+    const batch = pending.splice(0, n);
+    await send(c, `deliver_pagare: pagaré${n === 1 ? "" : "s"} ${batch.map((d) => d.drawIndex).join(", ")} delivered`, args.payer, batch.map((d) => d.ix));
+    delivered += n;
+  }
+  return delivered;
+}
+
 /**
  * Pays up to `amount` on the line, in as many `repay` calls as it takes for each to touch at most
  * `MAX_SIDECARS_PER_REPAY` pagaré records. Each part re-reads the line, so another payment landing
  * in between only changes the next part; a part refused because the records it was built for
- * changed (`PagareAccountsMismatch`) is rebuilt and sent again, once. Returns what the payer's
- * account was debited.
+ * changed (`PagareAccountsMismatch`) is rebuilt and sent again, once. A título leaves only once the
+ * line owes nothing (decision 49): the part expected to settle the line carries the deliveries of
+ * every título not yet delivered, as many as fit its transaction (if the line would still owe, the
+ * program refuses them and the part is sent again without them), and the rest follow in
+ * transactions of their own. Returns what the payer's account was debited.
  */
 export async function repayInParts(
   c: Cluster,
@@ -71,18 +159,20 @@ export async function repayInParts(
   const start = await balance();
   // `amount` and `left` are USDC; the line counts MXN at the FIX in force, read for each part.
   let left = args.amount;
-  for (let part = 1; left > 0n; part++) {
+  parts: for (let part = 1; left > 0n; part++) {
     let sent = false;
+    let withDeliveries = true;
     for (let attempt = 1; !sent; attempt++) {
       const l = (await fetchCreditLine(c.rpc, line, { commitment: "confirmed" })).data;
       const fix = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
       const leftMxn = mxnForUsdc(left, fix.fixRate);
-      if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) return start - (await balance());
+      if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) break parts;
       // Late interest: a scheduled line's, or a bullet line's from term_end (or the mark).
       // Late interest grows by the second until the part lands: quote it 30 s ahead. The program
       // takes only what is due; the excess falls on principal, and if that moves the records the
       // part touches, the retry below rebuilds it.
-      const quotedAt = (await chainNow(c)) + 30n;
+      const now = await chainNow(c);
+      const quotedAt = now + 30n;
       const late = lineLateDue(l, quotedAt);
       // The interest the program takes before principal: on an active line, the interest accrued,
       // quoted ahead like the late interest (decisions 46 and 47).
@@ -90,7 +180,7 @@ export async function repayInParts(
       const principalLeft = l.drawn - l.principalRepaid;
       // An active line still open after a part that left no principal can still draw: what is
       // payable now is seconds of interest, not worth chasing part after part (decision 47).
-      if (part > 1 && l.status === LineStatus.Active && principalLeft === 0n) return start - (await balance());
+      if (part > 1 && l.status === LineStatus.Active && principalLeft === 0n) break parts;
       const drawnThrough = await drawnThroughOf(c, line, l.draws);
       const cap = drawnThrough.length
         ? repayPrincipalCap({ pagaresPaid: l.pagaresPaid, drawnThrough, principalRepaid: l.principalRepaid, maxRecords: MAX_SIDECARS_PER_REPAY })
@@ -99,63 +189,56 @@ export async function repayInParts(
       const principal = [afterInterest, principalLeft, cap].reduce((a, b) => (a < b ? a : b));
       const interest = leftMxn > late ? (leftMxn - late < interestLeft ? leftMxn - late : interestLeft) : 0n;
       const piece = late + interest + principal;
-      if (piece === 0n) return start - (await balance());
+      if (piece === 0n) break parts;
       const records = await repaySidecars({ line, pagaresPaid: l.pagaresPaid, drawnThrough, principalAfter: l.principalRepaid + principal });
-      // A deliver_pagare for each pagaré this part covers, in the same transaction (decision 38):
-      // the título goes to the borrower, or to the aval when the aval's payment settles it. If a
-      // part is sent without them, anyone can deliver later with deliver-pagare.ts.
-      const byAval = l.sponsor.__option === "Some" && payer.address === l.sponsor.value && l.sponsorRole === 1;
-      const recipient = byAval && l.sponsor.__option === "Some" ? l.sponsor.value : l.borrower;
-      const principalAfter = l.principalRepaid + principal;
-      const deliveries = [];
-      for (let i = 0; i < records.length; i++) {
-        const drawIndex = l.pagaresPaid + i;
-        if (drawnThrough[drawIndex] > principalAfter) break;
-        const record = (await fetchPagare(c.rpc, records[i], { commitment: "confirmed" })).data;
-        deliveries.push(
-          await getDeliverPagareInstructionAsync({
-            payer,
-            pool,
-            line,
-            pagare: records[i],
-            asset: record.asset,
-            collection: poolData.collection,
-            recipient,
-            drawIndex,
-          })
-        );
+      const repayIx = withRemainingAccounts(
+        await getRepayInstructionAsync({
+          payer,
+          pool,
+          line,
+          assetMint: poolData.assetMint,
+          shareMint: poolData.shareMint,
+          vault: poolData.vault,
+          payerAssetAccount: payerAsset,
+          tokenProgram: TOKEN_PROGRAM_ADDRESS,
+          maxUsdc: usdcCeilForMxn(piece, fix.fixRate),
+          fixRate: fix.fixRate,
+          fixDate: fix.fixDate,
+          receiptHash,
+        }),
+        records
+      );
+      // Does this part leave the line owing nothing? All the principal and the interest the
+      // program takes; on a line that can still draw, that must also be all the interest it owes,
+      // since nothing is forgiven while it can draw (decisions 44 and 47).
+      const canDraw = l.status === LineStatus.Active && now < l.availabilityEnd && l.drawn < l.principal;
+      const settles = principal === principalLeft && interest === interestLeft && (!canDraw || interest === l.interestDue - l.interestRepaid);
+      // The título goes to the borrower, or to the aval when the aval's payment covers it.
+      const byAval = l.sponsor.__option === "Some" && payer.address === l.sponsor.value && l.sponsorRole === SPONSOR_GUARANTOR;
+      const deliveries: { drawIndex: number; ix: Instruction }[] = [];
+      if (settles && withDeliveries) {
+        for (const d of await pendingDeliveries(c, { pool, poolData, line, l, payer, byAval })) {
+          if (!fitsOneTransaction(payer, [repayIx, ...deliveries.map((x) => x.ix), d.ix])) break;
+          deliveries.push(d);
+        }
       }
       const label = `repay part ${part}: MXN ${fmtMxn(piece)} (${records.length} pagaré record${records.length === 1 ? "" : "s"}${deliveries.length ? `, ${deliveries.length} delivered` : ""})`;
       try {
-        await send(c, label, payer, [
-          withRemainingAccounts(
-            await getRepayInstructionAsync({
-              payer,
-              pool,
-              line,
-              assetMint: poolData.assetMint,
-              shareMint: poolData.shareMint,
-              vault: poolData.vault,
-              payerAssetAccount: payerAsset,
-              tokenProgram: TOKEN_PROGRAM_ADDRESS,
-              maxUsdc: usdcCeilForMxn(piece, fix.fixRate),
-              fixRate: fix.fixRate,
-              fixDate: fix.fixDate,
-              receiptHash,
-            }),
-            records
-          ),
-          ...deliveries,
-        ]);
+        await send(c, label, payer, [repayIx, ...deliveries.map((d) => d.ix)]);
         sent = true;
       } catch (e) {
-        if (!(e instanceof SendError) || attempt >= 2 || !/not the ones this payment touches/.test(e.message)) throw e;
-        console.log(`  ${e.message}\n  the line changed meanwhile: rebuilding the part`);
+        const mismatch = e instanceof SendError && /not the ones this payment touches/.test(e.message);
+        const owes = e instanceof SendError && deliveries.length > 0 && /until it owes nothing/.test(e.message);
+        if (attempt >= 2 || !(mismatch || owes)) throw e;
+        if (owes) withDeliveries = false;
+        console.log(`  ${(e as Error).message}\n  ${owes ? "the line would still owe after this part: sending it without the deliveries" : "the line changed meanwhile: rebuilding the part"}`);
       }
     }
     const leftAfter = args.amount - (start - (await balance()));
     if (leftAfter >= left) fail("a repay part debited nothing; stopping");
     left = leftAfter;
   }
+  // The títulos the settling part had no room for, or all of them if it was sent without them.
+  await deliverPending(c, { pool, poolData, line, payer });
   return start - (await balance());
 }

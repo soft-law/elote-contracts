@@ -182,4 +182,6 @@ pub enum PoolError {
     /// Retired (decision 40b): deposits are never gated — they price at the unprovisioned NAV.
     #[msg("Retired: deposits price at the unprovisioned NAV instead of waiting (decision 40b)")]
     PoolImpaired,
+    #[msg("The line still owes principal or interest; no título leaves until it owes nothing")]
+    BalanceOutstanding,
 }

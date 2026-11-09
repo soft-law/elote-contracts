@@ -365,7 +365,7 @@ pub const SIGNATURE_EFIRMA_WALLET: u8 = 2;
 pub const PAGARE_OUTSTANDING: u8 = 0;
 /// `Pagare::status`: a repayment covered it (the PAGADO mark). The título's delivery to the
 /// suscriptor — or to the aval who settled it — is `PAGARE_FLAG_DELIVERED`, written by
-/// `deliver_pagare` (decision 38). Status 2 was PAID_PENDING_CANCEL (the retired cancellation
+/// `deliver_pagare` (decision 38) once the line owes nothing (decision 49). Status 2 was PAID_PENDING_CANCEL (the retired cancellation
 /// route); never reuse it.
 pub const PAGARE_PAID: u8 = 1;
 

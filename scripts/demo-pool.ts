@@ -394,7 +394,7 @@ console.log(row("line drawn", drawn));
 console.log(row("line repaid", repaid));
 console.log(row("after A redeems 4,000", after));
 console.log(`\nInvestor A received ${fmt(received)} ${ASSET} for 4,000 shares (value per share ${fmt(before.perShare)} -> ${fmt(repaid.perShare)}).`);
-console.log(`\npool ${pool}\nline 0 is repaid; its pagaré 0 is marked paid: cancel it with scripts/cancel-pagare.ts --line-id ${lineCount} --draw-index 0`);
+console.log(`\npool ${pool}\nline ${lineCount} is repaid; its pagaré 0 left with the settling payment: burn it as its owner with scripts/deliver-pagare.ts --line-id ${lineCount} --draw-index 0 --burn --owner-keypair <the borrower's>`);
 
 if (withSchedule) await scheduleDemo();
 console.log(`\n${DISCLAIMER}`);

@@ -9,6 +9,7 @@ use common::*;
 use elote_pool::errors::PoolError;
 
 const E_PAGARE_ALREADY_DELIVERED: u32 = ERR_BASE + PoolError::PagareAlreadyDelivered as u32;
+const E_BALANCE_OUTSTANDING: u32 = ERR_BASE + PoolError::BalanceOutstanding as u32;
 use elote_pool::events::PagareIssued;
 use elote_pool::state::{LineStatus, KIND_ENTREGA, PAGARE_FLAG_DELIVERED};
 use mpl_core::types::{Key, UpdateAuthority};
@@ -379,9 +380,11 @@ fn a_paid_pagare_is_delivered_to_the_borrower_and_the_owner_may_burn_it() {
 
 /// The coverage rule: pagaré `k` is paid once the line's principal repaid reaches its
 /// `drawn_through`, so repayments cover the pagarés oldest first and a later one cannot be
-/// delivered while an earlier one is uncovered. Interest covers nothing by itself: `repay` settles
-/// it before principal, so a payment the size of the pagaré leaves principal owed, and a título is
-/// never marked paid, nor delivered, while any of its principal is owed.
+/// marked paid while an earlier one is uncovered. Interest covers nothing by itself: `repay`
+/// settles it before principal, so a payment the size of the pagaré leaves principal owed, and a
+/// título is never marked paid while any of its principal is owed. A covered pagaré still waits
+/// for its line to owe nothing (`BalanceOutstanding`, decision 49); an uncovered one is refused
+/// first (`PagareNotCovered`).
 #[test]
 fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     let mut env = Env::new();
@@ -399,16 +402,20 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     env.repay(&k, line_id, &borrower, UNIT - 1);
     env.expect_deliver_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, 1);
-    env.deliver_pagare(&k, line_id, 0);
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
+    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
     env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
     env.expect_deliver_err(&k, line_id, 2, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, 2 * UNIT);
+    assert_eq!(env.pagare(&k, line_id, 1).status, PAGARE_PAID);
+    env.expect_deliver_err(&k, line_id, 1, E_BALANCE_OUTSTANDING);
     env.expect_deliver_err(&k, line_id, 2, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, 3 * UNIT);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     // Order among covered pagarés is free: the last one first.
     env.deliver_pagare(&k, line_id, 2);
     env.deliver_pagare(&k, line_id, 1);
+    env.deliver_pagare(&k, line_id, 0);
     assert_eq!(env.collection_state(&k.collection).current_size, 3, "delivered, not burnt");
 
     // At 10%, two tranches of 1.0 with 0.1 of interest each, at the term: a repayment of 1.0
@@ -425,7 +432,8 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     assert_eq!((ev.interest_part, ev.principal_part), (200_000, 800_000));
     env.expect_deliver_err(&k, line_id, 0, E_PAGARE_NOT_COVERED);
     env.repay(&k, line_id, &borrower, 200_000);
-    env.deliver_pagare(&k, line_id, 0);
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
+    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
     env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
 
     // At 100% for a year the interest equals the principal: a payment the size of the pagaré is
@@ -445,12 +453,13 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     env.deliver_pagare(&k, line_id, 0);
 }
 
-/// The delivery follows the sidecar's PAGADO mark, not the line's status (re-audit F-06, decision
-/// 38): a pagaré a payment covered is delivered while its line is in collection or written off;
-/// the pagarés no payment covered stay in force for the collection. A cancelled line never drew,
-/// so there is nothing to deliver.
+/// A título leaves only when its line owes nothing (decision 49, LGTOC 17 and 130), whatever the
+/// line's status: a pagaré a payment covered stays with the pool while its line is in collection,
+/// until a payment settles the line, and forever once the line is written off, since a written-off
+/// line still owes and takes no payment. The pagarés no payment covered stay in force for the
+/// collection. A cancelled line never drew, so there is nothing to deliver.
 #[test]
-fn delivery_follows_the_mark_whatever_the_line_status() {
+fn no_titulo_leaves_a_line_that_owes_whatever_its_status() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
     let council = env.council.insecure_clone();
@@ -474,11 +483,19 @@ fn delivery_follows_the_mark_whatever_the_line_status() {
     env.repay(&k, line_id, &borrower, cover0);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
     assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
-    env.deliver_pagare(&k, line_id, 0);
-    assert!(env.pagare(&k, line_id, 0).flags & PAGARE_FLAG_DELIVERED != 0);
+    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
     env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    // The payment that settles the line in collection releases both.
+    let line = env.line(&k, line_id);
+    let rest = env.arrears(&k, line_id).late_due + line.interest_due - line.interest_repaid + line.drawn - line.principal_repaid;
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), rest);
+    env.repay(&k, line_id, &borrower, rest);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    env.deliver_pagare(&k, line_id, 0);
+    env.deliver_pagare(&k, line_id, 1);
+    assert!(env.pagare(&k, line_id, 0).flags & env.pagare(&k, line_id, 1).flags & PAGARE_FLAG_DELIVERED != 0);
 
-    // Written off: the covered pagaré is delivered; the other outlives the loss.
+    // Written off: the covered pagaré stays with the pool, and the other outlives the loss.
     let borrower = env.borrower(&k);
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
@@ -490,9 +507,15 @@ fn delivery_follows_the_mark_whatever_the_line_status() {
     let ix = env.write_off_ix(&k, line_id, &a);
     env.send(ix, &council, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
-    env.deliver_pagare(&k, line_id, 0);
+    assert_eq!(env.pagare(&k, line_id, 0).status, PAGARE_PAID);
+    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
     env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
     assert_eq!(env.pagare(&k, line_id, 1).status, PAGARE_OUTSTANDING);
+    // No payment reaches a written-off line, so its títulos never leave.
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), UNIT);
+    env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
+    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
 
     // Cancelled: no sidecar was ever created.
     let borrower = env.borrower(&k);
@@ -504,6 +527,66 @@ fn delivery_follows_the_mark_whatever_the_line_status() {
     let mut ix = env.deliver_pagare_ix_raw(&k, line_id, 0, &a, &borrower.pubkey(), pagare_asset_pda(&line_key, 0).0, k.collection);
     ix.program_id = PROGRAM_ID;
     env.expect_err(ix, &council, &[], E_ACCOUNT_NOT_INITIALIZED);
+}
+
+/// Decision 49 (LGTOC 17 and 130): the pagaré promises interest until maturity, so a pagaré whose
+/// principal is repaid while its line still owes interest is not paid in full, and the holder
+/// keeps it. On a line that can still draw, the payment of the whole principal leaves the
+/// interest not yet accrued owed (decision 47): the covered título stays (`BalanceOutstanding`).
+/// Once the borrower renounces the rest and settles, the line owes nothing and the título leaves.
+#[test]
+fn a_covered_pagare_waits_until_the_line_owes_nothing() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let council = env.council.insecure_clone();
+    let borrower = env.borrower(&k);
+    let b = borrower.pubkey();
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.warp(env.now() + 30 * 86_400);
+    env.mint_to(&k.asset_mint, &council, &b, UNIT);
+    env.repay(&k, line_id, &borrower, 2 * UNIT);
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.principal_repaid, env.pagare(&k, line_id, 0).status), (LineStatus::Active, UNIT, PAGARE_PAID));
+    assert!(line.interest_due > line.interest_repaid, "the interest not yet accrued is still owed");
+    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
+
+    // The settling payment: the line owes nothing and the título leaves right after it.
+    let ix = env.renounce_availability_ix(&k, line_id, &b);
+    env.send(ix, &borrower, &[]);
+    env.warp(env.now() + 86_400);
+    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
+    env.repay(&k, line_id, &borrower, UNIT);
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.drawn - line.principal_repaid, line.interest_due - line.interest_repaid), (LineStatus::Repaid, 0, 0));
+    env.deliver_pagare(&k, line_id, 0);
+    assert_eq!(env.asset_state(&env.pagare(&k, line_id, 0).asset).base.owner, b);
+}
+
+/// Decision 49 tests the line's balance, not its status: an active line that can still draw and
+/// owes nothing (here at 0%) delivers its paid título. A later draw makes the line owe again; the
+/// delivered título stays delivered and the new one waits for its own coverage.
+#[test]
+fn an_active_line_that_owes_nothing_delivers_and_draws_on() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 0);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.repay(&k, line_id, &borrower, UNIT);
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.drawn - line.principal_repaid, line.interest_due - line.interest_repaid), (LineStatus::Active, 0, 0));
+    assert!(line.drawn < line.principal && env.now() < line.availability_end, "the line can still draw");
+    env.deliver_pagare(&k, line_id, 0);
+    assert_eq!(env.asset_state(&env.pagare(&k, line_id, 0).asset).base.owner, borrower.pubkey());
+
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.expect_deliver_err(&k, line_id, 0, E_PAGARE_ALREADY_DELIVERED);
+    env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    env.repay(&k, line_id, &borrower, UNIT);
+    env.deliver_pagare(&k, line_id, 1);
 }
 
 /// The delivery takes no permission but demands the facts: the PAGADO mark, the right recipient
@@ -605,22 +688,14 @@ fn annotation(receipt: &[u8; 32], principal_applied: u64, accessory_applied: u64
     h.finalize().into()
 }
 
-/// What a delivery entry commits (decision 46): domain, receipt, the interest reserved.
-fn delivery(receipt: &[u8; 32], interest_reserved: u64) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(b"elote.entrega.v1");
-    h.update(receipt);
-    h.update(interest_reserved.to_le_bytes());
-    h.finalize().into()
-}
-
 /// Decision 46: a line of four pagarés settles in two payments for what one would pay. The payment
-/// on account takes the accrued interest and then principal; the pagaré it covers is paid while
-/// the line still owes interest, so its entry and its delivery reserve that interest (CCom 364).
+/// on account takes the accrued interest and then principal; the pagarés it covers are paid while
+/// the line still owes interest, so their payment entries reserve that interest (CCom 364), and
+/// none leaves the pool until the line owes nothing (decision 49). The settling payment, with its
+/// own receipt, releases all four; each `Entrega` entry commits its record's own `receipt_hash`.
 /// The forgiveness of decision 44 comes once, with the payment that settles.
 #[test]
-fn a_split_settlement_reserves_the_interest_on_every_titulo_it_covers() {
+fn a_split_settlement_delivers_every_titulo_once_the_line_owes_nothing() {
     use elote_pool::events::{EarlySettlement, PagareDelivered, PagarePayment};
     use elote_pool::state::KIND_PAGADO;
     let mut env = Env::new();
@@ -638,11 +713,12 @@ fn a_split_settlement_reserves_the_interest_on_every_titulo_it_covers() {
     env.mint_to(&k.asset_mint, &council, &b, fixed);
     env.warp(line.drawn_at + (line.term_end - line.drawn_at) / 2);
     let balance = env.token_balance(&k.asset_ata(&b));
+    let (on_account, settling) = ([0xa1; 32], [0xb2; 32]);
 
     // On account: the accrued interest and two and a half pagarés.
     let before0 = env.pagare(&k, line_id, 0);
     let amount = 2 * UNIT + UNIT / 2 + fixed / 2;
-    let ix = env.repay_ix(&k, line_id, &b, amount);
+    let ix = env.repay_ix_full(&k, line_id, &b, amount, on_account, &env.payment_sidecars(&k, line_id, amount));
     let meta = env.send(ix, &borrower, &[]);
     let now = env.now();
     assert!(find_event::<EarlySettlement>(&meta).is_none());
@@ -653,19 +729,21 @@ fn a_split_settlement_reserves_the_interest_on_every_titulo_it_covers() {
     let reserved = fixed - ev.interest_part;
     assert_eq!((line.pagares_paid, line.interest_due - line.interest_repaid, ev.interest_reserved), (2, reserved, reserved));
     let p0 = env.pagare(&k, line_id, 0);
-    let pagado = annotation(&RECEIPT_HASH, UNIT, ev.interest_part, 0, true, reserved);
+    let pagado = annotation(&on_account, UNIT, ev.interest_part, 0, true, reserved);
     assert_eq!(p0.log_root, chain(&before0.log_root, &entry_hash(&p0.asset, KIND_PAGADO, &b, &k.pool, &pagado, now, 2)));
 
-    // The título leaves with the reservation in its own registry.
-    let meta = env.deliver_pagare(&k, line_id, 0);
-    let now = env.now();
-    let ev: PagareDelivered = find_event(&meta).expect("PagareDelivered");
-    assert_eq!(ev.interest_reserved, reserved);
-    let d0 = env.pagare(&k, line_id, 0);
-    assert_eq!(d0.log_root, chain(&p0.log_root, &entry_hash(&d0.asset, KIND_ENTREGA, &k.pool, &b, &delivery(&RECEIPT_HASH, reserved), now, 3)));
+    // Nothing leaves between the payments: the paid ones wait for the line, the others for cover.
+    for i in 0..2 {
+        assert_eq!(env.pagare(&k, line_id, i).status, PAGARE_PAID);
+        env.expect_deliver_err(&k, line_id, i, E_BALANCE_OUTSTANDING);
+    }
+    for i in 2..4 {
+        env.expect_deliver_err(&k, line_id, i, E_PAGARE_NOT_COVERED);
+    }
 
     // The settling payment: the interest accrued since, the rest forgiven, nothing left to reserve.
-    let ix = env.repay_ix(&k, line_id, &b, 4 * UNIT);
+    env.warp(env.now() + 86_400);
+    let ix = env.repay_ix_full(&k, line_id, &b, 4 * UNIT, settling, &env.payment_sidecars(&k, line_id, 4 * UNIT));
     let meta = env.send(ix, &borrower, &[]);
     let settled: EarlySettlement = find_event(&meta).expect("EarlySettlement");
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
@@ -674,8 +752,19 @@ fn a_split_settlement_reserves_the_interest_on_every_titulo_it_covers() {
     assert_eq!(settled.interest_forgiven, fixed - line.interest_due);
     assert!(settled.interest_forgiven > 0 && line.interest_due < fixed);
     assert_eq!(balance - env.token_balance(&k.asset_ata(&b)), 4 * UNIT + line.interest_due, "what one settling payment pays");
-    let meta = env.deliver_pagare(&k, line_id, 3);
-    assert_eq!(find_event::<PagareDelivered>(&meta).expect("PagareDelivered").interest_reserved, 0);
+
+    // All four leave; each Entrega entry is over the receipt of the payment that paid its pagaré.
+    for (i, receipt) in [(0u16, on_account), (1, on_account), (2, settling), (3, settling)] {
+        let before = env.pagare(&k, line_id, i);
+        assert_eq!(before.receipt_hash, receipt);
+        let meta = env.deliver_pagare(&k, line_id, i);
+        let now = env.now();
+        let ev: PagareDelivered = find_event(&meta).expect("PagareDelivered");
+        assert_eq!((ev.draw_index, ev.recipient, ev.receipt_hash, ev.entry_count), (i, b, receipt, before.entry_count + 1));
+        let after = env.pagare(&k, line_id, i);
+        let entrega = entry_hash(&after.asset, KIND_ENTREGA, &k.pool, &b, &receipt, now, before.entry_count + 1);
+        assert_eq!(after.log_root, chain(&before.log_root, &entrega), "Entrega commits the record's receipt_hash");
+    }
 }
 
 fn chain(root: &[u8; 32], entry: &[u8; 32]) -> [u8; 32] {
@@ -1016,7 +1105,11 @@ fn the_payment_ends_the_procuracion_and_the_procurador_keeps_no_record() {
     assert_eq!(pagado, vec![(0, KIND_PAGADO, 3)]);
     assert_eq!(env.pagare(&k, line_id, 1).procurador, pr, "the sibling's procuración stands");
 
-    // The delivery goes to the borrower as always; the ex-procurador has no claim on the asset.
+    // The delivery goes to the borrower as always, once the line owes nothing (decision 49); the
+    // ex-procurador has no claim on the asset.
+    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
+    env.repay(&k, line_id, &borrower, UNIT);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     env.deliver_pagare(&k, line_id, 0);
     assert_eq!(env.asset_state(&env.pagare(&k, line_id, 0).asset).base.owner, borrower.pubkey());
 }
@@ -1053,23 +1146,28 @@ fn the_council_annuls_an_outstanding_titulo_by_annotation_alone() {
     assert_eq!((after.status, after.last_kind, after.entry_count), (PAGARE_OUTSTANDING, KIND_TERMINACION, before.entry_count + 1));
     assert_eq!(env.asset_state(&after.asset).base.owner, k.pool, "nothing burnt, nothing moved");
 
-    // The line is still the line: the borrower pays it off and the título delivers.
+    // The line is still the line: the borrower renounces the rest, pays it off and the título
+    // delivers.
+    let ix = env.renounce_availability_ix(&k, line_id, &borrower.pubkey());
+    env.send(ix, &borrower, &[]);
     let interest = env.line(&k, line_id).interest_due;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, UNIT + interest);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     // A paid título cannot be annulled: it is the debtor's.
     let ix = env.annul_pagare_ix(&k, line_id, 0, [0x3d; 32]);
     env.expect_err(ix, &council, &[], E_PAGARE_ALREADY_PAID);
     env.deliver_pagare(&k, line_id, 0);
 }
 
-/// The aval who settles the título receives it alive (LGTOC 115, decision 38-f): the covered
-/// pagaré gets a `PagadoAval` entry and the `PAID_BY_AVAL` flag, and the delivery goes to the
-/// sponsor — the borrower is refused as recipient. What the aval then collects from the
-/// suscriptor is a judge's call; the registry's entries state who paid what, and that is all the
-/// pool asserts.
+/// The aval who pays a título receives it alive (LGTOC 115, decision 38-f): the covered pagaré
+/// gets a `PagadoAval` entry and the `PAID_BY_AVAL` flag, and the delivery goes to the sponsor —
+/// the borrower is refused as recipient — once the line owes nothing (decision 49): the aval's
+/// título waits while the borrower still owes the rest, and each título then goes to whoever paid
+/// it. What the aval then collects from the suscriptor is a judge's call; the registry's entries
+/// state who paid what, and that is all the pool asserts.
 #[test]
-fn the_aval_who_settles_receives_the_live_titulo() {
+fn the_aval_who_pays_receives_the_live_titulo_once_the_line_owes_nothing() {
     use elote_pool::state::{KIND_PAGADO_AVAL, PAGARE_FLAG_PAID_BY_AVAL, SPONSOR_GUARANTOR};
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
@@ -1081,21 +1179,36 @@ fn the_aval_who_settles_receives_the_live_titulo() {
     p.sponsor = Some(aval.pubkey());
     p.sponsor_role = SPONSOR_GUARANTOR;
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, Some(&aval));
-    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.warp(env.line(&k, line_id).term_end);
 
-    // The aval pays everything.
+    // The aval pays the interest and the first pagaré.
     let line = env.line(&k, line_id);
-    let owed = line.drawn + line.interest_due;
-    env.mint_to(&k.asset_mint, &council, &aval.pubkey(), owed);
-    env.repay(&k, line_id, &aval, owed);
+    let first = UNIT + line.interest_due;
+    env.mint_to(&k.asset_mint, &council, &aval.pubkey(), first);
+    env.repay(&k, line_id, &aval, first);
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!((p0.status, p0.last_kind, p0.flags & PAGARE_FLAG_PAID_BY_AVAL != 0), (PAGARE_PAID, KIND_PAGADO_AVAL, true));
+    // The line still owes the second pagaré: the aval's título waits.
+    let ix = env.deliver_pagare_ix(&k, line_id, 0, &council.pubkey(), &aval.pubkey());
+    env.expect_err(ix, &council, &[], E_BALANCE_OUTSTANDING);
 
-    // The delivery goes to the aval; the borrower is not the recipient of this one.
+    // The borrower settles the rest; the line owes nothing.
+    env.repay(&k, line_id, &borrower, UNIT);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    assert_eq!(env.pagare(&k, line_id, 1).flags & PAGARE_FLAG_PAID_BY_AVAL, 0);
+
+    // Pagaré 0 goes to the aval; the borrower is not the recipient of this one.
     let ix = env.deliver_pagare_ix(&k, line_id, 0, &council.pubkey(), &borrower.pubkey());
     env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
     let ix = env.deliver_pagare_ix(&k, line_id, 0, &council.pubkey(), &aval.pubkey());
     env.send(ix, &council, &[]);
+    // Pagaré 1, which the borrower paid, goes to the borrower and never to the aval.
+    let ix = env.deliver_pagare_ix(&k, line_id, 1, &council.pubkey(), &aval.pubkey());
+    env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
+    env.deliver_pagare(&k, line_id, 1);
+    assert_eq!(env.asset_state(&env.pagare(&k, line_id, 1).asset).base.owner, borrower.pubkey());
     let asset = env.asset_state(&p0.asset);
     assert_eq!(asset.base.owner, aval.pubkey(), "the título is the aval's, alive");
     assert!(!asset.plugin_list.permanent_freeze_delegate.as_ref().unwrap().permanent_freeze_delegate.frozen);
@@ -1246,8 +1359,8 @@ fn repay_requires_exactly_the_sidecars_the_payment_touches() {
 }
 
 /// After the payment entries, `deliver_pagare` requires the PAGADO mark in place of the coverage
-/// rule; the payment's receipt and time stay on the sidecar and the Entrega entry chains over the
-/// same receipt.
+/// rule, and a line that owes nothing (decision 49); the payment's receipt and time stay on the
+/// sidecar, and the Entrega entry chains over that receipt, not the settling payment's.
 #[test]
 fn deliver_pagare_requires_the_payments_pagado_mark() {
     let mut env = Env::new();
@@ -1268,15 +1381,28 @@ fn deliver_pagare_requires_the_payments_pagado_mark() {
     env.warp(paid_at + 3_600);
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!((p0.status, p0.paid_at, p0.receipt_hash), (PAGARE_PAID, paid_at, payment));
-    // The uncovered one has no mark: no delivery.
+    // The uncovered one has no mark: no delivery; the marked one waits for the line.
     env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
+    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
+    let settling = [0x22; 32];
+    // Enough for the principal left and the interest accrued since; the program takes what is due.
+    let rest = env.line(&k, line_id).drawn - env.line(&k, line_id).principal_repaid + interest;
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
+    let ix = env.repay_ix_full(&k, line_id, &borrower.pubkey(), rest, settling, &env.payment_sidecars(&k, line_id, rest));
+    env.send(ix, &borrower, &[]);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     // The marked one delivers; the payment's receipt and time stay, the Entrega chains over them.
+    let before = env.pagare(&k, line_id, 0);
     env.deliver_pagare(&k, line_id, 0);
+    let now = env.now();
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!(
         (p0.status, p0.paid_at, p0.receipt_hash, p0.flags & PAGARE_FLAG_DELIVERED != 0, p0.last_kind, p0.entry_count),
         (PAGARE_PAID, paid_at, payment, true, KIND_ENTREGA, 3)
     );
+    let entrega = entry_hash(&p0.asset, KIND_ENTREGA, &k.pool, &borrower.pubkey(), &payment, now, 3);
+    assert_eq!(p0.log_root, chain(&before.log_root, &entrega));
+    assert_eq!(env.pagare(&k, line_id, 1).receipt_hash, settling);
 }
 
 /// `annotate_payment`: the council (the holder) attaches the real receipt to a payment entry
