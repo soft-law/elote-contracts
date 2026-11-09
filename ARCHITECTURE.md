@@ -2,7 +2,8 @@
 
 How the program is built, instruction by instruction, byte by byte. The [README](README.md) says
 what the pool does for investors and borrowers; this file says how the code does it, for whoever
-has to change it, audit it or write a client against it. [docs/interface.md](docs/interface.md)
+has to change it, audit it or write a client against it. The interface reference (per-instruction
+accounts, arguments and errors) lives in the private docs repo.
 is the account-by-account reference generated from the IDL; [SECURITY.md](SECURITY.md) lists the
 roles, the trust assumptions and the known limits. The source of truth is
 `programs/elote_pool/src/`: where this file and the code disagree, the code is right and this file
@@ -12,7 +13,7 @@ needs fixing. Code is cited by item name (`council::check`, `fx::within_band`,
 Program id `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM`, Anchor 1.2.1, Solana 4.1.2, Rust
 1.89.0. 36 instructions, 3 account types, 39 events, 77 error codes (five of them retired and kept
 so nothing renumbers). Decision numbers (32–41, 38-g, 40b) follow the
-owner review of 2026-10-31 and the record of 2026-11-08 in `docs/decisions/`.
+owner review of 2026-10-31 and the record of 2026-11-08 in the decision register (private docs repo).
 
 ## 1. Overview and model
 
@@ -1407,7 +1408,7 @@ every line in collection from it (`scripts/endorse-pagare.ts` makes a fresh one)
 
 ## 10. Compute
 
-The figures below are the ones `docs/interface.md` lists, measured by
+The figures below are the interface reference's, measured by
 `programs/elote_pool/tests/compute.rs` (the program's instruction alone) and `tests/squads.rs` (the
 whole Squads `vault_transaction_execute` transaction). The rule is 100 000 CU per transaction
 (`CEILING`), half the 200 000 CU an instruction gets without a compute-budget request, Squads
