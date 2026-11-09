@@ -24,8 +24,9 @@ test("repayPrincipalCap keeps a repay within maxRecords pagaré records", () => 
   const drawnThrough = [100n, 200n, 300n, 400n, 500n, 600n, 700n];
   // From cursor 0 with five records: pagarés 0..=3 covered, 4 the uncovered last record.
   assert.equal(repayPrincipalCap({ pagaresPaid: 0, drawnThrough, principalRepaid: 0n, maxRecords: 5 }), 400n);
-  assert.equal(repayPrincipalCap({ pagaresPaid: 2, drawnThrough, principalRepaid: 250n, maxRecords: 5 }), 350n);
-  // Fewer pagarés left than the limit: the cap is all that is left.
+  assert.equal(repayPrincipalCap({ pagaresPaid: 1, drawnThrough, principalRepaid: 150n, maxRecords: 5 }), 350n);
+  // As many pagarés left as the limit, or fewer: the cap is all that is left.
+  assert.equal(repayPrincipalCap({ pagaresPaid: 2, drawnThrough, principalRepaid: 250n, maxRecords: 5 }), 450n);
   assert.equal(repayPrincipalCap({ pagaresPaid: 4, drawnThrough, principalRepaid: 400n, maxRecords: 5 }), 300n);
 });
 

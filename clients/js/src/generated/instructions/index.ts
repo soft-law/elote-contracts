@@ -26,6 +26,7 @@ export * from "./proposeAcceleration";
 export * from "./proposeCouncil";
 export * from "./redeem";
 export * from "./rejectLine";
+export * from "./renounceAvailability";
 export * from "./repay";
 export * from "./requestLine";
 export * from "./resume";

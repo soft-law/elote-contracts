@@ -2332,6 +2332,43 @@
       ]
     },
     {
+      "name": "renounce_availability",
+      "docs": [
+        "The borrower gives up what is left to draw of an `Active` line, for good, so it can settle",
+        "early (decision 45). Borrower only. Never paused."
+      ],
+      "discriminator": [
+        255,
+        194,
+        197,
+        209,
+        130,
+        238,
+        38,
+        3
+      ],
+      "accounts": [
+        {
+          "name": "borrower",
+          "signer": true,
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "repay",
       "docs": [
         "Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in",
@@ -3823,6 +3860,19 @@
       ]
     },
     {
+      "name": "AvailabilityRenounced",
+      "discriminator": [
+        77,
+        144,
+        135,
+        14,
+        97,
+        85,
+        128,
+        226
+      ]
+    },
+    {
       "name": "CollectionPeriodSet",
       "discriminator": [
         132,
@@ -4747,6 +4797,38 @@
           {
             "name": "line_id",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AvailabilityRenounced",
+      "docs": [
+        "The borrower gave up the rest of the commitment (`renounce_availability`, decision 45):",
+        "`available_forfeited` is the undrawn remainder, and the window never reopens."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "borrower",
+            "type": "pubkey"
+          },
+          {
+            "name": "available_forfeited",
+            "type": "u64"
+          },
+          {
+            "name": "renounced_at",
+            "type": "i64"
           }
         ]
       }

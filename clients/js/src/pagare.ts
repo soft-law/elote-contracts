@@ -112,7 +112,9 @@ export function withRemainingAccounts<T extends Instruction>(instruction: T, add
 /**
  * The most principal one `repay` may apply so that it touches at most `maxRecords` pagaré
  * records: it may cover pagarés `pagaresPaid ..= pagaresPaid + maxRecords - 2`, the next one
- * being the last record it passes. A payment above the cap is split into several `repay` calls.
+ * being the last record it passes — or every pagaré left, when no more than `maxRecords` are
+ * (the program lets a covered record end the set when it is the last draw). A payment above the
+ * cap is split into several `repay` calls.
  */
 export function repayPrincipalCap(input: {
   pagaresPaid: number;
@@ -123,7 +125,7 @@ export function repayPrincipalCap(input: {
   const { pagaresPaid, drawnThrough, principalRepaid, maxRecords } = input;
   const lastCovered = pagaresPaid + maxRecords - 2;
   const ceiling =
-    lastCovered + 1 < drawnThrough.length ? drawnThrough[lastCovered] : drawnThrough[drawnThrough.length - 1];
+    pagaresPaid + maxRecords < drawnThrough.length ? drawnThrough[lastCovered] : drawnThrough[drawnThrough.length - 1];
   return ceiling > principalRepaid ? ceiling - principalRepaid : 0n;
 }
 

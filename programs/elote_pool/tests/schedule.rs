@@ -976,3 +976,98 @@ fn the_reserved_grace_field_is_never_read() {
     env.send(ix, &council, &[]);
     assert_eq!(env.line(&k, bullet_id).status, LineStatus::WrittenOff);
 }
+
+const E_WINDOW_CLOSED: u32 = ERR_BASE + elote_pool::errors::PoolError::WindowClosed as u32;
+const E_DRAWS_NOT_SUSPENDED: u32 = ERR_BASE + elote_pool::errors::PoolError::DrawsNotSuspended as u32;
+
+/// Decision 45: the borrower gives up what is left of the commitment, so the line can draw nothing
+/// more and settles at his will with the reduction of decision 44, instead of when the calendar
+/// closes the window. 3.0 of 6.0 drawn, one month in, a month before the window ends.
+#[test]
+fn the_borrower_renounces_the_window_and_settles_with_the_reduction() {
+    use elote_pool::events::{AvailabilityRenounced, EarlySettlement};
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (b, line_id, t0) = half_drawn(&mut env, &k, &p);
+    env.warp(t0 + p.interval() / 2);
+    let before = borrower_balance(&env, &k, &b);
+
+    let ix = env.renounce_availability_ix(&k, line_id, &b.pubkey());
+    let meta = env.send(ix, &b, &[]);
+    let now = env.now();
+    let ev: AvailabilityRenounced = find_event(&meta).expect("AvailabilityRenounced");
+    assert_eq!((ev.pool, ev.line_id, ev.borrower, ev.available_forfeited, ev.renounced_at), (k.pool, line_id, b.pubkey(), 3_000_000, now));
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.availability_end, line.availability_end_saved), (LineStatus::Active, now, 0));
+
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 3_500_000);
+    let meta = env.send(ix, &b, &[]);
+    let ev: EarlySettlement = find_event(&meta).expect("EarlySettlement");
+    assert_eq!(ev.interest_forgiven, 330_000);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    assert_eq!(before - borrower_balance(&env, &k, &b), 3_030_000, "the principal and one month of interest");
+}
+
+/// The renunciation is the borrower's alone and cannot be undone: nobody else may make it, the
+/// pause does not block it, and afterwards nothing draws, the council can neither resume nor
+/// suspend, and it is not made twice.
+#[test]
+fn the_renunciation_is_the_borrowers_alone_and_irrevocable() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (b, line_id, _) = half_drawn(&mut env, &k, &p);
+    let council = env.council.insecure_clone();
+    let stranger = env.funded(1);
+    for other in [&stranger, &council] {
+        let ix = env.renounce_availability_ix(&k, line_id, &other.pubkey());
+        env.expect_err(ix, other, &[], E_UNAUTHORIZED);
+    }
+
+    env.set_paused(&k, true);
+    let ix = env.renounce_availability_ix(&k, line_id, &b.pubkey());
+    env.send(ix, &b, &[]);
+    env.set_paused(&k, false);
+
+    let ix = env.draw_ix_amount(&k, line_id, &b.pubkey(), UNIT);
+    env.expect_err(ix, &b, &[], E_AVAILABILITY_ENDED);
+    let resume = anchor_lang::InstructionData::data(&elote_pool::instruction::ResumeDraws { valid_until: env.valid_until() });
+    let ix = env.council_line_ix(&k, line_id, &council.pubkey(), resume);
+    env.expect_err(ix, &council, &[], E_DRAWS_NOT_SUSPENDED);
+    let ix = env.suspend_draws_ix(&k, line_id, &council.pubkey());
+    env.expect_err(ix, &council, &[], E_WINDOW_CLOSED);
+    env.warp(env.now() + 1);
+    let ix = env.renounce_availability_ix(&k, line_id, &b.pubkey());
+    env.expect_err(ix, &b, &[], E_WINDOW_CLOSED);
+}
+
+/// Nothing to renounce: a line never drawn, one drawn in full, one the council suspended, and one
+/// whose window the calendar closed.
+#[test]
+fn a_renunciation_needs_an_open_window_with_something_left_to_draw() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let council = env.council.insecure_clone();
+
+    let b = env.borrower(&k);
+    let approved = open(&mut env, &k, &b, &p);
+    let ix = env.renounce_availability_ix(&k, approved, &b.pubkey());
+    env.expect_err(ix, &b, &[], E_LINE_STATUS);
+
+    let (b, full, _) = drawn(&mut env, &k, &p, 0);
+    let ix = env.renounce_availability_ix(&k, full, &b.pubkey());
+    env.expect_err(ix, &b, &[], E_WINDOW_CLOSED);
+
+    let (b, suspended, _) = half_drawn(&mut env, &k, &p);
+    let ix = env.suspend_draws_ix(&k, suspended, &council.pubkey());
+    env.send(ix, &council, &[]);
+    let ix = env.renounce_availability_ix(&k, suspended, &b.pubkey());
+    env.expect_err(ix, &b, &[], E_WINDOW_CLOSED);
+
+    let (b, lapsed, _) = half_drawn(&mut env, &k, &p);
+    env.warp(env.line(&k, lapsed).availability_end);
+    let ix = env.renounce_availability_ix(&k, lapsed, &b.pubkey());
+    env.expect_err(ix, &b, &[], E_WINDOW_CLOSED);
+}

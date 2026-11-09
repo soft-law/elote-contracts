@@ -67,6 +67,7 @@ import {
   getProposeCouncilInstructionAsync,
   getRedeemInstructionAsync,
   getRejectLineInstructionAsync,
+  getRenounceAvailabilityInstructionAsync,
   getRepayInstructionAsync,
   getRequestLineInstructionAsync,
   getResumeDrawsInstructionAsync,
@@ -103,6 +104,7 @@ import {
   parseProposeCouncilInstruction,
   parseRedeemInstruction,
   parseRejectLineInstruction,
+  parseRenounceAvailabilityInstruction,
   parseRepayInstruction,
   parseRequestLineInstruction,
   parseResumeDrawsInstruction,
@@ -153,6 +155,7 @@ import {
   type ParsedProposeCouncilInstruction,
   type ParsedRedeemInstruction,
   type ParsedRejectLineInstruction,
+  type ParsedRenounceAvailabilityInstruction,
   type ParsedRepayInstruction,
   type ParsedRequestLineInstruction,
   type ParsedResumeDrawsInstruction,
@@ -175,6 +178,7 @@ import {
   type ProposeCouncilAsyncInput,
   type RedeemAsyncInput,
   type RejectLineAsyncInput,
+  type RenounceAvailabilityAsyncInput,
   type RepayAsyncInput,
   type RequestLineAsyncInput,
   type ResumeAsyncInput,
@@ -256,6 +260,7 @@ export enum ElotePoolEvent {
   AccelerationNoticeSet,
   AccelerationProposed,
   AccelerationWithdrawn,
+  AvailabilityRenounced,
   CollectionPeriodSet,
   CouncilAccepted,
   CouncilProposed,
@@ -331,6 +336,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.AccelerationWithdrawn;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([77, 144, 135, 14, 97, 85, 128, 226]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.AvailabilityRenounced;
   }
   if (
     containsBytes(
@@ -765,6 +781,7 @@ export enum ElotePoolInstruction {
   ProposeCouncil,
   Redeem,
   RejectLine,
+  RenounceAvailability,
   Repay,
   RequestLine,
   Resume,
@@ -1006,6 +1023,17 @@ export function identifyElotePoolInstruction(
     )
   ) {
     return ElotePoolInstruction.RejectLine;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([255, 194, 197, 209, 130, 238, 38, 3]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.RenounceAvailability;
   }
   if (
     containsBytes(
@@ -1253,6 +1281,9 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.RejectLine;
     } & ParsedRejectLineInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.RenounceAvailability;
+    } & ParsedRenounceAvailabilityInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.Repay;
     } & ParsedRepayInstruction<TProgram>)
   | ({
@@ -1444,6 +1475,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.RejectLine,
         ...parseRejectLineInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.RenounceAvailability: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.RenounceAvailability,
+        ...parseRenounceAvailabilityInstruction(instruction),
       };
     }
     case ElotePoolInstruction.Repay: {
@@ -1681,6 +1719,11 @@ export type ElotePoolPluginInstructions = {
     input: MakeOptional<RejectLineAsyncInput, "payer">,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getRejectLineInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  renounceAvailability: (
+    input: RenounceAvailabilityAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getRenounceAvailabilityInstructionAsync> &
     SelfPlanAndSendFunctions;
   repay: (
     input: MakeOptional<RepayAsyncInput, "payer">,
@@ -1959,6 +2002,14 @@ export function elotePoolProgram(
                     instructionConfig?.programAddress ?? config.programAddress,
                 },
               ),
+            ),
+          renounceAvailability: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getRenounceAvailabilityInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
             ),
           repay: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(

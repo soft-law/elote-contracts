@@ -12,7 +12,7 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 use crate::errors::PoolError;
 use crate::events::{
     AccelerationProposed, AccelerationWithdrawn, LateInterestCollected, LineAccelerated, LineApproved, LineDrawsResumed, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection,
-    EarlySettlement, FxRealized, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
+    AvailabilityRenounced, EarlySettlement, FxRealized, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
     PagarePayment, PaymentEntry,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
@@ -1384,6 +1384,33 @@ pub fn resume_draws(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
     line.availability_end = line.availability_end_saved;
     line.availability_end_saved = 0;
     emit_cpi!(LineDrawsResumed { pool: ctx.accounts.pool.key(), line_id: line.line_id, availability_end: line.availability_end });
+    Ok(())
+}
+
+#[event_cpi]
+#[derive(Accounts)]
+pub struct RenounceAvailability<'info> {
+    pub borrower: Signer<'info>,
+
+    #[account(mut, has_one = borrower @ PoolError::Unauthorized)]
+    pub line: Account<'info, CreditLine>,
+}
+
+/// The borrower, and nobody else, gives up what is left to draw of an `Active` line (decision 45):
+/// the window closes now and for good — `availability_end_saved` stays zero, so `resume_draws`
+/// has nothing to restore — and the line, able to draw nothing more, settles at the borrower's
+/// will with the reduction of decision 44. Refused when there is nothing to renounce
+/// (`WindowClosed`: the window already closed, by date or by a suspension, or the line is drawn
+/// in full). It moves no funds and the pause does not block it.
+pub fn renounce_availability(ctx: Context<RenounceAvailability>) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let line = &mut ctx.accounts.line;
+    require!(line.status == LineStatus::Active, PoolError::LineStatus);
+    let available_forfeited = line.available().ok_or(PoolError::Overflow)?;
+    require!(now < line.availability_end && available_forfeited > 0, PoolError::WindowClosed);
+    line.availability_end = now;
+    line.availability_end_saved = 0;
+    emit_cpi!(AvailabilityRenounced { pool: line.pool, line_id: line.line_id, borrower: line.borrower, available_forfeited, renounced_at: now });
     Ok(())
 }
 

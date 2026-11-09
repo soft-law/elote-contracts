@@ -144,6 +144,17 @@ pub struct LineDrawsSuspended {
     pub available_forfeited: u64,
 }
 
+/// The borrower gave up the rest of the commitment (`renounce_availability`, decision 45):
+/// `available_forfeited` is the undrawn remainder, and the window never reopens.
+#[event]
+pub struct AvailabilityRenounced {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub borrower: Pubkey,
+    pub available_forfeited: u64,
+    pub renounced_at: i64,
+}
+
 #[event]
 pub struct LineCancelled {
     pub pool: Pubkey,

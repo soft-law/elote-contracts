@@ -78,6 +78,12 @@ pub mod elote_pool {
         instructions::lines::resume_draws(ctx, valid_until)
     }
 
+    /// The borrower gives up what is left to draw of an `Active` line, for good, so it can settle
+    /// early (decision 45). Borrower only. Never paused.
+    pub fn renounce_availability(ctx: Context<RenounceAvailability>) -> Result<()> {
+        instructions::lines::renounce_availability(ctx)
+    }
+
     /// Proposes to collect a drawn line early: draws are suspended at once and `accelerate_line`
     /// may fire after the pool's notice. Council only.
     pub fn propose_acceleration(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {

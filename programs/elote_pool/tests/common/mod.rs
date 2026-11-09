@@ -1797,6 +1797,17 @@ impl Env {
         }
     }
 
+    /// `renounce_availability()` on `line_id`, signed by `borrower`.
+    pub fn renounce_availability_ix(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey) -> Instruction {
+        let (event_authority, program) = event_metas();
+        Instruction {
+            program_id: PROGRAM_ID,
+            accounts: elote_pool::accounts::RenounceAvailability { borrower: *borrower, line: line_pda(&k.pool, line_id).0, event_authority, program }
+                .to_account_metas(None),
+            data: elote_pool::instruction::RenounceAvailability {}.data(),
+        }
+    }
+
     pub fn suspend_draws_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey) -> Instruction {
         self.council_line_ix(k, line_id, council, elote_pool::instruction::SuspendDraws { valid_until: self.valid_until() }.data())
     }

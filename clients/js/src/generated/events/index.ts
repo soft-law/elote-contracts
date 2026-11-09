@@ -9,6 +9,7 @@
 export * from "./accelerationNoticeSet";
 export * from "./accelerationProposed";
 export * from "./accelerationWithdrawn";
+export * from "./availabilityRenounced";
 export * from "./collectionPeriodSet";
 export * from "./councilAccepted";
 export * from "./councilProposed";
