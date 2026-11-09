@@ -433,6 +433,8 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     let p = env.line_params(UNIT, 10_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
+    // At the term, when the interest is fully accrued (decision 44 would otherwise forgive it).
+    env.warp(env.line(&k, line_id).term_end);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let ev = env.repay(&k, line_id, &borrower, UNIT);
     assert_eq!((ev.interest_part, ev.principal_part), (UNIT, 0));

@@ -3874,6 +3874,19 @@
       ]
     },
     {
+      "name": "EarlySettlement",
+      "discriminator": [
+        144,
+        49,
+        45,
+        110,
+        45,
+        162,
+        195,
+        73
+      ]
+    },
+    {
       "name": "FixBoundsSet",
       "discriminator": [
         55,
@@ -5134,6 +5147,40 @@
           {
             "name": "supply_after",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EarlySettlement",
+      "docs": [
+        "A voluntary early settlement (decision 44): the payment settled an active line that could",
+        "draw nothing more, and the interest fixed at the draws beyond the accrual to the payment was",
+        "forgiven — the counterpart, at the debtor's will, of the forgiveness the mark applies at the",
+        "debtor's default. Emitted before the `LineRepaid` of the same repayment."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "interest_forgiven",
+            "type": "u64"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
           }
         ]
       }

@@ -12,7 +12,7 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 use crate::errors::PoolError;
 use crate::events::{
     AccelerationProposed, AccelerationWithdrawn, LateInterestCollected, LineAccelerated, LineApproved, LineDrawsResumed, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection,
-    FxRealized, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
+    EarlySettlement, FxRealized, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
     PagarePayment, PaymentEntry,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
@@ -830,6 +830,27 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         && now < line.availability_end
         && line.available().ok_or(PoolError::Overflow)? > 0;
     require!(remaining > 0 || late_part > 0 || !can_draw, PoolError::WrongAmount);
+    // Decision 44: a payment that settles an active line able to draw nothing more pays only the
+    // interest accrued to this moment (per second, as `accelerated_balance` reads a bullet); the
+    // rest of the interest the draws fixed is forgiven — the same forgiveness the mark applies at
+    // the debtor's default (decision 41), here at the debtor's will. Never below what was repaid.
+    let mut settlement_forgiven = 0u64;
+    let (interest_left, remaining) = {
+        let mut pair = (interest_left, remaining);
+        if line.status == LineStatus::Active && !can_draw {
+            let accrued = math::bullet_accrued_interest(line.drawn, line.draw_time_weight, line.rate_bps, now)
+                .ok_or(PoolError::Overflow)?
+                .min(line.interest_due)
+                .max(line.interest_repaid);
+            let cut_left = accrued.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
+            let settle_total = principal_left.checked_add(cut_left).ok_or(PoolError::Overflow)?;
+            if settle_total > 0 && amount.checked_sub(late_part).ok_or(PoolError::Overflow)? >= settle_total {
+                settlement_forgiven = line.interest_due.checked_sub(accrued).ok_or(PoolError::Overflow)?;
+                pair = (cut_left, settle_total);
+            }
+        }
+        pair
+    };
     let rest = amount.checked_sub(late_part).ok_or(PoolError::Overflow)?.min(remaining);
     let interest_part = rest.min(interest_left);
     let principal_part = rest.checked_sub(interest_part).ok_or(PoolError::Overflow)?;
@@ -916,6 +937,9 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     pool.fx_realized = pool.fx_realized.checked_add(fx_delta).ok_or(PoolError::Overflow)?;
 
     let line = &mut ctx.accounts.line;
+    if settlement_forgiven > 0 {
+        line.interest_due = line.interest_due.checked_sub(settlement_forgiven).ok_or(PoolError::Overflow)?;
+    }
     line.principal_repaid = line.principal_repaid.checked_add(principal_part).ok_or(PoolError::Overflow)?;
     line.interest_repaid = line.interest_repaid.checked_add(interest_part).ok_or(PoolError::Overflow)?;
     line.usdc_cost_repaid = line.usdc_cost_repaid.checked_add(cost).ok_or(PoolError::Overflow)?;
@@ -1047,6 +1071,15 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
             received: usdc_principal,
             delta: fx_delta,
             nav_after,
+        });
+    }
+    if settlement_forgiven > 0 {
+        emit_cpi!(EarlySettlement {
+            pool: pool.key(),
+            line_id: line.line_id,
+            payer: ctx.accounts.payer.key(),
+            interest_forgiven: settlement_forgiven,
+            settled_at: now,
         });
     }
     emit_cpi!(LineRepaid {

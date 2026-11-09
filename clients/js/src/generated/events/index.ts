@@ -13,6 +13,7 @@ export * from "./collectionPeriodSet";
 export * from "./councilAccepted";
 export * from "./councilProposed";
 export * from "./deposited";
+export * from "./earlySettlement";
 export * from "./fixBoundsSet";
 export * from "./fixPosted";
 export * from "./fxFeederSet";

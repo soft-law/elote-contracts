@@ -208,6 +208,46 @@ fn installments_paid_on_their_due_dates_add_up_and_close_the_line() {
     assert_eq!(borrower_balance(&env, &k, &b), 0);
 }
 
+/// Decision 44: a payment that settles an active line that can draw nothing more pays only the
+/// interest accrued to that moment; the interest fixed at the draws beyond it is forgiven, as the
+/// mark already forgives it at the debtor's default.
+#[test]
+fn an_early_settlement_pays_only_the_interest_accrued_to_the_payment() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    // MXN 60,000.00 at 12% over 6 installments spanning a year: 720_000 fixed at the draw.
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, UNIT);
+    assert_eq!(env.line(&k, line_id).interest_due, 720_000);
+    // Half an interval in: nothing due, nothing drawable (drawn in full). One month accrued.
+    env.warp(t0 + p.interval() / 2);
+    let ev = env.repay(&k, line_id, &b, 6_060_000);
+    let line = env.line(&k, line_id);
+    assert_eq!(line.status, LineStatus::Repaid, "the settlement closes the line");
+    assert_eq!((ev.principal_part, ev.interest_part), (6_000_000, 60_000), "one month of interest, not twelve");
+    assert_eq!(line.interest_due, 60_000, "the fixed interest was cut to the accrual");
+}
+
+/// While the line can still draw, a full payment neither closes it nor touches the fixed
+/// interest: the settlement of decision 44 is only for a line that can draw nothing more.
+#[test]
+fn a_payment_while_the_line_can_draw_forgives_nothing() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let borrower = env.borrower(&k);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 3_000_000);
+    env.send(ix, &borrower, &[]);
+    let fixed = env.line(&k, line_id).interest_due;
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
+    env.repay(&k, line_id, &borrower, 3_000_000 + fixed);
+    let line = env.line(&k, line_id);
+    assert_eq!(line.status, LineStatus::Active, "the window is open and half the line can still draw");
+    assert_eq!(line.interest_due, fixed, "nothing forgiven while the line can draw");
+}
+
 #[test]
 fn missed_installments_grow_over_time() {
     let mut env = Env::new();

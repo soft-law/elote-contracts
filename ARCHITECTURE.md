@@ -792,6 +792,12 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
 - **Writes:** `pool.outstanding_principal −= cost`; on an `InCollection` line also
   `pool.impaired_principal −= cost` (the recovery releases its provision, decision 40);
   `pool.interest_collected += usdc_for_mxn(interest_part)`; `pool.fx_realized += delta`;
+  **Early settlement (decision 44):** when the line is `Active`, can draw nothing more, and the
+  payment (after late interest) covers the whole principal plus the interest accrued per second to
+  this moment (`bullet_accrued_interest`, clamped to `interest_due`, never below
+  `interest_repaid`), `interest_due` is cut to that accrual before the waterfall: the interest the
+  draws fixed beyond it is forgiven — the counterpart, at the debtor's will, of the forgiveness
+  the mark applies at the debtor's default. `EarlySettlement { interest_forgiven }` is emitted.
   `line.principal_repaid`, `interest_repaid`, `usdc_cost_repaid += cost`; when `late_part > 0`,
   `late_collected += late_part` and `late_paid_until = now` (an accrual that rounds to zero keeps
   running); `status = Repaid`, `closed_at = now` when nothing remains and the line cannot draw. The
@@ -801,7 +807,8 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   entry. `Pool::check` with the supply.
 - **Events, in order:** per record the payment's `PagareEntry` (and the `Terminacion`'s);
   `PagarePayment` when records were passed; `LateInterestCollected` when `late_part > 0`;
-  `FxRealized` when principal was applied or `delta != 0`; `LineRepaid`; `NavUpdated`.
+  `FxRealized` when principal was applied or `delta != 0`; `EarlySettlement` when a settlement
+  forgave fixed interest (decision 44); `LineRepaid`; `NavUpdated`.
 
 A payment on a zero debt of a line that cannot draw is the closing repayment: it must still credit
 at least one centavo (`amount > 0`), moves nothing (`usdc_received = 0`) and sets `Repaid`. The
@@ -1507,6 +1514,7 @@ procuración, the pause by council vote): `endorse_pagare` 17 618 (same again af
 | `PagareEntry` | `draw`, `repay`, `deliver_pagare`, `burn_pagare`, `annul_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `annotate_payment` | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
 | `PagarePayment` | `repay` that took pagaré records | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, entries: `Vec<PaymentEntry { draw_index, kind, entry_count, principal_applied, accessory_applied, principal_balance, by_borrower }>` |
 | `LateInterestCollected` | `repay` with late interest | pool, line_id, amount |
+| `EarlySettlement` | `repay` that settles an active line able to draw nothing more, forgiving the fixed interest beyond the accrual (decision 44) | pool, line_id, payer, interest_forgiven, settled_at |
 | `FxRealized` | `repay` that applies principal or realizes a non-zero delta | pool, line_id, receipt_hash, cost, received, delta, nav_after |
 | `LineRepaid` | `repay` | pool, line_id, payer, receipt_hash, usdc_received, fix_rate, principal_part, interest_part, remaining (without late interest), nav_after |
 | `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining, interest_forgiven, impaired_principal (the pool's whole impairment after the mark) |

@@ -75,7 +75,9 @@ fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
     assert_eq!(second.interest_due - first.interest_due, 100_000, "the same amount for half the time");
     assert_eq!(env.line(&k, line_id).interest_due, 300_000);
 
-    // Repaid in full: exactly 4.0 + 0.3, no more is taken.
+    // Repaid in full at the term, when both tranches are fully accrued (decision 44):
+    // exactly 4.0 + 0.3, no more is taken.
+    env.warp(env.line(&k, line_id).term_end);
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let before = env.token_balance(&k.asset_ata(&borrower.pubkey()));
@@ -351,14 +353,19 @@ fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
     assert!(!env.pool(&k).paused);
+    // At the term, when the tranche's interest is fully accrued (an earlier settlement would owe
+    // only the accrual, decision 44).
+    env.warp(env.line(&k, line_id).term_end);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 100_000);
     let ev = env.repay(&k, line_id, &borrower, UNIT + 100_000);
     assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (100_000, UNIT, 0));
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 
-    // Not on a closed line; fine on an approved one nobody drew yet.
+    // Not on a closed line; fine on an approved one nobody drew yet. (Fresh terms: the clock
+    // moved to the first line's term for its settlement.)
     let ix = env.suspend_draws_ix(&k, line_id, &council.pubkey());
     env.expect_err(ix, &council, &[], E_LINE_STATUS);
+    let p = env.line_params(4 * UNIT, 1_000);
     let fresh = open(&mut env, &k, &borrower, &p);
     let ix = env.suspend_draws_ix(&k, fresh, &council.pubkey());
     let meta = env.send(ix, &council, &[]);

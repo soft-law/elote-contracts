@@ -363,6 +363,7 @@ fn a_pool_on_a_token_2022_asset_runs_the_full_cycle() {
     let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000);
     env.draw(&k, line_id, &borrower);
     assert_eq!(env.token_balance(&k.asset_ata(&borrower.pubkey())), 4 * UNIT);
+    env.warp(env.line(&k, line_id).term_end); // settle at the term: the interest is fully accrued (decision 44)
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 400_000);
     env.repay(&k, line_id, &borrower, 4 * UNIT + 400_000);
@@ -594,7 +595,9 @@ fn nav_updated_follows_every_money_instruction() {
     let meta = env.send(ix, &borrower, &[]);
     assert!(find_event::<NavUpdated>(&meta).is_none(), "a draw moves no value: vault down, outstanding up");
 
-    // Principal plus the 0.4 of interest: the NAV rises, the supply does not.
+    // Principal plus the 0.4 of interest at the term, when it is fully accrued (an earlier
+    // settlement would owe only the accrual, decision 44): the NAV rises, the supply does not.
+    env.warp(env.line(&k, line_id).term_end);
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 400_000);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 4 * UNIT + 400_000);

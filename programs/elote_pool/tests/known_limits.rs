@@ -76,7 +76,8 @@ fn limit_deposit_just_before_a_repayment_shares_the_interest() {
     let late = env.investor(&k, 10 * UNIT);
     let minted = env.deposit(&k, &late, 10 * UNIT).shares;
     assert_eq!(minted, 10 * UNIT, "one share per unit at NAV 1.0");
-    // ...the borrower repays principal plus interest...
+    // ...the borrower repays principal plus interest at the term (fully accrued, decision 44)...
+    env.warp(env.line(&k, line_id).term_end);
     env.repay(&k, line_id, &borrower, 4 * UNIT + 400_000);
     // ...and the late investor leaves with half of the interest the early one earned.
     let out = env.redeem(&k, &late, minted);

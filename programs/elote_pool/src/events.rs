@@ -183,6 +183,19 @@ pub struct LineRepaid {
     pub nav_after: u64,
 }
 
+/// A voluntary early settlement (decision 44): the payment settled an active line that could
+/// draw nothing more, and the interest fixed at the draws beyond the accrual to the payment was
+/// forgiven — the counterpart, at the debtor's will, of the forgiveness the mark applies at the
+/// debtor's default. Emitted before the `LineRepaid` of the same repayment.
+#[event]
+pub struct EarlySettlement {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub payer: Pubkey,
+    pub interest_forgiven: u64,
+    pub settled_at: i64,
+}
+
 /// Late interest collected by a repayment of a scheduled line; it stays in the pool and raises
 /// the NAV like interest. Emitted before the `LineRepaid` of the same repayment.
 #[event]

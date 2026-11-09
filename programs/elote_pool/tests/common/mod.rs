@@ -1843,7 +1843,12 @@ impl Env {
         let borrower = self.borrower(k);
         let line_id = self.open_line(k, &borrower, principal, rate_bps);
         self.draw(k, line_id, &borrower);
-        let interest = self.line(k, line_id).interest_due;
+        let line = self.line(k, line_id);
+        let interest = line.interest_due;
+        // Repay at the term, when the fixed interest is fully accrued: an earlier settlement
+        // would owe only the accrual (decision 44) and these tests exercise the interest, not
+        // the forgiveness. At the term exactly, nothing is late yet.
+        self.warp(line.term_end);
         let council = self.council.insecure_clone();
         self.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
         self.repay(k, line_id, &borrower, principal + interest);

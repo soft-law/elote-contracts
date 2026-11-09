@@ -260,6 +260,7 @@ export enum ElotePoolEvent {
   CouncilAccepted,
   CouncilProposed,
   Deposited,
+  EarlySettlement,
   FixBoundsSet,
   FixPosted,
   FxFeederSet,
@@ -374,6 +375,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.Deposited;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([144, 49, 45, 110, 45, 162, 195, 73]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.EarlySettlement;
   }
   if (
     containsBytes(
