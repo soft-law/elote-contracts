@@ -796,6 +796,117 @@
       ]
     },
     {
+      "name": "condone_interest",
+      "docs": [
+        "Condones the late interest a line has accrued and `interest` of its ordinary interest,",
+        "against the hash of the written record (decision 50). Council only; principal is never",
+        "condoned. Never paused."
+      ],
+      "discriminator": [
+        42,
+        60,
+        187,
+        64,
+        25,
+        250,
+        129,
+        124
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          },
+          "relations": [
+            "line"
+          ]
+        },
+        {
+          "name": "line",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "line.line_id",
+                "account": "CreditLine"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "interest",
+          "type": "u64"
+        },
+        {
+          "name": "document_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "court_annotation",
       "docs": [
         "Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,",
@@ -3991,6 +4102,19 @@
       ]
     },
     {
+      "name": "InterestCondoned",
+      "discriminator": [
+        137,
+        101,
+        113,
+        238,
+        226,
+        136,
+        48,
+        186
+      ]
+    },
+    {
       "name": "LateInterestCollected",
       "discriminator": [
         222,
@@ -5464,6 +5588,52 @@
           {
             "name": "max_fix_rate",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InterestCondoned",
+      "docs": [
+        "The council condoned interest of a line (`condone_interest`, decision 50): the late interest",
+        "accrued to `condoned_at` and `interest` of the ordinary interest it still owed, against the",
+        "written record `document_hash`. `remaining` is what the line owes afterwards."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "line_id",
+            "type": "u64"
+          },
+          {
+            "name": "late_interest",
+            "type": "u64"
+          },
+          {
+            "name": "interest",
+            "type": "u64"
+          },
+          {
+            "name": "document_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "remaining",
+            "type": "u64"
+          },
+          {
+            "name": "condoned_at",
+            "type": "i64"
           }
         ]
       }

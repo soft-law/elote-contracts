@@ -154,6 +154,20 @@ pub struct AvailabilityRenounced {
     pub renounced_at: i64,
 }
 
+/// The council condoned interest of a line (`condone_interest`, decision 50): the late interest
+/// accrued to `condoned_at` and `interest` of the ordinary interest it still owed, against the
+/// written record `document_hash`. `remaining` is what the line owes afterwards.
+#[event]
+pub struct InterestCondoned {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub late_interest: u64,
+    pub interest: u64,
+    pub document_hash: [u8; 32],
+    pub remaining: u64,
+    pub condoned_at: i64,
+}
+
 #[event]
 pub struct LineCancelled {
     pub pool: Pubkey,

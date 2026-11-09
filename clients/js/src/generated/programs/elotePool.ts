@@ -54,6 +54,7 @@ import {
   getApproveLineInstructionAsync,
   getBurnPagareInstructionAsync,
   getCancelLineInstructionAsync,
+  getCondoneInterestInstructionAsync,
   getCourtAnnotationInstructionAsync,
   getDeliverPagareInstructionAsync,
   getDepositInstructionAsync,
@@ -91,6 +92,7 @@ import {
   parseApproveLineInstruction,
   parseBurnPagareInstruction,
   parseCancelLineInstruction,
+  parseCondoneInterestInstruction,
   parseCourtAnnotationInstruction,
   parseDeliverPagareInstruction,
   parseDepositInstruction,
@@ -128,6 +130,7 @@ import {
   type ApproveLineAsyncInput,
   type BurnPagareAsyncInput,
   type CancelLineAsyncInput,
+  type CondoneInterestAsyncInput,
   type CourtAnnotationAsyncInput,
   type DeliverPagareAsyncInput,
   type DepositAsyncInput,
@@ -142,6 +145,7 @@ import {
   type ParsedApproveLineInstruction,
   type ParsedBurnPagareInstruction,
   type ParsedCancelLineInstruction,
+  type ParsedCondoneInterestInstruction,
   type ParsedCourtAnnotationInstruction,
   type ParsedDeliverPagareInstruction,
   type ParsedDepositInstruction,
@@ -270,6 +274,7 @@ export enum ElotePoolEvent {
   FixPosted,
   FxFeederSet,
   FxRealized,
+  InterestCondoned,
   LateInterestCollected,
   LineAccelerated,
   LineApproved,
@@ -446,6 +451,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.FxRealized;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([137, 101, 113, 238, 226, 136, 48, 186]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.InterestCondoned;
   }
   if (
     containsBytes(
@@ -768,6 +784,7 @@ export enum ElotePoolInstruction {
   ApproveLine,
   BurnPagare,
   CancelLine,
+  CondoneInterest,
   CourtAnnotation,
   DeliverPagare,
   Deposit,
@@ -880,6 +897,17 @@ export function identifyElotePoolInstruction(
     )
   ) {
     return ElotePoolInstruction.CancelLine;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([42, 60, 187, 64, 25, 250, 129, 124]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.CondoneInterest;
   }
   if (
     containsBytes(
@@ -1242,6 +1270,9 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.CancelLine;
     } & ParsedCancelLineInstruction<TProgram>)
   | ({
+      instructionType: ElotePoolInstruction.CondoneInterest;
+    } & ParsedCondoneInterestInstruction<TProgram>)
+  | ({
       instructionType: ElotePoolInstruction.CourtAnnotation;
     } & ParsedCourtAnnotationInstruction<TProgram>)
   | ({
@@ -1384,6 +1415,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
       return {
         instructionType: ElotePoolInstruction.CancelLine,
         ...parseCancelLineInstruction(instruction),
+      };
+    }
+    case ElotePoolInstruction.CondoneInterest: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.CondoneInterest,
+        ...parseCondoneInterestInstruction(instruction),
       };
     }
     case ElotePoolInstruction.CourtAnnotation: {
@@ -1660,6 +1698,11 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getCancelLineInstructionAsync> &
     SelfPlanAndSendFunctions;
+  condoneInterest: (
+    input: CondoneInterestAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getCondoneInterestInstructionAsync> &
+    SelfPlanAndSendFunctions;
   courtAnnotation: (
     input: CourtAnnotationAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1886,6 +1929,14 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getCancelLineInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          condoneInterest: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCondoneInterestInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),

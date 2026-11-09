@@ -12,7 +12,7 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 use crate::errors::PoolError;
 use crate::events::{
     AccelerationProposed, AccelerationWithdrawn, LateInterestCollected, LineAccelerated, LineApproved, LineDrawsResumed, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection,
-    AvailabilityRenounced, EarlySettlement, FxRealized, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
+    AvailabilityRenounced, EarlySettlement, FxRealized, InterestCondoned, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
     PagarePayment, PaymentEntry,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
@@ -1384,6 +1384,52 @@ pub fn resume_draws(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
     line.availability_end = line.availability_end_saved;
     line.availability_end_saved = 0;
     emit_cpi!(LineDrawsResumed { pool: ctx.accounts.pool.key(), line_id: line.line_id, availability_end: line.availability_end });
+    Ok(())
+}
+
+/// Council only: condones interest of an `Active` or `InCollection` line (decision 50; CCF 2209,
+/// 2210: remitting an accessory leaves the principal owed). All the late interest accrued to now
+/// is condoned — the watermark moves and nothing is collected — together with `interest` of the
+/// ordinary interest still owed (`WrongAmount` above it, or when there is nothing to condone).
+/// `document_hash` commits the written record of the quita (`DocumentHashRequired`). Principal is
+/// never condoned. A line left owing nothing that can draw nothing more closes (`Repaid`), and its
+/// títulos may then leave (decision 49). It moves no funds and the pause does not block it.
+pub fn condone_interest(ctx: Context<CouncilLine>, interest: u64, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
+    ctx.accounts.check_council()?;
+    require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
+    let now = Clock::get()?.unix_timestamp;
+    let line = &mut ctx.accounts.line;
+    require!(matches!(line.status, LineStatus::Active | LineStatus::InCollection), PoolError::LineStatus);
+    let late_interest = line_arrears(line, now)?.late_due;
+    let interest_left = line.interest_due.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
+    require!(interest <= interest_left && (interest > 0 || late_interest > 0), PoolError::WrongAmount);
+    if late_interest > 0 {
+        line.late_paid_until = now;
+    }
+    line.interest_due = line.interest_due.checked_sub(interest).ok_or(PoolError::Overflow)?;
+    let remaining = line
+        .drawn
+        .checked_sub(line.principal_repaid)
+        .zip(interest_left.checked_sub(interest))
+        .and_then(|(p, i)| p.checked_add(i))
+        .ok_or(PoolError::Overflow)?;
+    let can_draw = line.status == LineStatus::Active
+        && now < line.availability_end
+        && line.available().ok_or(PoolError::Overflow)? > 0;
+    if remaining == 0 && !can_draw {
+        line.status = LineStatus::Repaid;
+        line.closed_at = now;
+    }
+    emit_cpi!(InterestCondoned {
+        pool: ctx.accounts.pool.key(),
+        line_id: line.line_id,
+        late_interest,
+        interest,
+        document_hash,
+        remaining,
+        condoned_at: now,
+    });
     Ok(())
 }
 

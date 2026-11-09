@@ -1078,3 +1078,122 @@ fn a_renunciation_needs_an_open_window_with_something_left_to_draw() {
     let ix = env.renounce_availability_ix(&k, lapsed, &b.pubkey());
     env.expect_err(ix, &b, &[], E_WINDOW_CLOSED);
 }
+
+const DOCUMENT_HASH: [u8; 32] = [0xd0; 32];
+const E_DOCUMENT_HASH_REQUIRED: u32 = ERR_BASE + elote_pool::errors::PoolError::DocumentHashRequired as u32;
+const E_BALANCE_OUTSTANDING: u32 = ERR_BASE + elote_pool::errors::PoolError::BalanceOutstanding as u32;
+
+fn condone_ix(env: &Env, k: &PoolKeys, line_id: u64, signer: &solana_pubkey::Pubkey, interest: u64, document_hash: [u8; 32]) -> solana_instruction::Instruction {
+    let data = anchor_lang::InstructionData::data(&elote_pool::instruction::CondoneInterest { interest, document_hash, valid_until: env.valid_until() });
+    env.council_line_ix(k, line_id, signer, data)
+}
+
+/// Decision 50: the council condones the late interest a line has accrued, against the hash of
+/// the written record. Nothing is collected, the watermark moves, and the next payment owes none.
+#[test]
+fn the_council_condones_the_late_interest_accrued() {
+    use elote_pool::events::InterestCondoned;
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, 2 * UNIT);
+    env.warp(t0 + p.interval() + YEAR / 100);
+    assert_eq!(env.arrears(&k, line_id).late_due, 10_000);
+    let nav = env.nav(&k);
+
+    let council = env.council.insecure_clone();
+    let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 0, DOCUMENT_HASH);
+    let meta = env.send(ix, &council, &[]);
+    let now = env.now();
+    let ev: InterestCondoned = find_event(&meta).expect("InterestCondoned");
+    assert_eq!(
+        (ev.pool, ev.line_id, ev.late_interest, ev.interest, ev.document_hash, ev.remaining, ev.condoned_at),
+        (k.pool, line_id, 10_000, 0, DOCUMENT_HASH, 6_720_000, now)
+    );
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.late_collected, line.late_paid_until, line.interest_due), (LineStatus::Active, 0, now, 720_000));
+    assert_eq!(env.arrears(&k, line_id).late_due, 0);
+    assert_eq!(env.nav(&k), nav, "nothing moves");
+
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1_120_000);
+    let meta = env.send(ix, &b, &[]);
+    assert!(find_event::<LateInterestCollected>(&meta).is_none());
+}
+
+/// A settlement negotiated in collection: the council first condones the late interest and the
+/// ordinary interest, then the debtor pays the principal; the line owes nothing and only then do
+/// the títulos leave (decision 49).
+#[test]
+fn a_quita_then_the_principal_settles_the_line_and_the_titulo_leaves() {
+    use elote_pool::events::InterestCondoned;
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    let (b, line_id, t0) = drawn(&mut env, &k, &p, 0);
+    env.warp(t0 + 6 * p.interval() + YEAR / 100);
+    assert!(env.arrears(&k, line_id).late_due > 0);
+
+    let council = env.council.insecure_clone();
+    let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 720_000, DOCUMENT_HASH);
+    let meta = env.send(ix, &council, &[]);
+    let ev: InterestCondoned = find_event(&meta).expect("InterestCondoned");
+    assert_eq!((ev.interest, ev.remaining), (720_000, 6 * UNIT));
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.interest_due), (LineStatus::Active, 0), "the principal is still owed");
+    let ix = env.deliver_pagare_ix(&k, line_id, 0, &b.pubkey(), &b.pubkey());
+    env.expect_err(ix, &b, &[], E_PAGARE_NOT_COVERED);
+
+    let before = borrower_balance(&env, &k, &b);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 7 * UNIT);
+    let meta = env.send(ix, &b, &[]);
+    assert!(find_event::<LateInterestCollected>(&meta).is_none());
+    assert_eq!(before - borrower_balance(&env, &k, &b), 6 * UNIT, "the principal and nothing else");
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    env.deliver_pagare(&k, line_id, 0);
+}
+
+/// A quita that leaves nothing owed closes a line that can draw nothing more, and its título, paid
+/// in its principal and held for the interest, leaves.
+#[test]
+fn a_quita_that_leaves_nothing_owed_closes_the_line() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (b, line_id, t0) = half_drawn(&mut env, &k, &p);
+    env.warp(t0 + p.interval() / 2);
+    env.repay(&k, line_id, &b, 4 * UNIT);
+    let ix = env.deliver_pagare_ix(&k, line_id, 0, &b.pubkey(), &b.pubkey());
+    env.expect_err(ix, &b, &[], E_BALANCE_OUTSTANDING);
+
+    env.warp(p.first_due_at());
+    let council = env.council.insecure_clone();
+    let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 330_000, DOCUMENT_HASH);
+    env.send(ix, &council, &[]);
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.closed_at, line.interest_due, line.interest_repaid), (LineStatus::Repaid, env.now(), 30_000, 30_000));
+    env.deliver_pagare(&k, line_id, 0);
+}
+
+/// The quita is the council's, against a written record, and never more than is owed.
+#[test]
+fn a_quita_is_the_councils_needs_its_record_and_something_to_condone() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
+    let (b, line_id, _) = drawn(&mut env, &k, &p, 0);
+    let council = env.council.insecure_clone();
+
+    let ix = condone_ix(&env, &k, line_id, &b.pubkey(), 1, DOCUMENT_HASH);
+    env.expect_err(ix, &b, &[], E_UNAUTHORIZED);
+    let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 1, [0; 32]);
+    env.expect_err(ix, &council, &[], E_DOCUMENT_HASH_REQUIRED);
+    let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 720_001, DOCUMENT_HASH);
+    env.expect_err(ix, &council, &[], E_WRONG_AMOUNT);
+    let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 0, DOCUMENT_HASH);
+    env.expect_err(ix, &council, &[], E_WRONG_AMOUNT);
+
+    let borrower = env.borrower(&k);
+    let approved = open(&mut env, &k, &borrower, &p);
+    let ix = condone_ix(&env, &k, approved, &council.pubkey(), 1, DOCUMENT_HASH);
+    env.expect_err(ix, &council, &[], E_LINE_STATUS);
+}

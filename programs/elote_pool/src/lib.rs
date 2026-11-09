@@ -78,6 +78,13 @@ pub mod elote_pool {
         instructions::lines::resume_draws(ctx, valid_until)
     }
 
+    /// Condones the late interest a line has accrued and `interest` of its ordinary interest,
+    /// against the hash of the written record (decision 50). Council only; principal is never
+    /// condoned. Never paused.
+    pub fn condone_interest(ctx: Context<CouncilLine>, interest: u64, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
+        instructions::lines::condone_interest(ctx, interest, document_hash, valid_until)
+    }
+
     /// The borrower gives up what is left to draw of an `Active` line, for good, so it can settle
     /// early (decision 45). Borrower only. Never paused.
     pub fn renounce_availability(ctx: Context<RenounceAvailability>) -> Result<()> {

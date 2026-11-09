@@ -11,7 +11,7 @@ needs fixing. Code is cited by item name (`council::check`, `fx::within_band`,
 `instructions/lines.rs::repay`), not by line number.
 
 Program id `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM`, Anchor 1.2.1, Solana 4.1.2, Rust
-1.89.0. 37 instructions, 3 account types, 41 events, 78 error codes (five of them retired and kept
+1.89.0. 38 instructions, 3 account types, 42 events, 78 error codes (five of them retired and kept
 so nothing renumbers). Decision numbers (32–41, 38-g, 40b) follow the
 owner review of 2026-10-31 and the record of 2026-11-08 in the decision register (private docs repo).
 
@@ -484,6 +484,7 @@ instructions that run `council::check`; **V** the ones that take `valid_until`.
 | `write_off` | `lines` | council | V | C | allowed |
 | `suspend_draws` | `lines` | council | V | C | allowed |
 | `resume_draws` | `lines` | council | V | C | allowed |
+| `condone_interest` | `lines` | council | V | C | allowed |
 | `renounce_availability` | `lines` | borrower | | | allowed |
 | `propose_acceleration` | `lines` | council | V | C | allowed |
 | `withdraw_acceleration` | `lines` | council | V | C | allowed |
@@ -878,6 +879,20 @@ line, and sends what does not fit there right after (§9.4).
 - **Writes:** `availability_end = availability_end_saved` (never later), `availability_end_saved
   = 0`.
 - **Events:** `LineDrawsResumed { availability_end }`.
+
+#### `condone_interest(interest: u64, document_hash: [u8; 32], valid_until)` — **V C**
+
+- **Accounts:** `CouncilLine`. **Checks:** `valid_until`; `council::check`; `document_hash != 0`
+  (`DocumentHashRequired`); `Active` or `InCollection` (`LineStatus`); `interest <= interest_due −
+  interest_repaid`, and something to condone — `interest > 0` or late interest accrued
+  (`WrongAmount`).
+- **Writes:** when late interest has accrued, `late_paid_until = now` (it is condoned, not
+  collected: `late_collected` is untouched); `interest_due −= interest`. Principal is never
+  condoned (a loss of principal is `write_off`). When the line then owes nothing and can draw
+  nothing more: `status = Repaid`, `closed_at = now`, and `deliver_pagare` opens (decision 49). A
+  settlement negotiated in collection is the quita first, then the debtor's payment of what is
+  left: `repay` applies a payment to interest before principal.
+- **Events:** `InterestCondoned { late_interest, interest, document_hash, remaining, condoned_at }`.
 
 #### `renounce_availability()` — borrower
 
@@ -1570,6 +1585,7 @@ procuración, the pause by council vote): `endorse_pagare` 17 618 (same again af
 | `LineWrittenOff` | `write_off` | pool, line_id, loss (MXN), loss_usdc, nav_after |
 | `LineDrawsSuspended` | `suspend_draws` | pool, line_id, available_forfeited |
 | `LineDrawsResumed` | `resume_draws` | pool, line_id, availability_end |
+| `InterestCondoned` | `condone_interest` | pool, line_id, late_interest, interest, document_hash, remaining, condoned_at |
 | `AvailabilityRenounced` | `renounce_availability` | pool, line_id, borrower, available_forfeited, renounced_at |
 | `AccelerationProposed` | `propose_acceleration` | pool, line_id, due_at |
 | `AccelerationWithdrawn` | `withdraw_acceleration`, `mark_in_collection` (superseding a proposal) | pool, line_id |
@@ -1734,7 +1750,7 @@ functions in each file.
 | `tests/pool.rs` | 22 | LiteSVM | `init_pool` and the mint and collection policies, deposits and redemptions, dead shares, rounding and slippage, a Token-2022 asset cycle, `NavUpdated` |
 | `tests/lines.rs` | 11 | LiteSVM | the line cycle end to end, sponsor, overpayment, liquidity, write-off, the bullet window, the line cap |
 | `tests/requests.rs` | 7 | LiteSVM | request, approval of the exact terms, the 15-day window, members as borrowers, reject and withdraw returning rent, the pause on requests |
-| `tests/schedule.rs` | 32 | LiteSVM, clock warped | schedule validation, installments, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing |
+| `tests/schedule.rs` | 36 | LiteSVM, clock warped | schedule validation, installments, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing |
 | `tests/tranches.rs` | 15 | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, per-tranche interest, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
 | `tests/acceleration.rs` | 12 | LiteSVM | suspension and resumption, acceleration with notice on bullet and scheduled lines, the objective mark superseding a proposal, pool limits and floors, the pause |
 | `tests/provision.rs` | 9 | LiteSVM | decisions 40 and 40b: the mark and the council's acceleration provision the NAV, redemptions at the provisioned NAV, deposits at the unprovisioned NAV and a recovery handing the entrant nothing, recoveries, the write-off, the rate the council's alone |
