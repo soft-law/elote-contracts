@@ -1,4 +1,5 @@
-// Pays on a line: late interest, then interest, then principal, never more than is due. Anyone may
+// Pays on a line: late interest, then interest (on an active line, the interest accrued to the
+// payment), then principal, never more than is due. Anyone may
 // pay; the payer here is the borrower unless --payer-keypair names another wallet. A payment that
 // would touch more pagaré records than one `repay` can carry is split into several (at most three
 // records each), so a large payoff may take more than one transaction.
@@ -9,7 +10,7 @@
 //
 // --amount        what to pay, in USDC; the program credits it in MXN at the FIX in force and takes
 //                 no more than is due
-// --all           pay everything due now (with late interest on a scheduled line)
+// --all           pay everything payable now (with late interest on a scheduled line)
 // --payer-keypair default ELOTE_BORROWER_KEYPAIR or .demo-keys/borrower.json
 // --receipt-hash  hash of the payment's receipt (zero, "receipt to follow", if absent); the holder
 //                 may attach the real one later with annotate_payment
@@ -20,7 +21,7 @@
 // Demo on Solana devnet with test assets. Not an offer of securities.
 import { address } from "@solana/kit";
 import { fetchToken } from "@solana-program/token";
-import { LineStatus, fetchCreditLine, lineLateDue, usdcCeilForMxn } from "../clients/js/src/index.ts";
+import { LineStatus, fetchCreditLine, lineLateDue, repayInterestLeft, usdcCeilForMxn } from "../clients/js/src/index.ts";
 import {
   DISCLAIMER,
   arg,
@@ -59,10 +60,14 @@ const { line, data: l } = await loadLine(c, poolAddress, lineId);
 if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) fail(`the line is ${LineStatus[l.status]}: nothing to repay`);
 
 const late = lineLateDue(l, await chainNow(c));
-const owed = l.drawn - l.principalRepaid + l.interestDue - l.interestRepaid + late;
+// What a payment can take now: on an active line, the interest accrued (decisions 46 and 47); the
+// rest stays owed, or is forgiven when this payment settles a line that can draw nothing more.
+const owed = l.drawn - l.principalRepaid + repayInterestLeft(l, await chainNow(c)) + late;
 const owedUsdc = usdcCeilForMxn(owed, pool.fixRate);
-// Late interest grows by the second: --all pads it, and the program takes only what is due.
-const amount = flag("all") ? usdcCeilForMxn(owed + late + 100n, pool.fixRate) : parseAmount("amount", required("amount"));
+// Late interest and the accrual grow by the second: --all offers all the interest fixed and pads
+// the late interest, and the program takes only what is payable when the payment lands.
+const ceiling = l.drawn - l.principalRepaid + l.interestDue - l.interestRepaid + late;
+const amount = flag("all") ? usdcCeilForMxn(ceiling + late + 100n, pool.fixRate) : parseAmount("amount", required("amount"));
 const balance = (await fetchToken(c.rpc, await ataOf(payer.address, pool.assetMint), { commitment: "confirmed" })).data.amount;
 if (balance < (amount < owedUsdc ? amount : owedUsdc)) fail(`the payer holds ${fmt(balance)} USDC`);
 console.log(

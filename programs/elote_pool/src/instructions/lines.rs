@@ -778,15 +778,16 @@ pub struct Repay<'info> {
 /// must cover the late interest due (`LateInterestUnpaid`; on a bullet line, from `term_end` or
 /// from its acceleration); the payment
 /// settles late interest, then interest, then principal, and debits the payer only what is due.
-/// On an active line that can draw nothing more, the interest a payment on account takes is the
-/// interest accrued to that moment (decision 46); the rest is taken, or forgiven, by the payment
-/// that settles the line (decision 44).
+/// On an active line, whether or not it can still draw, the interest a payment takes is the
+/// interest accrued to that moment and not yet repaid (decisions 46 and 47); the rest stays owed
+/// until the line can draw nothing more, and is then taken, or forgiven, by the payment that
+/// settles the line (decision 44).
 /// What is owed is what was drawn plus the interest fixed at each draw.
 ///
 /// The line becomes `Repaid` only when nothing is due and nothing can be drawn (window closed,
-/// fully drawn, or in collection). While it can draw, clearing the debt leaves it `Active` and a
-/// payment on a zero debt is refused (`WrongAmount`); otherwise a payment on a zero debt closes
-/// the line and moves nothing.
+/// fully drawn, or in collection). While it can draw, paying all that is payable leaves it
+/// `Active`, owing the interest not yet accrued, and a payment when nothing is payable is refused
+/// (`WrongAmount`); otherwise a payment on a zero debt closes the line and moves nothing.
 ///
 /// Remaining accounts: exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first,
 /// where `last_touched` is the first one this payment leaves partly unpaid, or the last draw; none
@@ -826,39 +827,38 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
 
     let late_part = line_arrears(line, now)?.late_due;
     require!(amount >= late_part, PoolError::LateInterestUnpaid);
-    // While the line can still draw, a zero debt is nothing to pay, and a payment that clears the
-    // debt does not close the line; otherwise a third party could pay one unit and
-    // forfeit the borrower's commitment.
+    // While the line can still draw, a payment that clears what is payable does not close the line;
+    // otherwise a third party could pay one unit and forfeit the borrower's commitment.
     let can_draw = line.status == LineStatus::Active
         && now < line.availability_end
         && line.available().ok_or(PoolError::Overflow)? > 0;
-    require!(remaining > 0 || late_part > 0 || !can_draw, PoolError::WrongAmount);
     // Decision 44: a payment that settles an active line able to draw nothing more pays only the
     // interest accrued to this moment (per second, as `accelerated_balance` reads a bullet); the
     // rest of the interest the draws fixed is forgiven — the same forgiveness the mark applies at
     // the debtor's default (decision 41), here at the debtor's will. Never below what was repaid.
+    // Decisions 46 and 47: on an active line, whether or not it can draw, a payment takes the
+    // interest accrued and not yet repaid, then principal, and never the interest not yet accrued
+    // (`payable`); that stays owed until a payment settles the line. A line in collection owes what
+    // the mark left (`interest_due` was cut there).
     let mut settlement_forgiven = 0u64;
-    let (interest_left, remaining) = {
-        let mut pair = (interest_left, remaining);
-        if line.status == LineStatus::Active && !can_draw {
-            let accrued = math::bullet_accrued_interest(line.drawn, line.draw_time_weight, line.rate_bps, now)
-                .ok_or(PoolError::Overflow)?
-                .min(line.interest_due)
-                .max(line.interest_repaid);
-            let cut_left = accrued.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
-            let settle_total = principal_left.checked_add(cut_left).ok_or(PoolError::Overflow)?;
-            if amount.checked_sub(late_part).ok_or(PoolError::Overflow)? >= settle_total {
-                settlement_forgiven = line.interest_due.checked_sub(accrued).ok_or(PoolError::Overflow)?;
-                pair = (cut_left, settle_total);
-            } else {
-                // Decision 46: a payment on account takes the interest accrued, then principal;
-                // the interest not yet accrued stays owed until a payment settles the line.
-                pair = (cut_left, remaining);
-            }
+    let (interest_left, payable) = if line.status == LineStatus::Active {
+        let accrued = math::bullet_accrued_interest(line.drawn, line.draw_time_weight, line.rate_bps, now)
+            .ok_or(PoolError::Overflow)?
+            .min(line.interest_due)
+            .max(line.interest_repaid);
+        let cut_left = accrued.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
+        let settle_total = principal_left.checked_add(cut_left).ok_or(PoolError::Overflow)?;
+        if !can_draw && amount.checked_sub(late_part).ok_or(PoolError::Overflow)? >= settle_total {
+            settlement_forgiven = line.interest_due.checked_sub(accrued).ok_or(PoolError::Overflow)?;
         }
-        pair
+        (cut_left, settle_total)
+    } else {
+        (interest_left, remaining)
     };
-    let rest = amount.checked_sub(late_part).ok_or(PoolError::Overflow)?.min(remaining);
+    // While the line can draw, nothing payable now (a zero debt, or only interest not yet accrued)
+    // is nothing to pay: refused, never a payment that moves nothing (decision 47).
+    require!(payable > 0 || late_part > 0 || !can_draw, PoolError::WrongAmount);
+    let rest = amount.checked_sub(late_part).ok_or(PoolError::Overflow)?.min(payable);
     let interest_part = rest.min(interest_left);
     let principal_part = rest.checked_sub(interest_part).ok_or(PoolError::Overflow)?;
     let transfer = late_part
@@ -956,9 +956,13 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         line.late_collected = line.late_collected.checked_add(late_part).ok_or(PoolError::Overflow)?;
         line.late_paid_until = now;
     }
-    let remaining_after = remaining
-        .checked_sub(interest_part)
-        .and_then(|v| v.checked_sub(principal_part))
+    // What the line still owes after the payment and any forgiveness: while it can draw, the
+    // interest not yet accrued keeps it open.
+    let remaining_after = line
+        .drawn
+        .checked_sub(line.principal_repaid)
+        .zip(line.interest_due.checked_sub(line.interest_repaid))
+        .and_then(|(p, i)| p.checked_add(i))
         .ok_or(PoolError::Overflow)?;
     if remaining_after == 0 && !can_draw {
         line.status = LineStatus::Repaid;

@@ -196,11 +196,12 @@ pub mod elote_pool {
 
     /// Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in
     /// force (`fix_rate`, `fix_date`, whatever its age): late interest (which the credit must cover),
-    /// then interest, then principal, never more than is due; the USDC taken is rounded up. The remaining
+    /// then interest (on an active line, only the interest accrued to the payment, decision 47), then
+    /// principal, never more than is due; the USDC taken is rounded up. The remaining
     /// accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at
     /// most `MAX_SIDECARS_PER_REPAY` of them; each one covered is marked paid with the payer's provisional `receipt_hash`. The line
     /// becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a
-    /// payment on a zero debt is refused. Never paused.
+    /// payment when nothing is payable is refused. Never paused.
     pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: u64, fix_date: u32, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::lines::repay(ctx, max_usdc, fix_rate, fix_date, receipt_hash)
     }

@@ -84,10 +84,13 @@ export async function repayInParts(
       // part touches, the retry below rebuilds it.
       const quotedAt = (await chainNow(c)) + 30n;
       const late = lineLateDue(l, quotedAt);
-      // The interest the program takes before principal: on a line that can draw nothing more,
-      // the interest accrued, quoted ahead like the late interest (decision 46).
+      // The interest the program takes before principal: on an active line, the interest accrued,
+      // quoted ahead like the late interest (decisions 46 and 47).
       const interestLeft = repayInterestLeft(l, quotedAt);
       const principalLeft = l.drawn - l.principalRepaid;
+      // An active line still open after a part that left no principal can still draw: what is
+      // payable now is seconds of interest, not worth chasing part after part (decision 47).
+      if (part > 1 && l.status === LineStatus.Active && principalLeft === 0n) return start - (await balance());
       const drawnThrough = await drawnThroughOf(c, line, l.draws);
       const cap = drawnThrough.length
         ? repayPrincipalCap({ pagaresPaid: l.pagaresPaid, drawnThrough, principalRepaid: l.principalRepaid, maxRecords: MAX_SIDECARS_PER_REPAY })

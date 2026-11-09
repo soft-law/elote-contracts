@@ -134,7 +134,7 @@ test("lateDue is never negative when lateCollected exceeds the principal (R-24)"
   assert.equal(a.lateDue, 0n);
 });
 
-test("repayInterestLeft is the accrued interest once the line can draw nothing more", () => {
+test("repayInterestLeft is the accrued interest on every active line", () => {
   const year = 31_536_000n;
   const t0 = 1_800_000_000n;
   // 6.0 drawn in full at t0 at 12% over a year: 720_000 fixed, 60_000 accrued a month in
@@ -154,9 +154,12 @@ test("repayInterestLeft is the accrued interest once the line can draw nothing m
   assert.equal(repayInterestLeft({ ...line, interestRepaid: 60_000n }, now), 0n);
   assert.equal(repayInterestLeft({ ...line, interestRepaid: 100_000n }, now), 0n, "never below what was repaid");
   assert.equal(repayInterestLeft(line, t0 + 2n * year), 720_000n, "never above the interest fixed");
-  // While it can draw, and in collection, all the interest still owed.
-  assert.equal(repayInterestLeft({ ...line, principal: 8_000_000n }, now), 720_000n);
-  assert.equal(repayInterestLeft({ ...line, principal: 8_000_000n, availabilityEnd: now }, now), 60_000n, "window closed");
+  // While it can draw too (decision 47): the window does not enter. In collection, all the
+  // interest still owed.
+  const canDraw = { ...line, principal: 8_000_000n };
+  const closed = { ...canDraw, availabilityEnd: now };
+  assert.equal(repayInterestLeft(canDraw, now), 60_000n, "window open");
+  assert.equal(repayInterestLeft(closed, now), 60_000n, "window closed");
   assert.equal(repayInterestLeft({ ...line, status: 5, interestRepaid: 20_000n }, now), 700_000n);
 });
 

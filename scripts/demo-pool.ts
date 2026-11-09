@@ -457,7 +457,7 @@ async function scheduleDemo() {
   console.log(`  missed installments ${a.missed}; overdue MXN ${fmtMxn(a.overdue)}; late interest so far MXN ${fmtMxn(a.lateDue)}`);
 
   // The overdue installment, its late interest and the next installment; the program takes late
-  // interest first, then interest, then principal, and never more than is due.
+  // interest first, then the interest accrued, then principal, and never more than is due.
   const lateBefore = l.lateCollected;
   await repayInParts(c, { pool, poolData, line: sLine, payer: borrower, amount: usdcCeilForMxn(a.overdue + installment + 2n * a.lateDue, FIX), receiptHash: noReceipt });
   ({ l, a } = await read());

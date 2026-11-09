@@ -776,10 +776,14 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
      (interest_due − interest_repaid)`; `amount > 0` (`WrongAmount`);
   3. `late_part = line_arrears(line, now).late_due` (§7); `amount >= late_part`
      (`LateInterestUnpaid`);
-  4. while the line can still draw (`Active`, `now < availability_end`, something undrawn), a
-     payment with nothing due is refused (`WrongAmount`), so a third party cannot close the line
+  4. on an `Active` line (decisions 46 and 47), `interest_left` is the interest accrued and not
+     yet repaid, `accrued = clamp(bullet_accrued_interest(now), interest_repaid, interest_due)`
+     minus `interest_repaid`, and `payable = principal_left + interest_left`; on an
+     `InCollection` line, `payable = remaining`. While the line can still draw (`Active`,
+     `now < availability_end`, something undrawn), a payment when nothing is payable is refused
+     (`WrongAmount`): never a payment that moves nothing, and no third party can close the line
      and forfeit the borrower's commitment;
-  5. `rest = min(amount − late_part, remaining)`, `interest_part = min(rest, interest_left)`,
+  5. `rest = min(amount − late_part, payable)`, `interest_part = min(rest, interest_left)`,
      `principal_part = rest − interest_part`; `usdc_in = usdc_ceil_for_mxn(late + interest +
      principal, fix_rate)`, never more than `max_usdc`; `usdc_principal =
      usdc_ceil_for_mxn(principal_part, fix_rate)`;
@@ -799,15 +803,22 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   `interest_repaid`), `interest_due` is cut to that accrual before the waterfall: the interest the
   draws fixed beyond it is forgiven — the counterpart, at the debtor's will, of the forgiveness
   the mark applies at the debtor's default. `EarlySettlement { interest_forgiven }` is emitted.
-  **Payment on account (decision 46):** on the same line, a payment that does not settle takes,
-  after late interest, the interest accrued and not yet repaid, then principal; the interest not
-  yet accrued stays owed, so the payments of a split settlement add up to what one would pay and
-  only the last one forgives. Every payment entry commits `interest_reserved = interest_due −
+  **Payment on account (decisions 46 and 47):** on any `Active` line, whether or not it can still
+  draw, a payment that does not settle takes, after late interest, the interest accrued and not
+  yet repaid, then principal; the interest not yet accrued stays owed, so the payments of a split
+  settlement, and those made while the line could draw, add up to what one would pay and only the
+  last one forgives. While the line can draw nothing is forgiven and the line never closes: a
+  payment of all that is payable leaves it `Active` owing the interest not yet accrued. The
+  accrual runs on everything drawn (`drawn`, `draw_time_weight`), whatever principal was repaid,
+  so principal repaid while the line can draw keeps accruing until the line settles
+  (`tests/schedule.rs::interest_keeps_accruing_on_principal_repaid_while_the_line_can_draw`). Every payment entry commits `interest_reserved = interest_due −
   interest_repaid` after the payment (CCom 364: principal received without reserving the
   interest extinguishes it).
   `line.principal_repaid`, `interest_repaid`, `usdc_cost_repaid += cost`; when `late_part > 0`,
   `late_collected += late_part` and `late_paid_until = now` (an accrual that rounds to zero keeps
-  running); `status = Repaid`, `closed_at = now` when nothing remains and the line cannot draw. The
+  running); `status = Repaid`, `closed_at = now` when nothing remains (`drawn − principal_repaid +
+  interest_due − interest_repaid` after the writes, the `LineRepaid.remaining`) and the line
+  cannot draw. The
   payment entries (§9.3): per record, oldest first, a `Pagado`, `PagadoAval` or `Abono` entry; a
   covered record gets `status = PAGARE_PAID`, `paid_at`, `receipt_hash`, `PAID_BY_AVAL` when the
   aval paid, and the cursor moves past it; a procuración in force on it ends with a `Terminacion`
@@ -1033,7 +1044,7 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
   the account. A `Requested` line past its 15-day window stays `Requested` until withdrawn or
   rejected; `approve_line` refuses it.
 - `Active → Repaid` needs nothing due and nothing drawable (window closed, fully drawn, or in
-  collection). While the line can draw, a payment that clears the debt leaves it `Active`.
+  collection). While the line can draw, a payment of all that is payable leaves it `Active`.
 - After the mark there is no return to `Active` (no cure): only full repayment or the write-off.
   The pool's exits from delinquency are selling the portfolio (the endoso en propiedad, registry
   kind 1, reserved for a future feature) or the write-off, at most at 3–6–12 months of arrears
@@ -1699,7 +1710,7 @@ functions in each file.
 | `tests/pool.rs` | 22 | LiteSVM | `init_pool` and the mint and collection policies, deposits and redemptions, dead shares, rounding and slippage, a Token-2022 asset cycle, `NavUpdated` |
 | `tests/lines.rs` | 11 | LiteSVM | the line cycle end to end, sponsor, overpayment, liquidity, write-off, the bullet window, the line cap |
 | `tests/requests.rs` | 7 | LiteSVM | request, approval of the exact terms, the 15-day window, members as borrowers, reject and withdraw returning rent, the pause on requests |
-| `tests/schedule.rs` | 25 | LiteSVM, clock warped | schedule validation, installments, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing |
+| `tests/schedule.rs` | 29 | LiteSVM, clock warped | schedule validation, installments, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing |
 | `tests/tranches.rs` | 15 | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, per-tranche interest, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
 | `tests/acceleration.rs` | 12 | LiteSVM | suspension and resumption, acceleration with notice on bullet and scheduled lines, the objective mark superseding a proposal, pool limits and floors, the pause |
 | `tests/provision.rs` | 9 | LiteSVM | decisions 40 and 40b: the mark and the council's acceleration provision the NAV, redemptions at the provisioned NAV, deposits at the unprovisioned NAV and a recovery handing the entrant nothing, recoveries, the write-off, the rate the council's alone |

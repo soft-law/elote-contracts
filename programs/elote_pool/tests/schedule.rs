@@ -4,8 +4,8 @@ mod common;
 
 use common::*;
 use elote_pool::events::{
-    LateInterestCollected, LineInCollection, LineRequested, LineRepaid,
-    LineWrittenOff,
+    EarlySettlement, LateInterestCollected, LineInCollection, LineRequested, LineRepaid,
+    LineWrittenOff, PagarePayment,
 };
 use elote_pool::state::{LineStatus, Schedule, ScheduleParams};
 use solana_signer::Signer;
@@ -248,24 +248,142 @@ fn a_settlement_in_two_payments_pays_what_one_payment_pays() {
     assert_eq!(before - borrower_balance(&env, &k, &b), 6_060_000, "what a single settling payment pays");
 }
 
-/// While the line can still draw, a full payment neither closes it nor touches the fixed
-/// interest: the settlement of decision 44 is only for a line that can draw nothing more.
+/// 3.0 of a 6.0 scheduled line drawn at the opening, at 12% over a year: 360_000 fixed, 30_000
+/// accrued a month. The window stays open until the first due date, two months in, with 3.0 still
+/// available; the borrower holds one unit more.
+fn half_drawn(env: &mut Env, k: &PoolKeys, p: &LineParams) -> (Keypair, u64, i64) {
+    let borrower = env.borrower(k);
+    let line_id = open(env, k, &borrower, p);
+    let t0 = env.now();
+    env.draw_amount(k, line_id, &borrower, 3_000_000);
+    let council = env.council.insecure_clone();
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
+    assert_eq!(env.line(k, line_id).interest_due, 360_000);
+    (borrower, line_id, t0)
+}
+
+/// Decision 47: while the line can still draw, a payment on account takes the interest accrued to
+/// that moment, then principal, as on a line that can draw nothing more (decision 46); the interest
+/// not yet accrued stays owed, reserved, and nothing is forgiven.
+#[test]
+fn a_payment_on_account_while_the_line_can_draw_takes_the_accrued_interest_then_principal() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (b, line_id, t0) = half_drawn(&mut env, &k, &p);
+    env.warp(t0 + p.interval() / 2);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1_000_000);
+    let meta = env.send(ix, &b, &[]);
+    let ev: LineRepaid = find_event(&meta).expect("LineRepaid");
+    assert_eq!((ev.interest_part, ev.principal_part), (30_000, 970_000), "one month accrued, then principal");
+    assert_eq!(ev.remaining, 2_030_000 + 330_000, "the principal left and all the interest not yet repaid");
+    assert_eq!(find_event::<PagarePayment>(&meta).expect("PagarePayment").interest_reserved, 330_000);
+    assert!(find_event::<EarlySettlement>(&meta).is_none());
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.interest_due), (LineStatus::Active, 360_000));
+    assert_eq!((line.interest_repaid, line.principal_repaid), (30_000, 970_000));
+}
+
+/// Decision 47: paying on account while the line can draw costs the early payer nothing. Two equal
+/// lines settle at the first due date, when neither can draw; the one that paid on account a month
+/// earlier pays in all what the other pays in one settling payment: principal and two months.
+#[test]
+fn a_payment_on_account_while_the_line_can_draw_costs_what_one_settling_payment_costs() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (early, a, t0) = half_drawn(&mut env, &k, &p);
+    let (late, b, _) = half_drawn(&mut env, &k, &p);
+    let before = (borrower_balance(&env, &k, &early), borrower_balance(&env, &k, &late));
+    env.warp(t0 + p.interval() / 2);
+    env.repay(&k, a, &early, 1_000_000);
+    // At the first due date the window closes; no late interest has run yet.
+    env.warp(p.first_due_at());
+    for (borrower, line_id) in [(&early, a), (&late, b)] {
+        let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 4 * UNIT);
+        let meta = env.send(ix, borrower, &[]);
+        assert_eq!(find_event::<EarlySettlement>(&meta).expect("EarlySettlement").interest_forgiven, 300_000);
+        let line = env.line(&k, line_id);
+        assert_eq!((line.status, line.interest_due), (LineStatus::Repaid, 60_000));
+    }
+    assert_eq!(before.0 - borrower_balance(&env, &k, &early), 3_060_000);
+    assert_eq!(before.1 - borrower_balance(&env, &k, &late), 3_060_000);
+}
+
+/// While the line can still draw, a payment of more than is owed neither closes it nor touches the
+/// fixed interest: it takes the principal and the interest accrued (decision 47), and the rest of
+/// the interest stays owed. The settlement of decision 44 is only for a line that can draw nothing
+/// more.
 #[test]
 fn a_payment_while_the_line_can_draw_forgives_nothing() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
-    let borrower = env.borrower(&k);
-    let line_id = open(&mut env, &k, &borrower, &p);
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 3_000_000);
-    env.send(ix, &borrower, &[]);
-    let fixed = env.line(&k, line_id).interest_due;
-    let council = env.council.insecure_clone();
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
-    env.repay(&k, line_id, &borrower, 3_000_000 + fixed);
+    let (b, line_id, t0) = half_drawn(&mut env, &k, &p);
+    env.warp(t0 + p.interval() / 2);
+    let before = borrower_balance(&env, &k, &b);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 3_000_000 + 360_000);
+    let meta = env.send(ix, &b, &[]);
+    let ev: LineRepaid = find_event(&meta).expect("LineRepaid");
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (30_000, 3_000_000, 330_000));
+    assert_eq!(before - borrower_balance(&env, &k, &b), 3_030_000, "never the interest not yet accrued");
+    assert!(find_event::<EarlySettlement>(&meta).is_none());
     let line = env.line(&k, line_id);
     assert_eq!(line.status, LineStatus::Active, "the window is open and half the line can still draw");
-    assert_eq!(line.interest_due, fixed, "nothing forgiven while the line can draw");
+    assert_eq!(line.interest_due, 360_000, "nothing forgiven while the line can draw");
+}
+
+/// Decision 47: while the line can draw, a payment when nothing is payable yet (no principal left,
+/// the interest accrued already repaid, only interest not yet accrued owed) is refused, never a
+/// payment that moves nothing.
+#[test]
+fn a_payment_when_nothing_is_payable_while_the_line_can_draw_is_refused() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (b, line_id, t0) = half_drawn(&mut env, &k, &p);
+    env.warp(t0 + p.interval() / 2);
+    env.repay(&k, line_id, &b, 4 * UNIT);
+    let line = env.line(&k, line_id);
+    assert_eq!((line.principal_repaid, line.interest_repaid, line.interest_due), (3_000_000, 30_000, 360_000));
+    let before = borrower_balance(&env, &k, &b);
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), 1);
+    env.expect_err(ix, &b, &[], E_WRONG_AMOUNT);
+    assert_eq!(borrower_balance(&env, &k, &b), before);
+    assert_eq!(env.line(&k, line_id).interest_repaid, 30_000);
+}
+
+/// Decision 47, a known consequence: interest accrues on everything drawn, whatever principal was
+/// repaid (`bullet_accrued_interest` reads `drawn` and `draw_time_weight`). A borrower who repays
+/// all the principal a month in, while the line can still draw, keeps accruing on it until the
+/// window closes and a payment settles the line: 60_000 for 3.0 held one month, where a month is
+/// 30_000. Settling at will would be decision 45, not adopted.
+#[test]
+fn interest_keeps_accruing_on_principal_repaid_while_the_line_can_draw() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let p = env.scheduled_params(6_000_000, 1_200, 6, 10_000);
+    let (b, line_id, t0) = half_drawn(&mut env, &k, &p);
+    let before = borrower_balance(&env, &k, &b);
+    env.warp(t0 + p.interval() / 2);
+    let ev = env.repay(&k, line_id, &b, 4 * UNIT);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (30_000, 3_000_000, 330_000));
+    // Half a month later, with no principal left, half a month more is payable.
+    env.warp(t0 + 3 * p.interval() / 4);
+    let ev = env.repay(&k, line_id, &b, UNIT);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (15_000, 0, 315_000));
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Active);
+    // At the first due date the window closes: the settling payment takes the last half month and
+    // forgives the rest.
+    env.warp(p.first_due_at());
+    let ix = env.repay_ix(&k, line_id, &b.pubkey(), UNIT);
+    let meta = env.send(ix, &b, &[]);
+    let ev: LineRepaid = find_event(&meta).expect("LineRepaid");
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (15_000, 0, 0));
+    assert_eq!(find_event::<EarlySettlement>(&meta).expect("EarlySettlement").interest_forgiven, 300_000);
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.interest_due, line.interest_repaid), (LineStatus::Repaid, 60_000, 60_000));
+    assert_eq!(before - borrower_balance(&env, &k, &b), 3_060_000);
 }
 
 #[test]

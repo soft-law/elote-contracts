@@ -37,11 +37,11 @@ export function bulletAccruedInterest(drawn: bigint, drawTimeWeight: bigint, rat
 }
 
 /**
- * The ordinary interest a `repay` at `now` takes before principal, after late interest. While the
- * line can draw, or once it is in collection, all the interest it still owes. On an active line
- * that can draw nothing more, the interest accrued to `now` and not yet repaid (decision 46): the
- * rest stays owed, and the payment that also repays all the principal settles the line and has
- * it forgiven (decision 44). `status` is `LineStatus` (2 `Active`).
+ * The ordinary interest a `repay` at `now` takes before principal, after late interest. On an
+ * active line, whether or not it can still draw, the interest accrued to `now` and not yet repaid
+ * (decisions 46 and 47): the rest stays owed, and once the line can draw nothing more the payment
+ * that also repays all the principal settles the line and has it forgiven (decision 44). In
+ * collection, all the interest it still owes. `status` is `LineStatus` (2 `Active`).
  *
  * The program reads its own clock: quote `now` a little ahead, since what the quote exceeds the
  * accrual by falls on principal.
@@ -49,9 +49,7 @@ export function bulletAccruedInterest(drawn: bigint, drawTimeWeight: bigint, rat
 export function repayInterestLeft(
   line: {
     status: number;
-    principal: bigint;
     drawn: bigint;
-    availabilityEnd: bigint;
     interestDue: bigint;
     interestRepaid: bigint;
     drawTimeWeight: bigint;
@@ -59,8 +57,7 @@ export function repayInterestLeft(
   },
   now: bigint
 ): bigint {
-  const canDraw = line.status === 2 && now < line.availabilityEnd && line.principal > line.drawn;
-  if (line.status !== 2 || canDraw) return line.interestDue - line.interestRepaid;
+  if (line.status !== 2) return line.interestDue - line.interestRepaid;
   const accrued = max(
     min(bulletAccruedInterest(line.drawn, line.drawTimeWeight, line.rateBps, now), line.interestDue),
     line.interestRepaid

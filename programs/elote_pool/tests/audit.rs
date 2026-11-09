@@ -39,13 +39,17 @@ fn f01_a_third_party_repayment_does_not_close_a_line_that_can_still_draw() {
     let ix = env.repay_ix(&k, line_id, &stranger.pubkey(), 1);
     env.expect_err(ix, &stranger, &[], E_WRONG_AMOUNT);
 
-    // The borrower keeps drawing against its commitment.
+    // The borrower keeps drawing against its commitment. A second before the window closes the
+    // interest fixed at the draw has all accrued (decision 47: a payment never takes interest not
+    // yet accrued), so the borrower can pay everything, and the line still stays open.
     env.draw_amount(&k, line_id, &borrower, UNIT);
     assert_eq!(env.line(&k, line_id).drawn, UNIT + 1);
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let interest = env.line(&k, line_id).interest_due;
-    env.repay(&k, line_id, &borrower, UNIT + interest);
+    env.warp(p.term_end - 1);
+    let ev = env.repay(&k, line_id, &borrower, UNIT + interest);
+    assert_eq!((ev.interest_part, ev.remaining), (interest, 0));
     assert_eq!(env.line(&k, line_id).status, LineStatus::Active, "paid again, still open");
 
     // Once the window has closed, a repayment with nothing due closes the line and moves nothing.
@@ -78,17 +82,21 @@ fn f01_a_full_repayment_closes_a_line_that_cannot_draw_any_more() {
     env.repay(&k, full, &borrower, 2 * UNIT + interest);
     assert_eq!(env.line(&k, full).status, LineStatus::Repaid);
 
-    // Half drawn, then the council closes the window: the last unit repaid closes it.
+    // Half drawn, then the council closes the window: the next payment settles and closes it.
+    // Repaid at the draw's second, the principal goes and the interest fixed stays owed, none of
+    // it accrued (decision 47); the settlement forgives it (decision 44).
     let borrower = env.borrower(&k);
     let (half, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw_amount(&k, half, &borrower, UNIT);
     let interest = env.line(&k, half).interest_due;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
-    env.repay(&k, half, &borrower, UNIT + interest);
+    let ev = env.repay(&k, half, &borrower, UNIT + interest);
+    assert_eq!((ev.principal_part, ev.interest_part, ev.remaining), (UNIT, 0, interest));
     assert_eq!(env.line(&k, half).status, LineStatus::Active);
     let ix = env.suspend_draws_ix(&k, half, &council.pubkey());
     env.send(ix, &council, &[]);
-    env.repay(&k, half, &borrower, 1);
+    let ev = env.repay(&k, half, &borrower, 1);
+    assert_eq!((ev.principal_part, ev.interest_part, ev.remaining), (0, 0, 0));
     assert_eq!(env.line(&k, half).status, LineStatus::Repaid);
 }
 

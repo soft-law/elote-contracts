@@ -264,7 +264,8 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
 }
 
 /// A half-drawn line repaid in full while its window is open stays `Active` and keeps drawing
-/// (audit F-01); it closes only once nothing can be drawn.
+/// (audit F-01); it closes only once nothing can be drawn. The payment takes the interest accrued
+/// and the principal; the rest of the interest fixed at the draw stays owed (decision 47).
 #[test]
 fn full_repayment_of_a_half_drawn_line_leaves_it_open_while_it_can_draw() {
     let mut env = Env::new();
@@ -276,8 +277,10 @@ fn full_repayment_of_a_half_drawn_line_leaves_it_open_while_it_can_draw() {
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 200_000);
 
+    // Half a year in, half the 0.2 fixed has accrued.
+    env.warp(env.now() + YEAR / 2);
     let ev = env.repay(&k, line_id, &borrower, 2_200_000);
-    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (200_000, 2 * UNIT, 0));
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (100_000, 2 * UNIT, 100_000));
     let line = env.line(&k, line_id);
     assert_eq!((line.status, line.drawn, line.principal), (LineStatus::Active, 2 * UNIT, 4 * UNIT));
     assert!(env.now() < line.availability_end, "the window was still open");
@@ -303,7 +306,9 @@ fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
-    env.repay(&k, line_id, &borrower, 700_000); // 0.2 of interest, 0.5 of principal
+    // At the term the 0.2 fixed has accrued: 0.2 of interest, 0.5 of principal.
+    env.warp(p.term_end);
+    env.repay(&k, line_id, &borrower, 700_000);
     env.warp(p.term_end + 1);
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     let meta = env.send(ix, &council, &[]);
