@@ -171,6 +171,8 @@ export const ELOTE_POOL_ERROR__DELIVERY_HELD = 0x17bb; // 6075
 export const ELOTE_POOL_ERROR__POOL_IMPAIRED = 0x17bc; // 6076
 /** BalanceOutstanding: The line still owes principal or interest; no título leaves until it owes nothing */
 export const ELOTE_POOL_ERROR__BALANCE_OUTSTANDING = 0x17bd; // 6077
+/** AssetDecimalsInvalid: The asset mint must have 6 decimals, the scale the FIX conversion counts in */
+export const ELOTE_POOL_ERROR__ASSET_DECIMALS_INVALID = 0x17be; // 6078
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -178,6 +180,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_STATE
   | typeof ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED
   | typeof ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID
+  | typeof ELOTE_POOL_ERROR__ASSET_DECIMALS_INVALID
   | typeof ELOTE_POOL_ERROR__ASSET_IS_SHARE_MINT
   | typeof ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__ASSET_NOT_LISTED
@@ -260,6 +263,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__ACCELERATION_STATE]: `No acceleration is pending on this line, or one already is`,
     [ELOTE_POOL_ERROR__AGREEMENT_HASH_REQUIRED]: `The signed agreement's hash is required`,
     [ELOTE_POOL_ERROR__ANNOTATION_KIND_INVALID]: `This kind is not a court annotation`,
+    [ELOTE_POOL_ERROR__ASSET_DECIMALS_INVALID]: `The asset mint must have 6 decimals, the scale the FIX conversion counts in`,
     [ELOTE_POOL_ERROR__ASSET_IS_SHARE_MINT]: `The asset mint and the share mint are the same`,
     [ELOTE_POOL_ERROR__ASSET_MINT_NOT_ALLOWED]: `The asset mint carries a Token-2022 extension the pool does not accept`,
     [ELOTE_POOL_ERROR__ASSET_NOT_LISTED]: `The asset mint is not on this cluster's allow-list`,

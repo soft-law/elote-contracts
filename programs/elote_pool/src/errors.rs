@@ -184,4 +184,6 @@ pub enum PoolError {
     PoolImpaired,
     #[msg("The line still owes principal or interest; no título leaves until it owes nothing")]
     BalanceOutstanding,
+    #[msg("The asset mint must have 6 decimals, the scale the FIX conversion counts in")]
+    AssetDecimalsInvalid,
 }

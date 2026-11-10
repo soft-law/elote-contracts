@@ -121,8 +121,8 @@ for i in 0 1 2 3 4 5; do
 done
 
 echo "== repay.ts --all: six pagaré records, so two repay parts"
-# The interest is 12% a year on MXN 6,000 for about 90 days; the borrower holds the USDC it drew,
-# the sponsor tops it up.
+# The interest is 12% a year on the principal outstanding, for the seconds the line has run
+# (decision 48); the borrower holds the USDC it drew, the sponsor pays a first part.
 run repay.ts --pool "$POOL" --line-id 1 --amount 20 --payer-keypair "$KEYS/sponsor.json"
 run repay.ts --pool "$POOL" --line-id 1 --all | tee "$WORK/repay.log"
 grep -q 'repay part 2' "$WORK/repay.log" || { echo "error: the payoff was not split" >&2; exit 1; }
@@ -156,7 +156,7 @@ if run endorse-pagare.ts --pool "$POOL" --line-id 2 --draw-index 2 --procurador 
 fi
 echo "  refused as expected: $(cat "$WORK/endorsee.err")"
 
-echo "== repay.ts: the sponsor pays the interest, the borrower the principal"
+echo "== repay.ts: the sponsor pays a part (the interest accrued, then principal), the borrower the rest"
 run repay.ts --pool "$POOL" --line-id 2 --amount 15 --payer-keypair "$KEYS/sponsor.json"
 run repay.ts --pool "$POOL" --line-id 2 --all | tee "$WORK/repay2.log"
 grep -q 'status       Repaid' "$WORK/repay2.log" || { echo "error: the third line is not repaid" >&2; exit 1; }

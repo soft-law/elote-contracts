@@ -910,9 +910,9 @@
       "name": "court_annotation",
       "docs": [
         "Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,",
-        "suspension — it also holds the delivery) or `KIND_CONSTANCIA_JUDICIAL` (it lifts the hold),",
-        "over the court document's hash. The council signs; refused once the título was delivered;",
-        "moves nothing else."
+        "suspension) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. A record only: no",
+        "court act gates the delivery or any other instruction (decision 38-g). The council signs;",
+        "refused once the título was delivered; moves nothing else."
       ],
       "discriminator": [
         218,
@@ -2446,7 +2446,7 @@
     {
       "name": "renounce_availability",
       "docs": [
-        "The borrower gives up what is left to draw of an `Active` line, for good, so it can settle",
+        "The borrower gives up what is left to draw of an `Active` line, for good, so it can close",
         "early (decision 45). Borrower only. Never paused."
       ],
       "discriminator": [
@@ -2485,11 +2485,11 @@
       "docs": [
         "Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in",
         "force (`fix_rate`, `fix_date`, whatever its age): late interest (which the credit must cover),",
-        "then interest (on an active line, only the interest accrued to the payment, decision 47), then",
-        "principal, never more than is due; the USDC taken is rounded up. The remaining",
+        "then the ordinary interest accrued to the payment and unpaid, then principal (decision 48),",
+        "never more than is due; the USDC taken is rounded up. The remaining",
         "accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at",
         "most `MAX_SIDECARS_PER_REPAY` of them; each one covered is marked paid with the payer's provisional `receipt_hash`. The line",
-        "becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a",
+        "becomes `Repaid` only when it owes nothing and can draw nothing more; while it can draw, a",
         "payment when nothing is payable is refused. Never paused."
       ],
       "discriminator": [
@@ -4037,19 +4037,6 @@
       ]
     },
     {
-      "name": "EarlySettlement",
-      "discriminator": [
-        144,
-        49,
-        45,
-        110,
-        45,
-        162,
-        195,
-        73
-      ]
-    },
-    {
       "name": "FixBoundsSet",
       "discriminator": [
         55,
@@ -4869,6 +4856,11 @@
       "code": 6077,
       "name": "BalanceOutstanding",
       "msg": "The line still owes principal or interest; no título leaves until it owes nothing"
+    },
+    {
+      "code": 6078,
+      "name": "AssetDecimalsInvalid",
+      "msg": "The asset mint must have 6 decimals, the scale the FIX conversion counts in"
     }
   ],
   "types": [
@@ -5050,16 +5042,16 @@
           {
             "name": "sponsor",
             "docs": [
-              "Co-signed `request_line`; `None` when the line has no sponsor."
+              "Co-signed `request_line`; the zero key when the line has no sponsor, so every field keeps",
+              "one offset."
             ],
-            "type": {
-              "option": "pubkey"
-            }
+            "type": "pubkey"
           },
           {
             "name": "sponsor_role",
             "docs": [
-              "`SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named."
+              "`SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is not the zero",
+              "key."
             ],
             "type": "u8"
           },
@@ -5106,8 +5098,8 @@
           {
             "name": "rate_bps",
             "docs": [
-              "Annual ordinary interest rate, in basis points, charged on each tranche from its draw to",
-              "the last due date."
+              "Annual ordinary interest rate, in basis points, on the principal outstanding, per second",
+              "(ACTUAL/365) until the last due date or the acceleration (decision 48)."
             ],
             "type": "u16"
           },
@@ -5141,12 +5133,20 @@
             "type": "u16"
           },
           {
-            "name": "interest_due",
+            "name": "principal_seconds",
             "docs": [
-              "Ordinary interest owed: each draw adds `amount * rate_bps * (last_due - now) / (BPS *",
-              "SECONDS_PER_YEAR)`; `mark_in_collection` cuts it to the share of the installments then due."
+              "`∫ (drawn - principal_repaid) dt` up to `accrued_at`, in centavo-seconds: advanced by",
+              "`accrue` before every change of the outstanding principal and at the acceleration",
+              "(decision 48). The ordinary interest accrued is read from it, rounded down once."
             ],
-            "type": "u64"
+            "type": "u128"
+          },
+          {
+            "name": "accrued_at",
+            "docs": [
+              "The instant `principal_seconds` runs to; never past `accrual_end`."
+            ],
+            "type": "i64"
           },
           {
             "name": "principal_repaid",
@@ -5281,14 +5281,6 @@
             "type": "pubkey"
           },
           {
-            "name": "draw_time_weight",
-            "docs": [
-              "`Σ amount × drawn_at` over the draws: a bullet line's interest accrued at a mark is",
-              "`rate × (drawn × mark − draw_time_weight)`."
-            ],
-            "type": "u128"
-          },
-          {
             "name": "availability_end_saved",
             "docs": [
               "The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which",
@@ -5363,40 +5355,6 @@
           {
             "name": "supply_after",
             "type": "u64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "EarlySettlement",
-      "docs": [
-        "A voluntary early settlement (decision 44): the payment settled an active line that could",
-        "draw nothing more, and the interest fixed at the draws beyond the accrual to the payment was",
-        "forgiven — the counterpart, at the debtor's will, of the forgiveness the mark applies at the",
-        "debtor's default. Emitted before the `LineRepaid` of the same repayment."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool",
-            "type": "pubkey"
-          },
-          {
-            "name": "line_id",
-            "type": "u64"
-          },
-          {
-            "name": "payer",
-            "type": "pubkey"
-          },
-          {
-            "name": "interest_forgiven",
-            "type": "u64"
-          },
-          {
-            "name": "settled_at",
-            "type": "i64"
           }
         ]
       }
@@ -5599,8 +5557,9 @@
       "name": "InterestCondoned",
       "docs": [
         "The council condoned interest of a line (`condone_interest`, decision 50): the late interest",
-        "accrued to `condoned_at` and `interest` of the ordinary interest it still owed, against the",
-        "written record `document_hash`. `remaining` is what the line owes afterwards."
+        "accrued to `condoned_at` and `interest` of the ordinary interest accrued and unpaid, against the",
+        "written record `document_hash`. `remaining` is what the line owes afterwards: principal and",
+        "ordinary interest accrued and unpaid."
       ],
       "type": {
         "kind": "struct",
@@ -5684,10 +5643,6 @@
           },
           {
             "name": "remaining",
-            "type": "u64"
-          },
-          {
-            "name": "interest_forgiven",
             "type": "u64"
           },
           {
@@ -5803,10 +5758,6 @@
             "type": "u64"
           },
           {
-            "name": "interest_due",
-            "type": "u64"
-          },
-          {
             "name": "availability_end",
             "type": "i64"
           },
@@ -5867,9 +5818,8 @@
       "name": "LineInCollection",
       "docs": [
         "A scheduled line moved to collection and its balance accelerated. `remaining` is the principal",
-        "and interest still due after the acceleration, without late interest; `interest_forgiven` is",
-        "the ordinary interest of the installments not yet due at the mark, which the line no longer",
-        "owes."
+        "left and the ordinary interest accrued to the mark and unpaid, without late interest; ordinary",
+        "interest stops at the mark (decision 48)."
       ],
       "type": {
         "kind": "struct",
@@ -5888,10 +5838,6 @@
           },
           {
             "name": "remaining",
-            "type": "u64"
-          },
-          {
-            "name": "interest_forgiven",
             "type": "u64"
           },
           {
@@ -6789,13 +6735,6 @@
             "type": "u64"
           },
           {
-            "name": "interest_reserved",
-            "docs": [
-              "The ordinary interest the line still owes after the payment, reserved by every entry."
-            ],
-            "type": "u64"
-          },
-          {
             "name": "entries",
             "type": {
               "vec": {
@@ -6970,16 +6909,6 @@
           {
             "name": "line_count",
             "type": "u64"
-          },
-          {
-            "name": "grace_period_seconds",
-            "docs": [
-              "Reserved, always zero: there is no grace period. Late interest runs from the first second",
-              "after a due date (or the term), and collection and write-offs count from the due dates",
-              "themselves. `init_pool` writes zero and nothing reads it; the field stays so the layout",
-              "does not move."
-            ],
-            "type": "u32"
           },
           {
             "name": "collection_period_seconds",
@@ -7351,7 +7280,8 @@
           {
             "name": "installments",
             "docs": [
-              "`drawn + interest_due` is paid in this many installments."
+              "`drawn` is repaid in this many installments of principal (decision 48); ordinary interest",
+              "is taken first from every payment."
             ],
             "type": "u16"
           },

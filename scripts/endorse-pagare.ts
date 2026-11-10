@@ -31,6 +31,7 @@ import {
   getEndorsePagareInstructionAsync,
   getRevokeProcuracionInstructionAsync,
   pagaresUnderProcuracion,
+  lineSponsor,
 } from "../clients/js/src/index.ts";
 import {
   DISCLAIMER,
@@ -111,7 +112,7 @@ if (revoke) {
     procurador = (await loadSigner("procurador", file)).address;
     console.log(`  a new procurador key for this case, ${procurador}, is in ${file}: hand it to the collection agency`);
   }
-  const sponsor = lineData.sponsor.__option === "Some" ? lineData.sponsor.value : undefined;
+  const sponsor = lineSponsor(lineData) ?? undefined;
   const refused = [poolAddress, pool.council, pool.creator, pool.fxFeeder, lineData.borrower, lineData.payer, sponsor];
   if (refused.includes(procurador) || council.members.some((m) => m.address === procurador)) {
     fail("the procurador cannot be the pool, the council, a curator, the creator, the FIX feeder, or the line's borrower, payer or sponsor");

@@ -3,8 +3,9 @@
 //! A line moves `Requested -> Approved -> Active -> Repaid | WrittenOff` (a rejected or withdrawn
 //! request closes), or `Approved -> Cancelled` if nothing
 //! was drawn; a scheduled line can also move `Active -> InCollection -> Repaid | WrittenOff`. The
-//! pause blocks requests, approvals and draws. Repayments go to late interest, then interest,
-//! then principal. Collected interest raises the NAV; a written-off principal lowers it once.
+//! pause blocks requests, approvals and draws. Ordinary interest accrues per second on the
+//! principal outstanding (decision 48); repayments go to late interest, then interest, then
+//! principal. Collected interest raises the NAV; a written-off principal lowers it once.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterface, TransferChecked};
@@ -12,7 +13,7 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 use crate::errors::PoolError;
 use crate::events::{
     AccelerationProposed, AccelerationWithdrawn, LateInterestCollected, LineAccelerated, LineApproved, LineDrawsResumed, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection,
-    AvailabilityRenounced, EarlySettlement, FxRealized, InterestCondoned, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
+    AvailabilityRenounced, FxRealized, InterestCondoned, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
     PagarePayment, PaymentEntry,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
@@ -83,7 +84,7 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
         require!(signed, PoolError::SponsorRequired);
     }
     if let Some(s) = t.schedule {
-        validate_schedule(&s, t.principal, t.rate_bps, now, t.term_end)?;
+        validate_schedule(&s, t.principal, now, t.term_end)?;
     }
     let terms_hash = terms::terms_hash(&pool.key(), line_id, &borrower, CURRENCY_MXN, &t);
     let s = t.schedule.unwrap_or(ScheduleParams { first_due_at: 0, interval_seconds: 0, installments: 0, max_missed: 0 });
@@ -93,7 +94,8 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
         pool: pool.key(),
         line_id,
         borrower,
-        sponsor: t.sponsor,
+        // The zero key for none: it cannot sign, so no request names it as a sponsor.
+        sponsor: t.sponsor.unwrap_or_default(),
         sponsor_role: t.sponsor_role,
         agreement_hash: t.agreement_hash,
         expediente_root: t.expediente_root,
@@ -104,7 +106,8 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
         availability_end: 0,
         drawn: 0,
         draws: 0,
-        interest_due: 0,
+        principal_seconds: 0,
+        accrued_at: 0,
         principal_repaid: 0,
         interest_repaid: 0,
         pagares_paid: 0,
@@ -125,7 +128,6 @@ pub fn request_line(ctx: Context<RequestLine>, line_id: u64, t: LineTerms) -> Re
         terms_hash,
         pagare_template_hash: t.pagare_template_hash,
         payer: ctx.accounts.payer.key(),
-        draw_time_weight: 0,
         availability_end_saved: 0,
         acceleration_due_at: 0,
         usdc_drawn: 0,
@@ -292,9 +294,9 @@ pub fn withdraw_request(ctx: Context<WithdrawRequest>) -> Result<()> {
 /// installments, a positive interval, `MIN_MAX_MISSED <= max_missed <=
 /// installments`, a first due date after the request, the last due date
 /// (`first_due_at + (installments - 1) * interval`) no later than `term_end`, and at least one
-/// unit per installment if the whole commitment were drawn now (`draw` re-checks on what is
-/// actually drawn). The dates are fixed by the contract and not re-checked at the draw.
-fn validate_schedule(s: &ScheduleParams, principal: u64, rate_bps: u16, now: i64, term_end: i64) -> Result<()> {
+/// centavo of principal per installment (decision 48; `draw` re-checks on what is actually drawn).
+/// The dates are fixed by the contract and not re-checked at the draw.
+fn validate_schedule(s: &ScheduleParams, principal: u64, now: i64, term_end: i64) -> Result<()> {
     require!(s.installments >= 1 && s.installments <= MAX_INSTALLMENTS, PoolError::InvalidSchedule);
     require!(s.interval_seconds > 0, PoolError::InvalidSchedule);
     require!(s.max_missed >= MIN_MAX_MISSED, PoolError::MaxMissedTooLow);
@@ -302,10 +304,7 @@ fn validate_schedule(s: &ScheduleParams, principal: u64, rate_bps: u16, now: i64
     require!(s.first_due_at > now, PoolError::InvalidSchedule);
     let last_due = last_due_of(s)?;
     require!(last_due <= term_end, PoolError::ScheduleEndsAfterTerm);
-    let seconds = u64::try_from(last_due.checked_sub(now).ok_or(PoolError::Overflow)?).map_err(|_| PoolError::Overflow)?;
-    let interest_if_drawn_now = math::tranche_interest(principal, rate_bps, seconds).ok_or(PoolError::Overflow)?;
-    let total = principal.checked_add(interest_if_drawn_now).ok_or(PoolError::Overflow)?;
-    require!(total >= u64::from(s.installments), PoolError::InvalidSchedule);
+    require!(principal >= u64::from(s.installments), PoolError::InvalidSchedule);
     Ok(())
 }
 
@@ -566,12 +565,13 @@ pub fn delivery_hash(pagare_hash: &[u8; 32], fix_rate: u64, fix_date: u32, usdc_
 /// in force, which the borrower signs as `fix_rate` and `fix_date` (`FixMismatch` if it changed,
 /// `FixStale` if older than `fx::MAX_FIX_AGE_DAYS`). Every check runs before anything is written:
 /// not paused; `Approved` or `Active`; `0 < amount_mxn <= principal - drawn`; `now <
-/// availability_end`, strictly; on a scheduled line every installment keeps at least one centavo;
-/// fewer than `MAX_DRAWS` tranches; at least one USDC base unit delivered; the vault has it; the
-/// line's USDC drawn, this tranche included, at most `max_line_bps` of the NAV now (`LineTooLarge`);
-/// the pool's outstanding cost stays within `max_outstanding_principal`; a valid signature method. The
-/// program derives the pagaré hash and the delivery hash; the tranche's interest, at the annual rate
-/// from now to the last due date, is fixed here.
+/// availability_end`, strictly; on a scheduled line every installment keeps at least one centavo
+/// of principal (`InvalidSchedule`); fewer than `MAX_DRAWS` tranches; at least one USDC base unit
+/// delivered; the vault has it; the line's USDC drawn, this tranche included, at most
+/// `max_line_bps` of the NAV now (`LineTooLarge`); the pool's outstanding cost stays within
+/// `max_outstanding_principal`; a valid signature method. The program derives the pagaré hash and
+/// the delivery hash. No interest is fixed: it accrues on the principal outstanding from now
+/// (decision 48).
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ctx: Context<Draw>,
@@ -597,14 +597,9 @@ pub fn draw(
         require!(age <= fx::MAX_FIX_AGE_DAYS, PoolError::FixStale);
     }
     let last_due = line.last_due().ok_or(PoolError::Overflow)?;
-    let seconds = u64::try_from(last_due.checked_sub(now).ok_or(PoolError::Overflow)?).map_err(|_| PoolError::Overflow)?;
-    let interest = math::tranche_interest(amount_mxn, line.rate_bps, seconds).ok_or(PoolError::Overflow)?;
     let drawn_after = line.drawn.checked_add(amount_mxn).ok_or(PoolError::Overflow)?;
-    let interest_after = line.interest_due.checked_add(interest).ok_or(PoolError::Overflow)?;
-    if let Some(s) = line.schedule() {
-        let total_after = drawn_after.checked_add(interest_after).ok_or(PoolError::Overflow)?;
-        require!(total_after >= u64::from(s.installments), PoolError::InvalidSchedule);
-    }
+    // One centavo of principal per installment at least, so no installment is empty (decision 48).
+    require!(drawn_after >= u64::from(line.installments), PoolError::InvalidSchedule);
     require!(line.draws < MAX_DRAWS, PoolError::TooManyDraws);
     let usdc = fx::usdc_for_mxn(amount_mxn, fix_rate).ok_or(PoolError::Overflow)?;
     require!(usdc > 0, PoolError::WrongAmount);
@@ -676,12 +671,10 @@ pub fn draw(
     let pool = &mut ctx.accounts.pool;
     pool.outstanding_principal = outstanding_after;
     let line = &mut ctx.accounts.line;
+    line.accrue(now).ok_or(PoolError::Overflow)?;
     line.drawn = drawn_after;
     line.usdc_drawn = line.usdc_drawn.checked_add(usdc).ok_or(PoolError::Overflow)?;
-    let weight = u128::from(amount_mxn).checked_mul(u128::try_from(now).map_err(|_| PoolError::Overflow)?).ok_or(PoolError::Overflow)?;
-    line.draw_time_weight = line.draw_time_weight.checked_add(weight).ok_or(PoolError::Overflow)?;
     line.draws = line.draws.checked_add(1).ok_or(PoolError::Overflow)?;
-    line.interest_due = interest_after;
     if line.status == LineStatus::Approved {
         line.status = LineStatus::Active;
         line.drawn_at = now;
@@ -701,7 +694,6 @@ pub fn draw(
         usdc_delivered: usdc,
         drawn: line.drawn,
         available: line.available().ok_or(PoolError::Overflow)?,
-        interest_due: line.interest_due,
         availability_end: line.availability_end,
         outstanding_after: pool.outstanding_principal,
     });
@@ -776,18 +768,15 @@ pub struct Repay<'info> {
 
 /// Pays an `Active` or `InCollection` line. Anyone may pay, and the pause never blocks it. `amount`
 /// must cover the late interest due (`LateInterestUnpaid`; on a bullet line, from `term_end` or
-/// from its acceleration); the payment
-/// settles late interest, then interest, then principal, and debits the payer only what is due.
-/// On an active line, whether or not it can still draw, the interest a payment takes is the
-/// interest accrued to that moment and not yet repaid (decisions 46 and 47); the rest stays owed
-/// until the line can draw nothing more, and is then taken, or forgiven, by the payment that
-/// settles the line (decision 44).
-/// What is owed is what was drawn plus the interest fixed at each draw.
+/// from its acceleration); the payment settles late interest, then the ordinary interest accrued
+/// to this second and unpaid, then principal (`math::allocate`), and debits the payer only that
+/// (decision 48). What is owed is the principal outstanding and the interest accrued on it; a
+/// principal repayment lowers the accrual from this second (`CreditLine::accrue`).
 ///
-/// The line becomes `Repaid` only when nothing is due and nothing can be drawn (window closed,
-/// fully drawn, or in collection). While it can draw, paying all that is payable leaves it
-/// `Active`, owing the interest not yet accrued, and a payment when nothing is payable is refused
-/// (`WrongAmount`); otherwise a payment on a zero debt closes the line and moves nothing.
+/// The line becomes `Repaid` only when it owes nothing and can draw nothing more (window closed,
+/// fully drawn, or in collection). While it can draw, paying all that is owed leaves it `Active`,
+/// and a payment when nothing is payable is refused (`WrongAmount`); otherwise a payment on a zero
+/// debt closes the line and moves nothing.
 ///
 /// Remaining accounts: exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first,
 /// where `last_touched` is the first one this payment leaves partly unpaid, or the last draw; none
@@ -820,51 +809,19 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     require!(pool.fix_rate != 0 && fix_rate == pool.fix_rate && fix_date == pool.fix_date, PoolError::FixMismatch);
     let amount = fx::mxn_for_usdc(max_usdc, fix_rate).ok_or(PoolError::Overflow)?;
 
-    let principal_left = line.drawn.checked_sub(line.principal_repaid).ok_or(PoolError::Overflow)?;
-    let interest_left = line.interest_due.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
-    let remaining = principal_left.checked_add(interest_left).ok_or(PoolError::Overflow)?;
     require!(amount > 0, PoolError::WrongAmount);
-
     let late_part = line_arrears(line, now)?.late_due;
     require!(amount >= late_part, PoolError::LateInterestUnpaid);
-    // While the line can still draw, a payment that clears what is payable does not close the line;
-    // otherwise a third party could pay one unit and forfeit the borrower's commitment.
-    let can_draw = line.status == LineStatus::Active
-        && now < line.availability_end
-        && line.available().ok_or(PoolError::Overflow)? > 0;
-    // Decision 44: a payment that settles an active line able to draw nothing more pays only the
-    // interest accrued to this moment (per second, as `accelerated_balance` reads a bullet); the
-    // rest of the interest the draws fixed is forgiven — the same forgiveness the mark applies at
-    // the debtor's default (decision 41), here at the debtor's will. Never below what was repaid.
-    // Decisions 46 and 47: on an active line, whether or not it can draw, a payment takes the
-    // interest accrued and not yet repaid, then principal, and never the interest not yet accrued
-    // (`payable`); that stays owed until a payment settles the line. A line in collection owes what
-    // the mark left (`interest_due` was cut there).
-    let mut settlement_forgiven = 0u64;
-    let (interest_left, payable) = if line.status == LineStatus::Active {
-        let accrued = math::bullet_accrued_interest(line.drawn, line.draw_time_weight, line.rate_bps, now)
-            .ok_or(PoolError::Overflow)?
-            .min(line.interest_due)
-            .max(line.interest_repaid);
-        let cut_left = accrued.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
-        let settle_total = principal_left.checked_add(cut_left).ok_or(PoolError::Overflow)?;
-        if !can_draw && amount.checked_sub(late_part).ok_or(PoolError::Overflow)? >= settle_total {
-            settlement_forgiven = line.interest_due.checked_sub(accrued).ok_or(PoolError::Overflow)?;
-        }
-        (cut_left, settle_total)
-    } else {
-        (interest_left, remaining)
-    };
-    // While the line can draw, nothing payable now (a zero debt, or only interest not yet accrued)
-    // is nothing to pay: refused, never a payment that moves nothing (decision 47).
-    require!(payable > 0 || late_part > 0 || !can_draw, PoolError::WrongAmount);
-    let rest = amount.checked_sub(late_part).ok_or(PoolError::Overflow)?.min(payable);
-    let interest_part = rest.min(interest_left);
-    let principal_part = rest.checked_sub(interest_part).ok_or(PoolError::Overflow)?;
-    let transfer = late_part
-        .checked_add(interest_part)
-        .and_then(|v| v.checked_add(principal_part))
-        .ok_or(PoolError::Overflow)?;
+    let principal_left = line.outstanding().ok_or(PoolError::Overflow)?;
+    let interest_unpaid = line.interest_unpaid(now).ok_or(PoolError::Overflow)?;
+    // While the line can still draw, a payment that clears what is owed does not close the line;
+    // otherwise a third party could pay one unit and forfeit the borrower's commitment. Nothing
+    // payable then is nothing to pay: refused, never a payment that moves nothing.
+    let can_draw = line.can_draw(now).ok_or(PoolError::Overflow)?;
+    require!(principal_left > 0 || interest_unpaid > 0 || late_part > 0 || !can_draw, PoolError::WrongAmount);
+    let parts = math::allocate(amount, late_part, interest_unpaid, principal_left).ok_or(PoolError::LateInterestUnpaid)?;
+    let (interest_part, principal_part) = (parts.interest, parts.principal);
+    let transfer = parts.total();
     let principal_before = line.principal_repaid;
     let principal_after = principal_before.checked_add(principal_part).ok_or(PoolError::Overflow)?;
     // The USDC taken, rounded up, and the part of it that paid principal: what the principal's
@@ -944,9 +901,8 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     pool.fx_realized = pool.fx_realized.checked_add(fx_delta).ok_or(PoolError::Overflow)?;
 
     let line = &mut ctx.accounts.line;
-    if settlement_forgiven > 0 {
-        line.interest_due = line.interest_due.checked_sub(settlement_forgiven).ok_or(PoolError::Overflow)?;
-    }
+    // Every second before this one accrued on the principal it had (decision 48).
+    line.accrue(now).ok_or(PoolError::Overflow)?;
     line.principal_repaid = line.principal_repaid.checked_add(principal_part).ok_or(PoolError::Overflow)?;
     line.interest_repaid = line.interest_repaid.checked_add(interest_part).ok_or(PoolError::Overflow)?;
     line.usdc_cost_repaid = line.usdc_cost_repaid.checked_add(cost).ok_or(PoolError::Overflow)?;
@@ -956,13 +912,9 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         line.late_collected = line.late_collected.checked_add(late_part).ok_or(PoolError::Overflow)?;
         line.late_paid_until = now;
     }
-    // What the line still owes after the payment and any forgiveness: while it can draw, the
-    // interest not yet accrued keeps it open.
-    let remaining_after = line
-        .drawn
-        .checked_sub(line.principal_repaid)
-        .zip(line.interest_due.checked_sub(line.interest_repaid))
-        .and_then(|(p, i)| p.checked_add(i))
+    // What the line still owes after the payment, late interest aside: `owed(now)`.
+    let remaining_after = (principal_left - principal_part)
+        .checked_add(interest_unpaid - interest_part)
         .ok_or(PoolError::Overflow)?;
     if remaining_after == 0 && !can_draw {
         line.status = LineStatus::Repaid;
@@ -975,12 +927,9 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     // late interest alone also leaves its entry there.
     let payer_key = ctx.accounts.payer.key();
     let by_borrower = payer_key == line.borrower;
-    // The ordinary interest the line still owes: every payment entry reserves it (decision 46,
-    // CCom 364: principal received without reserving the interest extinguishes it).
-    let interest_reserved = line.interest_due.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
     // The aval's settling payment is its own mark, and the título then goes to the aval
     // (LGTOC 115, decision 38-f).
-    let by_aval = !by_borrower && line.sponsor == Some(payer_key) && line.sponsor_role == SPONSOR_GUARANTOR;
+    let by_aval = !by_borrower && line.sponsor != Pubkey::default() && line.sponsor == payer_key && line.sponsor_role == SPONSOR_GUARANTOR;
     let accessory_total = interest_part.checked_add(late_part).ok_or(PoolError::Overflow)?;
     let pool_key = pool.key();
     let line_id = line.line_id;
@@ -1005,7 +954,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
             continue;
         }
         let principal_balance = sidecar.amount_mxn.min(sidecar.drawn_through.saturating_sub(principal_after));
-        let annotation = registry::annotation_hash(&receipt_hash, principal_applied, accessory_applied, principal_balance, by_borrower, interest_reserved);
+        let annotation = registry::annotation_hash(&receipt_hash, principal_applied, accessory_applied, principal_balance, by_borrower);
         let hash = registry::append(sidecar, kind, &payer_key, &pool_key, &annotation, now).ok_or(PoolError::Overflow)?;
         // The payment entry's own number: a Terminacion may chain right after it, and the
         // PaymentEntry must name the entry whose preimages it carries.
@@ -1067,7 +1016,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         sidecar.exit(ctx.program_id)?;
     }
     if !touched.is_empty() {
-        emit_cpi!(PagarePayment { pool: pool_key, line_id, payer: payer_key, receipt_hash, late_part, interest_part, principal_part, interest_reserved, entries });
+        emit_cpi!(PagarePayment { pool: pool_key, line_id, payer: payer_key, receipt_hash, late_part, interest_part, principal_part, entries });
     }
 
     ctx.accounts.vault.reload()?;
@@ -1087,15 +1036,6 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
             nav_after,
         });
     }
-    if settlement_forgiven > 0 {
-        emit_cpi!(EarlySettlement {
-            pool: pool.key(),
-            line_id: line.line_id,
-            payer: ctx.accounts.payer.key(),
-            interest_forgiven: settlement_forgiven,
-            settled_at: now,
-        });
-    }
     emit_cpi!(LineRepaid {
         pool: pool.key(),
         line_id: line.line_id,
@@ -1112,9 +1052,9 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     Ok(())
 }
 
-/// The arrears of a line at `now`: the installments repay `drawn + interest_due` on the
-/// contract's calendar, and late interest accrues on the principal share, `drawn`, of what is
-/// overdue, from the first second past each due date (there is no grace period).
+/// The arrears of a line at `now`: the installments repay `drawn` on the contract's calendar
+/// (decision 48), and late interest accrues on the principal overdue from the first second past
+/// each due date (there is no grace period).
 fn line_arrears(line: &CreditLine, now: i64) -> Result<Arrears> {
     // A bullet line is one installment due at the term: late interest runs on its unpaid
     // principal from `term_end`, or from the mark if it was accelerated before, at the same rate
@@ -1124,20 +1064,16 @@ fn line_arrears(line: &CreditLine, now: i64) -> Result<Arrears> {
         None => (line.term_end.checked_sub(1).ok_or(PoolError::Overflow)?, 1, 1),
     };
     let terms = ScheduleTerms {
-        total: line.drawn.checked_add(line.interest_due).ok_or(PoolError::Overflow)?,
+        principal: line.drawn,
         anchor,
         interval,
         installments,
         late_bps: line.late_bps,
-        grace: 0,
         late_paid_until: line.late_paid_until,
-        principal: line.drawn,
-        principal_left: line.drawn.checked_sub(line.principal_repaid).ok_or(PoolError::Overflow)?,
         late_collected: line.late_collected,
         accelerated_at: line.accelerated_at,
     };
-    let paid = line.principal_repaid.checked_add(line.interest_repaid).ok_or(PoolError::Overflow)?;
-    Ok(math::arrears(&terms, paid, now).ok_or(PoolError::Overflow)?)
+    Ok(math::arrears(&terms, line.principal_repaid, now).ok_or(PoolError::Overflow)?)
 }
 
 #[event_cpi]
@@ -1165,9 +1101,8 @@ pub struct MarkInCollection<'info> {
 /// `now > anchor + min(covered + max_missed, installments) * interval`, where the anchor is one
 /// interval before `first_due_at`. The mark accelerates the balance (vencimiento anticipado):
 /// `accelerated_at = now`, from which every installment is due and late interest runs on all
-/// remaining principal, and the ordinary interest of the installments not yet due is forgiven
-/// (`interest_due` shrinks to the share of the installments due, never below what was repaid; no
-/// NAV effect, since interest counts when collected). A council proposal still in its notice is
+/// remaining principal; ordinary interest accrues to the mark and stops there (decision 48). A
+/// council proposal still in its notice is
 /// superseded (`acceleration_due_at` back to zero, `AccelerationWithdrawn`). It records facts and
 /// moves no funds, so it is not blocked by the pause.
 pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
@@ -1188,23 +1123,18 @@ pub fn mark_in_collection(ctx: Context<MarkInCollection>) -> Result<()> {
     let last_missed_due = s.interval_seconds.checked_mul(i64::from(k)).and_then(|span| anchor.checked_add(span)).ok_or(PoolError::Overflow)?;
     require!(now > last_missed_due, PoolError::NotEnoughMissed);
 
-    // The line keeps the ordinary interest of the installments due at the mark, at least the ones
-    // that put it in collection.
-    let (kept, interest_forgiven, remaining) = accelerated_balance(line, a.due.max(k), now)?;
     let pool_key = pool.key();
     // The mark provisions the line's outstanding cost (decision 40).
     let cost_outstanding = line.usdc_drawn.checked_sub(line.usdc_cost_repaid).ok_or(PoolError::Overflow)?;
     let line = &mut ctx.accounts.line;
-    line.status = LineStatus::InCollection;
-    line.accelerated_at = now;
-    line.interest_due = kept;
+    let remaining = accelerate(line, now)?;
     // The objective route supersedes a council proposal still in its notice; draws stay suspended.
     let superseded = line.acceleration_due_at != 0;
     line.acceleration_due_at = 0;
     let pool = &mut ctx.accounts.pool;
     pool.impaired_principal = pool.impaired_principal.checked_add(cost_outstanding).ok_or(PoolError::Overflow)?;
     let impaired_principal = pool.impaired_principal;
-    emit_cpi!(LineInCollection { pool: pool_key, line_id: line.line_id, missed: a.missed, remaining, interest_forgiven, impaired_principal });
+    emit_cpi!(LineInCollection { pool: pool_key, line_id: line.line_id, missed: a.missed, remaining, impaired_principal });
     if superseded {
         emit_cpi!(AccelerationWithdrawn { pool: pool_key, line_id: line.line_id });
     }
@@ -1390,7 +1320,7 @@ pub fn resume_draws(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
 /// Council only: condones interest of an `Active` or `InCollection` line (decision 50; CCF 2209,
 /// 2210: remitting an accessory leaves the principal owed). All the late interest accrued to now
 /// is condoned — the watermark moves and nothing is collected — together with `interest` of the
-/// ordinary interest still owed (`WrongAmount` above it, or when there is nothing to condone),
+/// ordinary interest accrued and unpaid (`WrongAmount` above it, or when there is nothing to condone),
 /// which counts from then on as settled (`interest_repaid`), without reaching `interest_collected`.
 /// `document_hash` commits the written record of the quita (`DocumentHashRequired`). Principal is
 /// never condoned. A line left owing nothing that can draw nothing more closes (`Repaid`), and its
@@ -1403,23 +1333,15 @@ pub fn condone_interest(ctx: Context<CouncilLine>, interest: u64, document_hash:
     let line = &mut ctx.accounts.line;
     require!(matches!(line.status, LineStatus::Active | LineStatus::InCollection), PoolError::LineStatus);
     let late_interest = line_arrears(line, now)?.late_due;
-    let interest_left = line.interest_due.checked_sub(line.interest_repaid).ok_or(PoolError::Overflow)?;
-    require!(interest <= interest_left && (interest > 0 || late_interest > 0), PoolError::WrongAmount);
+    let interest_unpaid = line.interest_unpaid(now).ok_or(PoolError::Overflow)?;
+    require!(interest <= interest_unpaid && (interest > 0 || late_interest > 0), PoolError::WrongAmount);
     if late_interest > 0 {
         line.late_paid_until = now;
     }
-    // Condoned interest counts as settled: what is payable now falls by it, and the installments
-    // it covers count as paid. Lowering `interest_due` would only take it off the far end.
+    // Condoned interest counts as settled: the next payment does not take it again.
     line.interest_repaid = line.interest_repaid.checked_add(interest).ok_or(PoolError::Overflow)?;
-    let remaining = line
-        .drawn
-        .checked_sub(line.principal_repaid)
-        .zip(interest_left.checked_sub(interest))
-        .and_then(|(p, i)| p.checked_add(i))
-        .ok_or(PoolError::Overflow)?;
-    let can_draw = line.status == LineStatus::Active
-        && now < line.availability_end
-        && line.available().ok_or(PoolError::Overflow)? > 0;
+    let remaining = line.owed(now).ok_or(PoolError::Overflow)?;
+    let can_draw = line.can_draw(now).ok_or(PoolError::Overflow)?;
     if remaining == 0 && !can_draw {
         line.status = LineStatus::Repaid;
         line.closed_at = now;
@@ -1447,8 +1369,8 @@ pub struct RenounceAvailability<'info> {
 
 /// The borrower, and nobody else, gives up what is left to draw of an `Active` line (decision 45):
 /// the window closes now and for good — `availability_end_saved` stays zero, so `resume_draws`
-/// has nothing to restore — and the line, able to draw nothing more, settles at the borrower's
-/// will with the reduction of decision 44. Refused when there is nothing to renounce
+/// has nothing to restore — and the line, able to draw nothing more, closes at the payment that
+/// leaves it owing nothing. Refused when there is nothing to renounce
 /// (`WindowClosed`: the window already closed, by date or by a suspension, or the line is drawn
 /// in full). It moves no funds and the pause does not block it.
 pub fn renounce_availability(ctx: Context<RenounceAvailability>) -> Result<()> {
@@ -1495,34 +1417,20 @@ pub fn withdraw_acceleration(ctx: Context<CouncilLine>, valid_until: i64) -> Res
     Ok(())
 }
 
-/// The acceleration both routes share: the ordinary interest kept at the mark and the remaining
-/// balance. A scheduled line keeps the interest of the installments due at the mark (`due_count`);
-/// a bullet line keeps the interest accrued on each tranche from its draw to the mark. Never less
-/// than what was repaid. Returns `(kept, interest_forgiven, remaining)`.
-fn accelerated_balance(line: &CreditLine, due_count: u16, now: i64) -> Result<(u64, u64, u64)> {
-    let kept = match line.schedule() {
-        Some(s) => math::accelerated_interest(line.interest_due, due_count, s.installments).ok_or(PoolError::Overflow)?.0,
-        // Rounded once over every tranche, the accrual can pass the per-tranche `interest_due`
-        // by a few units at the last due date: clamped (see `math::bullet_accrued_interest`).
-        None => math::bullet_accrued_interest(line.drawn, line.draw_time_weight, line.rate_bps, now)
-            .ok_or(PoolError::Overflow)?
-            .min(line.interest_due),
-    };
-    let kept = kept.max(line.interest_repaid);
-    let interest_forgiven = line.interest_due.checked_sub(kept).ok_or(PoolError::Overflow)?;
-    let remaining = line
-        .drawn
-        .checked_sub(line.principal_repaid)
-        .and_then(|v| v.checked_add(kept.checked_sub(line.interest_repaid)?))
-        .ok_or(PoolError::Overflow)?;
-    Ok((kept, interest_forgiven, remaining))
+/// The acceleration both routes share (decision 48): the accrual is brought to `now` and stops
+/// there, the line moves to `InCollection` with `accelerated_at = now`, and nothing is cut. Returns
+/// what the line owes, principal and ordinary interest, late interest aside.
+fn accelerate(line: &mut CreditLine, now: i64) -> Result<u64> {
+    line.accrue(now).ok_or(PoolError::Overflow)?;
+    line.status = LineStatus::InCollection;
+    line.accelerated_at = now;
+    Ok(line.owed(now).ok_or(PoolError::Overflow)?)
 }
 
 /// Council only: fires a pending proposal once its notice has run (`AccelerationNotDue`): the
 /// line moves to `InCollection` with `accelerated_at = now`, as `mark_in_collection` would, without
-/// missed installments. A scheduled line keeps the ordinary interest of the installments due now
-/// (none due: only what was repaid); a bullet line keeps the interest accrued to now; the rest is
-/// forgiven. `acceleration_due_at` stays set: with `accelerated_at` it records the council's route.
+/// missed installments; ordinary interest accrues to now and stops (decision 48).
+/// `acceleration_due_at` stays set: with `accelerated_at` it records the council's route.
 pub fn accelerate_line(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
     ctx.accounts.check_council()?;
@@ -1531,22 +1439,15 @@ pub fn accelerate_line(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()
     let line = &ctx.accounts.line;
     require!(line.status == LineStatus::Active && line.acceleration_due_at != 0, PoolError::AccelerationState);
     require!(now >= line.acceleration_due_at, PoolError::AccelerationNotDue);
-    let due_count = match line.schedule() {
-        Some(_) => line_arrears(line, now)?.due,
-        None => 0,
-    };
-    let (kept, interest_forgiven, remaining) = accelerated_balance(line, due_count, now)?;
     // The council's acceleration provisions the line's outstanding cost, like the mark
     // (decision 40).
     let cost_outstanding = line.usdc_drawn.checked_sub(line.usdc_cost_repaid).ok_or(PoolError::Overflow)?;
     let line = &mut ctx.accounts.line;
-    line.status = LineStatus::InCollection;
-    line.accelerated_at = now;
-    line.interest_due = kept;
+    let remaining = accelerate(line, now)?;
     let pool = &mut ctx.accounts.pool;
     pool.impaired_principal = pool.impaired_principal.checked_add(cost_outstanding).ok_or(PoolError::Overflow)?;
     let impaired_principal = pool.impaired_principal;
-    emit_cpi!(LineAccelerated { pool: pool_key, line_id: line.line_id, remaining, interest_forgiven, impaired_principal });
+    emit_cpi!(LineAccelerated { pool: pool_key, line_id: line.line_id, remaining, impaired_principal });
     Ok(())
 }
 

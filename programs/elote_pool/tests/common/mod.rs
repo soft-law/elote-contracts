@@ -216,6 +216,7 @@ pub const E_FX_REFERENCE_INVALID: u32 = ERR_BASE + PoolError::FxReferenceInvalid
 pub const E_FX_REFERENCE_STALE: u32 = ERR_BASE + PoolError::FxReferenceStale as u32;
 pub const E_FIX_OFF_REFERENCE: u32 = ERR_BASE + PoolError::FixOffReference as u32;
 pub const E_FIX_ALREADY_POSTED_TODAY: u32 = ERR_BASE + PoolError::FixAlreadyPostedToday as u32;
+pub const E_ASSET_DECIMALS_INVALID: u32 = ERR_BASE + PoolError::AssetDecimalsInvalid as u32;
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
@@ -1341,8 +1342,8 @@ impl Env {
     /// Terms of a scheduled line: `installments` equal installments spanning exactly one year
     /// (interval `YEAR / installments`, exact for 3, 4, 6, 12, 18 and 120), the first due date one
     /// interval from now, a term that ends one year from now, and the demo policy of three missed
-    /// installments before collection. Drawn in full right away, the line owes
-    /// `principal * rate_bps / BPS` of interest, the same figure as the old flat rate.
+    /// installments before collection. Drawn in full right away and untouched, the line accrues
+    /// `principal * rate_bps / BPS` of interest to its last due date (decision 48).
     pub fn scheduled_params(&self, principal: u64, rate_bps: u16, installments: u16, late_bps: u16) -> LineParams {
         let interval = YEAR / i64::from(installments);
         LineParams {
@@ -1701,20 +1702,11 @@ impl Env {
         if cursor >= line.draws {
             return vec![];
         }
+        // Decision 48: late interest, the interest accrued and unpaid, then principal.
         let late = self.arrears(k, line_id).late_due;
-        let mut interest_left = line.interest_due - line.interest_repaid;
-        let mut payable = (line.drawn - line.principal_repaid) + interest_left;
-        // Decisions 46 and 47: on an active line, the accrued interest, then principal.
-        if line.status == elote_pool::state::LineStatus::Active {
-            let accrued = elote_pool::math::bullet_accrued_interest(line.drawn, line.draw_time_weight, line.rate_bps, self.now())
-                .unwrap()
-                .min(line.interest_due)
-                .max(line.interest_repaid);
-            interest_left = accrued - line.interest_repaid;
-            payable = (line.drawn - line.principal_repaid) + interest_left;
-        }
-        let rest = amount.saturating_sub(late).min(payable);
-        let principal_after = line.principal_repaid + (rest - rest.min(interest_left));
+        let interest = line.interest_unpaid(self.now()).expect("interest");
+        let rest = amount.saturating_sub(late).saturating_sub(interest);
+        let principal_after = line.principal_repaid + rest.min(line.drawn - line.principal_repaid);
         let line_key = line_pda(&k.pool, line_id).0;
         let mut out = Vec::new();
         for idx in cursor..line.draws {
@@ -1840,39 +1832,51 @@ impl Env {
             None => (line.term_end - 1, 1, 1),
         };
         let terms = elote_pool::math::ScheduleTerms {
-            total: line.drawn + line.interest_due,
+            principal: line.drawn,
             anchor,
             interval,
             installments,
             late_bps: line.late_bps,
-            grace: 0,
             late_paid_until: line.late_paid_until,
-            principal: line.drawn,
-            principal_left: line.drawn - line.principal_repaid,
             late_collected: line.late_collected,
             accelerated_at: line.accelerated_at,
         };
-        elote_pool::math::arrears(&terms, line.principal_repaid + line.interest_repaid, self.now()).expect("arrears")
+        elote_pool::math::arrears(&terms, line.principal_repaid, self.now()).expect("arrears")
+    }
+
+    /// The ordinary interest the line has accrued and not settled now, as the program reads it
+    /// (decision 48): what a payment takes after the late interest. A driver, like `payoff`.
+    pub fn interest_unpaid(&self, k: &PoolKeys, line_id: u64) -> u64 {
+        self.line(k, line_id).interest_unpaid(self.now()).expect("interest")
+    }
+
+    /// What a payment now must bring to leave the line owing nothing: the late interest due, the
+    /// principal outstanding and the ordinary interest accrued and unpaid, as the program reads
+    /// them. A driver for amounts to mint and pay; expected figures come from elsewhere.
+    pub fn payoff(&self, k: &PoolKeys, line_id: u64) -> u64 {
+        let line = self.line(k, line_id);
+        line.owed(self.now()).expect("owed") + self.arrears(k, line_id).late_due
     }
 
     pub fn line(&self, k: &PoolKeys, line_id: u64) -> elote_pool::state::CreditLine {
         self.anchor_account(&line_pda(&k.pool, line_id).0)
     }
 
-    /// Opens, draws and fully repays a line of `principal` at `rate_bps`: the pool earns the interest.
+    /// Opens, draws and fully repays a line of `principal` at `rate_bps` at its term, a year after
+    /// the draw (nothing late yet): the pool earns `principal * rate_bps / BPS`, the year's interest
+    /// on the principal outstanding the whole year (decision 48), which it returns.
     pub fn lend_and_repay(&mut self, k: &PoolKeys, principal: u64, rate_bps: u16) -> u64 {
         let borrower = self.borrower(k);
         let line_id = self.open_line(k, &borrower, principal, rate_bps);
         self.draw(k, line_id, &borrower);
         let line = self.line(k, line_id);
-        let interest = line.interest_due;
-        // Repay at the term, when the fixed interest is fully accrued: an earlier settlement
-        // would owe only the accrual (decision 44) and these tests exercise the interest, not
-        // the forgiveness. At the term exactly, nothing is late yet.
+        assert_eq!(line.term_end - line.drawn_at, YEAR, "drawn a year before the term");
+        let interest = (u128::from(principal) * u128::from(rate_bps) / 10_000) as u64;
         self.warp(line.term_end);
         let council = self.council.insecure_clone();
         self.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
-        self.repay(k, line_id, &borrower, principal + interest);
+        let ev = self.repay(k, line_id, &borrower, principal + interest);
+        assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (interest, principal, 0));
         interest
     }
 

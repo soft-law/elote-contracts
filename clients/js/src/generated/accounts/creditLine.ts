@@ -21,8 +21,6 @@ import {
   getBytesEncoder,
   getI64Decoder,
   getI64Encoder,
-  getOptionDecoder,
-  getOptionEncoder,
   getStructDecoder,
   getStructEncoder,
   getU128Decoder,
@@ -36,17 +34,15 @@ import {
   transformEncoder,
   type Account,
   type Address,
-  type Codec,
-  type Decoder,
   type EncodedAccount,
-  type Encoder,
   type FetchAccountConfig,
   type FetchAccountsConfig,
+  type FixedSizeCodec,
+  type FixedSizeDecoder,
+  type FixedSizeEncoder,
   type HasAddress,
   type MaybeAccount,
   type MaybeEncodedAccount,
-  type Option,
-  type OptionOrNullable,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 import {
@@ -69,9 +65,15 @@ export type CreditLine = {
   pool: Address;
   lineId: bigint;
   borrower: Address;
-  /** Co-signed `request_line`; `None` when the line has no sponsor. */
-  sponsor: Option<Address>;
-  /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
+  /**
+   * Co-signed `request_line`; the zero key when the line has no sponsor, so every field keeps
+   * one offset.
+   */
+  sponsor: Address;
+  /**
+   * `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is not the zero
+   * key.
+   */
   sponsorRole: number;
   /** Hash of the signed credit agreement. */
   agreementHash: ReadonlyUint8Array;
@@ -84,8 +86,8 @@ export type CreditLine = {
   /** The approved commitment; `available = principal - drawn`. */
   principal: bigint;
   /**
-   * Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
-   * the last due date.
+   * Annual ordinary interest rate, in basis points, on the principal outstanding, per second
+   * (ACTUAL/365) until the last due date or the acceleration (decision 48).
    */
   rateBps: number;
   /** The maturity of a bullet line. */
@@ -100,10 +102,13 @@ export type CreditLine = {
   /** Tranches drawn; at most `MAX_DRAWS`. */
   draws: number;
   /**
-   * Ordinary interest owed: each draw adds `amount * rate_bps * (last_due - now) / (BPS *
-   * SECONDS_PER_YEAR)`; `mark_in_collection` cuts it to the share of the installments then due.
+   * `∫ (drawn - principal_repaid) dt` up to `accrued_at`, in centavo-seconds: advanced by
+   * `accrue` before every change of the outstanding principal and at the acceleration
+   * (decision 48). The ordinary interest accrued is read from it, rounded down once.
    */
-  interestDue: bigint;
+  principalSeconds: bigint;
+  /** The instant `principal_seconds` runs to; never past `accrual_end`. */
+  accruedAt: bigint;
   principalRepaid: bigint;
   /** Ordinary interest settled: repaid, or condoned by the council (decision 50). */
   interestRepaid: bigint;
@@ -147,11 +152,6 @@ export type CreditLine = {
   /** Funded the request; receives the rent back on withdraw, reject or expiry. */
   payer: Address;
   /**
-   * `Σ amount × drawn_at` over the draws: a bullet line's interest accrued at a mark is
-   * `rate × (drawn × mark − draw_time_weight)`.
-   */
-  drawTimeWeight: bigint;
-  /**
    * The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which
    * `resume_draws` restores; zero when draws are not suspended. Suspended ⇔ non-zero.
    */
@@ -177,9 +177,15 @@ export type CreditLineArgs = {
   pool: Address | HasAddress;
   lineId: number | bigint;
   borrower: Address | HasAddress;
-  /** Co-signed `request_line`; `None` when the line has no sponsor. */
-  sponsor: OptionOrNullable<Address | HasAddress>;
-  /** `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named. */
+  /**
+   * Co-signed `request_line`; the zero key when the line has no sponsor, so every field keeps
+   * one offset.
+   */
+  sponsor: Address | HasAddress;
+  /**
+   * `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is not the zero
+   * key.
+   */
   sponsorRole: number;
   /** Hash of the signed credit agreement. */
   agreementHash: ReadonlyUint8Array;
@@ -192,8 +198,8 @@ export type CreditLineArgs = {
   /** The approved commitment; `available = principal - drawn`. */
   principal: number | bigint;
   /**
-   * Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
-   * the last due date.
+   * Annual ordinary interest rate, in basis points, on the principal outstanding, per second
+   * (ACTUAL/365) until the last due date or the acceleration (decision 48).
    */
   rateBps: number;
   /** The maturity of a bullet line. */
@@ -208,10 +214,13 @@ export type CreditLineArgs = {
   /** Tranches drawn; at most `MAX_DRAWS`. */
   draws: number;
   /**
-   * Ordinary interest owed: each draw adds `amount * rate_bps * (last_due - now) / (BPS *
-   * SECONDS_PER_YEAR)`; `mark_in_collection` cuts it to the share of the installments then due.
+   * `∫ (drawn - principal_repaid) dt` up to `accrued_at`, in centavo-seconds: advanced by
+   * `accrue` before every change of the outstanding principal and at the acceleration
+   * (decision 48). The ordinary interest accrued is read from it, rounded down once.
    */
-  interestDue: number | bigint;
+  principalSeconds: number | bigint;
+  /** The instant `principal_seconds` runs to; never past `accrual_end`. */
+  accruedAt: number | bigint;
   principalRepaid: number | bigint;
   /** Ordinary interest settled: repaid, or condoned by the council (decision 50). */
   interestRepaid: number | bigint;
@@ -255,11 +264,6 @@ export type CreditLineArgs = {
   /** Funded the request; receives the rent back on withdraw, reject or expiry. */
   payer: Address | HasAddress;
   /**
-   * `Σ amount × drawn_at` over the draws: a bullet line's interest accrued at a mark is
-   * `rate × (drawn × mark − draw_time_weight)`.
-   */
-  drawTimeWeight: number | bigint;
-  /**
    * The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which
    * `resume_draws` restores; zero when draws are not suspended. Suspended ⇔ non-zero.
    */
@@ -282,14 +286,14 @@ export type CreditLineArgs = {
 };
 
 /** Gets the encoder for {@link CreditLineArgs} account data. */
-export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
+export function getCreditLineEncoder(): FixedSizeEncoder<CreditLineArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["pool", getAddressEncoder()],
       ["lineId", getU64Encoder()],
       ["borrower", getAddressEncoder()],
-      ["sponsor", getOptionEncoder(getAddressEncoder())],
+      ["sponsor", getAddressEncoder()],
       ["sponsorRole", getU8Encoder()],
       ["agreementHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["expedienteRoot", fixEncoderSize(getBytesEncoder(), 32)],
@@ -300,7 +304,8 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
       ["availabilityEnd", getI64Encoder()],
       ["drawn", getU64Encoder()],
       ["draws", getU16Encoder()],
-      ["interestDue", getU64Encoder()],
+      ["principalSeconds", getU128Encoder()],
+      ["accruedAt", getI64Encoder()],
       ["principalRepaid", getU64Encoder()],
       ["interestRepaid", getU64Encoder()],
       ["pagaresPaid", getU16Encoder()],
@@ -321,7 +326,6 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
       ["termsHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["pagareTemplateHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["payer", getAddressEncoder()],
-      ["drawTimeWeight", getU128Encoder()],
       ["availabilityEndSaved", getI64Encoder()],
       ["accelerationDueAt", getI64Encoder()],
       ["usdcDrawn", getU64Encoder()],
@@ -333,13 +337,13 @@ export function getCreditLineEncoder(): Encoder<CreditLineArgs> {
 }
 
 /** Gets the decoder for {@link CreditLine} account data. */
-export function getCreditLineDecoder(): Decoder<CreditLine> {
+export function getCreditLineDecoder(): FixedSizeDecoder<CreditLine> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["pool", getAddressDecoder()],
     ["lineId", getU64Decoder()],
     ["borrower", getAddressDecoder()],
-    ["sponsor", getOptionDecoder(getAddressDecoder())],
+    ["sponsor", getAddressDecoder()],
     ["sponsorRole", getU8Decoder()],
     ["agreementHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["expedienteRoot", fixDecoderSize(getBytesDecoder(), 32)],
@@ -350,7 +354,8 @@ export function getCreditLineDecoder(): Decoder<CreditLine> {
     ["availabilityEnd", getI64Decoder()],
     ["drawn", getU64Decoder()],
     ["draws", getU16Decoder()],
-    ["interestDue", getU64Decoder()],
+    ["principalSeconds", getU128Decoder()],
+    ["accruedAt", getI64Decoder()],
     ["principalRepaid", getU64Decoder()],
     ["interestRepaid", getU64Decoder()],
     ["pagaresPaid", getU16Decoder()],
@@ -371,7 +376,6 @@ export function getCreditLineDecoder(): Decoder<CreditLine> {
     ["termsHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["pagareTemplateHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["payer", getAddressDecoder()],
-    ["drawTimeWeight", getU128Decoder()],
     ["availabilityEndSaved", getI64Decoder()],
     ["accelerationDueAt", getI64Decoder()],
     ["usdcDrawn", getU64Decoder()],
@@ -381,7 +385,10 @@ export function getCreditLineDecoder(): Decoder<CreditLine> {
 }
 
 /** Gets the codec for {@link CreditLine} account data. */
-export function getCreditLineCodec(): Codec<CreditLineArgs, CreditLine> {
+export function getCreditLineCodec(): FixedSizeCodec<
+  CreditLineArgs,
+  CreditLine
+> {
   return combineCodec(getCreditLineEncoder(), getCreditLineDecoder());
 }
 
@@ -444,4 +451,8 @@ export async function fetchAllMaybeCreditLine(
     config,
   );
   return maybeAccounts.map((maybeAccount) => decodeCreditLine(maybeAccount));
+}
+
+export function getCreditLineSize(): number {
+  return 528;
 }

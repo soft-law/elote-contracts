@@ -57,11 +57,11 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 - **Credit lines from the pool.** A borrower `request_line`s a commitment — the principal, an annual
   rate, the term, the hash of the signed credit agreement and a commitment to the credit file — and
   the council `approve_line`s it within its review window and the line cap. The borrower then draws
-  the commitment in tranches while the draw window is open, each tranche against a signed pagaré;
-  interest on a tranche is fixed at the draw, proportional to the time to the last due date.
-  Repayments go to late interest, then interest, then principal, and never take more than is due;
-  on an active line, whether or not it can still draw, the interest a payment takes is the interest
-  accrued to that moment (decisions 46 and 47).
+  the commitment in tranches while the draw window is open, each tranche against a signed pagaré.
+  Ordinary interest accrues per second (ACTUAL/365) on the principal outstanding, until the last
+  due date or the acceleration (decision 48): every principal repayment lowers it from that second.
+  Repayments go to late interest, then the ordinary interest accrued and unpaid, then principal,
+  and never take more than is due.
   Anyone may repay on the borrower's behalf; the payer is recorded in the event.
 - **Pagarés as tokens.** Each draw mints a pagaré as a Metaplex Core asset, held frozen by the pool,
   with an on-chain registry (a hash chain of entries) that records every act on the title: issuance,
@@ -86,13 +86,13 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 | collection | a Metaplex Core collection the creator creates and hands to `init_pool` | the series' collection of pagaré assets; its update authority must be the pool PDA, so only the program mints into it |
 | vault | PDA token account `["vault", pool]`, owned by the pool PDA | the pool's liquid assets |
 | dead shares | PDA token account `["dead", pool]`, owned by the pool PDA | the 1,000 shares locked by the first deposit |
-| `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | the borrower, sponsor and payer, the terms hash, agreement hash and expediente root, status, the principal, rate and term, what was drawn and repaid (in MXN and the USDC it cost), the draw window and first due date, the installment schedule (scheduled lines), late interest collected and settled, the payment cursor `pagares_paid`, and the acceleration (`accelerated_at`, a pending `acceleration_due_at`, the saved window) |
+| `CreditLine` | PDA `["line", pool, line_id (u64 LE)]` | the borrower, sponsor and payer, the terms hash, agreement hash and expediente root, status, the principal, rate and term, what was drawn and repaid (in MXN and the USDC it cost), the accrual of ordinary interest (`principal_seconds` to `accrued_at`), the draw window and first due date, the installment schedule (scheduled lines), late interest collected and settled, the payment cursor `pagares_paid`, and the acceleration (`accelerated_at`, a pending `acceleration_due_at`, the saved window) |
 | `Pagare` | PDA `["pagare", line, draw_index (u16 LE)]` | the program's record of one draw's pagaré: the asset's address, the signed pagaré's hash and how it was signed, the amount and the line's drawn total through it, when it was issued and when it is due, the registry (a hash chain of entries whose content is in the `PagareEntry` events), the procurador of record, the FIX and USDC the tranche was delivered at (`fix_rate`, `fix_date`, `usdc_delivered`, `delivery_hash`), and once paid the "PAGADO" mark (status, paid_at, the payer's receipt hash) and the delivery and aval flags; never closed; no folio |
 | pagaré asset | PDA `["pagare_asset", line, draw_index (u16 LE)]`, owned by the Metaplex Core program | the pagaré token itself: a Core asset in the series' collection, owned by the pool PDA and frozen by a permanent freeze delegate whose authority is the collection's (the pool PDA), with immutable metadata, locked attributes (pagaré hash, amount, currency, issue and due dates, line, draw index, certificate fingerprint, signature method) and an `AddBlocker`; no transfer or burn delegate: the pool owns the asset, only the program signs for it, and a procuración lends no power over it (decision 38). `deliver_pagare` thaws it, renounces the freeze and hands it to its debtor |
 
 Every parameter is a typed field (Borsh, no padding), and each account ends in `reserved` bytes,
 created zero, for fields added after mainnet: 48 on `Pool`, 64 on `CreditLine`, 28 on `Pagare`. With
-the 8-byte discriminator the sizes are `Pool` 491, `CreditLine` 529 and `Pagare` 363 bytes
+the 8-byte discriminator the sizes are `Pool` 487, `CreditLine` 528 and `Pagare` 363 bytes
 (`tests/layout.rs`); ARCHITECTURE.md §3 gives every offset. A bullet line (single maturity) has
 `installments == 0` and the other schedule fields at zero. Clients read the typed fields;
 `lineSchedule(line)` in the client returns a line's schedule, or null for a bullet line, and
@@ -106,7 +106,7 @@ more than 15 days ahead (`ProposalTooFar`). `init_pool` does not.
 
 | Instruction | Signers | Effect |
 |---|---|---|
-| `init_pool(params)` | creator | creates the pool, its vault and its dead-shares account around an asset mint and a creator-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the council (vault 0 of an autonomous Squads v4 multisig of at most ten members with a majority threshold, which does not sign) and the series' Metaplex Core collection (a bare one with the pool PDA as update authority: no plugins, nothing minted); sets the line cap (largest line as a share of the NAV, 1 to 10,000 bps), the outstanding-principal cap, the collection period (at least 30 days), the acceleration notice (at least 7 days), the provision (100%) and the FIX bounds; there is no grace period on late payment; emits `PoolInitialized` |
+| `init_pool(params)` | creator | creates the pool, its vault and its dead-shares account around an asset mint of 6 decimals (`AssetDecimalsInvalid` otherwise: the FIX conversion counts in millionths) and a creator-supplied share mint, each under its own token program; applies the asset-mint and share-mint policies and records `asset_controls` and `permissioned`; records the council (vault 0 of an autonomous Squads v4 multisig of at most ten members with a majority threshold, which does not sign) and the series' Metaplex Core collection (a bare one with the pool PDA as update authority: no plugins, nothing minted); sets the line cap (largest line as a share of the NAV, 1 to 10,000 bps), the outstanding-principal cap, the collection period (at least 30 days), the acceleration notice (at least 7 days), the provision (100%) and the FIX bounds; there is no grace period on late payment; emits `PoolInitialized` |
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit meets the minimum and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `request_line(line_id, terms)` | borrower, payer, sponsor if named | the borrower requests line `line_id` (the pool's next) on `terms`, in centavos of MXN; stored as `Requested` with the terms hash; a separate payer funds the account; moves no money; refused while paused |
@@ -114,12 +114,12 @@ more than 15 days ahead (`ProposalTooFar`). `init_pool` does not.
 | `reject_line(valid_until)` | council | rejects a requested line; the rent returns to the payer |
 | `withdraw_request()` | borrower | withdraws a requested line, expired or not; the rent returns to the payer |
 | `cancel_line(valid_until)` | council | clears an approved commitment nobody drew (`Cancelled`, terminal); refused once anything was drawn |
-| `draw(amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method)` | borrower, payer | pays a tranche of `amount_mxn` centavos to the borrower as asset units at the FIX in force (which the borrower signs as `fix_rate`/`fix_date`), while the window is open (strictly before it closes), at most 64 tranches a line and within what the line, the line cap (the line's USDC drawn against the NAV now), the vault and the pool cap allow; refused while paused or on a changed or stale FIX; interest on the tranche, at the annual rate to the last due date, is fixed here; mints the pagaré (a frozen Metaplex Core asset, its hash derived on chain from the approved template and terms) and its `Pagare` record, whose rent the `payer` funds; `signature_method` is 0 wallet, 1 PSC + wallet, 2 e.firma + wallet, with `cert_fingerprint` for the last two |
+| `draw(amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method)` | borrower, payer | pays a tranche of `amount_mxn` centavos to the borrower as asset units at the FIX in force (which the borrower signs as `fix_rate`/`fix_date`), while the window is open (strictly before it closes), at most 64 tranches a line and within what the line, the line cap (the line's USDC drawn against the NAV now), the vault and the pool cap allow; refused while paused or on a changed or stale FIX; no interest is fixed: it accrues on the principal outstanding from the draw (decision 48); mints the pagaré (a frozen Metaplex Core asset, its hash derived on chain from the approved template and terms) and its `Pagare` record, whose rent the `payer` funds; `signature_method` is 0 wallet, 1 PSC + wallet, 2 e.firma + wallet, with `cert_fingerprint` for the last two |
 | `suspend_draws(valid_until)` | council | closes a line's draw window now (a KYC failure, a default event); the undrawn remainder is forfeited, repayment is untouched |
 | `resume_draws(valid_until)` | council | reopens a suspended line's window to its original end; refused while an acceleration is pending |
-| `condone_interest(interest, document_hash, valid_until)` | council | the quita (decision 50): condones all the late interest the line has accrued to now and `interest` of the ordinary interest it still owes, against the hash of the written record; nothing is collected and principal is never condoned. `Active` or `InCollection` lines. A line left owing nothing that can draw nothing more closes, and only then may its títulos leave (decision 49). Never paused |
-| `renounce_availability()` | borrower | gives up what is left to draw of an `Active` line, for good (decision 45): the window closes now and `resume_draws` cannot reopen it, so the line settles at the borrower's will with the reduction of decision 44. Refused when there is nothing to renounce (`WindowClosed`: window already closed, by date or by a suspension, or line drawn in full). Moves no funds. Never paused |
-| `repay(max_usdc, fix_rate, fix_date, receipt_hash)` | anyone | pays up to `max_usdc`, credited in MXN at the FIX in force: late interest (which the credit must cover), then interest, then principal, never more than is due; the USDC taken is rounded up. On an active line, whether or not it can still draw, a payment on account takes the interest accrued per second to that moment and then principal, never interest not yet accrued (decisions 46 and 47), so a settlement split in several payments, or preceded by payments while the line could draw, costs what one costs. A payment that settles an active line able to draw nothing more pays only the interest accrued per second to that moment — the rest of the interest fixed at the draws is forgiven (`EarlySettlement`, decision 44), as the mark already forgives it at default. The line becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, nothing is forgiven, a payment of all that is payable leaves it `Active` owing the interest not yet accrued, and a payment when nothing is payable is refused. Interest accrues on everything drawn, whatever principal was repaid, so a borrower who repays the principal while the line can still draw keeps accruing interest on it until the window closes and a payment settles the line. Takes the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at most `MAX_SIDECARS_PER_REPAY` (3) of them (`PagareAccountsMismatch` / `TooManySidecars` otherwise); writes `Pagado` on each pagaré the principal fully covers and `Abono` on the one left uncovered. A payment of accessories alone leaves its `Abono` on the oldest outstanding pagaré, stating zero principal (LGTOC 17). Every payment entry commits `interest_reserved`, the ordinary interest the line still owes after the payment: a pagaré paid while the line owes interest is received with that interest expressly reserved (decision 46, CCom 364), and stays with the pool until the line owes nothing (decision 49). `receipt_hash` is the payer's receipt, zero meaning "to follow". Clients split a larger payment. Never paused |
+| `condone_interest(interest, document_hash, valid_until)` | council | the quita (decision 50): condones all the late interest the line has accrued to now and `interest` of the ordinary interest accrued and unpaid, against the hash of the written record; nothing is collected and principal is never condoned. `Active` or `InCollection` lines. A line left owing nothing that can draw nothing more closes, and only then may its títulos leave (decision 49); under decision 48 a quita alone never gets there, since a line with no principal left has no interest left to condone. Never paused |
+| `renounce_availability()` | borrower | gives up what is left to draw of an `Active` line, for good (decision 45): the window closes now and `resume_draws` cannot reopen it, so the line closes at the borrower's will with the payment that leaves it owing nothing. Refused when there is nothing to renounce (`WindowClosed`: window already closed, by date or by a suspension, or line drawn in full). Moves no funds. Never paused |
+| `repay(max_usdc, fix_rate, fix_date, receipt_hash)` | anyone | pays up to `max_usdc`, credited in MXN at the FIX in force: late interest (which the credit must cover), then the ordinary interest accrued per second to that moment and unpaid, then principal, never more than is due (decision 48); the USDC taken is rounded up. Ordinary interest accrues on the principal outstanding only, so a principal repayment lowers it from that second, a payoff at any second costs the principal and the interest accrued to it, and a payment split in several transactions in the same second costs what one costs. The line becomes `Repaid` only when it owes nothing and can draw nothing more; while it can draw, a payment of all that is owed leaves it `Active`, and a payment when nothing is payable is refused. Takes the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at most `MAX_SIDECARS_PER_REPAY` (3) of them (`PagareAccountsMismatch` / `TooManySidecars` otherwise); writes `Pagado` on each pagaré the principal fully covers and `Abono` on the one left uncovered. A payment of accessories alone leaves its `Abono` on the oldest outstanding pagaré, stating zero principal (LGTOC 17). Interest is taken first, so a payment that applies principal leaves no interest accrued unpaid: the entries reserve none; a pagaré paid while the line still owes stays with the pool until the line owes nothing (decision 49). `receipt_hash` is the payer's receipt, zero meaning "to follow". Clients split a larger payment. Never paused |
 | `mark_in_collection()` | anyone | moves a scheduled line to `InCollection` once `max_missed` installments are missed — or every remaining one, when fewer remain (decision 41) — past the due date of the last of them, accelerating the balance and provisioning the line's outstanding cost in the NAV (decision 40). Never paused |
 | `propose_acceleration(valid_until)` | council | proposes to collect a drawn line early: draws are suspended at once, and `accelerate_line` may fire after the pool's notice |
 | `withdraw_acceleration(valid_until)` | council | withdraws a pending acceleration; draws stay suspended until `resume_draws` |
@@ -144,7 +144,7 @@ more than 15 days ahead (`ProposalTooFar`). `init_pool` does not.
 | `set_collection_period(collection_period_seconds, valid_until)` | council | sets the seconds a line in collection waits, from its mark, before write-off; never below 30 days |
 | `set_acceleration_notice(acceleration_notice_seconds, valid_until)` | council | sets the notice between `propose_acceleration` and `accelerate_line`; at least seven days |
 
-The 78 error codes are numbered from 6000 in the order of `PoolError` in
+The 79 error codes are numbered from 6000 in the order of `PoolError` in
 `programs/elote_pool/src/errors.rs`, where they are grouped by domain.
 
 ## Installments and collection
@@ -154,26 +154,26 @@ The 78 error codes are numbered from 6000 in the order of `PoolError` in
 (single maturity) and nothing below applies.
 
 - **Schedule.** The calendar comes from the signed contract: installment `k` falls
-  due at `first_due_at + (k - 1) * interval_seconds`, whenever the tranches were drawn. Each
-  installment is `(drawn + interest_due) / installments`, rounded down; the last one carries the
-  remainder, so they add up exactly, and a later tranche before the first due date raises every
-  installment. Limits: 1 to 120 installments, a positive interval, `late_bps <= 10_000`,
+  due at `first_due_at + (k - 1) * interval_seconds`, whenever the tranches were drawn. The
+  schedule is on principal (decision 48): each installment is `drawn / installments`, rounded down;
+  the last one carries the remainder, so they add up exactly, and a later tranche before the first
+  due date raises every installment. Ordinary interest has no calendar of its own: every payment
+  takes the interest accrued first. Limits: 1 to 120 installments, a positive interval, `late_bps <= 10_000`,
   `3 <= max_missed <= installments` (the owner's policy is three months of arrears before
   collection), `first_due_at` after the opening, the last due date no later than `term_end`, and
-  at least one unit per installment both for the whole commitment at the opening and for what is
-  drawn after each tranche.
+  at least one centavo of principal per installment both for the whole commitment at the opening
+  and for what is drawn after each tranche.
 - **Missed installments** are computed, never stored: installments fallen due minus installments fully
-  covered by the principal and interest repaid. At its due second an installment already counts as due.
+  covered by the principal repaid; one centavo short is a miss. At its due second an installment
+  already counts as due. Paying exactly an installment's principal on its due date leaves it short
+  by the interest the payment took first.
   There is no grace period: an installment is late from the second after it falls due.
-- **Late interest** accrues on the **principal share** of each overdue part (no
-  interest on overdue interest; the share is `part * principal / total`, rounded down, or
-  `part * principal_left / (total - paid)` when a payment on account repaid principal ahead of the
-  schedule and that is smaller, decision 46) from its due
-  date (or from the last repayment, whichever is later), linear per
-  second at `late_bps` a year (365 days):
-  `Σ principal_share(part) * min(seconds, cap) * late_bps / (10_000 * 31_536_000)`, rounded down, in
+- **Late interest** accrues on each overdue part of **principal** (no interest on interest) from
+  its due date (or from the last repayment, whichever is later), linear per second at `late_bps` a
+  year (365 days), alongside the ordinary interest until the last due date (decision 48):
+  `Σ part * min(seconds, cap) * late_bps / (10_000 * 31_536_000)`, rounded down, in
   `u128`, where `cap = ceil(10_000 * 31_536_000 / late_bps)` seconds. Two caps apply:
-  - **per settlement:** within one repayment, each overdue part accrues at most its own principal share. A
+  - **per settlement:** within one repayment, each overdue part accrues at most its own amount. A
     repayment that collects late interest settles it in full and records `late_paid_until`, so no
     period is charged twice; a repayment that collects none (the accrual rounded down to zero) leaves
     the watermark alone, so the accrual keeps running. A part that stays unpaid accrues again after
@@ -184,14 +184,14 @@ The 78 error codes are numbered from 6000 in the order of `PoolError` in
 
   Late interest goes to the vault and raises the NAV like interest; it is counted in the line's
   `late_collected`, not in the pool's `interest_collected`.
-- **Repayment order** on an installment line: late interest, then interest (once the line can draw
-  nothing more, the interest accrued to the payment), then principal.
+- **Repayment order** on every line: late interest, then the ordinary interest accrued and unpaid,
+  then principal.
 - **Collection.** Once `max_missed` installments are missed (at least three, three months of arrears)
   and the due date of the last of them has passed (`now > first_due_at + (covered + max_missed - 1) * interval`,
   with `covered` installments paid), anyone may call `mark_in_collection`, which moves the line
   to `InCollection` and records the acceleration (`accelerated_at`): from the mark every installment is
-  due and late interest runs on all remaining principal (vencimiento anticipado), while the
-  ordinary interest of the installments not yet due is forgiven. Repayments are still accepted there;
+  due and late interest runs on all remaining principal (vencimiento anticipado), while ordinary
+  interest stops at the mark (decision 48). Repayments are still accepted there;
   there is no cure, and only a full repayment moves the line to `Repaid`.
 - **Write-off policy.** After the third month in arrears the line goes to out-of-court collection and the
   council records the write-off. The program allows `write_off` only when the pool's collection period has run from the mark and the line is in collection and its
@@ -212,18 +212,17 @@ the order listed for each instruction.
 | `LineRejected` | `reject_line` | pool, line_id |
 | `RequestWithdrawn` | `withdraw_request` | pool, line_id |
 | `LineCancelled` | `cancel_line` | pool, line_id |
-| `LineDrawn` | `draw`, first | pool, line_id, draw_index, amount_mxn, fix_rate, fix_date, usdc_delivered, drawn, available, interest_due, availability_end, outstanding_after (the pool's USDC cost) |
+| `LineDrawn` | `draw`, first | pool, line_id, draw_index, amount_mxn, fix_rate, fix_date, usdc_delivered, drawn, available, availability_end, outstanding_after (the pool's USDC cost) |
 | `PagareIssued` | `draw`, after `LineDrawn` | pool, line_id, draw_index, asset (the Core asset), pagare_hash, amount_mxn, delivery_hash, due_at, holder (the pool PDA) |
 | `PagareEntry` | every instruction that appends to a pagaré's registry: `draw` (the issuance entry, after `PagareIssued`), `repay`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `annotate_payment`, `deliver_pagare`, `burn_pagare`, `annul_pagare` | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
 | `FxRealized` | `repay` that applies principal, before `LineRepaid` | pool, line_id, receipt_hash, cost, received, delta (the deltas sum to `Pool.fx_realized`), nav_after |
-| `PagarePayment` | `repay` that took pagaré records, after its `PagareEntry` events | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, interest_reserved (the ordinary interest the line still owes after the payment), entries (draw_index, kind, entry_count, principal_applied, accessory_applied, principal_balance, by_borrower — the preimages of each entry's annotation hash) |
+| `PagarePayment` | `repay` that took pagaré records, after its `PagareEntry` events | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, entries (draw_index, kind, entry_count, principal_applied, accessory_applied, principal_balance, by_borrower — the preimages of each entry's annotation hash) |
 | `LateInterestCollected` | `repay` with late interest, before `LineRepaid` | pool, line_id, amount |
-| `EarlySettlement` | `repay` settling early: fixed interest beyond the accrual forgiven (decision 44) | pool, line_id, payer, interest_forgiven, settled_at |
-| `LineRepaid` | `repay`, then `NavUpdated` | pool, line_id, payer, receipt_hash, usdc_received, fix_rate, principal_part, interest_part, remaining (without late interest), nav_after |
-| `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining (after the forgiveness), interest_forgiven (the ordinary interest of the installments not yet due at the mark), impaired_principal (the pool's whole impairment after the mark) |
+| `LineRepaid` | `repay`, then `NavUpdated` | pool, line_id, payer, receipt_hash, usdc_received, fix_rate, principal_part, interest_part, remaining (principal and interest accrued and unpaid, without late interest), nav_after |
+| `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining (principal and the interest accrued to the mark and unpaid), impaired_principal (the pool's whole impairment after the mark) |
 | `AccelerationProposed` | `propose_acceleration` | pool, line_id, due_at |
 | `AccelerationWithdrawn` | `withdraw_acceleration` | pool, line_id |
-| `LineAccelerated` | `accelerate_line` | pool, line_id, remaining, interest_forgiven, impaired_principal |
+| `LineAccelerated` | `accelerate_line` | pool, line_id, remaining, impaired_principal |
 | `LineDrawsSuspended` | `suspend_draws` | pool, line_id, available_forfeited |
 | `LineDrawsResumed` | `resume_draws` | pool, line_id, availability_end |
 | `InterestCondoned` | `condone_interest` | pool, line_id, late_interest, interest, document_hash, remaining, condoned_at |
@@ -279,24 +278,24 @@ the Solana 3.x runtime inside LiteSVM 0.11 cannot load. Moving to v3 goes togeth
 The integration tests run the compiled program in LiteSVM 0.11.0, which loads SPL Token, Token-2022
 and the Associated Token Account program by default; the harness adds Metaplex Core from
 `programs/elote_pool/tests/fixtures/` (pinned by sha256, see the README there).
-There are 289 Rust tests (unit tests in `src/` and integration tests in 19 binaries) and 25 JS
+There are 307 Rust tests (unit tests in `src/` and integration tests in 19 binaries) and 26 JS
 tests. `programs/elote_pool/tests/` holds:
 
 | File | Tests | What it checks |
 |---|---|---|
-| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 38 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection |
+| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 49 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection; ordinary interest on the outstanding principal (decision 48) against an independent reference (`tests/reference/`), dust and split invariance, and a proptest state machine over random draws, payments and marks |
 | `council.rs`, `valid_until.rs`, `squads.rs` | 17, 4, 6 | The Squads multisig check on every council instruction, council rotation; `valid_until` refused past or too far ahead; the hand-built Squads v4 instructions |
-| `fx.rs` | 25 | The FIX: the MXN↔USDC conversion, the daily band, the RedStone MXNe reference, the bounds, feeder versus council, one publication a day |
+| `fx.rs` | 27 | The FIX: the MXN↔USDC conversion, the daily band, the RedStone MXNe reference, the bounds, feeder versus council, one publication a day |
 | `acceleration.rs` | 12 | `propose_acceleration` / `withdraw_acceleration` / `accelerate_line`, the notice, and the interplay with `suspend_draws` and `resume_draws` |
 | `known_limits.rs` | 12 | Documentation tests that pin the known design limits listed in SECURITY.md; they pass by design and must be inverted when a limit is removed |
-| `tranches.rs` | 15 | Tranched draws: the draw window, the payability floor, per-tranche interest, the cap on tranches, `suspend_draws`, `cancel_line` |
-| `pagare.rs` | 26 | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused; the registry entries; the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
+| `tranches.rs` | 16 | Tranched draws: the draw window, the payability floor, interest from each draw, the cap on tranches, `suspend_draws`, `cancel_line` |
+| `pagare.rs` | 27 | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused; the registry entries; the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `core_capabilities.rs` | 8 | What Metaplex Core allows after an asset's creation: handing off or extinguishing the permanent delegates, thawing, moving the update authority off the collection, adding plugins and adapters, who writes and removes an AppData adapter and whether it follows the asset (the program uses none), the cost of `AddBlocker`, owner-managed delegates for the procuración and a burn delegate held by a program address; pinned against the Core binary so an upgrade that changes an answer fails here |
-| `layout.rs` | 1 | The account sizes (`Pool` 491, `CreditLine` 529, `Pagare` 363 bytes) and the zeroed `reserved` tail of each account |
+| `layout.rs` | 2 | The account sizes (`Pool` 487, `CreditLine` 528, `Pagare` 363 bytes), the zeroed `reserved` tail of each account, and one `CreditLine` layout whether or not the line has a sponsor (the zero key for none) |
 | `audit.rs`, `reaudit.rs` | 4, 4 | Regression tests of the findings of the 2026-11-01 audit and the 2026-11-02 re-audit |
 | `compute.rs` | 11 | Compute units of `init_pool`, `draw` (with the Core CPI), `repay` (one covering three pagaré records included), `deliver_pagare` and `burn_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `mark_in_collection` and `write_off`, at 18 and 120 installments, stay under 100,000 |
-| `math_props.rs` | 7 | Property tests (proptest) over the share accounting and the arrears arithmetic |
-| `vectors.rs` | 1 | Evaluates the arrears arithmetic on 421 cases (44 accelerated) and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
+| `math_props.rs` | 11 | Property tests (proptest) over the share accounting, the arrears arithmetic, the payment order and the accrual against the reference |
+| `vectors.rs` | 1 | Evaluates the arrears arithmetic on 427 cases (48 accelerated) and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
 
 ## Deployments and upgrade authority
 

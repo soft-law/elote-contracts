@@ -57,9 +57,9 @@ fn n01_an_interest_only_payment_appends_its_abono() {
     let after = env.pagare(&k, line_id, 0);
     assert_ne!(after.log_root, before.log_root);
 
-    // Interest cleared plus one unit of principal: one Abono stating both.
-    let line = env.line(&k, line_id);
-    let rest = line.interest_due - line.interest_repaid;
+    // Interest cleared plus one unit of principal: one Abono stating both. A year on 4.0 at 10%
+    // accrued 400_000, of which the stranger paid 5.
+    let rest = 400_000 - 5;
     let amount = rest + 1;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), amount);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), amount);
@@ -83,8 +83,8 @@ fn n01_the_entry_counter_is_wide_enough() {
     let council = env.council.insecure_clone();
     set_entry_count(&mut env, &k, line_id, 0, u16::MAX);
 
-    let line = env.line(&k, line_id);
-    let owed = line.drawn - line.principal_repaid + line.interest_due - line.interest_repaid;
+    // Paid in the second it was drawn: the principal, and no interest accrued yet.
+    let owed = 4 * UNIT;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), owed);
     env.send(ix, &borrower, &[]);
@@ -134,7 +134,7 @@ fn n04_the_holders_correction_is_the_recibo_entry_not_a_rewrite() {
     let ix = env.renounce_availability_ix(&k, line_id, &borrower.pubkey());
     env.send(ix, &borrower, &[]);
     let stranger = env.funded(1);
-    let amount = env.line(&k, line_id).interest_due + UNIT;
+    let amount = env.payoff(&k, line_id);
     env.mint_to(&k.asset_mint, &council, &stranger.pubkey(), amount);
     let sidecars = env.payment_sidecars(&k, line_id, amount);
     let ix = env.repay_ix_full(&k, line_id, &stranger.pubkey(), amount, [0x66; 32], &sidecars);

@@ -2,8 +2,8 @@
 // `programs/elote_pool/src/terms.rs` (`the_terms_hash_matches_the_pinned_vector`).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getAddressDecoder } from "@solana/kit";
-import { termsHash } from "../src/terms";
+import { type Address, getAddressDecoder } from "@solana/kit";
+import { lineSponsor, termsHash } from "../src/terms";
 
 const key = (byte: number) => getAddressDecoder().decode(new Uint8Array(32).fill(byte));
 const fill = (byte: number) => new Uint8Array(32).fill(byte);
@@ -22,4 +22,10 @@ test("the terms hash matches the program's pinned vector", async () => {
     pagareTemplateHash: fill(0x7e),
   });
   assert.equal(Buffer.from(h).toString("hex"), "aac738788a0f850ca79bf7c0513d07af3a13e2fb6bff4758273e82d46b98cbfc");
+});
+
+test("lineSponsor reads the zero key as no sponsor, as the terms hash does", () => {
+  const someone = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf" as Address;
+  assert.equal(lineSponsor({ sponsor: "11111111111111111111111111111111" as Address }), null);
+  assert.equal(lineSponsor({ sponsor: someone }), someone);
 });

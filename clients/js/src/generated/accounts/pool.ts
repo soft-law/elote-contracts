@@ -77,13 +77,6 @@ export type Pool = {
   writtenOff: bigint;
   lineCount: bigint;
   /**
-   * Reserved, always zero: there is no grace period. Late interest runs from the first second
-   * after a due date (or the term), and collection and write-offs count from the due dates
-   * themselves. `init_pool` writes zero and nothing reads it; the field stays so the layout
-   * does not move.
-   */
-  gracePeriodSeconds: number;
-  /**
    * Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
    * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
    */
@@ -185,13 +178,6 @@ export type PoolArgs = {
   writtenOff: number | bigint;
   lineCount: number | bigint;
   /**
-   * Reserved, always zero: there is no grace period. Late interest runs from the first second
-   * after a due date (or the term), and collection and write-offs count from the due dates
-   * themselves. `init_pool` writes zero and nothing reads it; the field stays so the layout
-   * does not move.
-   */
-  gracePeriodSeconds: number;
-  /**
    * Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
    * written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
    */
@@ -288,7 +274,6 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["interestCollected", getU64Encoder()],
       ["writtenOff", getU64Encoder()],
       ["lineCount", getU64Encoder()],
-      ["gracePeriodSeconds", getU32Encoder()],
       ["collectionPeriodSeconds", getU32Encoder()],
       ["maxLineBps", getU16Encoder()],
       ["assetControls", getU8Encoder()],
@@ -332,7 +317,6 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["interestCollected", getU64Decoder()],
     ["writtenOff", getU64Decoder()],
     ["lineCount", getU64Decoder()],
-    ["gracePeriodSeconds", getU32Decoder()],
     ["collectionPeriodSeconds", getU32Decoder()],
     ["maxLineBps", getU16Decoder()],
     ["assetControls", getU8Decoder()],
@@ -427,5 +411,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 491;
+  return 487;
 }

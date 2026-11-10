@@ -116,7 +116,7 @@ console.log(
     `pagaré       ${drawIndex}: asset ${pagare.asset}, record ${record}`,
     `amount       MXN ${fmtMxn(pagare.amountMxn)} as ${fmt(pagare.usdcDelivered)} USDC; drawn through MXN ${fmtMxn(pagare.drawnThrough)}`,
     `due          ${new Date(Number(pagare.dueAt) * 1000).toISOString()}`,
-    `line now     drawn MXN ${fmtMxn(after.drawn)} of ${fmtMxn(after.principal)}, interest MXN ${fmtMxn(after.interestDue)}, ${LineStatus[after.status]}`,
+    `line now     drawn MXN ${fmtMxn(after.drawn)} of ${fmtMxn(after.principal)}, interest accrued on what is outstanding (decision 48), ${LineStatus[after.status]}`,
     `signature    ${signature}`,
     `explorer     ${explorer(c, signature)}`,
   ].join("\n")

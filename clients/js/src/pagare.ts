@@ -83,7 +83,7 @@ export const MAX_SIDECARS_PER_REPAY = 3;
  * cursor has passed the last draw or the line never drew. The program refuses any other set
  * (`PagareAccountsMismatch`). `drawnThrough[i]` is `Pagare.drawnThrough` of draw `i` for every
  * draw of the line; `principalAfter` is `principalRepaid` plus the payment's principal part (the
- * program applies late interest, then interest — `repayInterestLeft` — then principal, never more
+ * program applies late interest, then interest — `interestUnpaid` — then principal, never more
  * than is due).
  *
  * The set depends on the line at the time the transaction is built: a payment by anyone that lands

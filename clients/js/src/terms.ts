@@ -10,6 +10,14 @@ export const CURRENCY_MXN = 484;
 const DOMAIN = new TextEncoder().encode("elote_pool:terms:v1");
 const ZERO_KEY = "11111111111111111111111111111111" as Address;
 
+/**
+ * A line's sponsor, or `null` when it has none: `CreditLine.sponsor` is a key, the zero key meaning
+ * "none" (it cannot sign, so no request names it), which is also how the terms hash encodes it.
+ */
+export function lineSponsor(line: { sponsor: Address }): Address | null {
+  return line.sponsor === ZERO_KEY ? null : line.sponsor;
+}
+
 export type LineTermsInput = {
   /** Centavos of MXN. */
   principal: bigint;

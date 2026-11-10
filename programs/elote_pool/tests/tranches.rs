@@ -1,8 +1,9 @@
-//! Tranched draws on a line: partial draws until the
-//! first due date, interest proportional to time per tranche, the schedule re-amortising what is
+//! Tranched draws on a line: partial draws until the first due date, interest on each tranche
+//! from its draw (decision 48: on the principal outstanding), the schedule re-amortising what is
 //! drawn, and the line's states around the tranches.
 
 mod common;
+mod reference;
 
 use common::*;
 use elote_pool::events::{LineCancelled, LineDrawsSuspended, PagareIssued};
@@ -24,11 +25,6 @@ fn pool_capped(env: &mut Env, assets: u64, max_line_bps: u16) -> PoolKeys {
 
 fn open(env: &mut Env, k: &PoolKeys, borrower: &Keypair, p: &LineParams) -> u64 {
     env.open_line_with(k, borrower, p, None).0
-}
-
-/// `amount * rate_bps * seconds / (BPS * YEAR)`, the program's tranche interest, spelled out.
-fn interest(amount: u64, rate_bps: u64, seconds: i64) -> u64 {
-    (amount as u128 * rate_bps as u128 * seconds as u128 / (10_000 * YEAR as u128)) as u64
 }
 
 /// Two tranches add up to the commitment, a third is refused, and the pool's
@@ -57,10 +53,11 @@ fn two_tranches_sum_to_the_commitment_and_a_third_is_refused() {
     assert_eq!(env.line(&k, line_id).draws, 2);
 }
 
-/// A tranche drawn with half the time left owes half the interest of one drawn
-/// at the start, to the unit; a half-drawn line repaid in full needs exactly drawn + Σ interest.
+/// A tranche drawn with half the time left accrues half the interest of one drawn at the start
+/// (decision 48: interest runs on the principal from its draw); a half-drawn line repaid in full at
+/// the term pays exactly drawn + 0.2 + 0.1.
 #[test]
-fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
+fn a_tranche_accrues_interest_from_its_draw() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
@@ -68,16 +65,14 @@ fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
     let line_id = open(&mut env, &k, &borrower, &p);
     let t0 = env.now();
 
-    let first = env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
-    assert_eq!(first.interest_due, 200_000, "2.0 at 10% for the whole year");
+    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    assert_eq!(env.line(&k, line_id).interest_accrued(p.term_end), Some(200_000), "2.0 at 10% for the whole year");
     env.warp(t0 + YEAR / 2);
-    let second = env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
-    assert_eq!(second.interest_due - first.interest_due, 100_000, "the same amount for half the time");
-    assert_eq!(env.line(&k, line_id).interest_due, 300_000);
+    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    assert_eq!(env.line(&k, line_id).interest_accrued(p.term_end), Some(300_000), "and 2.0 more for half the year");
 
-    // Repaid in full at the term, when both tranches are fully accrued (decision 44):
-    // exactly 4.0 + 0.3, no more is taken.
-    env.warp(env.line(&k, line_id).term_end);
+    // Repaid in full at the term: exactly 4.0 + 0.3, no more is taken.
+    env.warp(p.term_end);
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let before = env.token_balance(&k.asset_ata(&borrower.pubkey()));
@@ -87,10 +82,10 @@ fn tranche_interest_is_proportional_to_the_time_to_the_last_due_date() {
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
 
-/// On a scheduled line whose last due date is before `term_end`, the
-/// tranche accrues to the last due date, not to the term.
+/// On a scheduled line whose last due date is before `term_end`, ordinary interest accrues to the
+/// last due date and stops there, not at the term (decision 48).
 #[test]
-fn tranche_interest_runs_to_the_last_due_date_not_the_term() {
+fn interest_accrues_to_the_last_due_date_not_the_term() {
     let mut env = Env::new();
     let k = pool_capped(&mut env, 10 * UNIT, BPS); // a line of 6 of 10
     let borrower = env.borrower(&k);
@@ -99,15 +94,16 @@ fn tranche_interest_runs_to_the_last_due_date_not_the_term() {
     let line_id = open(&mut env, &k, &borrower, &p);
     let last_due = p.first_due_at() + 5 * p.interval();
     assert!(last_due < p.term_end);
+    assert_eq!(last_due - env.now(), YEAR);
 
-    let ev = env.draw_amount(&k, line_id, &borrower, 6 * UNIT);
-    assert_eq!(ev.interest_due, interest(6 * UNIT, 1_200, last_due - env.now()));
-    assert_eq!(ev.interest_due, 720_000, "to the last due date, exactly a year away");
-    assert_ne!(ev.interest_due, interest(6 * UNIT, 1_200, p.term_end - env.now()));
+    env.draw_amount(&k, line_id, &borrower, 6 * UNIT);
+    let line = env.line(&k, line_id);
+    assert_eq!(line.interest_accrued(last_due), Some(720_000), "a year of 12% on 6.0, to the last due date");
+    assert_eq!(line.interest_accrued(p.term_end), Some(720_000), "and nothing between it and the term");
 }
 
-/// A second tranche before the first due date raises every installment; the
-/// arrears before and after are what `math::arrears` predicts.
+/// A second tranche before the first due date raises every installment of principal (decision 48);
+/// the arrears before and after follow the principal drawn.
 #[test]
 fn a_second_tranche_raises_every_installment() {
     let mut env = Env::new();
@@ -117,12 +113,9 @@ fn a_second_tranche_raises_every_installment() {
     let line_id = open(&mut env, &k, &borrower, &p);
 
     env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
-    let line = env.line(&k, line_id);
-    let total_one = line.drawn + line.interest_due;
-    assert_eq!(total_one, 3_360_000, "3.0 plus 0.36 of interest");
     env.warp(p.first_due_at());
     let a = env.arrears(&k, line_id);
-    assert_eq!((a.due, a.overdue), (1, total_one / 6));
+    assert_eq!((a.due, a.overdue), (1, 500_000), "a sixth of 3.0");
 
     // A second tranche is refused now (the window closed at the first due date), so open another
     // line to see the installments stretch before its first due date.
@@ -131,23 +124,19 @@ fn a_second_tranche_raises_every_installment() {
     env.draw_amount(&k, second, &borrower, 3 * UNIT);
     env.warp(p2.first_due_at() - 1);
     env.draw_amount(&k, second, &borrower, 3 * UNIT);
-    let line = env.line(&k, second);
-    // The second tranche accrued for one second less than a whole-year tranche would.
-    let expected_total = 6 * UNIT + 360_000 + interest(3 * UNIT, 1_200, p2.first_due_at() + 5 * p2.interval() - (p2.first_due_at() - 1));
-    assert_eq!(line.drawn + line.interest_due, expected_total);
     env.warp(p2.first_due_at());
     let a = env.arrears(&k, second);
-    assert_eq!((a.due, a.overdue), (1, expected_total / 6), "every installment is now a sixth of the larger total");
+    assert_eq!((a.due, a.overdue), (1, UNIT), "every installment is now a sixth of 6.0");
 }
 
-/// A tranche that would leave an installment below one unit is refused; the
-/// tranche that brings `drawn + interest_due` to the installment count is accepted and repays.
+/// A tranche that would leave an installment below one centavo of principal is refused; the
+/// tranche that brings `drawn` to the installment count is accepted and repays (decision 48).
 #[test]
 fn a_tranche_may_not_leave_the_schedule_unpayable() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
-    let p = env.scheduled_params(UNIT, 0, 12, 5_000); // 0%: no interest helps the count
+    let p = env.scheduled_params(UNIT, 1_200, 12, 5_000);
     let line_id = open(&mut env, &k, &borrower, &p);
 
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), 5);
@@ -157,9 +146,9 @@ fn a_tranche_may_not_leave_the_schedule_unpayable() {
     env.draw_amount(&k, line_id, &borrower, 12);
     assert_eq!(env.arrears(&k, line_id).due, 0);
     env.warp(p.first_due_at());
-    assert_eq!(env.arrears(&k, line_id).overdue, 1, "one unit per installment");
+    assert_eq!(env.arrears(&k, line_id).overdue, 1, "one centavo per installment");
     let ev = env.repay(&k, line_id, &borrower, 12);
-    assert_eq!((ev.principal_part, ev.remaining), (12, 0));
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (0, 12, 0), "12 centavos accrue nothing in a month");
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
 
@@ -186,19 +175,21 @@ fn weekly_quincenal_and_monthly_calendars_run_a_full_cycle() {
         env.draw_amount(&k, line_id, &borrower, 4 * UNIT);
         env.warp(t0 + interval / 2);
         env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
-        let line = env.line(&k, line_id);
-        let expected_interest = interest(4 * UNIT, 1_200, last_due - t0) + interest(2 * UNIT, 1_200, last_due - (t0 + interval / 2));
-        assert_eq!(line.interest_due, expected_interest, "interval {interval}");
-        let total = line.drawn + line.interest_due;
-        let installment = total / u64::from(n);
+        let mut r = reference::RefLine::new(1_200, last_due);
+        r.draw(t0, 4 * UNIT);
+        r.draw(t0 + interval / 2, 2 * UNIT);
         let council = env.council.insecure_clone();
         env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 2 * UNIT);
 
-        // Three partial payments on the first due date add up to the first installment.
+        // Three partial payments on the first due date add up to the interest accrued and the
+        // first installment of principal, a sixth of 6.0.
         env.warp(first_due);
         assert_eq!(env.arrears(&k, line_id).missed, 1);
+        let installment = r.interest_accrued(first_due) as u64 + UNIT;
         for part in [installment / 3, installment / 3, installment - 2 * (installment / 3)] {
-            env.repay(&k, line_id, &borrower, part);
+            let ev = env.repay(&k, line_id, &borrower, part);
+            let (_, i, pr) = r.pay(first_due, part, 0);
+            assert_eq!((ev.interest_part, ev.principal_part), (i, pr), "interval {interval}");
         }
         let a = env.arrears(&k, line_id);
         assert_eq!((a.covered, a.missed, a.late_due), (1, 0, 0), "interval {interval}");
@@ -213,7 +204,7 @@ fn weekly_quincenal_and_monthly_calendars_run_a_full_cycle() {
         env.warp(fourth_due + 1);
         let a = env.arrears(&k, line_id);
         assert_eq!(a.missed, 3);
-        assert!(a.late_due > 0, "late interest ran on the principal share of the second and third");
+        assert!(a.late_due > 0, "late interest ran on the principal of the second and third");
         let ix = env.mark_in_collection_ix(&k, line_id);
         env.send(ix, &keeper, &[]);
         assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
@@ -265,7 +256,7 @@ fn tranches_are_refused_in_collection_paused_or_after_the_window() {
 
 /// A half-drawn line repaid in full while its window is open stays `Active` and keeps drawing
 /// (audit F-01); it closes only once nothing can be drawn. The payment takes the interest accrued
-/// and the principal; the rest of the interest fixed at the draw stays owed (decision 47).
+/// and the principal, and leaves it owing nothing (decision 48).
 #[test]
 fn full_repayment_of_a_half_drawn_line_leaves_it_open_while_it_can_draw() {
     let mut env = Env::new();
@@ -277,21 +268,22 @@ fn full_repayment_of_a_half_drawn_line_leaves_it_open_while_it_can_draw() {
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 200_000);
 
-    // Half a year in, half the 0.2 fixed has accrued.
+    // Half a year of 10% on 2.0: 0.1.
     env.warp(env.now() + YEAR / 2);
     let ev = env.repay(&k, line_id, &borrower, 2_200_000);
-    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (100_000, 2 * UNIT, 100_000));
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (100_000, 2 * UNIT, 0));
     let line = env.line(&k, line_id);
     assert_eq!((line.status, line.drawn, line.principal), (LineStatus::Active, 2 * UNIT, 4 * UNIT));
     assert!(env.now() < line.availability_end, "the window was still open");
     assert_eq!(env.pool(&k).outstanding_principal, 0);
     env.draw_amount(&k, line_id, &borrower, UNIT);
     assert_eq!(env.pool(&k).outstanding_principal, UNIT);
-    // The window closes: the next full repayment closes the line.
+    // The window closes: the next full repayment, half a year of 10% on 1.0 and the 1.0, closes
+    // the line.
     env.warp(p.term_end);
-    let interest = env.line(&k, line_id).interest_due - env.line(&k, line_id).interest_repaid;
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
-    env.repay(&k, line_id, &borrower, UNIT + interest);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 50_000);
+    let ev = env.repay(&k, line_id, &borrower, UNIT + 50_000);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (50_000, UNIT, 0));
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
 }
 
@@ -306,7 +298,7 @@ fn write_off_books_the_drawn_principal_and_max_draws_is_the_limit() {
     let p = env.line_params(4 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
-    // At the term the 0.2 fixed has accrued: 0.2 of interest, 0.5 of principal.
+    // At the term a year of 10% on 2.0 has accrued: 0.2 of interest, 0.5 of principal.
     env.warp(p.term_end);
     env.repay(&k, line_id, &borrower, 700_000);
     env.warp(p.term_end + 1);
@@ -358,8 +350,7 @@ fn suspend_draws_closes_the_window_early_and_leaves_repayment_alone() {
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
     assert!(!env.pool(&k).paused);
-    // At the term, when the tranche's interest is fully accrued (an earlier settlement would owe
-    // only the accrual, decision 44).
+    // At the term: a year of 10% on the 1.0 drawn.
     env.warp(env.line(&k, line_id).term_end);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 100_000);
     let ev = env.repay(&k, line_id, &borrower, UNIT + 100_000);

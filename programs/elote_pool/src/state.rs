@@ -94,6 +94,9 @@ pub const ASSET_ALLOWLIST: Option<&[Pubkey]> = Some(&[
 #[cfg(feature = "localnet")]
 pub const ASSET_ALLOWLIST: Option<&[Pubkey]> = None;
 
+/// The decimals of every asset mint `init_pool` accepts: `fx` converts centavos to millionths.
+pub const ASSET_DECIMALS: u8 = 6;
+
 /// Whether `mint` is on this build's `ASSET_ALLOWLIST`.
 pub fn asset_listed(mint: &Pubkey) -> bool {
     ASSET_ALLOWLIST.is_none_or(|list| list.contains(mint))
@@ -125,11 +128,6 @@ pub struct Pool {
     /// Principal written off on every line; informative.
     pub written_off: u64,
     pub line_count: u64,
-    /// Reserved, always zero: there is no grace period. Late interest runs from the first second
-    /// after a due date (or the term), and collection and write-offs count from the due dates
-    /// themselves. `init_pool` writes zero and nothing reads it; the field stays so the layout
-    /// does not move.
-    pub grace_period_seconds: u32,
     /// Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
     /// written off; at least `MIN_COLLECTION_PERIOD_SECONDS`. Set with `set_collection_period`.
     pub collection_period_seconds: u32,
@@ -209,10 +207,6 @@ impl Pool {
             .and_then(|v| u64::try_from(v).ok())
     }
 
-    /// The NAV with no provision: the vault plus the whole principal lent out, the impaired cost
-    /// at par. Deposits are priced here (decision 40b, Maple's dual price): whoever enters while a
-    /// line is impaired buys that book at par, so a later recovery hands the entrant nothing and
-    /// the sandwich — flash or patient — nets zero or less, while deposits are never gated.
     /// Whether the FIX is pinned by the bounds: `min == max != 0` leaves exactly one postable
     /// rate, so the rate cannot drift and age means nothing (decision 42). A pinned FIX is
     /// exempt from the `MAX_FIX_AGE_DAYS` staleness check in `approve_line` and `draw`.
@@ -220,6 +214,10 @@ impl Pool {
         self.min_fix_rate != 0 && self.min_fix_rate == self.max_fix_rate
     }
 
+    /// The NAV with no provision: the vault plus the whole principal lent out, the impaired cost
+    /// at par. Deposits are priced here (decision 40b, Maple's dual price): whoever enters while a
+    /// line is impaired buys that book at par, so a later recovery hands the entrant nothing and
+    /// the sandwich — flash or patient — nets zero or less, while deposits are never gated.
     pub fn entry_nav(&self, vault_amount: u64) -> Option<u64> {
         vault_amount.checked_add(self.outstanding_principal)
     }
@@ -273,9 +271,11 @@ pub struct CreditLine {
     pub pool: Pubkey,
     pub line_id: u64,
     pub borrower: Pubkey,
-    /// Co-signed `request_line`; `None` when the line has no sponsor.
-    pub sponsor: Option<Pubkey>,
-    /// `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is named.
+    /// Co-signed `request_line`; the zero key when the line has no sponsor, so every field keeps
+    /// one offset.
+    pub sponsor: Pubkey,
+    /// `SPONSOR_PROMOTER` or `SPONSOR_GUARANTOR`; meaningful only when `sponsor` is not the zero
+    /// key.
     pub sponsor_role: u8,
     /// Hash of the signed credit agreement.
     pub agreement_hash: [u8; 32],
@@ -285,8 +285,8 @@ pub struct CreditLine {
     pub status: LineStatus,
     /// The approved commitment; `available = principal - drawn`.
     pub principal: u64,
-    /// Annual ordinary interest rate, in basis points, charged on each tranche from its draw to
-    /// the last due date.
+    /// Annual ordinary interest rate, in basis points, on the principal outstanding, per second
+    /// (ACTUAL/365) until the last due date or the acceleration (decision 48).
     pub rate_bps: u16,
     /// The maturity of a bullet line.
     pub term_end: i64,
@@ -297,9 +297,12 @@ pub struct CreditLine {
     pub drawn: u64,
     /// Tranches drawn; at most `MAX_DRAWS`.
     pub draws: u16,
-    /// Ordinary interest owed: each draw adds `amount * rate_bps * (last_due - now) / (BPS *
-    /// SECONDS_PER_YEAR)`; `mark_in_collection` cuts it to the share of the installments then due.
-    pub interest_due: u64,
+    /// `∫ (drawn - principal_repaid) dt` up to `accrued_at`, in centavo-seconds: advanced by
+    /// `accrue` before every change of the outstanding principal and at the acceleration
+    /// (decision 48). The ordinary interest accrued is read from it, rounded down once.
+    pub principal_seconds: u128,
+    /// The instant `principal_seconds` runs to; never past `accrual_end`.
+    pub accrued_at: i64,
     pub principal_repaid: u64,
     /// Ordinary interest settled: repaid, or condoned by the council (decision 50).
     pub interest_repaid: u64,
@@ -336,9 +339,6 @@ pub struct CreditLine {
     pub pagare_template_hash: [u8; 32],
     /// Funded the request; receives the rent back on withdraw, reject or expiry.
     pub payer: Pubkey,
-    /// `Σ amount × drawn_at` over the draws: a bullet line's interest accrued at a mark is
-    /// `rate × (drawn × mark − draw_time_weight)`.
-    pub draw_time_weight: u128,
     /// The `availability_end` before `suspend_draws` or `propose_acceleration` moved it, which
     /// `resume_draws` restores; zero when draws are not suspended. Suspended ⇔ non-zero.
     pub availability_end_saved: i64,
@@ -466,7 +466,8 @@ pub struct ScheduleParams {
     /// The first due date (unix seconds), from the signed contract; must be after the opening.
     pub first_due_at: i64,
     pub interval_seconds: i64,
-    /// `drawn + interest_due` is paid in this many installments.
+    /// `drawn` is repaid in this many installments of principal (decision 48); ordinary interest
+    /// is taken first from every payment.
     pub installments: u16,
     /// Missed installments after which anyone may move the line to collection.
     pub max_missed: u8,
@@ -501,7 +502,7 @@ impl CreditLine {
     }
 
     /// When the last payment is owed: `first_due_at + (installments - 1) * interval` on a scheduled
-    /// line, `term_end` on a bullet line. Each tranche's interest runs from its draw to this instant.
+    /// line, `term_end` on a bullet line.
     pub fn last_due(&self) -> Option<i64> {
         match self.schedule() {
             Some(s) => s
@@ -515,6 +516,59 @@ impl CreditLine {
     /// `principal - drawn`.
     pub fn available(&self) -> Option<u64> {
         self.principal.checked_sub(self.drawn)
+    }
+
+    /// The principal outstanding: `drawn - principal_repaid`.
+    pub fn outstanding(&self) -> Option<u64> {
+        self.drawn.checked_sub(self.principal_repaid)
+    }
+
+    /// Where ordinary interest stops (decision 48): the last due date, or the acceleration when it
+    /// came first. After it only late interest runs.
+    pub fn accrual_end(&self) -> Option<i64> {
+        let last = self.last_due()?;
+        Some(if self.accelerated_at > 0 { last.min(self.accelerated_at) } else { last })
+    }
+
+    /// `principal_seconds` carried from `accrued_at` to `min(now, accrual_end)` at the principal
+    /// outstanding.
+    fn principal_seconds_at(&self, now: i64) -> Option<u128> {
+        let t = now.min(self.accrual_end()?);
+        let elapsed = if t > self.accrued_at { u128::try_from(t.checked_sub(self.accrued_at)?).ok()? } else { 0 };
+        self.principal_seconds.checked_add(u128::from(self.outstanding()?).checked_mul(elapsed)?)
+    }
+
+    /// Brings the accrual to `now` (decision 48); called before every change of the outstanding
+    /// principal and before `accelerated_at` is set, so each second accrues on the balance it had.
+    /// The interest accrued at `now` is the same before and after.
+    pub fn accrue(&mut self, now: i64) -> Option<()> {
+        let t = now.min(self.accrual_end()?);
+        self.principal_seconds = self.principal_seconds_at(now)?;
+        self.accrued_at = self.accrued_at.max(t);
+        Some(())
+    }
+
+    /// The ordinary interest accrued by `now`, repaid or not: `rate_bps * ∫ outstanding dt /
+    /// (BPS * SECONDS_PER_YEAR)` to `min(now, accrual_end)`, rounded down once.
+    pub fn interest_accrued(&self, now: i64) -> Option<u64> {
+        crate::math::ordinary_interest(self.rate_bps, self.principal_seconds_at(now)?)
+    }
+
+    /// The ordinary interest accrued by `now` and not yet settled (repaid or condoned).
+    pub fn interest_unpaid(&self, now: i64) -> Option<u64> {
+        self.interest_accrued(now)?.checked_sub(self.interest_repaid)
+    }
+
+    /// What the line owes at `now`, late interest aside: the principal outstanding and the
+    /// ordinary interest accrued and unpaid.
+    pub fn owed(&self, now: i64) -> Option<u64> {
+        self.outstanding()?.checked_add(self.interest_unpaid(now)?)
+    }
+
+    /// Whether the line can still draw at `now`: active, the window open (strictly) and something
+    /// left of the commitment.
+    pub fn can_draw(&self, now: i64) -> Option<bool> {
+        Some(self.status == LineStatus::Active && now < self.availability_end && self.available()? > 0)
     }
 }
 
@@ -534,7 +588,6 @@ mod tests {
             interest_collected: 0,
             written_off: 0,
             line_count: 0,
-            grace_period_seconds: 0,
             collection_period_seconds: 0,
             max_line_bps: 0,
             asset_controls: 0,
@@ -615,6 +668,135 @@ mod tests {
     #[cfg(feature = "localnet")]
     fn localnet_lists_any_mint() {
         assert!(asset_listed(&Pubkey::new_unique()));
+    }
+
+    const MONTH: i64 = SECONDS_PER_YEAR as i64 / 12;
+
+    /// A bullet line of `principal` at 12% ending a year after t = 1_000_000, nothing drawn yet.
+    fn line(principal: u64) -> CreditLine {
+        CreditLine {
+            pool: Pubkey::default(),
+            line_id: 0,
+            borrower: Pubkey::default(),
+            sponsor: Pubkey::default(),
+            sponsor_role: 0,
+            agreement_hash: [0; 32],
+            expediente_root: [0; 32],
+            status: LineStatus::Active,
+            principal,
+            rate_bps: 1_200,
+            term_end: 1_000_000 + 12 * MONTH,
+            availability_end: 1_000_000 + 12 * MONTH,
+            drawn: 0,
+            draws: 0,
+            principal_seconds: 0,
+            accrued_at: 0,
+            principal_repaid: 0,
+            interest_repaid: 0,
+            pagares_paid: 0,
+            first_due_at: 0,
+            interval_seconds: 0,
+            installments: 0,
+            late_bps: 0,
+            max_missed: 0,
+            late_collected: 0,
+            late_paid_until: 0,
+            drawn_at: 0,
+            closed_at: 0,
+            accelerated_at: 0,
+            bump: 0,
+            currency: CURRENCY_MXN,
+            requested_at: 0,
+            approved_at: 0,
+            terms_hash: [0; 32],
+            pagare_template_hash: [0; 32],
+            payer: Pubkey::default(),
+            availability_end_saved: 0,
+            acceleration_due_at: 0,
+            usdc_drawn: 0,
+            usdc_cost_repaid: 0,
+            reserved: [0; 64],
+        }
+    }
+
+    fn draw(l: &mut CreditLine, now: i64, amount: u64) {
+        l.accrue(now).unwrap();
+        l.drawn += amount;
+    }
+
+    fn repay_principal(l: &mut CreditLine, now: i64, amount: u64) {
+        l.accrue(now).unwrap();
+        l.principal_repaid += amount;
+    }
+
+    /// Decision 48: 60,000.00 at 12% accrues 600.00 a month; repaying 10,000.00 of principal lowers
+    /// the next month to 500.00; the accrual stops at the term.
+    #[test]
+    fn interest_accrues_on_the_outstanding_principal_and_stops_at_the_end() {
+        let t0 = 1_000_000;
+        let mut l = line(6_000_000);
+        assert_eq!(l.interest_accrued(t0 + MONTH), Some(0), "nothing drawn");
+        draw(&mut l, t0, 6_000_000);
+        assert_eq!(l.interest_accrued(t0), Some(0));
+        assert_eq!(l.interest_accrued(t0 + MONTH), Some(60_000));
+        repay_principal(&mut l, t0 + MONTH, 1_000_000);
+        assert_eq!(l.interest_accrued(t0 + MONTH), Some(60_000), "accrue leaves the accrual unchanged");
+        assert_eq!(l.interest_accrued(t0 + 2 * MONTH), Some(110_000));
+        l.interest_repaid = 60_000;
+        assert_eq!(l.interest_unpaid(t0 + 2 * MONTH), Some(50_000));
+        assert_eq!(l.owed(t0 + 2 * MONTH), Some(5_050_000));
+        // Twelve months, the first at 6.0 and eleven at 5.0: 60,000 + 11 * 50,000; nothing after.
+        assert_eq!(l.interest_accrued(t0 + 12 * MONTH), Some(610_000));
+        assert_eq!(l.interest_accrued(t0 + 40 * MONTH), Some(610_000));
+        assert_eq!(l.accrual_end(), Some(t0 + 12 * MONTH));
+    }
+
+    /// The accrual is exact under any number of operations: a second-by-second accrue gives the
+    /// figure a single read gives, rounded once (1.5 centavos a second, never 1).
+    #[test]
+    fn accruing_every_second_rounds_nothing_away() {
+        let t0 = 1_000_000;
+        let mut l = line(394_200_000);
+        draw(&mut l, t0, 394_200_000); // 394,200,000 * 12% / 31,536,000 = 1.5 a second
+        let single = l.interest_accrued(t0 + 3_600);
+        assert_eq!(l.interest_accrued(t0 + 1), Some(1), "1.5 rounded down, once");
+        for s in 1..=3_600 {
+            l.accrue(t0 + s).unwrap();
+        }
+        assert_eq!((single, l.interest_accrued(t0 + 3_600)), (Some(5_400), Some(5_400)));
+    }
+
+    /// The acceleration stops the ordinary accrual at the mark; a clock before `accrued_at` reads
+    /// nothing new.
+    #[test]
+    fn the_acceleration_ends_the_accrual() {
+        let t0 = 1_000_000;
+        let mut l = line(6_000_000);
+        draw(&mut l, t0, 6_000_000);
+        l.accrue(t0 + 2 * MONTH).unwrap();
+        l.accelerated_at = t0 + 2 * MONTH;
+        assert_eq!(l.accrual_end(), Some(t0 + 2 * MONTH));
+        assert_eq!(l.interest_accrued(t0 + 9 * MONTH), Some(120_000));
+        assert_eq!(l.interest_accrued(t0 + MONTH), Some(120_000), "never below what was accrued");
+        // An acceleration after the last due date leaves the end there.
+        let mut l = line(6_000_000);
+        draw(&mut l, t0, 6_000_000);
+        l.accelerated_at = t0 + 20 * MONTH;
+        assert_eq!(l.interest_accrued(t0 + 30 * MONTH), Some(720_000));
+    }
+
+    #[test]
+    fn can_draw_needs_an_active_line_an_open_window_and_something_left() {
+        let t0 = 1_000_000;
+        let mut l = line(6_000_000);
+        draw(&mut l, t0, 3_000_000);
+        assert_eq!(l.can_draw(t0), Some(true));
+        assert_eq!(l.can_draw(l.availability_end), Some(false), "the window closes strictly");
+        l.status = LineStatus::InCollection;
+        assert_eq!(l.can_draw(t0), Some(false));
+        l.status = LineStatus::Active;
+        l.drawn = 6_000_000;
+        assert_eq!(l.can_draw(t0), Some(false));
     }
 
     #[test]

@@ -16,16 +16,9 @@ pub const PAYMENT_DOMAIN: &[u8] = b"elote.pago.v1";
 /// the accessories (ordinary and late interest) the payment settled, the pagaré's unpaid principal
 /// after it, and whether the suscriptor himself paid. The preimages travel in the `PaymentEntry`
 /// of the `PagarePayment` event, so anyone can replay
-/// `annotation_hash -> entry_hash -> log_root`. `interest_reserved` is the ordinary interest the
-/// line still owes after the payment (decision 46): the entry reserves it, zero when none is left.
-pub fn annotation_hash(
-    receipt_hash: &[u8; 32],
-    principal_applied: u64,
-    accessory_applied: u64,
-    principal_balance: u64,
-    by_borrower: bool,
-    interest_reserved: u64,
-) -> [u8; 32] {
+/// `annotation_hash -> entry_hash -> log_root`. Interest is taken first (decision 48), so a payment
+/// that applies principal leaves no interest accrued unpaid: there is nothing to reserve.
+pub fn annotation_hash(receipt_hash: &[u8; 32], principal_applied: u64, accessory_applied: u64, principal_balance: u64, by_borrower: bool) -> [u8; 32] {
     hashv(&[
         PAYMENT_DOMAIN,
         receipt_hash,
@@ -33,7 +26,6 @@ pub fn annotation_hash(
         &accessory_applied.to_le_bytes(),
         &principal_balance.to_le_bytes(),
         &[u8::from(by_borrower)],
-        &interest_reserved.to_le_bytes(),
     ])
     .to_bytes()
 }

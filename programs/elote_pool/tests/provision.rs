@@ -106,12 +106,10 @@ fn a_deposit_prices_at_the_unprovisioned_nav_and_a_recovery_hands_it_nothing() {
     // The borrower pays the line off in full. The provision reversal hands the entrant NOTHING
     // (they bought the impaired book at par); what they do share, pro rata like any holder, is the
     // payoff's interest and late interest — ordinary income, not the recovery.
-    let line = env.line(&k, line_id);
-    let owed = line.drawn - line.principal_repaid + line.interest_due - line.interest_repaid;
-    let late = env.arrears(&k, line_id).late_due;
+    let payoff = env.payoff(&k, line_id);
     let council = env.council.insecure_clone();
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed + late);
-    let ev = env.repay(&k, line_id, &borrower, owed + late);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), payoff);
+    let ev = env.repay(&k, line_id, &borrower, payoff);
     assert_eq!(env.pool(&k).impaired_principal, 0);
     let income = ev.usdc_received - outstanding; // interest + late; the principal leg is par
     let supply = env.supply(&k);

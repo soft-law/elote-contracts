@@ -94,8 +94,9 @@ fn a_proposal_suspends_draws_and_withdrawing_it_does_not_resume_them() {
     env.draw_amount(&k, id, &borrower, UNIT);
 }
 
+/// Decision 48: the acceleration cuts nothing; ordinary interest accrues to the mark and stops.
 #[test]
-fn a_bullet_line_accelerated_keeps_the_interest_accrued_to_the_mark() {
+fn a_bullet_line_accelerated_owes_the_interest_accrued_to_the_mark_and_no_more() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
@@ -103,7 +104,7 @@ fn a_bullet_line_accelerated_keeps_the_interest_accrued_to_the_mark() {
     let (id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, id, &borrower);
     let t0 = env.now();
-    assert_eq!(env.line(&k, id).interest_due, 400_000);
+    assert_eq!(env.line(&k, id).interest_accrued(t0 + YEAR), Some(400_000), "a year of 10% on 4.0, unaccelerated");
 
     env.warp(t0 + YEAR / 4 - i64::from(ACCELERATION_NOTICE));
     env.council_line(&k, id, ix::ProposeAcceleration { valid_until: env.valid_until() }.data());
@@ -111,10 +112,11 @@ fn a_bullet_line_accelerated_keeps_the_interest_accrued_to_the_mark() {
     expect_line(&mut env, &k, id, |vu| ix::AccelerateLine { valid_until: vu }.data(), PoolError::AccelerationNotDue);
     env.warp(t0 + YEAR / 4);
     let ev: LineAccelerated = find_event(&env.council_line(&k, id, ix::AccelerateLine { valid_until: env.valid_until() }.data())).expect("LineAccelerated");
-    // A quarter of a year of 10% on 4.0: 0.1 kept, 0.3 forgiven.
-    assert_eq!((ev.interest_forgiven, ev.remaining), (300_000, 4 * UNIT + 100_000));
+    // A quarter of a year of 10% on 4.0: 0.1, and nothing after the mark.
+    assert_eq!(ev.remaining, 4 * UNIT + 100_000);
     let line = env.line(&k, id);
-    assert_eq!((line.status, line.interest_due, line.accelerated_at), (LineStatus::InCollection, 100_000, t0 + YEAR / 4));
+    assert_eq!((line.status, line.accelerated_at), (LineStatus::InCollection, t0 + YEAR / 4));
+    assert_eq!(line.interest_accrued(t0 + YEAR), Some(100_000), "the accrual stopped at the mark");
     assert!(line.accelerated_at != 0 && line.acceleration_due_at != 0, "route 2: the council's");
 
     // Written off once the collection period has run from the mark.
@@ -128,8 +130,10 @@ fn a_bullet_line_accelerated_keeps_the_interest_accrued_to_the_mark() {
     assert_eq!(env.line(&k, id).status, LineStatus::WrittenOff);
 }
 
+/// Decision 48: a scheduled line accelerated owes the interest accrued to the mark, whatever the
+/// installments due; nothing accrues after it.
 #[test]
-fn a_scheduled_line_accelerated_keeps_the_interest_of_the_installments_due() {
+fn a_scheduled_line_accelerated_owes_the_interest_accrued_to_the_mark() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
     let borrower = env.borrower(&k);
@@ -139,21 +143,23 @@ fn a_scheduled_line_accelerated_keeps_the_interest_of_the_installments_due() {
     env.draw(&k, early, &borrower);
     env.draw(&k, late, &borrower);
 
-    // Accelerated before any installment is due: only what was repaid (nothing) is kept.
+    let t0 = env.now();
+
+    // Accelerated before any installment is due, after the seven-day notice: seven days of 12% on
+    // 6.0, 6_000_000 x 1_200 x 604_800 / 315_360_000_000 = 13_808.2.
     env.council_line(&k, early, ix::ProposeAcceleration { valid_until: env.valid_until() }.data());
     env.warp(env.now() + i64::from(ACCELERATION_NOTICE));
     let ev: LineAccelerated = find_event(&env.council_line(&k, early, ix::AccelerateLine { valid_until: env.valid_until() }.data())).expect("LineAccelerated");
-    let line = env.line(&k, early);
-    assert_eq!((line.interest_due, ev.remaining), (0, 6 * UNIT));
+    assert_eq!(ev.remaining, 6 * UNIT + 13_808);
+    assert_eq!(env.line(&k, early).interest_accrued(t0 + 2 * YEAR), Some(13_808));
 
-    // Three installments due at the mark: their share of the interest is kept.
-    let before = env.line(&k, late).interest_due;
+    // Three installments due at the mark, a quarter of a year in: 6.0 x 12% / 4 = 0.18.
     env.warp(p.first_due_at() + 2 * p.interval() - i64::from(ACCELERATION_NOTICE));
     env.council_line(&k, late, ix::ProposeAcceleration { valid_until: env.valid_until() }.data());
     env.warp(p.first_due_at() + 2 * p.interval());
-    env.council_line(&k, late, ix::AccelerateLine { valid_until: env.valid_until() }.data());
-    let (kept, _) = elote_pool::math::accelerated_interest(before, 3, 12).unwrap();
-    assert_eq!(env.line(&k, late).interest_due, kept);
+    let ev: LineAccelerated = find_event(&env.council_line(&k, late, ix::AccelerateLine { valid_until: env.valid_until() }.data())).expect("LineAccelerated");
+    assert_eq!(ev.remaining, 6 * UNIT + 180_000);
+    assert_eq!(env.line(&k, late).interest_accrued(t0 + 2 * YEAR), Some(180_000));
 }
 
 #[test]
@@ -322,7 +328,8 @@ fn a_bullet_line_past_its_term_owes_late_interest_from_the_term_end() {
     env.draw(&k, id, &late_one);
     env.draw(&k, other, &on_time);
     let line = env.line(&k, id);
-    assert_eq!((line.installments, line.accelerated_at, line.status, line.interest_due), (0, 0, LineStatus::Active, 400_000));
+    assert_eq!((line.installments, line.accelerated_at, line.status), (0, 0, LineStatus::Active));
+    assert_eq!(line.interest_accrued(p.term_end + YEAR), Some(400_000), "the accrual stops at the term");
     let start = p.term_end;
 
     // Up to the term end, to the second, nothing accrues.

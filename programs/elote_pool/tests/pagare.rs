@@ -4,6 +4,7 @@
 //! pinned program binary, which is the crate-vs-program compatibility proof.
 
 mod common;
+mod reference;
 
 use common::*;
 use elote_pool::errors::PoolError;
@@ -298,10 +299,10 @@ fn drawn_and_repaid(env: &mut Env, k: &PoolKeys, principal: u64, rate_bps: u16, 
     for amount in tranches {
         env.draw_amount(k, line_id, &borrower, *amount);
     }
-    let line = env.line(k, line_id);
+    let payoff = env.payoff(k, line_id);
     let council = env.council.insecure_clone();
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), line.interest_due);
-    env.repay(k, line_id, &borrower, line.drawn + line.interest_due);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), payoff - env.line(k, line_id).drawn);
+    env.repay(k, line_id, &borrower, payoff);
     assert_eq!(env.line(k, line_id).status, LineStatus::Repaid);
     (borrower, line_id)
 }
@@ -442,7 +443,7 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
     let p = env.line_params(UNIT, 10_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
-    // At the term, when the interest is fully accrued (decision 44 would otherwise forgive it).
+    // At the term: a year of 100% on 1.0 has accrued 1.0.
     env.warp(env.line(&k, line_id).term_end);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
     let ev = env.repay(&k, line_id, &borrower, UNIT);
@@ -477,8 +478,7 @@ fn no_titulo_leaves_a_line_that_owes_whatever_its_status() {
     let keeper = env.funded(1);
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &keeper, &[]);
-    let line = env.line(&k, line_id);
-    let cover0 = env.arrears(&k, line_id).late_due + line.interest_due - line.interest_repaid + UNIT;
+    let cover0 = env.arrears(&k, line_id).late_due + env.interest_unpaid(&k, line_id) + UNIT;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), cover0);
     env.repay(&k, line_id, &borrower, cover0);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
@@ -486,8 +486,7 @@ fn no_titulo_leaves_a_line_that_owes_whatever_its_status() {
     env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
     env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
     // The payment that settles the line in collection releases both.
-    let line = env.line(&k, line_id);
-    let rest = env.arrears(&k, line_id).late_due + line.interest_due - line.interest_repaid + line.drawn - line.principal_repaid;
+    let rest = env.payoff(&k, line_id);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), rest);
     env.repay(&k, line_id, &borrower, rest);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
@@ -501,7 +500,7 @@ fn no_titulo_leaves_a_line_that_owes_whatever_its_status() {
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.draw_amount(&k, line_id, &borrower, UNIT);
-    let cover0 = env.line(&k, line_id).interest_due + UNIT;
+    let cover0 = env.interest_unpaid(&k, line_id) + UNIT;
     env.repay(&k, line_id, &borrower, cover0);
     env.warp(p.term_end + 1);
     let ix = env.write_off_ix(&k, line_id, &a);
@@ -529,11 +528,11 @@ fn no_titulo_leaves_a_line_that_owes_whatever_its_status() {
     env.expect_err(ix, &council, &[], E_ACCOUNT_NOT_INITIALIZED);
 }
 
-/// Decision 49 (LGTOC 17 and 130): the pagaré promises interest until maturity, so a pagaré whose
-/// principal is repaid while its line still owes interest is not paid in full, and the holder
-/// keeps it. On a line that can still draw, the payment of the whole principal leaves the
-/// interest not yet accrued owed (decision 47): the covered título stays (`BalanceOutstanding`).
-/// Once the borrower renounces the rest and settles, the line owes nothing and the título leaves.
+/// Decision 49 (LGTOC 17 and 130): a pagaré whose principal is repaid while its line still owes
+/// is held: the covered título stays (`BalanceOutstanding`) while a later tranche owes principal,
+/// and leaves once the line owes nothing. With interest taken first (decision 48) a payment that
+/// covers a pagaré leaves no interest accrued unpaid; what holds the título back is the principal
+/// of the later tranche and the interest it accrues.
 #[test]
 fn a_covered_pagare_waits_until_the_line_owes_nothing() {
     let mut env = Env::new();
@@ -544,23 +543,27 @@ fn a_covered_pagare_waits_until_the_line_owes_nothing() {
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
+    env.draw_amount(&k, line_id, &borrower, UNIT);
     env.warp(env.now() + 30 * 86_400);
     env.mint_to(&k.asset_mint, &council, &b, UNIT);
-    env.repay(&k, line_id, &borrower, 2 * UNIT);
+    // Thirty days of 10% on 2.0: 2_000_000 x 1_000 x 2_592_000 / 315_360_000_000 = 16_438.3.
+    let ev = env.repay(&k, line_id, &borrower, UNIT + 16_438);
+    assert_eq!((ev.interest_part, ev.principal_part), (16_438, UNIT));
     let line = env.line(&k, line_id);
     assert_eq!((line.status, line.principal_repaid, env.pagare(&k, line_id, 0).status), (LineStatus::Active, UNIT, PAGARE_PAID));
-    assert!(line.interest_due > line.interest_repaid, "the interest not yet accrued is still owed");
+    assert_eq!(line.interest_unpaid(env.now()), Some(0), "nothing accrued is left unpaid");
     env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
 
-    // The settling payment: the line owes nothing and the título leaves right after it.
-    let ix = env.renounce_availability_ix(&k, line_id, &b);
-    env.send(ix, &borrower, &[]);
+    // A day later the line owes pagaré 1 and a day of 10% on it, 273.97, with the 0.36 the first
+    // thirty days left over: 16_712.3 accrued in all, 16_438 paid, 274 to pay (rounded once).
     env.warp(env.now() + 86_400);
     env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
-    env.repay(&k, line_id, &borrower, UNIT);
+    let ev = env.repay(&k, line_id, &borrower, UNIT + 274);
+    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (274, UNIT, 0));
     let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.drawn - line.principal_repaid, line.interest_due - line.interest_repaid), (LineStatus::Repaid, 0, 0));
+    assert_eq!((line.status, line.owed(env.now())), (LineStatus::Repaid, Some(0)));
     env.deliver_pagare(&k, line_id, 0);
+    env.deliver_pagare(&k, line_id, 1);
     assert_eq!(env.asset_state(&env.pagare(&k, line_id, 0).asset).base.owner, b);
 }
 
@@ -577,7 +580,7 @@ fn an_active_line_that_owes_nothing_delivers_and_draws_on() {
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.repay(&k, line_id, &borrower, UNIT);
     let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.drawn - line.principal_repaid, line.interest_due - line.interest_repaid), (LineStatus::Active, 0, 0));
+    assert_eq!((line.status, line.owed(env.now())), (LineStatus::Active, Some(0)));
     assert!(line.drawn < line.principal && env.now() < line.availability_end, "the line can still draw");
     env.deliver_pagare(&k, line_id, 0);
     assert_eq!(env.asset_state(&env.pagare(&k, line_id, 0).asset).base.owner, borrower.pubkey());
@@ -675,7 +678,7 @@ fn entry_hash(asset: &solana_pubkey::Pubkey, kind: u8, from: &solana_pubkey::Pub
 }
 
 /// What a payment entry commits (decision 38): domain, receipt, amounts, balance, who paid.
-fn annotation(receipt: &[u8; 32], principal_applied: u64, accessory_applied: u64, principal_balance: u64, by_borrower: bool, interest_reserved: u64) -> [u8; 32] {
+fn annotation(receipt: &[u8; 32], principal_applied: u64, accessory_applied: u64, principal_balance: u64, by_borrower: bool) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(b"elote.pago.v1");
@@ -684,19 +687,19 @@ fn annotation(receipt: &[u8; 32], principal_applied: u64, accessory_applied: u64
     h.update(accessory_applied.to_le_bytes());
     h.update(principal_balance.to_le_bytes());
     h.update([u8::from(by_borrower)]);
-    h.update(interest_reserved.to_le_bytes());
     h.finalize().into()
 }
 
-/// Decision 46: a line of four pagarés settles in two payments for what one would pay. The payment
-/// on account takes the accrued interest and then principal; the pagarés it covers are paid while
-/// the line still owes interest, so their payment entries reserve that interest (CCom 364), and
-/// none leaves the pool until the line owes nothing (decision 49). The settling payment, with its
-/// own receipt, releases all four; each `Entrega` entry commits its record's own `receipt_hash`.
-/// The forgiveness of decision 44 comes once, with the payment that settles.
+/// A line of four pagarés settles in two payments (decision 48). The payment on account takes the
+/// interest accrued, then principal; the pagarés it covers are paid with no interest left unpaid,
+/// so their entries reserve nothing, and none leaves the pool until the line owes nothing
+/// (decision 49). The settling payment, with its own receipt, releases all four; each `Entrega`
+/// entry commits its record's own `receipt_hash`. The principal repaid early lowers the interest
+/// that follows: the two payments together cost what the reference says, less than one payoff at
+/// the end would.
 #[test]
 fn a_split_settlement_delivers_every_titulo_once_the_line_owes_nothing() {
-    use elote_pool::events::{EarlySettlement, PagareDelivered, PagarePayment};
+    use elote_pool::events::{PagareDelivered, PagarePayment};
     use elote_pool::state::KIND_PAGADO;
     let mut env = Env::new();
     let k = pool_with(&mut env, 20 * UNIT);
@@ -708,28 +711,28 @@ fn a_split_settlement_delivers_every_titulo_once_the_line_owes_nothing() {
         env.draw_amount(&k, line_id, &borrower, UNIT);
     }
     let line = env.line(&k, line_id);
-    let fixed = line.interest_due;
+    let mut r = reference::RefLine::new(1_000, line.term_end);
+    r.draw(line.drawn_at, 4 * UNIT);
     let council = env.council.insecure_clone();
-    env.mint_to(&k.asset_mint, &council, &b, fixed);
-    env.warp(line.drawn_at + (line.term_end - line.drawn_at) / 2);
+    env.mint_to(&k.asset_mint, &council, &b, UNIT);
+    let half = line.drawn_at + (line.term_end - line.drawn_at) / 2;
+    env.warp(half);
     let balance = env.token_balance(&k.asset_ata(&b));
     let (on_account, settling) = ([0xa1; 32], [0xb2; 32]);
 
-    // On account: the accrued interest and two and a half pagarés.
+    // On account: half a year of 10% on 4.0, 200_000, and two and a half pagarés.
     let before0 = env.pagare(&k, line_id, 0);
-    let amount = 2 * UNIT + UNIT / 2 + fixed / 2;
+    let amount = 2 * UNIT + UNIT / 2 + 200_000;
     let ix = env.repay_ix_full(&k, line_id, &b, amount, on_account, &env.payment_sidecars(&k, line_id, amount));
     let meta = env.send(ix, &borrower, &[]);
     let now = env.now();
-    assert!(find_event::<EarlySettlement>(&meta).is_none());
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
+    assert_eq!((ev.interest_part, ev.principal_part), (200_000, 2 * UNIT + UNIT / 2));
+    assert_eq!(r.pay(now, amount, 0), (0, 200_000, 2 * UNIT + UNIT / 2));
     let line = env.line(&k, line_id);
-    assert!(ev.interest_part > 0 && ev.interest_part < fixed, "the accrued interest, not all of it");
-    assert_eq!(ev.principal_part, amount - ev.interest_part);
-    let reserved = fixed - ev.interest_part;
-    assert_eq!((line.pagares_paid, line.interest_due - line.interest_repaid, ev.interest_reserved), (2, reserved, reserved));
+    assert_eq!((line.pagares_paid, line.interest_unpaid(now)), (2, Some(0)));
     let p0 = env.pagare(&k, line_id, 0);
-    let pagado = annotation(&on_account, UNIT, ev.interest_part, 0, true, reserved);
+    let pagado = annotation(&on_account, UNIT, 200_000, 0, true);
     assert_eq!(p0.log_root, chain(&before0.log_root, &entry_hash(&p0.asset, KIND_PAGADO, &b, &k.pool, &pagado, now, 2)));
 
     // Nothing leaves between the payments: the paid ones wait for the line, the others for cover.
@@ -741,17 +744,18 @@ fn a_split_settlement_delivers_every_titulo_once_the_line_owes_nothing() {
         env.expect_deliver_err(&k, line_id, i, E_PAGARE_NOT_COVERED);
     }
 
-    // The settling payment: the interest accrued since, the rest forgiven, nothing left to reserve.
+    // The settling payment, a day later: a day of 10% on the 1.5 left, 410.9, and the principal.
     env.warp(env.now() + 86_400);
     let ix = env.repay_ix_full(&k, line_id, &b, 4 * UNIT, settling, &env.payment_sidecars(&k, line_id, 4 * UNIT));
     let meta = env.send(ix, &borrower, &[]);
-    let settled: EarlySettlement = find_event(&meta).expect("EarlySettlement");
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
+    assert_eq!((ev.interest_part, ev.principal_part), (410, UNIT + UNIT / 2));
+    assert_eq!(r.pay(env.now(), 4 * UNIT, 0), (0, 410, UNIT + UNIT / 2));
     let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.pagares_paid, ev.interest_reserved), (LineStatus::Repaid, 4, 0));
-    assert_eq!(settled.interest_forgiven, fixed - line.interest_due);
-    assert!(settled.interest_forgiven > 0 && line.interest_due < fixed);
-    assert_eq!(balance - env.token_balance(&k.asset_ata(&b)), 4 * UNIT + line.interest_due, "what one settling payment pays");
+    assert_eq!((line.status, line.pagares_paid), (LineStatus::Repaid, 4));
+    assert_eq!(balance - env.token_balance(&k.asset_ata(&b)), 4 * UNIT + 200_410);
+    // One payoff at the same second would have paid 4.0 for the half year and the day: 201_095.
+    assert_eq!(4_000_000u128 * 1_000 * (YEAR as u128 / 2 + 86_400) / (10_000 * YEAR as u128), 201_095);
 
     // All four leave; each Entrega entry is over the receipt of the payment that paid its pagaré.
     for (i, receipt) in [(0u16, on_account), (1, on_account), (2, settling), (3, settling)] {
@@ -1083,7 +1087,7 @@ fn the_payment_ends_the_procuracion_and_the_procurador_keeps_no_record() {
     env.procuracion(&k, line_id, 0, &pr, ENDOSO_HASH);
     env.procuracion(&k, line_id, 1, &pr, ENDOSO_HASH);
     env.warp(p.term_end);
-    let interest = env.line(&k, line_id).interest_due;
+    let interest = 200_000; // a year of 10% on 2.0
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     let meta = env.send(env.repay_ix_full(&k, line_id, &borrower.pubkey(), UNIT + interest, RECEIPT_HASH, &env.payment_sidecars(&k, line_id, UNIT + interest)), &borrower, &[]);
     assert_eq!(env.line(&k, line_id).principal_repaid, UNIT);
@@ -1150,7 +1154,7 @@ fn the_council_annuls_an_outstanding_titulo_by_annotation_alone() {
     // delivers.
     let ix = env.renounce_availability_ix(&k, line_id, &borrower.pubkey());
     env.send(ix, &borrower, &[]);
-    let interest = env.line(&k, line_id).interest_due;
+    let interest = env.interest_unpaid(&k, line_id);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, UNIT + interest);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
@@ -1183,9 +1187,8 @@ fn the_aval_who_pays_receives_the_live_titulo_once_the_line_owes_nothing() {
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.warp(env.line(&k, line_id).term_end);
 
-    // The aval pays the interest and the first pagaré.
-    let line = env.line(&k, line_id);
-    let first = UNIT + line.interest_due;
+    // The aval pays the interest, a year of 10% on 2.0, and the first pagaré.
+    let first = UNIT + 200_000;
     env.mint_to(&k.asset_mint, &council, &aval.pubkey(), first);
     env.repay(&k, line_id, &aval, first);
     let p0 = env.pagare(&k, line_id, 0);
@@ -1245,8 +1248,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     env.warp(p.term_end);
     let line = env.line(&k, line_id);
     assert_eq!((line.draws, line.pagares_paid), (3, 0));
-    let interest = line.interest_due;
-    assert!(interest > 1);
+    let interest = 400_000; // a year of 10% on 4.0
     env.mint_to(&k.asset_mint, &council, &b, interest);
 
     // An interest-only payment leaves its Abono on the oldest outstanding pagaré (decision 38,
@@ -1259,7 +1261,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
     let now = env.now();
     let p0 = env.pagare(&k, line_id, 0);
     assert_eq!((p0.entry_count, p0.status, p0.last_kind), (2, PAGARE_OUTSTANDING, KIND_ABONO));
-    assert_eq!(p0.log_root, chain(&before.log_root, &entry_hash(&p0.asset, KIND_ABONO, &b, &k.pool, &annotation(&[0; 32], 0, half, UNIT, true, interest - half), now, 2)));
+    assert_eq!(p0.log_root, chain(&before.log_root, &entry_hash(&p0.asset, KIND_ABONO, &b, &k.pool, &annotation(&[0; 32], 0, half, UNIT, true), now, 2)));
     assert!(find_event::<PagareEntry>(&meta).is_some());
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
     assert_eq!((ev.payer, ev.receipt_hash, ev.late_part, ev.interest_part, ev.principal_part), (b, [0; 32], 0, half, 0));
@@ -1283,7 +1285,7 @@ fn a_payment_writes_its_entries_on_the_sidecars_it_touches() {
         "the PAGADO mark at the moment of payment"
     );
     assert_eq!((p1.status, p1.last_kind, p1.entry_count), (PAGARE_OUTSTANDING, KIND_ABONO, 2));
-    assert_eq!(p1.log_root, chain(&before1.log_root, &entry_hash(&p1.asset, KIND_ABONO, &b, &k.pool, &annotation(&RECEIPT_HASH, UNIT / 2, 0, UNIT / 2, true, 0), now, 2)));
+    assert_eq!(p1.log_root, chain(&before1.log_root, &entry_hash(&p1.asset, KIND_ABONO, &b, &k.pool, &annotation(&RECEIPT_HASH, UNIT / 2, 0, UNIT / 2, true), now, 2)));
     assert_eq!(env.pagare(&k, line_id, 2).entry_count, 1, "untouched");
     assert_eq!(env.line(&k, line_id).pagares_paid, 1);
     let ev: PagarePayment = find_event(&meta).expect("PagarePayment");
@@ -1317,7 +1319,9 @@ fn repay_requires_exactly_the_sidecars_the_payment_touches() {
     }
     let line_key = line_pda(&k.pool, line_id).0;
     let s: Vec<_> = (0..3).map(|i| pagare_pda(&line_key, i).0).collect();
-    let interest = env.line(&k, line_id).interest_due;
+    env.warp(env.now() + 30 * 86_400);
+    let interest = env.interest_unpaid(&k, line_id);
+    assert!(interest > 0);
     env.mint_to(&k.asset_mint, &council, &b, interest);
     let other = env.borrower(&k);
     let other_id = open(&mut env, &k, &other, &p);
@@ -1371,7 +1375,7 @@ fn deliver_pagare_requires_the_payments_pagado_mark() {
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
     env.draw_amount(&k, line_id, &borrower, UNIT);
-    let interest = env.line(&k, line_id).interest_due;
+    let interest = env.interest_unpaid(&k, line_id);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     let payment = [0x11; 32];
     let amount = UNIT + interest;
@@ -1385,9 +1389,9 @@ fn deliver_pagare_requires_the_payments_pagado_mark() {
     env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
     env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
     let settling = [0x22; 32];
-    // Enough for the principal left and the interest accrued since; the program takes what is due.
-    let rest = env.line(&k, line_id).drawn - env.line(&k, line_id).principal_repaid + interest;
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
+    // The principal left and the hour of interest accrued on it since.
+    let rest = env.payoff(&k, line_id);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), rest);
     let ix = env.repay_ix_full(&k, line_id, &borrower.pubkey(), rest, settling, &env.payment_sidecars(&k, line_id, rest));
     env.send(ix, &borrower, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
@@ -1419,7 +1423,7 @@ fn annotate_payment_attaches_the_receipt_to_a_payment_entry() {
     let p = env.line_params(2 * UNIT, 1_000);
     let line_id = open(&mut env, &k, &borrower, &p);
     env.draw_amount(&k, line_id, &borrower, UNIT);
-    let amount = env.line(&k, line_id).interest_due + 1;
+    let amount = env.interest_unpaid(&k, line_id) + 1;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), amount);
     // A payment with no receipt hash: the Abono says "receipt to follow".
     let ix = env.repay_ix_full(&k, line_id, &borrower.pubkey(), amount, [0; 32], &env.payment_sidecars(&k, line_id, amount));

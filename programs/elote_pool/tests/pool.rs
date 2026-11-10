@@ -303,15 +303,13 @@ fn redeem_rounds_down_and_honours_min_assets_out() {
     assert_eq!(env.redeem(&k, &a, 7).assets, 7);
 }
 
-/// `init_pool` takes no grace period: the pool's field is reserved and always zero, and the
-/// `PoolInitialized` event records the parameters it does take.
+/// The `PoolInitialized` event records the parameters `init_pool` takes, which the pool then holds.
 #[test]
-fn init_pool_records_its_parameters_and_no_grace_period() {
+fn init_pool_records_its_parameters() {
     let mut env = Env::new();
     let (k, meta) = env.setup_pool();
 
     let pool = env.pool(&k);
-    assert_eq!(pool.grace_period_seconds, 0, "reserved");
     assert_eq!(pool.max_line_bps, HARNESS_MAX_LINE_BPS, "the harness default cap of 5,000 bps");
     assert_eq!((pool.asset_controls, pool.permissioned), (0, false));
     assert_eq!(pool.collection_period_seconds, COLLECTION_PERIOD);
@@ -363,7 +361,7 @@ fn a_pool_on_a_token_2022_asset_runs_the_full_cycle() {
     let line_id = env.open_line(&k, &borrower, 4 * UNIT, 1_000);
     env.draw(&k, line_id, &borrower);
     assert_eq!(env.token_balance(&k.asset_ata(&borrower.pubkey())), 4 * UNIT);
-    env.warp(env.line(&k, line_id).term_end); // settle at the term: the interest is fully accrued (decision 44)
+    env.warp(env.line(&k, line_id).term_end); // settle at the term: a year of 10% on 4.0
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 400_000);
     env.repay(&k, line_id, &borrower, 4 * UNIT + 400_000);
@@ -595,8 +593,8 @@ fn nav_updated_follows_every_money_instruction() {
     let meta = env.send(ix, &borrower, &[]);
     assert!(find_event::<NavUpdated>(&meta).is_none(), "a draw moves no value: vault down, outstanding up");
 
-    // Principal plus the 0.4 of interest at the term, when it is fully accrued (an earlier
-    // settlement would owe only the accrual, decision 44): the NAV rises, the supply does not.
+    // Principal plus the 0.4 of interest at the term, a year of 10% on 4.0 (decision 48): the NAV
+    // rises, the supply does not.
     env.warp(env.line(&k, line_id).term_end);
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 400_000);
@@ -800,20 +798,27 @@ fn permissioned_shares_need_a_thaw_before_the_first_deposit() {
     assert_eq!(env.deposit(&k2, &c, 2 * UNIT).shares, 2 * UNIT - DEAD_SHARES);
 }
 
-/// SPL Token accepts any `decimals` byte. Above 19, `10^decimals` does not fit a `u64`, so no
-/// first deposit could ever meet the minimum; `init_pool` refuses such a mint instead of creating
-/// a pool that can never take a deposit.
+/// The FIX conversion (`fx::usdc_for_mxn`) counts the asset in millionths, so `init_pool` takes an
+/// asset mint of 6 decimals only (USDC, MEXe), whatever else SPL Token accepts; on it the first
+/// deposit is at least one unit, 1_000_000 base units.
 #[test]
-fn init_pool_rejects_a_mint_whose_decimals_make_the_first_deposit_impossible() {
+fn init_pool_requires_an_asset_mint_of_six_decimals() {
     let mut env = Env::new();
     let council = env.council.insecure_clone();
-    let mint = env.create_mint(&council.pubkey(), 20);
-    let (_, ix) = env.init_pool_plain(&mint);
-    env.expect_err(ix, &council, &[], E_WRONG_ACCOUNT);
-    // Nineteen decimals is the largest the minimum can express.
-    let mint = env.create_mint(&council.pubkey(), 19);
-    let (_, ix) = env.init_pool_plain(&mint);
+    for decimals in [0u8, 2, 5, 7, 9, 19, 20] {
+        let mint = env.create_mint(&council.pubkey(), decimals);
+        let (_, ix) = env.init_pool_plain(&mint);
+        env.expect_err(ix, &council, &[], E_ASSET_DECIMALS_INVALID);
+    }
+    let mint = env.create_mint(&council.pubkey(), 6);
+    let (k, ix) = env.init_pool_plain(&mint);
     env.send(ix, &council, &[]);
+    let investor = env.funded(10);
+    env.mint_to(&mint, &council, &investor.pubkey(), 2_000_000);
+    env.create_ata(&investor.pubkey(), &k.share_mint);
+    let ix = env.deposit_ix(&k, &investor.pubkey(), 999_999);
+    env.expect_err(ix, &investor, &[], E_FIRST_DEPOSIT_TOO_SMALL);
+    env.deposit(&k, &investor, 1_000_000);
 }
 
 /// No change of the pool's state goes unannounced: each setter emits its own event carrying the

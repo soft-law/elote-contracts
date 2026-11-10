@@ -29,14 +29,11 @@ impl Lcg {
 fn case(t: &ScheduleTerms, paid: u64, now: i64) -> Value {
     let a = arrears(t, paid, now).expect("every vector is a valid line");
     json!({
-        "total": t.total.to_string(),
         "principal": t.principal.to_string(),
-        "principal_left": t.principal_left.to_string(),
         "anchor": t.anchor.to_string(),
         "interval": t.interval.to_string(),
         "installments": t.installments,
         "late_bps": t.late_bps,
-        "grace": t.grace,
         "late_paid_until": t.late_paid_until.to_string(),
         "late_collected": t.late_collected.to_string(),
         "accelerated_at": t.accelerated_at.to_string(),
@@ -46,7 +43,6 @@ fn case(t: &ScheduleTerms, paid: u64, now: i64) -> Value {
         "covered": a.covered,
         "missed": a.missed,
         "overdue": a.overdue.to_string(),
-        "overdue_principal": a.overdue_principal.to_string(),
         "late_due": a.late_due.to_string(),
         "first_missed_due": a.first_missed_due.map(|v| v.to_string()),
     })
@@ -55,26 +51,23 @@ fn case(t: &ScheduleTerms, paid: u64, now: i64) -> Value {
 /// The cases of the `math.rs` unit tests, so a reader can match them by eye.
 fn hand_cases() -> Vec<Value> {
     const YEAR: u64 = elote_pool::state::SECONDS_PER_YEAR;
-    let terms = |total: u64, n: u16, late_bps: u16, grace: u32| ScheduleTerms {
-        total,
+    let terms = |principal: u64, n: u16, late_bps: u16| ScheduleTerms {
+        principal,
         anchor: 1_000,
         interval: 100,
         installments: n,
         late_bps,
-        grace,
         late_paid_until: 0,
-        principal: total,
-        principal_left: total,
         late_collected: 0,
         accelerated_at: 0,
     };
     let mut v = Vec::new();
-    let t = terms(600, 6, 0, 0);
+    let t = terms(600, 6, 0);
     for (paid, now) in [(0, 1_099), (0, 1_100), (150, 1_300), (400, 1_300), (0, 9_999)] {
         v.push(case(&t, paid, now));
     }
-    // Two installments of 365 overdue at 100% a year, grace 10: late interest 438.
-    let mut t = terms(365 * 3 * YEAR / 1_000, 3, 10_000, 10);
+    // Two installments of 365 overdue at 100% a year: late interest 445.
+    let mut t = terms(365 * 3 * YEAR / 1_000, 3, 10_000);
     t.interval = 1_000;
     let now = t.anchor + 2_000 + 10 + 100;
     v.push(case(&t, 0, now));
@@ -83,20 +76,17 @@ fn hand_cases() -> Vec<Value> {
     v.push(case(&t, 0, now));
     v.push(case(&t, 0, now + 10));
     // Capped at the overdue amount, then at what is left of the principal.
-    let t = terms(600, 6, 10_000, 0);
+    let t = terms(600, 6, 10_000);
     v.push(case(&t, 0, 1_000 + 600 + 50 * YEAR as i64));
-    let mut t = terms(600, 6, 10_000, 0);
-    t.principal = 500;
-    t.late_collected = 450;
+    let mut t = terms(600, 6, 10_000);
+    t.late_collected = 550;
     v.push(case(&t, 0, 1_000 + 600 + 50 * YEAR as i64));
-    t.late_collected = 500;
+    t.late_collected = 600;
     v.push(case(&t, 0, 1_000 + 600 + 50 * YEAR as i64));
     // A partial payment lowers the overdue part.
-    v.push(case(&terms(600, 6, 0, 0), 60, 1_200));
-    // Late interest on the principal share only: 500 of principal in 600, yearly
-    // installments.
-    let mut t = terms(600, 6, 10_000, 0);
-    t.principal = 500;
+    v.push(case(&terms(600, 6, 0), 60, 1_200));
+    // Yearly installments, one overdue for a tenth of a year, then all of them.
+    let mut t = terms(600, 6, 10_000);
     t.interval = YEAR as i64;
     let first_due = t.anchor + YEAR as i64;
     v.push(case(&t, 0, first_due + (YEAR / 10) as i64));
@@ -104,7 +94,7 @@ fn hand_cases() -> Vec<Value> {
     v.push(case(&t, 0, t.anchor + 60 * YEAR as i64));
     // Accelerated at 1_250 (vencimiento anticipado): every installment due, those not yet due
     // accrue from the mark; paying the pre-mark arrears cures nothing.
-    let mut t = terms(600, 6, 10_000, 10);
+    let mut t = terms(600, 6, 10_000);
     t.accelerated_at = 1_250;
     for paid in [100, 300, 600] {
         v.push(case(&t, paid, 1_350));
@@ -114,13 +104,12 @@ fn hand_cases() -> Vec<Value> {
     v.push(case(&t, 100, 1_250));
     // An accelerated bullet line, as `line_arrears` builds it: one installment due at the term
     // (anchor term - 1, interval 1), accelerated before it, late interest on the principal from the
-    // mark. Term 1_000_000, mark 500_000; 4_000 principal and 100 of interest kept.
-    let mut t = terms(4_100, 1, 3_650, 86_400);
+    // mark. Term 1_000_000, mark 500_000; 4_000 of principal.
+    let mut t = terms(4_000, 1, 3_650);
     t.anchor = 999_999;
     t.interval = 1;
-    t.principal = 4_000;
     t.accelerated_at = 500_000;
-    for (paid, now) in [(0, 500_000), (0, 500_000 + 10 * 86_400), (100, 500_000 + 10 * 86_400), (2_100, 500_000 + 30 * 86_400), (0, 1_000_000 + YEAR as i64)] {
+    for (paid, now) in [(0, 500_000), (0, 500_000 + 10 * 86_400), (100, 500_000 + 10 * 86_400), (2_000, 500_000 + 30 * 86_400), (0, 1_000_000 + YEAR as i64)] {
         v.push(case(&t, paid, now));
     }
     t.late_paid_until = 500_000 + 10 * 86_400;
@@ -132,20 +121,16 @@ fn generated_cases() -> Vec<Value> {
     let mut r = Lcg(0x5EED_2026_1019);
     // A second stream for the acceleration, so the 400 original cases keep their values.
     let mut acc = Lcg(0xACCE_55ED_2026_1102);
-    // A third for the principal left unpaid (decision 46): all of it in one case of three.
-    let mut left = Lcg(0x1EF7_2026_1110);
     (0..400)
         .map(|_| {
             let n = r.range(1, 120) as u16;
-            let total = r.range(u64::from(n), 1 << 48);
-            let interest = total / 10_000 * r.range(0, 10_000);
-            let principal = total - interest;
+            let principal = r.range(u64::from(n), 1 << 48);
             let late_collected = if r.range(0, 3) == 0 { principal / 10_000 * r.range(0, 10_000) } else { 0 };
             let interval = r.range(1, 10_000_000) as i64;
             let anchor = r.range(1_000_000_000, 2_000_000_000) as i64;
-            let grace = r.range(0, 2_000_000) as u32;
+            r.range(0, 2_000_000); // the grace term the arithmetic no longer takes; keeps the stream
             let late_bps = r.range(0, 10_000) as u16;
-            let paid = (total / 10_000).max(1) * r.range(0, 12_000);
+            let paid = (principal / 10_000).max(1) * r.range(0, 12_000);
             let now = anchor + interval * (r.range(0, 230) as i64 - 100);
             let late_paid_until = if r.range(0, 1) == 0 {
                 0
@@ -153,15 +138,12 @@ fn generated_cases() -> Vec<Value> {
                 anchor + (now - anchor) * (r.range(0, 10_000) as i64) / 10_000
             };
             let t = ScheduleTerms {
-                total,
+                principal,
                 anchor,
                 interval,
                 installments: n,
                 late_bps,
-                grace,
                 late_paid_until,
-                principal,
-                principal_left: if left.range(0, 2) == 0 { principal } else { principal / 10_000 * left.range(0, 10_000) },
                 late_collected,
                 accelerated_at: if acc.range(0, 5) == 0 && now > anchor { anchor + (now - anchor) * (acc.range(0, 10_000) as i64) / 10_000 } else { 0 },
             };

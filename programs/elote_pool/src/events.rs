@@ -155,8 +155,9 @@ pub struct AvailabilityRenounced {
 }
 
 /// The council condoned interest of a line (`condone_interest`, decision 50): the late interest
-/// accrued to `condoned_at` and `interest` of the ordinary interest it still owed, against the
-/// written record `document_hash`. `remaining` is what the line owes afterwards.
+/// accrued to `condoned_at` and `interest` of the ordinary interest accrued and unpaid, against the
+/// written record `document_hash`. `remaining` is what the line owes afterwards: principal and
+/// ordinary interest accrued and unpaid.
 #[event]
 pub struct InterestCondoned {
     pub pool: Pubkey,
@@ -187,7 +188,6 @@ pub struct LineDrawn {
     pub usdc_delivered: u64,
     pub drawn: u64,
     pub available: u64,
-    pub interest_due: u64,
     pub availability_end: i64,
     pub outstanding_after: u64,
 }
@@ -209,19 +209,6 @@ pub struct LineRepaid {
     pub nav_after: u64,
 }
 
-/// A voluntary early settlement (decision 44): the payment settled an active line that could
-/// draw nothing more, and the interest fixed at the draws beyond the accrual to the payment was
-/// forgiven — the counterpart, at the debtor's will, of the forgiveness the mark applies at the
-/// debtor's default. Emitted before the `LineRepaid` of the same repayment.
-#[event]
-pub struct EarlySettlement {
-    pub pool: Pubkey,
-    pub line_id: u64,
-    pub payer: Pubkey,
-    pub interest_forgiven: u64,
-    pub settled_at: i64,
-}
-
 /// Late interest collected by a repayment of a scheduled line; it stays in the pool and raises
 /// the NAV like interest. Emitted before the `LineRepaid` of the same repayment.
 #[event]
@@ -232,16 +219,14 @@ pub struct LateInterestCollected {
 }
 
 /// A scheduled line moved to collection and its balance accelerated. `remaining` is the principal
-/// and interest still due after the acceleration, without late interest; `interest_forgiven` is
-/// the ordinary interest of the installments not yet due at the mark, which the line no longer
-/// owes.
+/// left and the ordinary interest accrued to the mark and unpaid, without late interest; ordinary
+/// interest stops at the mark (decision 48).
 #[event]
 pub struct LineInCollection {
     pub pool: Pubkey,
     pub line_id: u64,
     pub missed: u16,
     pub remaining: u64,
-    pub interest_forgiven: u64,
     /// The pool's whole impairment after this mark (decision 40).
     pub impaired_principal: u64,
 }
@@ -300,8 +285,6 @@ pub struct PagarePayment {
     pub late_part: u64,
     pub interest_part: u64,
     pub principal_part: u64,
-    /// The ordinary interest the line still owes after the payment, reserved by every entry.
-    pub interest_reserved: u64,
     pub entries: Vec<PaymentEntry>,
 }
 
@@ -387,7 +370,6 @@ pub struct LineAccelerated {
     pub pool: Pubkey,
     pub line_id: u64,
     pub remaining: u64,
-    pub interest_forgiven: u64,
     /// The pool's whole impairment after this acceleration (decision 40).
     pub impaired_principal: u64,
 }

@@ -41,6 +41,7 @@ import {
   maxLinePrincipal,
   mxnForUsdc,
   usdcForMxn,
+  lineSponsor,
 } from "../clients/js/src/index.ts";
 import {
   ASSET,
@@ -165,7 +166,7 @@ console.log(
     `line id      ${opened.lineId}`,
     `line         ${line}`,
     `borrower     ${opened.borrower}`,
-    `sponsor      ${opened.sponsor.__option === "Some" ? `${opened.sponsor.value} (${roleName})` : "none"}`,
+    `sponsor      ${lineSponsor(opened) ? `${opened.sponsor} (${roleName})` : "none"}`,
     `principal    MXN ${fmtMxn(opened.principal)}`,
     `rate         ${opened.rateBps} bps a year, charged per tranche at the draw`,
     `term         ${termDays} days, ends ${new Date(Number(opened.termEnd) * 1000).toISOString()}`,

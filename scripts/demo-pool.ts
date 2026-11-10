@@ -65,6 +65,7 @@ import {
   getPostFixInstructionAsync,
   getRequestLineInstructionAsync,
   getRedeemInstructionAsync,
+  interestUnpaid,
   lineArrears,
   lineSchedule,
   mexicoCityDate,
@@ -438,11 +439,12 @@ async function scheduleDemo() {
     const l = (await fetchCreditLine(c.rpc, sLine, { commitment: "confirmed" })).data;
     const s = lineSchedule(l)!;
     const now = await chainNow(c);
-    return { l, s, now, a: lineArrears(l, s, 0n, now) };
+    return { l, s, now, a: lineArrears(l, s, now) };
   };
   let { l } = await read();
-  const installment = (l.drawn + l.interestDue) / BigInt(installments);
-  console.log(`  installment MXN ${fmtMxn(installment)}; first due at ${l.firstDueAt} (from the contract, one interval after the opening)`);
+  // Installments of principal; the interest accrued is taken first from every payment (decision 48).
+  const installment = l.drawn / BigInt(installments);
+  console.log(`  installment MXN ${fmtMxn(installment)} of principal, plus the interest accrued; first due at ${l.firstDueAt} (from the contract, one interval after the opening)`);
 
   // Let the first installment go unpaid past its due date: late interest runs from then on.
   const target = l.firstDueAt + 10n;
@@ -459,7 +461,8 @@ async function scheduleDemo() {
   // The overdue installment, its late interest and the next installment; the program takes late
   // interest first, then the interest accrued, then principal, and never more than is due.
   const lateBefore = l.lateCollected;
-  await repayInParts(c, { pool, poolData, line: sLine, payer: borrower, amount: usdcCeilForMxn(a.overdue + installment + 2n * a.lateDue, FIX), receiptHash: noReceipt });
+  const interest = interestUnpaid(l, (await chainNow(c)) + 60n);
+  await repayInParts(c, { pool, poolData, line: sLine, payer: borrower, amount: usdcCeilForMxn(a.overdue + installment + interest + 2n * a.lateDue, FIX), receiptHash: noReceipt });
   ({ l, a } = await read());
   console.log(`  late interest collected MXN ${fmtMxn(l.lateCollected - lateBefore)}; missed installments now ${a.missed}`);
   console.log(`  repaid: interest MXN ${fmtMxn(l.interestRepaid)}, principal MXN ${fmtMxn(l.principalRepaid)} (late interest first, then the interest accrued, then principal)`);

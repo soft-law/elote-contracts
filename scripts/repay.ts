@@ -21,7 +21,7 @@
 // Demo on Solana devnet with test assets. Not an offer of securities.
 import { address } from "@solana/kit";
 import { fetchToken } from "@solana-program/token";
-import { LineStatus, fetchCreditLine, lineLateDue, repayInterestLeft, usdcCeilForMxn } from "../clients/js/src/index.ts";
+import { LineStatus, fetchCreditLine, interestAccrued, lineLateDue, lineOwed, usdcCeilForMxn } from "../clients/js/src/index.ts";
 import {
   DISCLAIMER,
   arg,
@@ -59,15 +59,16 @@ const pool = await loadPool(c, poolAddress);
 const { line, data: l } = await loadLine(c, poolAddress, lineId);
 if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) fail(`the line is ${LineStatus[l.status]}: nothing to repay`);
 
-const late = lineLateDue(l, await chainNow(c));
-// What a payment can take now: on an active line, the interest accrued (decisions 46 and 47); the
-// rest stays owed, or is forgiven when this payment settles a line that can draw nothing more.
-const owed = l.drawn - l.principalRepaid + repayInterestLeft(l, await chainNow(c)) + late;
+const now = await chainNow(c);
+const late = lineLateDue(l, now);
+// What a payment takes now: late interest, the ordinary interest accrued on the principal
+// outstanding and unpaid, and the principal (decision 48).
+const owed = lineOwed(l, now) + late;
 const owedUsdc = usdcCeilForMxn(owed, pool.fixRate);
-// Late interest and the accrual grow by the second: --all offers all the interest fixed and pads
-// the late interest, and the program takes only what is payable when the payment lands.
-const ceiling = l.drawn - l.principalRepaid + l.interestDue - l.interestRepaid + late;
-const amount = flag("all") ? usdcCeilForMxn(ceiling + late + 100n, pool.fixRate) : parseAmount("amount", required("amount"));
+// Late interest and the accrual grow by the second: --all quotes them an hour ahead, and the
+// program takes only what is payable when the payment lands.
+const ceiling = lineOwed(l, now + 3_600n) + lineLateDue(l, now + 3_600n);
+const amount = flag("all") ? usdcCeilForMxn(ceiling + 100n, pool.fixRate) : parseAmount("amount", required("amount"));
 const balance = (await fetchToken(c.rpc, await ataOf(payer.address, pool.assetMint), { commitment: "confirmed" })).data.amount;
 if (balance < (amount < owedUsdc ? amount : owedUsdc)) fail(`the payer holds ${fmt(balance)} USDC`);
 console.log(
@@ -80,7 +81,7 @@ const after = (await fetchCreditLine(c.rpc, line, { commitment: "confirmed" })).
 console.log(
   [
     `paid         ${fmt(paid)} USDC`,
-    `line now     principal repaid MXN ${fmtMxn(after.principalRepaid)} of ${fmtMxn(after.drawn)}, interest MXN ${fmtMxn(after.interestRepaid)} of ${fmtMxn(after.interestDue)}`,
+    `line now     principal repaid MXN ${fmtMxn(after.principalRepaid)} of ${fmtMxn(after.drawn)}, interest MXN ${fmtMxn(after.interestRepaid)} of ${fmtMxn(interestAccrued(after, await chainNow(c)))} accrued`,
     `pagarés      ${after.pagaresPaid} of ${after.draws} marked paid; delivered once the line owes nothing (decision 49; deliver-pagare.ts re-delivers a missed one)`,
     `status       ${LineStatus[after.status]}`,
   ].join("\n")

@@ -28,8 +28,10 @@ import {
   getDeliverPagareInstructionAsync,
   getRepayInstructionAsync,
   fetchPool,
+  interestUnpaid,
   lineLateDue,
-  repayInterestLeft,
+  lineOwed,
+  lineSponsor,
   mxnForUsdc,
   usdcCeilForMxn,
   repayPrincipalCap,
@@ -83,8 +85,11 @@ export function fitsOneTransaction(feePayer: KeyPairSigner, instructions: Instru
   return isTransactionMessageWithinSizeLimit(message);
 }
 
-/** What the line owes in principal and ordinary interest: no título leaves until it is zero (decision 49). */
-export const lineOwes = (l: CreditLine) => l.drawn - l.principalRepaid + (l.interestDue - l.interestRepaid);
+/**
+ * What the line owes at `now` in principal and the ordinary interest accrued on it (decision 48):
+ * no título leaves until it is zero (decision 49).
+ */
+export const lineOwes = (l: CreditLine, now: bigint) => lineOwed(l, now);
 
 /**
  * A `deliver_pagare` for every pagaré of the line not yet delivered, oldest first: those already
@@ -96,7 +101,7 @@ async function pendingDeliveries(
   args: { pool: Address; poolData: Pool; line: Address; l: CreditLine; payer: KeyPairSigner; byAval: boolean }
 ): Promise<{ drawIndex: number; ix: Instruction }[]> {
   const { pool, poolData, line, l, payer, byAval } = args;
-  const sponsor = l.sponsor.__option === "Some" ? l.sponsor.value : undefined;
+  const sponsor = lineSponsor(l) ?? undefined;
   const out = [];
   for (let drawIndex = 0; drawIndex < l.draws; drawIndex++) {
     const [pagare] = await findPagarePda({ line, drawIndex });
@@ -126,7 +131,7 @@ async function pendingDeliveries(
  */
 export async function deliverPending(c: Cluster, args: { pool: Address; poolData: Pool; line: Address; payer: KeyPairSigner }): Promise<number> {
   const l = (await fetchCreditLine(c.rpc, args.line, { commitment: "confirmed" })).data;
-  if (lineOwes(l) > 0n) return 0;
+  if (lineOwes(l, await chainNow(c)) > 0n) return 0;
   const pending = await pendingDeliveries(c, { ...args, l, byAval: false });
   let delivered = 0;
   while (pending.length) {
@@ -174,12 +179,12 @@ export async function repayInParts(
       const now = await chainNow(c);
       const quotedAt = now + 30n;
       const late = lineLateDue(l, quotedAt);
-      // The interest the program takes before principal: on an active line, the interest accrued,
-      // quoted ahead like the late interest (decisions 46 and 47).
-      const interestLeft = repayInterestLeft(l, quotedAt);
+      // The interest the program takes before principal: the interest accrued and unpaid, quoted
+      // ahead like the late interest (decision 48).
+      const interestLeft = interestUnpaid(l, quotedAt);
       const principalLeft = l.drawn - l.principalRepaid;
-      // An active line still open after a part that left no principal can still draw: what is
-      // payable now is seconds of interest, not worth chasing part after part (decision 47).
+      // A part that left no principal left no interest either: nothing accrues on principal
+      // repaid, so there is nothing more to pay (decision 48).
       if (part > 1 && l.status === LineStatus.Active && principalLeft === 0n) break parts;
       const drawnThrough = await drawnThroughOf(c, line, l.draws);
       const cap = drawnThrough.length
@@ -208,13 +213,11 @@ export async function repayInParts(
         }),
         records
       );
-      // Does this part leave the line owing nothing? All the principal and the interest the
-      // program takes; on a line that can still draw, that must also be all the interest it owes,
-      // since nothing is forgiven while it can draw (decisions 44 and 47).
-      const canDraw = l.status === LineStatus.Active && now < l.availabilityEnd && l.drawn < l.principal;
-      const settles = principal === principalLeft && interest === interestLeft && (!canDraw || interest === l.interestDue - l.interestRepaid);
+      // Does this part leave the line owing nothing? All the principal and the interest accrued
+      // (decision 48); the program takes no more than it accrued by the time the part lands.
+      const settles = principal === principalLeft && interest === interestLeft;
       // The título goes to the borrower, or to the aval when the aval's payment covers it.
-      const byAval = l.sponsor.__option === "Some" && payer.address === l.sponsor.value && l.sponsorRole === SPONSOR_GUARANTOR;
+      const byAval = lineSponsor(l) !== null && payer.address === l.sponsor && l.sponsorRole === SPONSOR_GUARANTOR;
       const deliveries: { drawIndex: number; ix: Instruction }[] = [];
       if (settles && withDeliveries) {
         for (const d of await pendingDeliveries(c, { pool, poolData, line, l, payer, byAval })) {

@@ -21,10 +21,10 @@ fn f01_a_third_party_repayment_does_not_close_a_line_that_can_still_draw() {
     let p = env.line_params(4 * UNIT, 1_000);
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
 
-    // The borrower draws one base unit; its interest rounds to zero.
+    // The borrower draws one base unit.
     env.draw_amount(&k, line_id, &borrower, 1);
     let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.drawn, line.interest_due), (LineStatus::Active, 1, 0));
+    assert_eq!((line.status, line.drawn), (LineStatus::Active, 1));
 
     // A stranger repays it: the debt is gone, the line is not.
     let stranger = env.investor(&k, 2);
@@ -39,14 +39,14 @@ fn f01_a_third_party_repayment_does_not_close_a_line_that_can_still_draw() {
     let ix = env.repay_ix(&k, line_id, &stranger.pubkey(), 1);
     env.expect_err(ix, &stranger, &[], E_WRONG_AMOUNT);
 
-    // The borrower keeps drawing against its commitment. A second before the window closes the
-    // interest fixed at the draw has all accrued (decision 47: a payment never takes interest not
-    // yet accrued), so the borrower can pay everything, and the line still stays open.
+    // The borrower keeps drawing against its commitment. A second before the window closes it pays
+    // everything owed, and the line still stays open: 1.0 outstanding for a year less a second at
+    // 10%, 1_000_000 x 1_000 x 31_535_999 / 315_360_000_000 = 99_999.99 (decision 48).
     env.draw_amount(&k, line_id, &borrower, UNIT);
     assert_eq!(env.line(&k, line_id).drawn, UNIT + 1);
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
-    let interest = env.line(&k, line_id).interest_due;
+    let interest = 99_999;
     env.warp(p.term_end - 1);
     let ev = env.repay(&k, line_id, &borrower, UNIT + interest);
     assert_eq!((ev.interest_part, ev.remaining), (interest, 0));
@@ -78,20 +78,22 @@ fn f01_a_full_repayment_closes_a_line_that_cannot_draw_any_more() {
     let (full, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, full, &borrower);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
-    let interest = env.line(&k, full).interest_due;
-    env.repay(&k, full, &borrower, 2 * UNIT + interest);
+    env.warp(env.now() + 30 * 86_400);
+    // Thirty days on 2.0 at 10%: 2_000_000 x 1_000 x 2_592_000 / 315_360_000_000 = 16_438.3.
+    let ev = env.repay(&k, full, &borrower, 2 * UNIT + 16_438);
+    assert_eq!((ev.principal_part, ev.interest_part, ev.remaining), (2 * UNIT, 16_438, 0));
     assert_eq!(env.line(&k, full).status, LineStatus::Repaid);
 
-    // Half drawn, then the council closes the window: the next payment settles and closes it.
-    // Repaid at the draw's second, the principal goes and the interest fixed stays owed, none of
-    // it accrued (decision 47); the settlement forgives it (decision 44).
+    // Half drawn, then the council closes the window: the next payment closes it. Thirty days on
+    // 1.0 at 10% is 8_219.1; paying it and the principal leaves the line owing nothing, still open
+    // while it can draw.
     let borrower = env.borrower(&k);
     let (half, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw_amount(&k, half, &borrower, UNIT);
-    let interest = env.line(&k, half).interest_due;
+    env.warp(env.now() + 30 * 86_400);
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
-    let ev = env.repay(&k, half, &borrower, UNIT + interest);
-    assert_eq!((ev.principal_part, ev.interest_part, ev.remaining), (UNIT, 0, interest));
+    let ev = env.repay(&k, half, &borrower, UNIT + 8_219);
+    assert_eq!((ev.principal_part, ev.interest_part, ev.remaining), (UNIT, 8_219, 0));
     assert_eq!(env.line(&k, half).status, LineStatus::Active);
     let ix = env.suspend_draws_ix(&k, half, &council.pubkey());
     env.send(ix, &council, &[]);

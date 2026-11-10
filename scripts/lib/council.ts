@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type Address, type Instruction, type KeyPairSigner, type TransactionSigner, createNoopSigner } from "@solana/kit";
-import { LineStatus, getApproveLineInstructionAsync, termsHash } from "../../clients/js/src/index.ts";
+import { LineStatus, getApproveLineInstructionAsync, lineSponsor, termsHash } from "../../clients/js/src/index.ts";
 import { type Cluster, KEY_DIR, arg, chainNow, fail, loadSigner, send } from "./cli.ts";
 import { loadLine, loadPool } from "./pool.ts";
 import {
@@ -123,7 +123,7 @@ export async function approveLine(c: Cluster, council: Council, pool: Address, l
       lateBps: l.lateBps,
       termEnd: l.termEnd,
       agreementHash: l.agreementHash,
-      sponsor: l.sponsor.__option === "Some" ? l.sponsor.value : null,
+      sponsor: lineSponsor(l),
       sponsorRole: l.sponsorRole,
       schedule:
         l.installments > 0

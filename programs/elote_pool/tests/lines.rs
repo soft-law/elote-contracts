@@ -49,7 +49,7 @@ fn open_draw_repay_full_cycle_raises_share_value() {
     assert_eq!(line.pool, k.pool);
     assert_eq!(line.borrower, borrower.pubkey());
     assert_eq!(line.status, LineStatus::Approved);
-    assert_eq!((line.interest_due, line.drawn, line.draws), (0, 0, 0));
+    assert_eq!((line.principal_seconds, line.drawn, line.draws), (0, 0, 0));
     assert_eq!(line.agreement_hash, AGREEMENT_HASH);
     assert_eq!(line.expediente_root, EXPEDIENTE_ROOT);
     assert_eq!((line.requested_at, line.approved_at, line.availability_end), (env.now(), env.now(), p.term_end));
@@ -68,7 +68,8 @@ fn open_draw_repay_full_cycle_raises_share_value() {
     let line = env.line(&k, 0);
     assert_eq!(line.status, LineStatus::Active);
     assert_eq!(line.drawn_at, env.now());
-    assert_eq!((line.drawn, line.draws, line.interest_due), (4 * UNIT, 1, 400_000));
+    assert_eq!((line.drawn, line.draws), (4 * UNIT, 1));
+    assert_eq!(line.interest_accrued(p.term_end), Some(400_000), "a year of 10% on 4.0 (decision 48)");
 
     // The borrower earns the interest elsewhere and pays at the term, the interest fully accrued.
     // Late interest, then the accrued interest, then principal.
@@ -155,7 +156,7 @@ fn sponsor_must_cosign_when_named_and_its_role_is_recorded() {
     assert_eq!(ev.sponsor, Some(sponsor.pubkey()));
     assert_eq!((ev.pool, ev.line_id, ev.sponsor_role), (k.pool, line_id, SPONSOR_GUARANTOR));
     let line = env.line(&k, line_id);
-    assert_eq!((line.sponsor, line.sponsor_role), (Some(sponsor.pubkey()), SPONSOR_GUARANTOR));
+    assert_eq!((line.sponsor, line.sponsor_role), (sponsor.pubkey(), SPONSOR_GUARANTOR));
 
     // A public promoter: the default role, no payment obligation recorded.
     let mut p = env.line_params(UNIT, 1_000);
@@ -383,7 +384,7 @@ fn open_rejects_bad_params() {
     let (id1, _) = env.open_line_with(&k, &borrower, &good, None);
     assert_eq!((id0, id1), (0, 1));
     env.draw(&k, id0, &borrower);
-    assert_eq!(env.line(&k, 0).interest_due, 4 * UNIT);
+    assert_eq!(env.line(&k, 0).interest_accrued(env.now() + YEAR), Some(4 * UNIT));
     assert_eq!(env.pool(&k).line_count, 2);
 }
 
@@ -400,9 +401,9 @@ fn the_draw_window_of_a_bullet_line_closes_at_the_term_exactly() {
 
     // One second before the term a draw is still allowed, and earns one second of interest.
     env.warp(p.term_end - 1);
-    let ev = env.draw_amount(&k, on_time, &borrower, 4 * UNIT);
-    assert_eq!(ev.interest_due, (4_000_000u128 * 1_000 / (10_000 * YEAR as u128)) as u64);
-    assert_eq!(ev.interest_due, 0, "4.0 at 10% for one second rounds to nothing");
+    env.draw_amount(&k, on_time, &borrower, 4 * UNIT);
+    assert_eq!((4_000_000u128 * 1_000 / (10_000 * YEAR as u128)) as u64, 0);
+    assert_eq!(env.line(&k, on_time).interest_accrued(p.term_end + YEAR), Some(0), "4.0 at 10% for one second rounds to nothing");
 
     // At the term the window has closed, whether or not anything was drawn.
     env.warp(p.term_end);
@@ -471,7 +472,7 @@ fn draw_state_follows_the_tranches() {
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
 
     let ev = env.draw_amount(&k, line_id, &borrower, UNIT);
-    assert_eq!((ev.amount_mxn, ev.drawn, ev.available, ev.interest_due), (UNIT, UNIT, 3 * UNIT, 100_000));
+    assert_eq!((ev.amount_mxn, ev.drawn, ev.available), (UNIT, UNIT, 3 * UNIT));
     assert_eq!((ev.availability_end, ev.draw_index), (p.term_end, 0));
     let t_first = env.now();
     let line = env.line(&k, line_id);
@@ -482,9 +483,10 @@ fn draw_state_follows_the_tranches() {
     assert_eq!((ev.drawn, ev.available), (4 * UNIT, 0));
     let line = env.line(&k, line_id);
     assert_eq!((line.status, line.drawn_at, line.draws), (LineStatus::Active, t_first, 2));
-    // 3.0 at 10% for a year less 1,000 seconds.
-    let second = 3_000_000u128 * 1_000 * (YEAR as u128 - 1_000) / (10_000 * YEAR as u128);
-    assert_eq!(line.interest_due as u128, 100_000 + second);
+    // To the term: 1.0 for a year and 3.0 for a year less 1,000 seconds at 10%, rounded once.
+    let expected = (1_000_000u128 * YEAR as u128 + 3_000_000 * (YEAR as u128 - 1_000)) * 1_000 / (10_000 * YEAR as u128);
+    assert_eq!(expected, 399_990);
+    assert_eq!(line.interest_accrued(p.term_end), Some(399_990));
     assert_eq!(env.pool(&k).outstanding_principal, 4 * UNIT);
 }
 

@@ -4,11 +4,14 @@
 //!
 //! Share accounting follows ERC-4626: `shares = assets * supply / NAV` on deposit and
 //! `assets = shares * NAV / supply` on redemption, with `NAV = vault balance + outstanding
-//! principal`. Interest counts when it is collected; nothing accrues.
+//! principal - provision` (decision 40; deposits price without the provision, decision 40b).
+//! Interest counts in the NAV when it is collected; a line accrues it on its outstanding
+//! principal (decision 48) but the pool books nothing before the payment.
 //!
 //! Every council instruction takes `valid_until` as its last argument and is refused past it
 //! (`ProposalExpired`) or when it lies more than 15 days ahead (`ProposalTooFar`): Squads proposals
-//! never expire. `pause` (a late pause only protects) and `init_pool` (no council signature) do not.
+//! never expire. `pause` is a council vote like any other (decision 39) and takes it too;
+//! `init_pool` (no council signature) does not.
 
 use anchor_lang::prelude::*;
 
@@ -85,7 +88,7 @@ pub mod elote_pool {
         instructions::lines::condone_interest(ctx, interest, document_hash, valid_until)
     }
 
-    /// The borrower gives up what is left to draw of an `Active` line, for good, so it can settle
+    /// The borrower gives up what is left to draw of an `Active` line, for good, so it can close
     /// early (decision 45). Borrower only. Never paused.
     pub fn renounce_availability(ctx: Context<RenounceAvailability>) -> Result<()> {
         instructions::lines::renounce_availability(ctx)
@@ -201,20 +204,20 @@ pub mod elote_pool {
     }
 
     /// Records a court's act on pagaré `draw_index`: `kind` is `KIND_ANOTACION_JUDICIAL` (embargo,
-    /// suspension — it also holds the delivery) or `KIND_CONSTANCIA_JUDICIAL` (it lifts the hold),
-    /// over the court document's hash. The council signs; refused once the título was delivered;
-    /// moves nothing else.
+    /// suspension) or `KIND_CONSTANCIA_JUDICIAL`, over the court document's hash. A record only: no
+    /// court act gates the delivery or any other instruction (decision 38-g). The council signs;
+    /// refused once the título was delivered; moves nothing else.
     pub fn court_annotation(ctx: Context<CourtAnnotation>, draw_index: u16, kind: u8, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
         instructions::pagare::court_annotation(ctx, draw_index, kind, document_hash, valid_until)
     }
 
     /// Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in
     /// force (`fix_rate`, `fix_date`, whatever its age): late interest (which the credit must cover),
-    /// then interest (on an active line, only the interest accrued to the payment, decision 47), then
-    /// principal, never more than is due; the USDC taken is rounded up. The remaining
+    /// then the ordinary interest accrued to the payment and unpaid, then principal (decision 48),
+    /// never more than is due; the USDC taken is rounded up. The remaining
     /// accounts are exactly the pagaré records `[pagares_paid ..= last_touched]`, oldest first, at
     /// most `MAX_SIDECARS_PER_REPAY` of them; each one covered is marked paid with the payer's provisional `receipt_hash`. The line
-    /// becomes `Repaid` only when nothing is due and nothing can be drawn; while it can draw, a
+    /// becomes `Repaid` only when it owes nothing and can draw nothing more; while it can draw, a
     /// payment when nothing is payable is refused. Never paused.
     pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: u64, fix_date: u32, receipt_hash: [u8; 32]) -> Result<()> {
         instructions::lines::repay(ctx, max_usdc, fix_rate, fix_date, receipt_hash)

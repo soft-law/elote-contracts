@@ -181,8 +181,7 @@ fn the_council_endorses_and_annuls_pagares_through_squads() {
     assert_eq!(env.pagare(&k, id, 1).procurador, procurador);
 
     // Pagaré 0 paid by the borrower, then cancelled by the council.
-    let line = env.line(&k, id);
-    let first = env.pagare(&k, id, 0).amount_mxn + line.interest_due;
+    let first = env.pagare(&k, id, 0).amount_mxn + env.interest_unpaid(&k, id);
     let c = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &c, &borrower.pubkey(), first);
     env.repay(&k, id, &borrower, first);

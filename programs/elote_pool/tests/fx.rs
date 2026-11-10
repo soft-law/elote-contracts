@@ -691,7 +691,7 @@ fn fx_realized_events_add_up_to_the_pools_figure() {
             post(&mut env, &k, fix);
         }
         let line = env.line(&k, id);
-        let interest_left = line.interest_due - line.interest_repaid;
+        let interest_left = line.interest_unpaid(env.now()).unwrap();
         let ix = env.repay_ix(&k, id, &borrower.pubkey(), max_usdc.min(env.token_balance(&k.asset_ata(&borrower.pubkey()))));
         let meta = env.send(ix, &borrower, &[]);
         let repaid: LineRepaid = find_event(&meta).expect("LineRepaid");

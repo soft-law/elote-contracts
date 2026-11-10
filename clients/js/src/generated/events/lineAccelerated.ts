@@ -42,7 +42,6 @@ export type LineAcceleratedEvent = {
   pool: Address;
   lineId: bigint;
   remaining: bigint;
-  interestForgiven: bigint;
   /** The pool's whole impairment after this acceleration (decision 40). */
   impairedPrincipal: bigint;
 };
@@ -51,7 +50,6 @@ export type LineAcceleratedEventArgs = {
   pool: Address | HasAddress;
   lineId: number | bigint;
   remaining: number | bigint;
-  interestForgiven: number | bigint;
   /** The pool's whole impairment after this acceleration (decision 40). */
   impairedPrincipal: number | bigint;
 };
@@ -63,7 +61,6 @@ export function getLineAcceleratedEventEncoder(): FixedSizeEncoder<LineAccelerat
       ["pool", getAddressEncoder()],
       ["lineId", getU64Encoder()],
       ["remaining", getU64Encoder()],
-      ["interestForgiven", getU64Encoder()],
       ["impairedPrincipal", getU64Encoder()],
     ]),
     [getConstantEncoder(LINE_ACCELERATED_EVENT_DISCRIMINATOR)],
@@ -77,7 +74,6 @@ export function getLineAcceleratedEventDecoder(): FixedSizeDecoder<LineAccelerat
       ["pool", getAddressDecoder()],
       ["lineId", getU64Decoder()],
       ["remaining", getU64Decoder()],
-      ["interestForgiven", getU64Decoder()],
       ["impairedPrincipal", getU64Decoder()],
     ]),
     [getConstantDecoder(LINE_ACCELERATED_EVENT_DISCRIMINATOR)],

@@ -64,7 +64,7 @@ fn init_pool_stays_under_the_ceiling_with_and_without_extensions() {
 /// own ceiling, 10 000 CU below `CEILING`: a growth in `draw` fails here with that margin left.
 const DRAW_CEILING: u64 = 90_000;
 
-/// `draw` on a 120-installment line: the payability check and the tranche interest add a few
+/// `draw` on a 120-installment line: the payability check and the accrual (decision 48) add a few
 /// multiplications; the Metaplex Core CPI lands here too and so does the registry's issuance
 /// entry. Deterministic since the client passes the PDA bumps. Measured on the first and second
 /// tranches and on a tranche with a two-digit index (a longer name and attribute); about 82 000 CU
@@ -137,7 +137,7 @@ fn deliver_and_burn_stay_under_the_ceiling() {
     let p = env.scheduled_params(100 * UNIT, 1_200, 120, 5_000);
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, line_id, &borrower);
-    let interest = env.line(&k, line_id).interest_due;
+    let interest = env.payoff(&k, line_id) - 100 * UNIT;
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 100 * UNIT + interest);
@@ -159,7 +159,7 @@ fn deliver_and_burn_stay_under_the_ceiling() {
     env.draw(&k, line_id, &borrower);
     let procurador = env.funded(1);
     env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
-    let interest = env.line(&k, line_id).interest_due;
+    let interest = env.payoff(&k, line_id) - 50 * UNIT;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), interest);
     env.repay(&k, line_id, &borrower, 50 * UNIT + interest);
     let deliver = env.deliver_pagare(&k, line_id, 0).compute_units_consumed;
@@ -255,8 +255,7 @@ fn a_payment_covering_three_sidecars_stays_under_the_ceiling() {
     }
     let t0 = env.line(&k, line_id).drawn_at;
     env.warp(t0 + 120 * p.interval() + 1);
-    let line = env.line(&k, line_id);
-    let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
+    let owed = env.payoff(&k, line_id);
     let council = env.council.insecure_clone();
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed);
     let sidecars = env.payment_sidecars(&k, line_id, owed);

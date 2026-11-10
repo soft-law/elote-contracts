@@ -54,7 +54,6 @@ export type LineDrawnEvent = {
   usdcDelivered: bigint;
   drawn: bigint;
   available: bigint;
-  interestDue: bigint;
   availabilityEnd: bigint;
   outstandingAfter: bigint;
 };
@@ -69,7 +68,6 @@ export type LineDrawnEventArgs = {
   usdcDelivered: number | bigint;
   drawn: number | bigint;
   available: number | bigint;
-  interestDue: number | bigint;
   availabilityEnd: number | bigint;
   outstandingAfter: number | bigint;
 };
@@ -87,7 +85,6 @@ export function getLineDrawnEventEncoder(): FixedSizeEncoder<LineDrawnEventArgs>
       ["usdcDelivered", getU64Encoder()],
       ["drawn", getU64Encoder()],
       ["available", getU64Encoder()],
-      ["interestDue", getU64Encoder()],
       ["availabilityEnd", getI64Encoder()],
       ["outstandingAfter", getU64Encoder()],
     ]),
@@ -108,7 +105,6 @@ export function getLineDrawnEventDecoder(): FixedSizeDecoder<LineDrawnEvent> {
       ["usdcDelivered", getU64Decoder()],
       ["drawn", getU64Decoder()],
       ["available", getU64Decoder()],
-      ["interestDue", getU64Decoder()],
       ["availabilityEnd", getI64Decoder()],
       ["outstandingAfter", getU64Decoder()],
     ]),

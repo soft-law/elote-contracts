@@ -261,8 +261,8 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
     council::check(&multisig, &council, council_vault_bump)?;
     require!(state::asset_listed(&ctx.accounts.asset_mint.key()), PoolError::AssetNotListed);
     require_keys_neq!(ctx.accounts.asset_mint.key(), ctx.accounts.share_mint.key(), PoolError::AssetIsShareMint);
-    // A mint whose `10^decimals` does not fit a u64 could never meet the first-deposit minimum.
-    require!(min_first_deposit(ctx.accounts.asset_mint.decimals).is_some(), PoolError::WrongAccount);
+    // `fx::usdc_for_mxn` counts the asset in millionths (USDC, MEXe).
+    require!(ctx.accounts.asset_mint.decimals == state::ASSET_DECIMALS, PoolError::AssetDecimalsInvalid);
     let controls = asset_controls(&ctx.accounts.asset_mint.to_account_info())?;
     let permissioned = validate_share_mint(&ctx)?;
     validate_collection(&ctx.accounts.collection.to_account_info(), &ctx.accounts.pool.key())?;
@@ -278,8 +278,6 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         interest_collected: 0,
         written_off: 0,
         line_count: 0,
-        // Reserved: there is no grace period.
-        grace_period_seconds: 0,
         collection_period_seconds: p.collection_period_seconds,
         max_line_bps: p.max_line_bps,
         asset_controls: controls,

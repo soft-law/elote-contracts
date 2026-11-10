@@ -73,8 +73,8 @@ pub struct DeliverPagare<'info> {
 /// (`PAGARE_FLAG_PAID_BY_AVAL`, LGTOC 115) — never to whoever pays or sends this. Anyone may call
 /// it, in the settling repayment's own transaction or later: the council is not in the path.
 /// Refused before the payment (`PagareNotCovered`), twice (`PagareAlreadyDelivered`), and while
-/// the line owes any principal or interest, whatever its status (`BalanceOutstanding`, decision
-/// 49). The transfer itself returns every owner-managed plugin to the new owner, so no revocation
+/// the line owes any principal or interest accrued, whatever its status (`BalanceOutstanding`,
+/// decisions 49 and 48). The transfer itself returns every owner-managed plugin to the new owner, so no revocation
 /// is needed; after the CPIs, an `Entrega` entry over the payment's receipt hash and the
 /// `DELIVERED` flag record it.
 pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()> {
@@ -85,16 +85,13 @@ pub fn deliver_pagare(ctx: Context<DeliverPagare>, draw_index: u16) -> Result<()
     require!(pagare.flags & PAGARE_FLAG_DELIVERED == 0, PoolError::PagareAlreadyDelivered);
     let line = &ctx.accounts.line;
     // Decision 49 (LGTOC 17, 130): the holder keeps every título until the line owes nothing,
-    // whatever its status; interest is owed by the line, not by one pagaré.
-    let owed = line
-        .drawn
-        .checked_sub(line.principal_repaid)
-        .zip(line.interest_due.checked_sub(line.interest_repaid))
-        .and_then(|(p, i)| p.checked_add(i))
-        .ok_or(PoolError::Overflow)?;
+    // whatever its status; interest is owed by the line, not by one pagaré. Decision 48: what is
+    // owed is the principal outstanding and the interest accrued on it and unpaid.
+    let owed = line.owed(Clock::get()?.unix_timestamp).ok_or(PoolError::Overflow)?;
     require!(owed == 0, PoolError::BalanceOutstanding);
     let to = if pagare.flags & PAGARE_FLAG_PAID_BY_AVAL != 0 {
-        line.sponsor.ok_or(PoolError::WrongAccount)?
+        require_keys_neq!(line.sponsor, Pubkey::default(), PoolError::WrongAccount);
+        line.sponsor
     } else {
         line.borrower
     };
@@ -399,7 +396,7 @@ pub fn endorse_pagare(ctx: Context<EndorsePagare>, draw_index: u16, kind: u8, to
             && to != pool.fx_feeder
             && to != line.borrower
             && to != line.payer
-            && line.sponsor != Some(to)
+            && line.sponsor != to
             && !council::is_member(&multisig, &to)?,
         PoolError::EndorseeInvalid
     );

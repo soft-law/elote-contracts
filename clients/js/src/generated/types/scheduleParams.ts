@@ -26,7 +26,10 @@ export type ScheduleParams = {
   /** The first due date (unix seconds), from the signed contract; must be after the opening. */
   firstDueAt: bigint;
   intervalSeconds: bigint;
-  /** `drawn + interest_due` is paid in this many installments. */
+  /**
+   * `drawn` is repaid in this many installments of principal (decision 48); ordinary interest
+   * is taken first from every payment.
+   */
   installments: number;
   /** Missed installments after which anyone may move the line to collection. */
   maxMissed: number;
@@ -36,7 +39,10 @@ export type ScheduleParamsArgs = {
   /** The first due date (unix seconds), from the signed contract; must be after the opening. */
   firstDueAt: number | bigint;
   intervalSeconds: number | bigint;
-  /** `drawn + interest_due` is paid in this many installments. */
+  /**
+   * `drawn` is repaid in this many installments of principal (decision 48); ordinary interest
+   * is taken first from every payment.
+   */
   installments: number;
   /** Missed installments after which anyone may move the line to collection. */
   maxMissed: number;

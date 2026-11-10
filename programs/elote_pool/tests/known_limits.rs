@@ -76,7 +76,7 @@ fn limit_deposit_just_before_a_repayment_shares_the_interest() {
     let late = env.investor(&k, 10 * UNIT);
     let minted = env.deposit(&k, &late, 10 * UNIT).shares;
     assert_eq!(minted, 10 * UNIT, "one share per unit at NAV 1.0");
-    // ...the borrower repays principal plus interest at the term (fully accrued, decision 44)...
+    // ...the borrower repays principal plus a year of interest on it at the term...
     env.warp(env.line(&k, line_id).term_end);
     env.repay(&k, line_id, &borrower, 4 * UNIT + 400_000);
     // ...and the late investor leaves with half of the interest the early one earned.
@@ -188,10 +188,10 @@ fn collection_is_reachable_when_the_final_installments_are_the_missed_ones() {
     let investor = env.investor(&k, 10 * UNIT);
     env.deposit(&k, &investor, 10 * UNIT);
     let borrower = env.borrower(&k);
-    let p = env.scheduled_params(6 * UNIT, 1_200, 3, 5_000); // 6.72 in three, max_missed 3
+    let p = env.scheduled_params(6 * UNIT, 1_200, 3, 5_000); // 2.0 of principal in each of three, max_missed 3
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, line_id, &borrower);
-    env.repay(&k, line_id, &borrower, 2_240_000); // exactly one installment, paid ahead
+    env.repay(&k, line_id, &borrower, 2 * UNIT); // exactly one installment, paid ahead at the draw (no interest yet)
     assert_eq!(env.arrears(&k, line_id).covered, 1);
 
     env.warp(p.term_end + 10 * 365 * 86_400);
@@ -213,9 +213,9 @@ fn a_line_paid_ahead_is_marked_only_after_its_last_due_date() {
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000); // six installments, max_missed 3
     let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
     env.draw(&k, line_id, &borrower);
-    let line = env.line(&k, line_id);
-    let total = line.drawn + line.interest_due;
-    env.repay(&k, line_id, &borrower, (total * 4).div_ceil(6)); // four installments, paid ahead
+    // Four installments of principal paid ahead in the second of the draw, before any interest
+    // accrued (decision 48: the schedule is on principal).
+    env.repay(&k, line_id, &borrower, 4 * UNIT);
     assert_eq!(env.arrears(&k, line_id).covered, 4);
 
     // At the last due date exactly, the final installment is not yet missed.
@@ -229,39 +229,6 @@ fn a_line_paid_ahead_is_marked_only_after_its_last_due_date() {
     let ix = env.mark_in_collection_ix(&k, line_id);
     env.send(ix, &investor, &[]);
     assert_eq!(env.line(&k, line_id).status, LineStatus::InCollection);
-}
-
-/// Inverted 2026-10-31. The first-deposit minimum is derived from the asset's
-/// decimals: 1.0 of the asset, and never fewer base units than 1,000 times `DEAD_SHARES`, the
-/// ratio the dead-shares defence relies on. On a 9-decimal asset (MXNe) that is 1.0, not 0.001.
-#[test]
-fn first_deposit_minimum_is_one_unit_of_the_asset_with_a_dead_shares_floor() {
-    let mut env = Env::new();
-    let council = env.council.insecure_clone();
-
-    // Nine decimals: the minimum is 10^9 base units, one whole unit.
-    let mint = env.create_mint(&council.pubkey(), 9);
-    let (k, ix) = env.init_pool_plain(&mint);
-    env.send(ix, &council, &[]);
-    assert_eq!(env.mint_decimals(&k.share_mint), 9);
-    let investor = env.funded(10);
-    env.mint_to(&mint, &council, &investor.pubkey(), 2_000_000_000);
-    env.create_ata(&investor.pubkey(), &k.share_mint);
-    let ix = env.deposit_ix(&k, &investor.pubkey(), 999_999_999); // 0.999999999
-    env.expect_err(ix, &investor, &[], E_FIRST_DEPOSIT_TOO_SMALL);
-    env.deposit(&k, &investor, 1_000_000_000); // 1.0
-
-    // Two decimals: 1.0 would be 100 base units, below the dead shares; the floor of
-    // 1,000 x DEAD_SHARES = 1_000_000 base units (10,000.00) applies instead.
-    let mint = env.create_mint(&council.pubkey(), 2);
-    let (k, ix) = env.init_pool_plain(&mint);
-    env.send(ix, &council, &[]);
-    let investor = env.funded(10);
-    env.mint_to(&mint, &council, &investor.pubkey(), 1_000_000);
-    env.create_ata(&investor.pubkey(), &k.share_mint);
-    let ix = env.deposit_ix(&k, &investor.pubkey(), 999_999);
-    env.expect_err(ix, &investor, &[], E_FIRST_DEPOSIT_TOO_SMALL);
-    env.deposit(&k, &investor, 1_000_000);
 }
 
 /// Late interest is computed at the second the repayment executes. A client that reads
@@ -356,8 +323,7 @@ fn a_repay_takes_at_most_three_pagare_records() {
         }
         let t0 = env.line(&k, line_id).drawn_at;
         env.warp(t0 + 120 * p.interval() + 1);
-        let line = env.line(&k, line_id);
-        let owed = line.drawn + line.interest_due - line.principal_repaid - line.interest_repaid + env.arrears(&k, line_id).late_due;
+        let owed = env.payoff(&k, line_id);
         let council = env.council.insecure_clone();
         env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed);
         (k, borrower, line_id)
@@ -367,12 +333,12 @@ fn a_repay_takes_at_most_three_pagare_records() {
     // both refused, nothing moved.
     let mut env = Env::new();
     let (k, borrower, line_id) = eight_draws(&mut env);
-    let before = env.line(&k, line_id);
-    let owed = before.drawn + before.interest_due - before.principal_repaid - before.interest_repaid + env.arrears(&k, line_id).late_due;
+    let owed = env.payoff(&k, line_id);
+    let interest = env.line(&k, line_id).interest_unpaid(env.now()).unwrap();
     assert_eq!(env.payment_sidecars(&k, line_id, owed).len(), 8);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), owed);
     env.expect_err(ix, &borrower, &[], E_TOO_MANY_SIDECARS);
-    let four = env.arrears(&k, line_id).late_due + before.interest_due - before.interest_repaid + 30 * UNIT;
+    let four = env.arrears(&k, line_id).late_due + interest + 30 * UNIT;
     assert_eq!(env.payment_sidecars(&k, line_id, four).len(), 4);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), four);
     env.expect_err(ix, &borrower, &[], E_TOO_MANY_SIDECARS);
@@ -380,7 +346,7 @@ fn a_repay_takes_at_most_three_pagare_records() {
     assert_eq!((after.principal_repaid, after.interest_repaid, after.pagares_paid), (0, 0, 0));
 
     // Split in four: records 0..=2 (2 untouched by principal), then 2..=4, 4..=6 and 6..=7.
-    let first = env.arrears(&k, line_id).late_due + before.interest_due - before.interest_repaid + 20 * UNIT;
+    let first = env.arrears(&k, line_id).late_due + interest + 20 * UNIT;
     assert_eq!(env.payment_sidecars(&k, line_id, first).len(), 3);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), first);
     let mut cus = vec![env.send(ix, &borrower, &[]).compute_units_consumed];
@@ -390,8 +356,7 @@ fn a_repay_takes_at_most_three_pagare_records() {
         let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), part);
         cus.push(env.send(ix, &borrower, &[]).compute_units_consumed);
     }
-    let line = env.line(&k, line_id);
-    let rest = line.drawn - line.principal_repaid + line.interest_due - line.interest_repaid + env.arrears(&k, line_id).late_due;
+    let rest = env.payoff(&k, line_id);
     assert_eq!(env.payment_sidecars(&k, line_id, rest).len(), 2);
     let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), rest);
     cus.push(env.send(ix, &borrower, &[]).compute_units_consumed);
@@ -420,7 +385,8 @@ fn limit_a_payment_landing_first_makes_an_in_flight_repay_retry() {
     }
     env.warp(p.term_end);
     let council = env.council.insecure_clone();
-    let amount = env.line(&k, line_id).interest_due + UNIT - 1;
+    // A year on 3.0 at 10%: 300_000 of interest; one unit short of covering pagaré 0.
+    let amount = 300_000 + UNIT - 1;
     env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 10 * UNIT);
     let in_flight = env.repay_ix(&k, line_id, &borrower.pubkey(), amount);
 
