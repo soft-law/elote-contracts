@@ -303,14 +303,14 @@ tests. `programs/elote_pool/tests/` holds:
 
 | Cluster | Program id | Upgrade authority | Deployed from | Verified |
 |---|---|---|---|---|
-| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) | `main` @ `38714b7`, 2026-11-10 | hash `e5484c0836e9c878d0a6f6ecccd580b081100f9dd5517c32e459fab797e3166e` matches the `--features devnet --arch v0 --tools-version v1.54` build of that commit |
+| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) | `main` @ `435f1af`, 2026-11-10 | hash `93c4ab3bc1e7ff8928368d070c5425b03e696f100f2cf8caee821e1afb74cea6` matches the `--features devnet --arch v0 --tools-version v1.54` build of that commit |
 | mainnet-beta | not deployed | | | |
 
 The devnet council is vault 0 (`6s6aBtkG6Wm9N6Gx1igKnc3Q3fcJt2r1WtyyLSQrnS6x`) of the Squads v4
 multisig `C3sa3p6WRkEULZbVmYGDB3i6YaoDAWJXM9euUPJg8Vap` (2 of 3, created with
 `scripts/devnet-multisig.ts`). The smoke pool of 2026-11-08 is
-`7ezjgeqcSkdXE5pt2gGBczbwEMvH9C8m1nPhBXt7kCKo` on Circle's devnet USDC
-(`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, `--scale 1000`): FIX published by the council,
+`BfhH5R2mtQaJDeTY15CQth2B75xcYWzhwypvBYYdUTWb` on Circle's devnet USDC
+(`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, `--scale 1500` with `ELOTE_ADMIN_KEYPAIR=.demo-keys/admin-2.json` (the pool before it, `7ezjge…`, was created by `.demo-keys/admin.json` and cannot be read by this build)): FIX published by the council,
 a MXN 60 bullet line requested, approved through Squads, drawn in two tranches, repaid in one
 transaction that delivered both pagarés, and pagaré 0 burnt by its owner. The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
 mainnet deployment the authority moves to a [Squads](https://squads.so) multisig, the IDL is
