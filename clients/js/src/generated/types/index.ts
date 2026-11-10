@@ -6,6 +6,7 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./condonationEntry";
 export * from "./lineStatus";
 export * from "./paymentEntry";
 export * from "./scheduleParams";

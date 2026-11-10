@@ -1764,6 +1764,56 @@ impl Env {
         }
     }
 
+    /// The records a quita of `principal` must pass (decision 51): none without principal, else
+    /// `[pagares_paid ..= last_touched]` as for a payment of that principal.
+    pub fn condone_sidecars(&self, k: &PoolKeys, line_id: u64, principal: u64) -> Vec<Pubkey> {
+        let line = self.line(k, line_id);
+        if principal == 0 || line.pagares_paid >= line.draws {
+            return vec![];
+        }
+        let principal_after = line.principal_repaid + principal;
+        let line_key = line_pda(&k.pool, line_id).0;
+        let mut out = Vec::new();
+        for idx in line.pagares_paid..line.draws {
+            out.push(pagare_pda(&line_key, idx).0);
+            if self.pagare(k, line_id, idx).drawn_through > principal_after {
+                break;
+            }
+        }
+        out
+    }
+    /// `condone(interest, principal, document_hash)` signed by `council`, with the records the
+    /// principal touches.
+    pub fn condone_ix(&self, k: &PoolKeys, line_id: u64, council: &Pubkey, interest: u64, principal: u64, document_hash: [u8; 32]) -> Instruction {
+        let sidecars = self.condone_sidecars(k, line_id, principal);
+        self.condone_ix_full(k, line_id, council, interest, principal, document_hash, &sidecars)
+    }
+    /// `condone` with the remaining accounts given explicitly.
+    #[allow(clippy::too_many_arguments)]
+    pub fn condone_ix_full(&self, k: &PoolKeys, line_id: u64, council: &Pubkey, interest: u64, principal: u64, document_hash: [u8; 32], sidecars: &[Pubkey]) -> Instruction {
+        let (event_authority, program) = event_metas();
+        let mut accounts = elote_pool::accounts::Condone {
+            council: *council,
+            multisig: self.pool(k).multisig,
+            pool: k.pool,
+            line: line_pda(&k.pool, line_id).0,
+            share_mint: k.share_mint,
+            vault: k.vault,
+            event_authority,
+            program,
+        }
+        .to_account_metas(None);
+        accounts.extend(sidecars.iter().map(|s| anchor_lang::solana_program::instruction::AccountMeta::new(*s, false)));
+        let data = elote_pool::instruction::Condone { interest, principal, document_hash, valid_until: self.valid_until() }.data();
+        Instruction { program_id: PROGRAM_ID, accounts, data }
+    }
+    /// The env's council condones on `line_id`; returns the event.
+    pub fn condone(&mut self, k: &PoolKeys, line_id: u64, interest: u64, principal: u64, document_hash: [u8; 32]) -> elote_pool::events::LineCondoned {
+        let council = self.council.insecure_clone();
+        let ix = self.condone_ix(k, line_id, &council.pubkey(), interest, principal, document_hash);
+        find_event(&self.send(ix, &council, &[])).expect("LineCondoned event")
+    }
+
     pub fn repay(&mut self, k: &PoolKeys, line_id: u64, payer: &Keypair, amount: u64) -> elote_pool::events::LineRepaid {
         let ix = self.repay_ix(k, line_id, &payer.pubkey(), amount);
         let meta = self.send(ix, payer, &[]);

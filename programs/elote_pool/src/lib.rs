@@ -81,11 +81,11 @@ pub mod elote_pool {
         instructions::lines::resume_draws(ctx, valid_until)
     }
 
-    /// Condones the late interest a line has accrued and `interest` of its ordinary interest,
-    /// against the hash of the written record (decision 50). Council only; principal is never
-    /// condoned. Never paused.
-    pub fn condone_interest(ctx: Context<CouncilLine>, interest: u64, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
-        instructions::lines::condone_interest(ctx, interest, document_hash, valid_until)
+    /// The quita: condones the late interest a line has accrued, `interest` of its ordinary
+    /// interest and `principal` of its principal, against the hash of the written record
+    /// (decisions 50 and 51). Council only. Never paused.
+    pub fn condone<'info>(ctx: Context<'info, Condone<'info>>, interest: u64, principal: u64, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
+        instructions::lines::condone(ctx, interest, principal, document_hash, valid_until)
     }
 
     /// The borrower gives up what is left to draw of an `Active` line, for good, so it can close
@@ -211,7 +211,8 @@ pub mod elote_pool {
         instructions::pagare::court_annotation(ctx, draw_index, kind, document_hash, valid_until)
     }
 
-    /// Anyone pays up to `max_usdc` on an `Active` or `InCollection` line, credited in MXN at the FIX in
+    /// Anyone pays up to `max_usdc` on an `Active`, `InCollection` or `WrittenOff` line (a recovery,
+    /// decision 51), credited in MXN at the FIX in
     /// force (`fix_rate`, `fix_date`, whatever its age): late interest (which the credit must cover),
     /// then the ordinary interest accrued to the payment and unpaid, then principal (decision 48),
     /// never more than is due; the USDC taken is rounded up. The remaining
@@ -238,7 +239,8 @@ pub mod elote_pool {
 
     /// Books a line's unpaid principal as a loss. Council only; an `Active` line after `term_end`, an
     /// `InCollection` line after its collection period from the mark and after its oldest missed
-    /// due date or its term. Never paused.
+    /// due date or its term. The debt stays owed: the line still takes payments and the quita
+    /// (decision 51). Never paused.
     pub fn write_off(ctx: Context<WriteOff>, valid_until: i64) -> Result<()> {
         instructions::lines::write_off(ctx, valid_until)
     }

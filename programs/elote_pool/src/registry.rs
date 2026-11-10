@@ -10,7 +10,7 @@ use crate::state::Pagare;
 
 /// The domain of a payment entry's annotation hash (LGTOC 17, 130: every abono states the amount
 /// and the balance).
-pub const PAYMENT_DOMAIN: &[u8] = b"elote.pago.v1";
+pub const PAYMENT_DOMAIN: &[u8] = b"elote.pago.v2";
 
 /// What a payment entry commits (decision 38): the receipt, the principal applied to this pagaré,
 /// the accessories (ordinary and late interest) the payment settled, the pagaré's unpaid principal
@@ -28,6 +28,16 @@ pub fn annotation_hash(receipt_hash: &[u8; 32], principal_applied: u64, accessor
         &[u8::from(by_borrower)],
     ])
     .to_bytes()
+}
+
+/// The domain of a `Condonacion` entry's hash (decision 51).
+pub const QUITA_DOMAIN: &[u8] = b"elote.quita.v1";
+
+/// What a `Condonacion` entry commits (decision 51): the council's written record, the principal of
+/// this pagaré the quita remitted and its unpaid principal after. The preimages travel in the
+/// `CondonationEntry` of the `LineCondoned` event.
+pub fn condonation_hash(document_hash: &[u8; 32], principal_condoned: u64, principal_balance: u64) -> [u8; 32] {
+    hashv(&[QUITA_DOMAIN, document_hash, &principal_condoned.to_le_bytes(), &principal_balance.to_le_bytes()]).to_bytes()
 }
 
 /// `sha256(asset || kind || from || to || hash || stated_at LE || entry_count LE)`: the asset first,

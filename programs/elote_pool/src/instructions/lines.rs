@@ -2,10 +2,12 @@
 //!
 //! A line moves `Requested -> Approved -> Active -> Repaid | WrittenOff` (a rejected or withdrawn
 //! request closes), or `Approved -> Cancelled` if nothing
-//! was drawn; a scheduled line can also move `Active -> InCollection -> Repaid | WrittenOff`. The
-//! pause blocks requests, approvals and draws. Ordinary interest accrues per second on the
-//! principal outstanding (decision 48); repayments go to late interest, then interest, then
-//! principal. Collected interest raises the NAV; a written-off principal lowers it once.
+//! was drawn; a scheduled line can also move `Active -> InCollection -> Repaid | WrittenOff`, and a
+//! written-off line `WrittenOff -> Repaid` once recoveries and quitas leave it owing nothing
+//! (decision 51). The pause blocks requests, approvals and draws. Ordinary interest accrues per
+//! second on the principal outstanding (decision 48); repayments go to late interest, then
+//! interest, then principal. Collected interest raises the NAV; a written-off or condoned principal
+//! lowers it once, and a recovery of it raises it by what it brings.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterface, TransferChecked};
@@ -13,8 +15,8 @@ use anchor_spl::token_interface::{self as token, Mint, TokenAccount, TokenInterf
 use crate::errors::PoolError;
 use crate::events::{
     AccelerationProposed, AccelerationWithdrawn, LateInterestCollected, LineAccelerated, LineApproved, LineDrawsResumed, LineCancelled, LineDrawn, LineDrawsSuspended, LineInCollection,
-    AvailabilityRenounced, FxRealized, InterestCondoned, LineRejected, LineRepaid, LineRequested, LineWrittenOff, RequestWithdrawn, NavUpdated, PagareEntry, PagareIssued,
-    PagarePayment, PaymentEntry,
+    AvailabilityRenounced, CondonationEntry, FxRealized, LineCondoned, LineRejected, LineRepaid, LineRequested, LineWrittenOff, LossRecovered, RequestWithdrawn, NavUpdated,
+    PagareEntry, PagareIssued, PagarePayment, PaymentEntry,
 };
 use crate::math::{self, Arrears, ScheduleTerms};
 use crate::council;
@@ -23,9 +25,9 @@ use crate::pool_signer;
 use crate::registry;
 use crate::terms::{self, LineTerms};
 use crate::state::{
-    seeds, CreditLine, LineStatus, Pagare, Pool, ScheduleParams, BPS, KIND_ABONO, KIND_EMISION, KIND_PAGADO,
+    seeds, CreditLine, LineStatus, Pagare, Pool, ScheduleParams, BPS, KIND_ABONO, KIND_CONDONACION, KIND_EMISION, KIND_PAGADO,
     KIND_PAGADO_AVAL, KIND_TERMINACION, CURRENCY_MXN, MAX_DRAWS, MAX_INSTALLMENTS, MAX_SIDECARS_PER_REPAY, MIN_MAX_MISSED,
-    REQUEST_TTL_SECONDS, PAGARE_FLAG_PAID_BY_AVAL, PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING, PAGARE_PAID,
+    REQUEST_TTL_SECONDS, PAGARE_FLAG_CONDONED, PAGARE_FLAG_PAID_BY_AVAL, PAGARE_FLAG_PROCURACION, PAGARE_OUTSTANDING, PAGARE_PAID,
     SIGNATURE_EFIRMA_WALLET, SIGNATURE_WALLET, SPONSOR_GUARANTOR,
 };
 
@@ -766,7 +768,7 @@ pub struct Repay<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-/// Pays an `Active` or `InCollection` line. Anyone may pay, and the pause never blocks it. `amount`
+/// Pays an `Active`, `InCollection` or `WrittenOff` line. Anyone may pay, and the pause never blocks it. `amount`
 /// must cover the late interest due (`LateInterestUnpaid`; on a bullet line, from `term_end` or
 /// from its acceleration); the payment settles late interest, then the ordinary interest accrued
 /// to this second and unpaid, then principal (`math::allocate`), and debits the payer only that
@@ -800,11 +802,16 @@ pub struct Repay<'info> {
 /// own FIX; the difference with the USDC that paid it (the principal's centavos at today's FIX,
 /// rounded up; the rounding of the rest stays with the charges) is `FxRealized`, emitted whenever
 /// principal is applied or the difference is not zero.
+///
+/// On a `WrittenOff` line the payment is a recovery (decision 51): the same order and the same
+/// pagaré records, but the cost of the principal recovered comes off `Pool.written_off` instead of
+/// `outstanding_principal`, which the write-off already left, and `LossRecovered` separates it from
+/// the interest and late interest collected. The line closes (`Repaid`) when it owes nothing.
 pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: u64, fix_date: u32, receipt_hash: [u8; 32]) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
-    require!(matches!(line.status, LineStatus::Active | LineStatus::InCollection), PoolError::LineStatus);
+    require!(matches!(line.status, LineStatus::Active | LineStatus::InCollection | LineStatus::WrittenOff), PoolError::LineStatus);
     // The FIX in force, whatever its age: a payment is never refused for an old FIX.
     require!(pool.fix_rate != 0 && fix_rate == pool.fix_rate && fix_date == pool.fix_date, PoolError::FixMismatch);
     let amount = fx::mxn_for_usdc(max_usdc, fix_rate).ok_or(PoolError::Overflow)?;
@@ -831,47 +838,9 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     let usdc_in = fx::usdc_ceil_for_mxn(transfer, fix_rate).ok_or(PoolError::Overflow)?;
     let usdc_principal = fx::usdc_ceil_for_mxn(principal_part, fix_rate).ok_or(PoolError::Overflow)?;
 
-    // The records, exactly `[pagares_paid ..= last_touched]`, are verified before any write.
-    let line_key = line.key();
-    let cursor = line.pagares_paid;
-    let draws = line.draws;
-    let sidecars = ctx.remaining_accounts;
-    require!(sidecars.len() <= MAX_SIDECARS_PER_REPAY, PoolError::TooManySidecars);
-    if cursor >= draws {
-        require!(sidecars.is_empty(), PoolError::PagareAccountsMismatch);
-    } else {
-        require!(!sidecars.is_empty(), PoolError::PagareAccountsMismatch);
-    }
-    let mut touched: Vec<Account<'info, Pagare>> = Vec::with_capacity(sidecars.len());
-    for (i, info) in sidecars.iter().enumerate() {
-        let idx = u16::try_from(i).ok().and_then(|i| cursor.checked_add(i)).ok_or(PoolError::PagareAccountsMismatch)?;
-        require!(idx < draws, PoolError::PagareAccountsMismatch);
-        // Owned by the program with the `Pagare` discriminator (`try_from`), naming this line and
-        // this index: only `draw` writes such an account, at `["pagare", line, index]`, so these
-        // three facts identify the record without recomputing its address.
-        let sidecar = Account::<Pagare>::try_from(info).map_err(|_| PoolError::PagareAccountsMismatch)?;
-        require!(
-            sidecar.line == line_key && sidecar.draw_index == idx && sidecar.status == PAGARE_OUTSTANDING,
-            PoolError::PagareAccountsMismatch
-        );
-        let covered = sidecar.drawn_through <= principal_after;
-        let last = i + 1 == sidecars.len();
-        // An uncovered pagaré ends the set; a covered one that ends it must be the last draw.
-        require!(if covered { !last || idx.saturating_add(1) == draws } else { last }, PoolError::PagareAccountsMismatch);
-        touched.push(sidecar);
-    }
-    // The cost of the principal repaid, pagaré by pagaré at the FIX each was drawn at.
-    let mut cost = 0u64;
-    for sidecar in &touched {
-        let start = sidecar.drawn_through.checked_sub(sidecar.amount_mxn).ok_or(PoolError::Overflow)?;
-        let before = principal_before.saturating_sub(start);
-        let after = principal_after.saturating_sub(start);
-        let c = fx::cost_of(sidecar.usdc_delivered, sidecar.amount_mxn, after)
-            .zip(fx::cost_of(sidecar.usdc_delivered, sidecar.amount_mxn, before))
-            .and_then(|(a, b)| a.checked_sub(b))
-            .ok_or(PoolError::Overflow)?;
-        cost = cost.checked_add(c).ok_or(PoolError::Overflow)?;
-    }
+    let mut touched = touched_pagares(ctx.remaining_accounts, line, principal_after, true)?;
+    let cost = principal_cost(&touched, principal_before, principal_after)?;
+    let status = line.status;
     let fx_delta = i64::try_from(usdc_principal).ok().zip(i64::try_from(cost).ok()).map(|(r, c)| r - c).ok_or(PoolError::Overflow)?;
 
     if usdc_in > 0 {
@@ -891,10 +860,16 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     }
 
     let pool = &mut ctx.accounts.pool;
-    pool.outstanding_principal = pool.outstanding_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
-    // A recovery on a line in collection takes its cost out of the provision (decision 40).
-    if ctx.accounts.line.status == LineStatus::InCollection {
-        pool.impaired_principal = pool.impaired_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
+    if status == LineStatus::WrittenOff {
+        // The write-off already took this cost out of the book: the principal recovered comes
+        // off the loss, never off `outstanding_principal` again (decision 51).
+        pool.written_off = pool.written_off.checked_sub(cost).ok_or(PoolError::Overflow)?;
+    } else {
+        pool.outstanding_principal = pool.outstanding_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
+        // A recovery on a line in collection takes its cost out of the provision (decision 40).
+        if status == LineStatus::InCollection {
+            pool.impaired_principal = pool.impaired_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
+        }
     }
     let usdc_interest = fx::usdc_for_mxn(interest_part, fix_rate).ok_or(PoolError::Overflow)?;
     pool.interest_collected = pool.interest_collected.checked_add(usdc_interest).ok_or(PoolError::Overflow)?;
@@ -1036,6 +1011,20 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
             nav_after,
         });
     }
+    if status == LineStatus::WrittenOff {
+        emit_cpi!(LossRecovered {
+            pool: pool.key(),
+            line_id: line.line_id,
+            receipt_hash,
+            late_part,
+            interest_part,
+            principal_part,
+            cost_recovered: cost,
+            received: usdc_principal,
+            written_off_after: pool.written_off,
+            nav_after,
+        });
+    }
     emit_cpi!(LineRepaid {
         pool: pool.key(),
         line_id: line.line_id,
@@ -1050,6 +1039,53 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
     });
     emit_cpi!(NavUpdated { pool: pool.key(), total_assets: nav_after, share_supply });
     Ok(())
+}
+
+/// The pagaré records a principal settlement to `principal_after` reaches, verified before any
+/// write: exactly `[pagares_paid ..= last_touched]`, oldest first, where `last_touched` is the first
+/// one left partly unpaid, or the last draw; none once the cursor has passed the last draw, or when
+/// `required` is false (`PagareAccountsMismatch`); never more than `MAX_SIDECARS_PER_REPAY`
+/// (`TooManySidecars`).
+fn touched_pagares<'info>(sidecars: &'info [AccountInfo<'info>], line: &Account<'info, CreditLine>, principal_after: u64, required: bool) -> Result<Vec<Account<'info, Pagare>>> {
+    let line_key = line.key();
+    let cursor = line.pagares_paid;
+    let draws = line.draws;
+    require!(sidecars.len() <= MAX_SIDECARS_PER_REPAY, PoolError::TooManySidecars);
+    require!(sidecars.is_empty() == (cursor >= draws || !required), PoolError::PagareAccountsMismatch);
+    let mut touched: Vec<Account<'info, Pagare>> = Vec::with_capacity(sidecars.len());
+    for (i, info) in sidecars.iter().enumerate() {
+        let idx = u16::try_from(i).ok().and_then(|i| cursor.checked_add(i)).ok_or(PoolError::PagareAccountsMismatch)?;
+        require!(idx < draws, PoolError::PagareAccountsMismatch);
+        // Owned by the program with the `Pagare` discriminator (`try_from`), naming this line and
+        // this index: only `draw` writes such an account, at `["pagare", line, index]`, so these
+        // three facts identify the record without recomputing its address.
+        let sidecar = Account::<Pagare>::try_from(info).map_err(|_| PoolError::PagareAccountsMismatch)?;
+        require!(
+            sidecar.line == line_key && sidecar.draw_index == idx && sidecar.status == PAGARE_OUTSTANDING,
+            PoolError::PagareAccountsMismatch
+        );
+        let covered = sidecar.drawn_through <= principal_after;
+        let last = i + 1 == sidecars.len();
+        // An uncovered pagaré ends the set; a covered one that ends it must be the last draw.
+        require!(if covered { !last || idx.saturating_add(1) == draws } else { last }, PoolError::PagareAccountsMismatch);
+        touched.push(sidecar);
+    }
+    Ok(touched)
+}
+
+/// The cost of the principal settled from `before` to `after`, pagaré by pagaré at the FIX each
+/// was drawn at.
+fn principal_cost(touched: &[Account<Pagare>], before: u64, after: u64) -> Result<u64> {
+    let mut cost = 0u64;
+    for sidecar in touched {
+        let start = sidecar.drawn_through.checked_sub(sidecar.amount_mxn).ok_or(PoolError::Overflow)?;
+        let c = fx::cost_of(sidecar.usdc_delivered, sidecar.amount_mxn, after.saturating_sub(start))
+            .zip(fx::cost_of(sidecar.usdc_delivered, sidecar.amount_mxn, before.saturating_sub(start)))
+            .and_then(|(a, b)| a.checked_sub(b))
+            .ok_or(PoolError::Overflow)?;
+        cost = cost.checked_add(c).ok_or(PoolError::Overflow)?;
+    }
+    Ok(cost)
 }
 
 /// The arrears of a line at `now`: the installments repay `drawn` on the contract's calendar
@@ -1175,8 +1211,11 @@ pub struct WriteOff<'info> {
     pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
 }
 
-/// Recognises the unpaid principal of an overdue line as a loss. Council only; not blocked by the
-/// pause. Allowed when
+/// Recognises the unpaid principal of an overdue line as a loss: its cost leaves
+/// `outstanding_principal` (and `impaired_principal` in collection) for `written_off`. The line's
+/// own figures do not move: it still owes its principal, its ordinary interest stopped at its last
+/// due date or acceleration, and its late interest keeps running, so it still takes payments and
+/// quitas (decision 51). Council only; not blocked by the pause. Allowed when
 ///
 /// - the line is `Active` and `now > term_end` (else `TermNotEnded`), or
 /// - the line is `InCollection`, the collection period has run (`now > accelerated_at +
@@ -1317,44 +1356,197 @@ pub fn resume_draws(ctx: Context<CouncilLine>, valid_until: i64) -> Result<()> {
     Ok(())
 }
 
-/// Council only: condones interest of an `Active` or `InCollection` line (decision 50; CCF 2209,
-/// 2210: remitting an accessory leaves the principal owed). All the late interest accrued to now
-/// is condoned — the watermark moves and nothing is collected — together with `interest` of the
-/// ordinary interest accrued and unpaid (`WrongAmount` above it, or when there is nothing to condone),
-/// which counts from then on as settled (`interest_repaid`), without reaching `interest_collected`.
-/// `document_hash` commits the written record of the quita (`DocumentHashRequired`). Principal is
-/// never condoned. A line left owing nothing that can draw nothing more closes (`Repaid`), and its
-/// títulos may then leave (decision 49). It moves no funds and the pause does not block it.
-pub fn condone_interest(ctx: Context<CouncilLine>, interest: u64, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
+#[event_cpi]
+#[derive(Accounts)]
+pub struct Condone<'info> {
+    pub council: Signer<'info>,
+
+    /// CHECK: `council::check` against the pool's stored multisig.
+    #[account(address = pool.multisig @ PoolError::CouncilInvalid)]
+    pub multisig: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [seeds::POOL, pool.creator.as_ref(), pool.asset_mint.as_ref()],
+        bump = pool.bump,
+        has_one = council @ PoolError::Unauthorized,
+    )]
+    pub pool: Box<Account<'info, Pool>>,
+
+    #[account(
+        mut,
+        seeds = [seeds::LINE, pool.key().as_ref(), &line.line_id.to_le_bytes()],
+        bump = line.bump,
+        has_one = pool @ PoolError::WrongAccount,
+    )]
+    pub line: Box<Account<'info, CreditLine>>,
+
+    /// Read for the share supply (`NavUpdated` and the invariant check).
+    #[account(address = pool.share_mint @ PoolError::WrongAccount)]
+    pub share_mint: Box<InterfaceAccount<'info, Mint>>,
+
+    /// Read for the NAV.
+    #[account(address = pool.vault @ PoolError::WrongAccount)]
+    pub vault: Box<InterfaceAccount<'info, TokenAccount>>,
+}
+
+/// Council only: the quita, against `document_hash`, the written record (`DocumentHashRequired`),
+/// on an `Active`, `InCollection` or `WrittenOff` line. It moves no funds and the pause does not
+/// block it. In the payment order where it applies:
+///
+/// - all the late interest accrued to now is condoned: the watermark moves, nothing is collected;
+/// - `interest` of the ordinary interest accrued and unpaid, which counts from then on as settled
+///   (`interest_repaid`, decision 50; CCF 2209, 2210), without reaching `interest_collected`;
+/// - `principal` of the principal outstanding (decision 51, CCF 2209: that debt is extinguished),
+///   which counts as settled — `principal_repaid` and its cost `usdc_cost_repaid` — so it meets
+///   installments and accrues no more interest from now. Unlike a payment, it may leave ordinary
+///   interest unpaid: the council remits what it decides, and that interest stays owed.
+///
+/// `WrongAmount` above what is unpaid or outstanding, or when there is nothing to condone. The cost
+/// of the principal, at each pagaré's own FIX, is a loss now: it leaves `outstanding_principal`
+/// (and `impaired_principal` in collection) for `written_off`, as a write-off of it would; on a line
+/// already written off the loss was taken, and the pool does not move.
+///
+/// Remaining accounts: with principal, exactly the records of `repay`, `[pagares_paid ..=
+/// last_touched]` (at most `MAX_SIDECARS_PER_REPAY`: a larger quita is split); none without. Each
+/// pagaré the principal reaches gets a `Condonacion` entry, from the pool to the suscriptor, over
+/// `registry::condonation_hash`; one it extinguishes becomes `PAGARE_PAID` with
+/// `PAGARE_FLAG_CONDONED`, `receipt_hash` the record's hash, any procuración ends with a
+/// `Terminacion`, and the cursor moves past it. A line left owing nothing that can draw nothing
+/// more closes (`Repaid`), and its títulos may then leave (decision 49).
+pub fn condone<'info>(ctx: Context<'info, Condone<'info>>, interest: u64, principal: u64, document_hash: [u8; 32], valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
-    ctx.accounts.check_council()?;
+    let pool = &ctx.accounts.pool;
+    council::check(&ctx.accounts.multisig.to_account_info(), &pool.council, pool.council_vault_bump)?;
     require!(document_hash != [0u8; 32], PoolError::DocumentHashRequired);
     let now = Clock::get()?.unix_timestamp;
-    let line = &mut ctx.accounts.line;
-    require!(matches!(line.status, LineStatus::Active | LineStatus::InCollection), PoolError::LineStatus);
+    let line = &ctx.accounts.line;
+    let status = line.status;
+    require!(matches!(status, LineStatus::Active | LineStatus::InCollection | LineStatus::WrittenOff), PoolError::LineStatus);
     let late_interest = line_arrears(line, now)?.late_due;
     let interest_unpaid = line.interest_unpaid(now).ok_or(PoolError::Overflow)?;
-    require!(interest <= interest_unpaid && (interest > 0 || late_interest > 0), PoolError::WrongAmount);
+    let principal_left = line.outstanding().ok_or(PoolError::Overflow)?;
+    require!(
+        interest <= interest_unpaid && principal <= principal_left && (interest > 0 || principal > 0 || late_interest > 0),
+        PoolError::WrongAmount
+    );
+    let principal_before = line.principal_repaid;
+    let principal_after = principal_before.checked_add(principal).ok_or(PoolError::Overflow)?;
+    let mut touched = touched_pagares(ctx.remaining_accounts, line, principal_after, principal > 0)?;
+    let cost = principal_cost(&touched, principal_before, principal_after)?;
+
+    let loss_recognized = if status == LineStatus::WrittenOff { 0 } else { cost };
+    let pool = &mut ctx.accounts.pool;
+    if loss_recognized > 0 {
+        pool.outstanding_principal = pool.outstanding_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
+        // What the provision anticipated becomes the loss (decision 40).
+        if status == LineStatus::InCollection {
+            pool.impaired_principal = pool.impaired_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
+        }
+        pool.written_off = pool.written_off.checked_add(cost).ok_or(PoolError::Overflow)?;
+    }
+
+    let line = &mut ctx.accounts.line;
+    // Every second before this one accrued on the principal it had (decision 48).
+    line.accrue(now).ok_or(PoolError::Overflow)?;
     if late_interest > 0 {
         line.late_paid_until = now;
     }
-    // Condoned interest counts as settled: the next payment does not take it again.
+    // Condoned interest and principal count as settled: no payment takes them again.
     line.interest_repaid = line.interest_repaid.checked_add(interest).ok_or(PoolError::Overflow)?;
+    line.principal_repaid = principal_after;
+    line.usdc_cost_repaid = line.usdc_cost_repaid.checked_add(cost).ok_or(PoolError::Overflow)?;
     let remaining = line.owed(now).ok_or(PoolError::Overflow)?;
     let can_draw = line.can_draw(now).ok_or(PoolError::Overflow)?;
     if remaining == 0 && !can_draw {
         line.status = LineStatus::Repaid;
         line.closed_at = now;
     }
-    emit_cpi!(InterestCondoned {
-        pool: ctx.accounts.pool.key(),
-        line_id: line.line_id,
+
+    // The entries, oldest first, on every pagaré the principal reaches (decision 51); the cursor
+    // moves past every pagaré extinguished.
+    let pool_key = ctx.accounts.pool.key();
+    let borrower = line.borrower;
+    let line_id = line.line_id;
+    let mut entries: Vec<CondonationEntry> = Vec::with_capacity(touched.len());
+    let mut floor = principal_before;
+    for sidecar in touched.iter_mut() {
+        let covered = sidecar.drawn_through <= principal_after;
+        let ceiling = sidecar.drawn_through.min(principal_after);
+        let principal_condoned = ceiling.saturating_sub(floor);
+        floor = floor.max(ceiling);
+        if principal_condoned == 0 {
+            continue;
+        }
+        let principal_balance = sidecar.amount_mxn.min(sidecar.drawn_through.saturating_sub(principal_after));
+        let annotation = registry::condonation_hash(&document_hash, principal_condoned, principal_balance);
+        let hash = registry::append(sidecar, KIND_CONDONACION, &pool_key, &borrower, &annotation, now).ok_or(PoolError::Overflow)?;
+        let entry_count = sidecar.entry_count;
+        emit_cpi!(PagareEntry {
+            pool: pool_key,
+            line_id,
+            draw_index: sidecar.draw_index,
+            asset: sidecar.asset,
+            kind: KIND_CONDONACION,
+            from: pool_key,
+            to: borrower,
+            entry_hash: hash,
+            entry_count,
+            recorded_at: now,
+            stated_at: now,
+        });
+        if covered {
+            // Extinguished without a payment: deliverable to the suscriptor, naming no payer.
+            sidecar.status = PAGARE_PAID;
+            sidecar.paid_at = now;
+            sidecar.receipt_hash = document_hash;
+            sidecar.flags |= PAGARE_FLAG_CONDONED;
+            line.pagares_paid = sidecar.draw_index.checked_add(1).ok_or(PoolError::Overflow)?;
+            // The extinction ends a procuración in force, as a payment does.
+            if sidecar.flags & PAGARE_FLAG_PROCURACION != 0 {
+                let procurador = sidecar.procurador;
+                let hash = registry::append(sidecar, KIND_TERMINACION, &pool_key, &procurador, &annotation, now).ok_or(PoolError::Overflow)?;
+                sidecar.flags &= !PAGARE_FLAG_PROCURACION;
+                sidecar.procurador = Pubkey::default();
+                emit_cpi!(PagareEntry {
+                    pool: pool_key,
+                    line_id,
+                    draw_index: sidecar.draw_index,
+                    asset: sidecar.asset,
+                    kind: KIND_TERMINACION,
+                    from: pool_key,
+                    to: procurador,
+                    entry_hash: hash,
+                    entry_count: sidecar.entry_count,
+                    recorded_at: now,
+                    stated_at: now,
+                });
+            }
+        }
+        entries.push(CondonationEntry { draw_index: sidecar.draw_index, entry_count, principal_condoned, principal_balance });
+        sidecar.exit(ctx.program_id)?;
+    }
+
+    // No CPI in this instruction, so the balances read by Anchor are current.
+    let share_supply = ctx.accounts.share_mint.supply;
+    let nav_after = ctx.accounts.pool.check(ctx.accounts.vault.amount, Some(share_supply))?;
+    emit_cpi!(LineCondoned {
+        pool: pool_key,
+        line_id,
+        document_hash,
         late_interest,
         interest,
-        document_hash,
+        principal,
+        cost,
+        loss_recognized,
         remaining,
+        nav_after,
         condoned_at: now,
+        entries,
     });
+    if loss_recognized > 0 {
+        emit_cpi!(NavUpdated { pool: pool_key, total_assets: nav_after, share_supply });
+    }
     Ok(())
 }
 

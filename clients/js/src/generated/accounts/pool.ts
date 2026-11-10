@@ -69,11 +69,14 @@ export type Pool = {
   deadShares: Address;
   /** The series' Metaplex Core collection `draw` mints the pagaré assets into. */
   collection: Address;
-  /** Principal drawn and neither repaid nor written off. */
+  /** The cost of the principal drawn and neither repaid, condoned nor written off. */
   outstandingPrincipal: bigint;
   /** Ordinary interest repaid on every line; informative. */
   interestCollected: bigint;
-  /** Principal written off on every line; informative. */
+  /**
+   * The cost of the principal written off or condoned on every line (decision 51), less what
+   * recoveries on written-off lines brought back of it: the loss still recognised; informative.
+   */
   writtenOff: bigint;
   lineCount: bigint;
   /**
@@ -170,11 +173,14 @@ export type PoolArgs = {
   deadShares: Address | HasAddress;
   /** The series' Metaplex Core collection `draw` mints the pagaré assets into. */
   collection: Address | HasAddress;
-  /** Principal drawn and neither repaid nor written off. */
+  /** The cost of the principal drawn and neither repaid, condoned nor written off. */
   outstandingPrincipal: number | bigint;
   /** Ordinary interest repaid on every line; informative. */
   interestCollected: number | bigint;
-  /** Principal written off on every line; informative. */
+  /**
+   * The cost of the principal written off or condoned on every line (decision 51), less what
+   * recoveries on written-off lines brought back of it: the loss still recognised; informative.
+   */
   writtenOff: number | bigint;
   lineCount: number | bigint;
   /**

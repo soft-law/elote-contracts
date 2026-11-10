@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { interestAccrued, interestUnpaid, lineArrears, lineLateDue, lineOwed, lineSchedule, maxLinePrincipal } from "../src/schedule";
+import { installmentPayment, interestAccrued, interestUnpaid, lineArrears, lineLateDue, lineOwed, lineSchedule, maxLinePrincipal } from "../src/schedule";
 
 type Vector = {
   principal: string;
@@ -217,4 +217,32 @@ test("lineLateDue: a bullet line past its term owes late interest from term_end,
   assert.equal(lineLateDue(line, termEnd + day), 4_000n);
   assert.equal(lineLateDue(line, termEnd + year), 1_460_000n);
   assert.equal(lineLateDue(line, termEnd + 10n * day), 40_000n);
+});
+
+test("installmentPayment: the principal part is not enough, the interest is taken first", () => {
+  const t0 = 1_000_000n;
+  // 60,000.00 at 12% in six monthly parts of 10,000.00 of principal, drawn at t0.
+  let l = {
+    ...bullet(6_000_000n),
+    firstDueAt: t0 + MONTH,
+    intervalSeconds: MONTH,
+    installments: 6,
+    termEnd: t0 + 6n * MONTH,
+    lateBps: 3_600,
+    maxMissed: 3,
+    lateCollected: 0n,
+    latePaidUntil: 0n,
+  };
+  l = { ...l, ...accrueThen(l, t0, { drawn: 6_000_000n }) };
+  // On the first due date: 10,000.00 of principal and the 600.00 the month accrued.
+  assert.equal(installmentPayment(l, 1, t0 + MONTH), 1_060_000n);
+  assert.equal(installmentPayment(l, 6, t0 + MONTH), 6_060_000n, "the payoff");
+  // Paid in full on its date: the second asks 10,000.00 and 500.00.
+  l = { ...l, ...accrueThen(l, t0 + MONTH, { principalRepaid: 1_000_000n }), interestRepaid: 60_000n };
+  assert.equal(installmentPayment(l, 1, t0 + MONTH), 0n, "met");
+  assert.equal(installmentPayment(l, 2, t0 + 2n * MONTH), 1_050_000n);
+  // A day past the second due date, unpaid: the late interest on its 10,000.00 is asked too.
+  const late = lineLateDue(l, t0 + 2n * MONTH + 86_400n);
+  assert.ok(late > 0n);
+  assert.equal(installmentPayment(l, 2, t0 + 2n * MONTH + 86_400n), late + interestUnpaid(l, t0 + 2n * MONTH + 86_400n) + 1_000_000n);
 });

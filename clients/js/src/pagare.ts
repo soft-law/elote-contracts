@@ -77,14 +77,15 @@ export async function drawPagareAccounts(
 export const MAX_SIDECARS_PER_REPAY = 3;
 
 /**
- * The pagaré records a `repay` must pass as remaining accounts, `[pagaresPaid ..= lastTouched]`,
+ * The pagaré records a `repay` — or a `condone` with principal (decision 51; none without) — must
+ * pass as remaining accounts, `[pagaresPaid ..= lastTouched]`,
  * oldest first: from the line's cursor through the first pagaré whose `drawnThrough` exceeds the
  * line's `principalRepaid` after the payment, or the last draw when none does; none once the
  * cursor has passed the last draw or the line never drew. The program refuses any other set
  * (`PagareAccountsMismatch`). `drawnThrough[i]` is `Pagare.drawnThrough` of draw `i` for every
  * draw of the line; `principalAfter` is `principalRepaid` plus the payment's principal part (the
  * program applies late interest, then interest — `interestUnpaid` — then principal, never more
- * than is due).
+ * than is due), or plus the principal a quita condones.
  *
  * The set depends on the line at the time the transaction is built: a payment by anyone that lands
  * first can change it, and the program then refuses this one with `PagareAccountsMismatch` while
@@ -114,7 +115,9 @@ export function withRemainingAccounts<T extends Instruction>(instruction: T, add
  * records: it may cover pagarés `pagaresPaid ..= pagaresPaid + maxRecords - 2`, the next one
  * being the last record it passes — or every pagaré left, when no more than `maxRecords` are
  * (the program lets a covered record end the set when it is the last draw). A payment above the
- * cap is split into several `repay` calls.
+ * cap is split into several `repay` calls. A `condone` runs through Squads, which costs more: on a
+ * long schedule a quita condones one pagaré per call, up to `drawnThrough[pagaresPaid] -
+ * principalRepaid` (ARCHITECTURE §10).
  */
 export function repayPrincipalCap(input: {
   pagaresPaid: number;

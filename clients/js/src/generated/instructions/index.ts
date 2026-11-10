@@ -13,7 +13,7 @@ export * from "./annulPagare";
 export * from "./approveLine";
 export * from "./burnPagare";
 export * from "./cancelLine";
-export * from "./condoneInterest";
+export * from "./condone";
 export * from "./courtAnnotation";
 export * from "./deliverPagare";
 export * from "./deposit";

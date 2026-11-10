@@ -105,6 +105,25 @@ export function lineLateDue(
   return lineArrears({ ...line, firstDueAt: line.termEnd }, bullet, now).lateDue;
 }
 
+/**
+ * What to pay at `now` so that installments `1..=k` of the line are met: the late interest due,
+ * the ordinary interest accrued and unpaid, and the principal still short of the share due through
+ * installment `k` (all of it on a bullet line, or when `k` is the last). `repay` takes late
+ * interest and interest before principal, so paying the principal part alone leaves the
+ * installment short by them. Quote `now` a little ahead of when the payment lands: both interests
+ * grow by the second, and what the quote exceeds them by falls on principal.
+ */
+export function installmentPayment(
+  line: AccrualLine & Schedule & { termEnd: bigint; firstDueAt: bigint },
+  k: number,
+  now: bigint
+): bigint {
+  const n = BigInt(line.installments);
+  const due = n === 0n || BigInt(k) >= n ? line.drawn : (line.drawn / n) * BigInt(k);
+  const principal = due > line.principalRepaid ? due - line.principalRepaid : 0n;
+  return lineLateDue(line, now) + interestUnpaid(line, now) + principal;
+}
+
 export type Arrears = {
   due: number;
   covered: number;

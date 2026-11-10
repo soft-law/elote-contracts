@@ -92,7 +92,7 @@ Squads also numbers its errors from 6000 (its `NotAMember` is 6005, the same num
 
 | Risk | Effect | Mitigation in place / planned |
 |---|---|---|
-| Council majority compromised | Lines to controlled wallets up to the caps; a pause or a write-off | Majority threshold checked on chain, at most ten members, caps, `valid_until`; KYC of curators off chain |
+| Council majority compromised | Lines to controlled wallets up to the caps; a pause, a write-off, or a quita of principal (decision 51: a loss recognised at once, the títulos released to the borrower) | Majority threshold checked on chain, at most ten members, caps, `valid_until`; KYC of curators off chain |
 | Lost keys in a 2-of-2 council | The council cannot act until a member is replaced, which itself needs both | Add a third curator (the first council is 3 members) |
 | Pause with no exit | While paused, depositors cannot redeem and borrowers cannot draw; repayments still arrive | Both the pause and the resume take a council vote (decision 39); written procedure in the runbook |
 | Single upgrade key | The program can be replaced by one key | Squads multisig as upgrade authority; verified builds |
@@ -102,6 +102,9 @@ Squads also numbers its errors from 6000 (its `NotAMember` is 6005, the same num
 Documented limits, not open vulnerabilities; most are pinned by `programs/elote_pool/tests/known_limits.rs`.
 
 - **Step-function NAV at historical cost, dual-priced.** Interest counts when collected, an FX gain or loss when principal is repaid. A line entering collection provisions its whole outstanding cost in the redemption NAV at the mark (decision 40, `provision_bps` = 100% at `init_pool`, council-set), so a redemption between the mark and the write-off already prices the expected loss; a recovery reverses its share, and the write-off books what remains. Deposits price at the NAV with no provision (decision 40b, Maple's dual exchange rate): an entrant buys any impaired book at par, so depositing just before a recovery — flash-amplified or patient — nets zero or less. The entrant's cost is the impaired fraction at par, bounded by the sell-or-write-off policy (3–12 months); the residuals that stay are redeeming before a foreseeable mark (inherent to objective marking) and the pro-rata share of cash-basis interest, both documented here.
+- **A recovery on a written-off line is new NAV in both prices** (decision 51): the write-off took the line out of the book, so the dual price does not cover it, and a deposit just before a recovery lands (a payment is permissionless and visible) takes its pro-rata share of the principal recovered, as `limit_deposit_just_before_a_repayment_shares_the_interest` shows for interest — here on principal, a larger sum. Not mitigated on chain.
+- **A written-off line keeps accruing late interest** (decision 51): the write-off is the pool's loss, not the debtor's release, so a recovery pays the late interest run since, within the lifetime cap of the principal, unless the council condones it in the settlement.
+- **A quita is the council's alone and recognises its loss at once**: no on-chain check ties `document_hash` to a signed record or the amounts to a policy; the record's hash and the `LineCondoned` event are the audit trail.
 - **Collection can be unreachable** on a short schedule (`covered + max_missed > installments`); such a line is written off after the term.
 - **Late and ordinary interest are computed at the second of the repayment** (decision 48: ordinary interest accrues per second on the principal outstanding), so clients pad a payment meant to settle a line; the program takes only what is owed.
 - **Exact-second gates on a leader-set clock** can move by a few seconds.

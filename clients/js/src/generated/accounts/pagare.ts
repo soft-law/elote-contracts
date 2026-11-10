@@ -81,13 +81,14 @@ export type Pagare = {
   certFingerprint: ReadonlyUint8Array;
   /** `SIGNATURE_*`. */
   signatureMethod: number;
-  /** `PAGARE_OUTSTANDING` or `PAGARE_PAID`; never reverts. */
+  /** `PAGARE_OUTSTANDING` or `PAGARE_PAID` (paid, or condoned: `PAGARE_FLAG_CONDONED`); never reverts. */
   status: number;
-  /** When the repayment that covered it landed; zero while outstanding. */
+  /** When the repayment or the quita that covered it landed; zero while outstanding. */
   paidAt: bigint;
   /**
    * The receipt hash of that repayment, the payer's and provisional: the holder's correction
-   * arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41).
+   * arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41). For a
+   * título the quita extinguished, the hash of the council's written record.
    */
   receiptHash: ReadonlyUint8Array;
   /**
@@ -147,13 +148,14 @@ export type PagareArgs = {
   certFingerprint: ReadonlyUint8Array;
   /** `SIGNATURE_*`. */
   signatureMethod: number;
-  /** `PAGARE_OUTSTANDING` or `PAGARE_PAID`; never reverts. */
+  /** `PAGARE_OUTSTANDING` or `PAGARE_PAID` (paid, or condoned: `PAGARE_FLAG_CONDONED`); never reverts. */
   status: number;
-  /** When the repayment that covered it landed; zero while outstanding. */
+  /** When the repayment or the quita that covered it landed; zero while outstanding. */
   paidAt: number | bigint;
   /**
    * The receipt hash of that repayment, the payer's and provisional: the holder's correction
-   * arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41).
+   * arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41). For a
+   * título the quita extinguished, the hash of the council's written record.
    */
   receiptHash: ReadonlyUint8Array;
   /**

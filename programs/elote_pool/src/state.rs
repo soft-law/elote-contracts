@@ -121,11 +121,12 @@ pub struct Pool {
     pub dead_shares: Pubkey,
     /// The series' Metaplex Core collection `draw` mints the pagaré assets into.
     pub collection: Pubkey,
-    /// Principal drawn and neither repaid nor written off.
+    /// The cost of the principal drawn and neither repaid, condoned nor written off.
     pub outstanding_principal: u64,
     /// Ordinary interest repaid on every line; informative.
     pub interest_collected: u64,
-    /// Principal written off on every line; informative.
+    /// The cost of the principal written off or condoned on every line (decision 51), less what
+    /// recoveries on written-off lines brought back of it: the loss still recognised; informative.
     pub written_off: u64,
     pub line_count: u64,
     /// Seconds from the mark (`CreditLine::accelerated_at`) before a line in collection can be
@@ -255,6 +256,8 @@ pub enum LineStatus {
     Approved,
     Active,
     Repaid,
+    /// The council recognised its principal as a loss. Not terminal: the line still owes, takes
+    /// recoveries and quitas, and becomes `Repaid` when it owes nothing (decision 51).
     WrittenOff,
     /// A scheduled line with `max_missed` or more missed installments, in out-of-court
     /// collection. Repayments are still accepted; it leaves this state only when repaid in full
@@ -303,6 +306,8 @@ pub struct CreditLine {
     pub principal_seconds: u128,
     /// The instant `principal_seconds` runs to; never past `accrual_end`.
     pub accrued_at: i64,
+    /// Principal settled: repaid, or condoned by the council (decision 51), so it meets
+    /// installments and stops accruing interest either way.
     pub principal_repaid: u64,
     /// Ordinary interest settled: repaid, or condoned by the council (decision 50).
     pub interest_repaid: u64,
@@ -348,8 +353,8 @@ pub struct CreditLine {
     pub acceleration_due_at: i64,
     /// USDC delivered over the draws: the pool's cost of the line.
     pub usdc_drawn: u64,
-    /// The cost of the principal repaid, at each pagaré's own FIX; `usdc_drawn - usdc_cost_repaid`
-    /// is the cost still outstanding.
+    /// The cost of the principal settled (repaid or condoned), at each pagaré's own FIX;
+    /// `usdc_drawn - usdc_cost_repaid` is the cost still outstanding.
     pub usdc_cost_repaid: u64,
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 64],
@@ -364,7 +369,8 @@ pub const SIGNATURE_EFIRMA_WALLET: u8 = 2;
 
 /// `Pagare::status`: the título is outstanding (the asset exists, held by the pool or endorsed).
 pub const PAGARE_OUTSTANDING: u8 = 0;
-/// `Pagare::status`: a repayment covered it (the PAGADO mark). The título's delivery to the
+/// `Pagare::status`: a repayment covered it (the PAGADO mark), or the council's quita extinguished
+/// it (`PAGARE_FLAG_CONDONED`, decision 51). The título's delivery to the
 /// suscriptor — or to the aval who settled it — is `PAGARE_FLAG_DELIVERED`, written by
 /// `deliver_pagare` (decision 38) once the line owes nothing (decision 49). Status 2 was PAID_PENDING_CANCEL (the retired cancellation
 /// route); never reuse it.
@@ -383,6 +389,10 @@ pub const PAGARE_FLAG_DELIVERED: u8 = 1 << 2;
 pub const PAGARE_FLAG_PAID_BY_AVAL: u8 = 1 << 3;
 // `Pagare::flags` bit 4 was briefly a judicial hold, retired with decision 38-g (the judicial
 // stage runs off chain); never reuse it.
+/// `Pagare::flags` bit: the council's quita extinguished what was left of the título (decision 51,
+/// CCF 2209): it is `PAGARE_PAID` without a payment, so no payer, aval included, is named; it goes
+/// to the suscriptor.
+pub const PAGARE_FLAG_CONDONED: u8 = 1 << 5;
 
 /// Registry entry kinds (`Pagare::last_kind`, `PagareEntry::kind`).
 // Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso, and 10 was the
@@ -400,6 +410,8 @@ pub const KIND_RECIBO: u8 = 11;
 pub const KIND_PAGADO_AVAL: u8 = 12;
 /// The paid título was delivered, to the suscriptor or to the aval who settled it.
 pub const KIND_ENTREGA: u8 = 13;
+/// The council's quita remitted principal of the título (decision 51); never a payment.
+pub const KIND_CONDONACION: u8 = 14;
 
 /// The program's record of one pagaré, beside the Core asset `draw` mints. It holds no folio and
 /// nothing personal, and is never closed: after the payment, the delivery and even the owner's
@@ -428,12 +440,13 @@ pub struct Pagare {
     pub cert_fingerprint: [u8; 32],
     /// `SIGNATURE_*`.
     pub signature_method: u8,
-    /// `PAGARE_OUTSTANDING` or `PAGARE_PAID`; never reverts.
+    /// `PAGARE_OUTSTANDING` or `PAGARE_PAID` (paid, or condoned: `PAGARE_FLAG_CONDONED`); never reverts.
     pub status: u8,
-    /// When the repayment that covered it landed; zero while outstanding.
+    /// When the repayment or the quita that covered it landed; zero while outstanding.
     pub paid_at: i64,
     /// The receipt hash of that repayment, the payer's and provisional: the holder's correction
-    /// arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41).
+    /// arrives as a `Recibo` entry (`annotate_payment`) and no field is rewritten (LGTOC 41). For a
+    /// título the quita extinguished, the hash of the council's written record.
     pub receipt_hash: [u8; 32],
     /// The procurador of the endoso en procuración in force; the zero key when none. Cleared by
     /// `revoke_procuracion` and by the extinction.

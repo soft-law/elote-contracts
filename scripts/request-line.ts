@@ -12,7 +12,7 @@
 //        [--agreement-hash <64 hex> | --agreement-file <path> --agreement-salt <64 hex>] [--expediente-root <64 hex>] [--pagare-template-hash <64 hex>] [--yes]
 //
 // --principal        the line in MXN pesos, up to 2 decimals (50000, 1250.50)
-// --rate-bps         annual interest, charged per tranche at the draw (default 1200)
+// --rate-bps         annual interest, accruing per second on the principal outstanding (default 1200)
 // --term-days        days from now to the end of the term (default 90)
 // --installments     open a scheduled line with this many installments; needs --interval-days
 // --interval-days    days between installments; the first falls due one interval from now
@@ -168,7 +168,7 @@ console.log(
     `borrower     ${opened.borrower}`,
     `sponsor      ${lineSponsor(opened) ? `${opened.sponsor} (${roleName})` : "none"}`,
     `principal    MXN ${fmtMxn(opened.principal)}`,
-    `rate         ${opened.rateBps} bps a year, charged per tranche at the draw`,
+    `rate         ${opened.rateBps} bps a year on the principal outstanding`,
     `term         ${termDays} days, ends ${new Date(Number(opened.termEnd) * 1000).toISOString()}`,
     `terms hash   ${Buffer.from(opened.termsHash).toString("hex")} (the council approves this value)`,
     s

@@ -171,7 +171,8 @@ export async function repayInParts(
       const l = (await fetchCreditLine(c.rpc, line, { commitment: "confirmed" })).data;
       const fix = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
       const leftMxn = mxnForUsdc(left, fix.fixRate);
-      if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) break parts;
+      // A written-off line still owes and takes recoveries (decision 51).
+      if (![LineStatus.Active, LineStatus.InCollection, LineStatus.WrittenOff].includes(l.status)) break parts;
       // Late interest: a scheduled line's, or a bullet line's from term_end (or the mark).
       // Late interest grows by the second until the part lands: quote it 30 s ahead. The program
       // takes only what is due; the excess falls on principal, and if that moves the records the

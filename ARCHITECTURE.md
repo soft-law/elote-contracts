@@ -89,10 +89,13 @@ All three amounts are in the asset's base units (USDC in production).
   flash-funded or patient. Deposits are never gated. When nothing is impaired the two prices are
   the same.
 - **Outstanding principal at USDC cost.** `Pool.outstanding_principal` is the USDC the pool
-  delivered on draws and has not recovered or written off. `draw` adds the USDC it delivered;
-  `repay` subtracts the cost of the principal repaid, valued at the FIX each pagaré was drawn at
-  (`fx::cost_of`); `write_off` subtracts the line's remaining cost, `usdc_drawn −
-  usdc_cost_repaid`.
+  delivered on draws and has not recovered, condoned or written off. `draw` adds the USDC it
+  delivered; `repay` subtracts the cost of the principal repaid, valued at the FIX each pagaré was
+  drawn at (`fx::cost_of`); `condone` the cost of the principal condoned, valued the same way
+  (decision 51); `write_off` the line's remaining cost, `usdc_drawn − usdc_cost_repaid`.
+- **The loss at USDC cost.** `Pool.written_off` is the cost the pool has recognised as lost and
+  not recovered: `write_off` and a principal quita add to it, a recovery on a written-off line
+  takes the cost it recovered back out of it (decision 51).
 - **Debt in MXN, settlement in USDC at the FIX.** Every amount on a line and a pagaré is in
   centavos of MXN (`CreditLine.currency = CURRENCY_MXN = 484`). The vault, deposits, redemptions
   and repayments are in asset base units. A draw delivers `usdc_for_mxn(amount_mxn, fix)`, rounded
@@ -111,17 +114,22 @@ All three amounts are in the asset's base units (USDC in production).
 | `mark_in_collection`, `accelerate_line` | | | + the line's `usdc_drawn − usdc_cost_repaid` | − that cost × `provision_bps` / 10 000 | unchanged |
 | `write_off` of an `InCollection` line | | − the line's remaining cost | − the same | − the cost × (10 000 − `provision_bps`) / 10 000 (zero at 100%) | − the cost |
 | `write_off` of an `Active` line | | − the line's remaining cost | | − the cost | − the cost |
+| `condone`, principal, of an `Active` or `InCollection` line (decision 51) | | − cost at the pagarés' FIX | − the same cost, when `InCollection` | − the cost × (10 000 − `provision_bps`) / 10 000 in collection, − the cost when active | − the cost |
+| `condone`, principal, of a `WrittenOff` line | | | | unchanged (the write-off took it) | unchanged |
+| `repay` on a `WrittenOff` line, principal part (decision 51) | + USDC that paid it | | | + that USDC (`written_off −=` the cost; `FxRealized.delta` is the difference) | + that USDC |
 | `set_provision_bps` | | | | moves with the rate | unchanged |
 
 Up to the rounding of the provision (one floor over the pool's whole `impaired_principal`).
-`Pool.interest_collected` (`usdc_for_mxn(interest_part)` per repayment), `Pool.written_off` and
-`Pool.fx_realized` (signed) are informative running totals in USDC.
+`Pool.interest_collected` (`usdc_for_mxn(interest_part)` per repayment), `Pool.written_off` (net
+of recoveries) and `Pool.fx_realized` (signed) are informative running totals in USDC. Condoned
+interest never reaches `interest_collected`: it was never received.
 
 With nothing impaired a deposit leaves both prices where they were. With an impaired book the
 entrant pays the higher entry price, so the redemption price of the holders already in rises
 slightly; that is the entrant buying the impaired book at par.
 
-`NavUpdated` is emitted by `deposit`, `redeem`, `repay` and `write_off`. The provision moves the
+`NavUpdated` is emitted by `deposit`, `redeem`, `repay`, `write_off` and a `condone` that
+recognises a loss. The provision moves the
 NAV in three instructions that do not emit it: `mark_in_collection` and `accelerate_line` carry the
 pool's new `impaired_principal` in `LineInCollection` and `LineAccelerated`, and
 `set_provision_bps` emits `ProvisionSet`; an indexer recomputes the NAV from those.
@@ -139,15 +147,17 @@ deposited, so a donation to the vault cannot round later deposits down to nothin
 CPIs: the NAV, provision included, is computable (`vault + outstanding` fits a `u64` and the
 provision does not exceed it), `impaired_principal <= outstanding_principal`, and a share supply,
 when passed, is zero or at least `DEAD_SHARES` (`InvariantBroken` otherwise). `deposit`, `redeem`,
-`repay` and `write_off` pass the supply; `draw` checks the NAV legs only. It returns the provisioned
+`repay`, `write_off` and `condone` pass the supply; `draw` checks the NAV legs only. It returns the provisioned
 NAV, which is the `nav_after` of every event and `NavUpdated.total_assets`.
 
 **Invariants** that hold between instructions:
 
 1. `outstanding_principal == Σ (usdc_drawn − usdc_cost_repaid)` over the lines `Active` or
-   `InCollection`, and `impaired_principal` is the same sum over the lines `InCollection`. Not
-   checked on chain (it would need every line account); `Pool::check` checks the bound between the
-   two.
+   `InCollection`, and `impaired_principal` is the same sum over the lines `InCollection`;
+   `written_off == Σ (usdc_drawn − usdc_cost_repaid)` over the lines `WrittenOff`, plus the cost of
+   every principal quita (`LineCondoned.cost`) on any line (decision 51: `usdc_cost_repaid` counts
+   repaid and condoned principal alike). Not checked on chain (it would need every line account);
+   `Pool::check` checks the bound between the first two.
 2. Only `draw` and `redeem` move tokens out of the vault, both signed by the pool PDA, each to a
    token account owned by the instruction's signer (the borrower of an approved line, the holder
    burning shares).
@@ -156,7 +166,10 @@ NAV, which is the `nav_after` of every event and `NavUpdated.total_assets`.
    what is owed. `principal_seconds` and `accrued_at` never decrease, and `accrued_at <=
    accrual_end` (decision 48). After any `repay` that applies principal, `interest_unpaid(now) ==
    0`: interest is taken first (`tests/schedule.rs`, the state machine and
-   `after_any_payment_that_touches_principal_no_interest_is_left_unpaid`).
+   `after_any_payment_that_touches_principal_no_interest_is_left_unpaid`). A quita is not a
+   payment and may leave interest unpaid while it condones principal (decision 51); the interest
+   accrued never falls, because `accrue(now)` runs before the principal moves, so
+   `interest_unpaid` cannot underflow.
 4. `late_collected <= drawn`, by the lifetime cap in `math::arrears`.
 5. Every arithmetic step is `checked_*` or in `u128`; a `None` becomes `Overflow` and the
    transaction fails. `tests/math_props.rs` fuzzes the pure functions.
@@ -299,7 +312,7 @@ filters.
 | 168 | 32 | `collection` | the series' Core collection |
 | 200 | 8 | `outstanding_principal` | USDC cost lent out (§1.2) |
 | 208 | 8 | `interest_collected` | USDC, informative |
-| 216 | 8 | `written_off` | USDC, informative |
+| 216 | 8 | `written_off` | USDC cost written off or condoned, net of recoveries; informative |
 | 224 | 8 | `line_count` | the next `line_id` |
 | 232 | 4 | `collection_period_seconds` | from the mark to the earliest write-off; ≥ 30 days; `set_collection_period` |
 | 236 | 2 | `max_line_bps` | the line cap as a share of the NAV, `1..=10 000`; `init_pool`, `set_max_line_bps` |
@@ -353,7 +366,7 @@ and `fx_feeder` are.
 | 212 | 2 | `draws` | tranches so far, ≤ 64 |
 | 214 | 16 | `principal_seconds` | `u128`, centavo-seconds: `∫ (drawn − principal_repaid) dt` to `accrued_at` (decision 48) |
 | 230 | 8 | `accrued_at` | the instant `principal_seconds` runs to; never past the accrual end |
-| 238 | 8 | `principal_repaid` | MXN |
+| 238 | 8 | `principal_repaid` | MXN; principal settled, repaid or condoned (decision 51) |
 | 246 | 8 | `interest_repaid` | MXN |
 | 254 | 2 | `pagares_paid` | payment cursor: the oldest pagaré not yet marked paid |
 | 256 | 8 | `first_due_at` | 0 on a bullet line |
@@ -389,7 +402,9 @@ principal_repaid`; `accrual_end()`, `accrue(now)`, `interest_accrued(now)`, `int
 
 The program's record of one pagaré, written by `draw` next to the Core asset. It holds no folio and
 nothing personal and is never closed: after the payment, the delivery and even the owner's burn it
-stays as the PAGADO mark and the registry.
+stays as the PAGADO mark and the registry. A título the council's quita extinguished is
+`PAGARE_PAID` too, with `PAGARE_FLAG_CONDONED` (decision 51): deliverable like a paid one, naming no
+payer.
 
 | offset | size | field | notes |
 |---|---|---|---|
@@ -405,10 +420,10 @@ stays as the PAGADO mark and the registry.
 | 138 | 32 | `cert_fingerprint` | `sha256(salt ‖ fingerprint)` of the PSC or e.firma certificate; zero only with `signature_method` 0 |
 | 170 | 1 | `signature_method` | 0 wallet, 1 PSC + wallet, 2 SAT e.firma + wallet |
 | 171 | 1 | `status` | 0 `PAGARE_OUTSTANDING`, 1 `PAGARE_PAID`; never reverts (2 is retired, never reused) |
-| 172 | 8 | `paid_at` | when the covering repayment landed; zero while outstanding |
-| 180 | 32 | `receipt_hash` | the covering repayment's receipt hash, the payer's and provisional; never rewritten (a correction is a `Recibo` entry) |
+| 172 | 8 | `paid_at` | when the covering repayment or quita landed; zero while outstanding |
+| 180 | 32 | `receipt_hash` | the covering repayment's receipt hash, the payer's and provisional, or the quita's `document_hash`; never rewritten (a correction is a `Recibo` entry) |
 | 212 | 32 | `procurador` | the procurador in force; zero when none (`PAGARE_PROCURADOR_OFFSET = 212` in `clients/js/src/pagare.ts`) |
-| 244 | 1 | `flags` | bit 1 `PROCURACION` in force, bit 2 `DELIVERED`, bit 3 `PAID_BY_AVAL`; bits 0 and 4 are retired, never reused |
+| 244 | 1 | `flags` | bit 1 `PROCURACION` in force, bit 2 `DELIVERED`, bit 3 `PAID_BY_AVAL`, bit 5 `CONDONED` (decision 51); bits 0 and 4 are retired, never reused |
 | 245 | 32 | `log_root` | the registry hash chain (§9.3) |
 | 277 | 4 | `entry_count` | `u32`; 1 after the draw |
 | 281 | 1 | `last_kind` | `KIND_*` of the last entry |
@@ -446,7 +461,7 @@ stays as the PAGADO mark and the registry.
 | `MAX_FIX_REFERENCE_GAP_BPS` | 200 | `fx` | the feeder's FIX within 2% of the reference |
 | `REFERENCE_PROGRAM` | `REDSTBDUecGjwXd6YGPzHSvEUBHQqVRfCcjUVgPiHsr` | `fx` | RedStone's Solana price adapter |
 | `REFERENCE_ACCOUNT` | `8QuwResPgdQdja4gdTbvNxeUznc58XX8baUM3cCwfVW2` | `fx` | its MXNe `PriceData`, PDA `["price", "MXNe"]` (seeds zero-padded to 32 bytes) |
-| `PAYMENT_DOMAIN` | `"elote.pago.v1"` | `registry` | domain of a payment entry's annotation hash |
+| `PAYMENT_DOMAIN` | `"elote.pago.v2"` | `registry` | domain of a payment entry's annotation hash |
 | `TERMS_DOMAIN` | `"elote_pool:terms:v1"` | `terms` | domain of the terms hash |
 
 ## 4. Instructions
@@ -487,7 +502,7 @@ instructions that run `council::check`; **V** the ones that take `valid_until`.
 | `write_off` | `lines` | council | V | C | allowed |
 | `suspend_draws` | 16 532 |
 | `resume_draws` | 15 849 |
-| `condone_interest` | `lines` | council | V | C | allowed |
+| `condone` | `lines` | council | V | C | allowed |
 | `renounce_availability` | `lines` | borrower | | | allowed |
 | `propose_acceleration` | 16 544 |
 | `withdraw_acceleration` | `lines` | council | V | C | allowed |
@@ -773,7 +788,7 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   none once the cursor has passed the last draw; never more than `MAX_SIDECARS_PER_REPAY` (3).
   `clients/js/src/pagare.ts` (`repaySidecars`) computes the set and splits a larger payment.
 - **Checks and arithmetic, in order:**
-  1. status `Active` or `InCollection` (`LineStatus`); a FIX is published and the signed one equals
+  1. status `Active`, `InCollection` or `WrittenOff` (a recovery, decision 51) (`LineStatus`); a FIX is published and the signed one equals
      the pool's, **whatever its age** (`FixMismatch`): a payment is never refused for an old FIX;
   2. `amount = mxn_for_usdc(max_usdc, fix_rate)`; `amount > 0` (`WrongAmount`);
   3. `late_part = line_arrears(line, now).late_due` (§7); `amount >= late_part`
@@ -797,7 +812,9 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
      cost_of(…, applied before)`; `delta = usdc_principal − cost`.
 - **CPIs:** one `transfer_checked` payer → vault of `usdc_in`, when non-zero.
 - **Writes:** `pool.outstanding_principal −= cost`; on an `InCollection` line also
-  `pool.impaired_principal −= cost` (the recovery releases its provision, decision 40);
+  `pool.impaired_principal −= cost` (the recovery releases its provision, decision 40); on a
+  `WrittenOff` line neither — the write-off already took the cost out — but `pool.written_off −=
+  cost` (decision 51: the principal recovered is income against the loss recognised);
   `pool.interest_collected += usdc_for_mxn(interest_part)`; `pool.fx_realized += delta`;
   `line.accrue(now)` before the principal moves (decision 48: every second before this one
   accrued on the principal it had; the interest accrued at `now` is unchanged by it);
@@ -812,7 +829,9 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   entry. `Pool::check` with the supply.
 - **Events, in order:** per record the payment's `PagareEntry` (and the `Terminacion`'s);
   `PagarePayment` when records were passed; `LateInterestCollected` when `late_part > 0`;
-  `FxRealized` when principal was applied or `delta != 0`; `LineRepaid`; `NavUpdated`.
+  `FxRealized` when principal was applied or `delta != 0`; on a `WrittenOff` line `LossRecovered {
+  late_part, interest_part, principal_part, cost_recovered, received, written_off_after, nav_after
+  }`; `LineRepaid`; `NavUpdated`.
 
 A payment on a zero debt of a line that cannot draw is the closing repayment: it must still credit
 at least one centavo (`amount > 0`), moves nothing (`usdc_received = 0`) and sets `Repaid`. The
@@ -848,7 +867,11 @@ line, and sends what does not fit there right after (§9.4).
 - **Writes:** `loss = drawn − principal_repaid` (MXN), `loss_usdc = usdc_drawn −
   usdc_cost_repaid`; `pool.outstanding_principal −= loss_usdc`; `pool.written_off += loss_usdc`;
   from `InCollection` also `pool.impaired_principal −= loss_usdc` (the provision becomes the loss);
-  `status = WrittenOff`, `closed_at = now`. No CPI.
+  `status = WrittenOff`, `closed_at = now`. No CPI. No other line field moves: the debt stays owed
+  (the write-off is the pool's loss, not the debtor's release), ordinary interest stays stopped
+  where it stopped (the last due date, or the acceleration), late interest keeps running on the
+  principal owed within its lifetime cap, and the line still takes `repay` (a recovery) and
+  `condone` (decision 51).
 - **Events:** `LineWrittenOff { loss, loss_usdc, nav_after }`, `NavUpdated`.
 
 #### `suspend_draws(valid_until)` — **V C**
@@ -866,24 +889,46 @@ line, and sends what does not fit there right after (§9.4).
   = 0`.
 - **Events:** `LineDrawsResumed { availability_end }`.
 
-#### `condone_interest(interest: u64, document_hash: [u8; 32], valid_until)` — **V C**
+#### `condone(interest: u64, principal: u64, document_hash: [u8; 32], valid_until)` — **V C**
 
-- **Accounts:** `CouncilLine`. **Checks:** `valid_until`; `council::check`; `document_hash != 0`
-  (`DocumentHashRequired`); `Active` or `InCollection` (`LineStatus`); `interest <=
-  interest_unpaid(now)`, the ordinary interest accrued and unpaid, and something to condone —
-  `interest > 0` or late interest accrued (`WrongAmount`).
-- **Writes:** when late interest has accrued, `late_paid_until = now` (it is condoned, not
-  collected: `late_collected` is untouched); `interest_repaid += interest` — the condoned interest
-  counts as settled, so the next payment does not take it, while `pool.interest_collected` does not
-  move; it pays no installment, which are principal (decision 48). Principal is never condoned (a
-  loss of principal is `write_off`). When the line then owes nothing and can draw nothing more:
-  `status = Repaid`, `closed_at = now`, and `deliver_pagare` opens (decision 49). Under decision 48
-  that branch is not reached: a payment that repays principal takes the interest accrued first and
-  nothing accrues on principal repaid, so a line with no principal left has no interest to condone
-  (`tests/schedule.rs::a_quita_has_nothing_to_condone_once_the_principal_is_repaid`). A
-  settlement negotiated in collection is the quita first, then the debtor's payment of what is
-  left: `repay` applies a payment to interest before principal.
-- **Events:** `InterestCondoned { late_interest, interest, document_hash, remaining, condoned_at }`.
+The quita (decisions 50 and 51; CCF 2209: what is condoned is extinguished). One instruction for the
+whole remission a written record documents, in the payment order where it applies.
+
+- **Accounts:** `council`; `multisig`; `pool` (mut, `has_one = council`); `line` (mut, seeds,
+  `has_one = pool`); `share_mint`; `vault`. **Remaining:** with `principal > 0`, exactly the
+  records of `repay` for a principal of `principal` (`[pagares_paid ..= last_touched]`, at most
+  three, a larger quita split into several calls; `repaySidecars` computes them); none when
+  `principal == 0`.
+- **Checks, in order:** `valid_until`; `council::check`; `document_hash != 0`
+  (`DocumentHashRequired`); `Active`, `InCollection` or `WrittenOff` (`LineStatus`); `interest <=
+  interest_unpaid(now)`, `principal <= drawn − principal_repaid`, and something to condone —
+  `interest`, `principal` or late interest accrued (`WrongAmount`); the records as in `repay`
+  (`TooManySidecars`, `PagareAccountsMismatch`); `cost` as in `repay`, each pagaré at its own FIX.
+- **Writes:** on an `Active` or `InCollection` line `pool.outstanding_principal −= cost`, in
+  collection `pool.impaired_principal −= cost`, and `pool.written_off += cost`: the loss is
+  recognised now, as a write-off of that cost would; on a `WrittenOff` line the pool does not move
+  (the write-off took it). `line.accrue(now)`; when late interest has accrued, `late_paid_until =
+  now` (all of it is condoned; `late_collected` is untouched); `interest_repaid += interest`;
+  `principal_repaid += principal`, `usdc_cost_repaid += cost` — condoned principal counts as
+  settled, so it meets installments (arrears) and accrues no interest from now. Unlike `repay`, the
+  quita may condone principal and leave ordinary interest unpaid: the council remits what the
+  record says, and that interest stays owed. When the line then owes nothing and can draw nothing
+  more: `status = Repaid`, `closed_at = now`, and `deliver_pagare` opens (decision 49). The entries
+  (§9.3): per record the principal reaches, a `Condonacion` entry (pool → borrower, over
+  `condonation_hash`); a record it extinguishes gets `status = PAGARE_PAID`, `paid_at = now`,
+  `receipt_hash = document_hash`, `flags |= CONDONED` (never `PAID_BY_AVAL`), the cursor moves past
+  it and a procuración in force ends with a `Terminacion` entry. No funds move, no `FxRealized`.
+  `Pool::check` with the supply.
+- **Events, in order:** per record the `PagareEntry` (and the `Terminacion`'s); `LineCondoned {
+  document_hash, late_interest, interest, principal, cost, loss_recognized, remaining, nav_after,
+  condoned_at, entries }`, where `loss_recognized` is `cost` or zero on a written-off line and
+  `entries` are `CondonationEntry { draw_index, entry_count, principal_condoned, principal_balance
+  }`; `NavUpdated` when `loss_recognized > 0`.
+
+A collection settlement is a quita of part of the principal and the debtor's payment of the rest
+(`tests/quita.rs::a_partial_quita_then_the_debtor_pays_the_rest_and_the_line_settles`); a total
+quita closes the line by itself. There is no release of títulos with a balance: the quita brings the
+balance to zero first.
 
 #### `renounce_availability()` — borrower
 
@@ -945,8 +990,10 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
   until maturity and interest is owed by the line, not by one pagaré, so a pagaré whose principal
   is covered while the line still owes is not paid in full and the holder keeps it (LGTOC 17 and
   130). The balance test holds in every line status: an `Active` line that can still draw and
-  owes nothing delivers; a line in collection delivers once a payment settles it; a written-off
-  line still owes and takes no payment, so its títulos are never delivered. No council and no
+  owes nothing delivers; a line in collection delivers once a payment or a quita settles it; a
+  written-off line still owes, and delivers once recoveries and quitas leave it owing nothing
+  (decision 51), while one never paid keeps its títulos with the pool. A título the quita
+  extinguished (`CONDONED`) goes to the borrower. No council and no
   pause check: the delivery is the debtor's right, not a decision.
 - **CPIs, in this order and no other** (the pool PDA signs, as the collection's update authority
   and the asset's owner): Core `UpdatePluginV1` sets `PermanentFreezeDelegate { frozen: false }`;
@@ -1047,14 +1094,14 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
                                  ▼  (account closed)              ▼ (drawn == 0)      │ │ │
                               (none)                          Cancelled               │ │ │
                                                                                       │ │ │
-            repay: nothing due and nothing drawable ◄─────────────────────────────────┘ │ │
+  repay / condone: nothing due and nothing drawable ◄─────────────────────────────────┘ │ │
                       │                                                                 │ │
                       ▼          write_off (C), now > term_end ◄────────────────────────┘ │
                    Repaid                     │                                           │
                       ▲                       ▼                                           │
                       │                  WrittenOff ◄── write_off (C) ──┐                 │
                       │                                                 │                 │
-                      └──────── repay (last unit) ─────────────── InCollection ◄──────────┘
+                      └──────── repay / condone (last unit) ───── InCollection ◄──────────┘
                                                                         mark_in_collection (anyone,
                                                                         scheduled) or
                                                                         accelerate_line (C)
@@ -1062,12 +1109,15 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
                                                                         to impaired_principal
 ```
 
-- `Repaid`, `WrittenOff` and `Cancelled` are terminal; `reject_line` and `withdraw_request` close
-  the account. A `Requested` line past its 15-day window stays `Requested` until withdrawn or
+- `Repaid` and `Cancelled` are terminal; `reject_line` and `withdraw_request` close the account.
+  `WrittenOff` is not (decision 51): the line still owes, takes recoveries (`repay`) and quitas
+  (`condone`), and the one that leaves it owing nothing moves it to `Repaid`
+  (`WrittenOff → Repaid`, not drawn above); a written-off line never paid stays `WrittenOff`. A `Requested` line past its 15-day window stays `Requested` until withdrawn or
   rejected; `approve_line` refuses it.
 - `Active → Repaid` needs nothing due and nothing drawable (window closed, fully drawn, or in
   collection). While the line can draw, a payment of all that is payable leaves it `Active`.
-- After the mark there is no return to `Active` (no cure): only full repayment or the write-off.
+- After the mark there is no return to `Active` (no cure): only full repayment, a quita that
+  leaves nothing owed, or the write-off.
   The pool's exits from delinquency are selling the portfolio (the endoso en propiedad, registry
   kind 1, reserved for a future feature) or the write-off, at most at 3–6–12 months of arrears
   as the council sets them; the program enforces only the collection period from the mark, with its
@@ -1104,6 +1154,9 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
 
    Abono: a repay that reaches an OUTSTANDING pagaré without covering it, or settles the accessories
    on the oldest one it touches. Status unchanged.
+   condone (C) with principal (decision 51): a Condonacion entry on each pagaré it reaches; one it
+   extinguishes becomes PAID + CONDONED (receipt_hash = the record's hash, no PAID_BY_AVAL), any
+   procuración ends with a Terminacion, and it is delivered to the borrower like a paid one.
    annul_pagare (C): OUTSTANDING only; a Terminacion entry, nothing else changes.
    court_annotation: any state before DELIVERED. annotate_payment: any state.
    deliver_pagare: PAID, and only once the line owes nothing (decision 49).
@@ -1111,8 +1164,9 @@ appends one registry entry (§9.3) and emits its `PagareEntry`. None is blocked 
 
 The status never reverts and the record is never closed. `deliver_pagare` requires `PAID` and a
 line that owes nothing, whatever its status (decision 49): every covered pagaré of a line waits for
-the payment that settles it, in collection as well, and those of a written-off line, which still
-owes and takes no payment, are never delivered.
+the payment or quita that settles it, in collection as well; those of a written-off line wait for
+the recoveries and quitas that leave it owing nothing (decision 51), and stay with the pool while
+it owes.
 
 ## 6. The FIX (`fx.rs`, `post_fix`)
 
@@ -1304,7 +1358,7 @@ years to accrual_end < 1.8 × 10¹⁹` centavos — for 100% a year over 100 yea
 |---|---|
 | `repay` | `late_due` |
 | `mark_in_collection` | `covered`, `due`, `missed` |
-| `condone_interest` | `late_due` |
+| `condone` | `late_due` |
 | `write_off` | `first_missed_due` |
 
 `clients/js/src/schedule.ts` mirrors the arithmetic (`lineArrears`, `lineLateDue`,
@@ -1322,11 +1376,14 @@ instructions and nowhere else:
 | `mark_in_collection`, `accelerate_line` | `+ usdc_drawn − usdc_cost_repaid` of the line, at the moment it enters collection |
 | `repay` on an `InCollection` line | `− cost` of the principal recovered |
 | `write_off` of an `InCollection` line | `− loss_usdc`: what the provision anticipated becomes the loss |
+| `condone` with principal on an `InCollection` line | `− cost` of the principal condoned: that part of the provision becomes the loss (decision 51) |
 
 `Pool::nav` subtracts `⌊impaired_principal × provision_bps / 10 000⌋`; `provision_bps` starts at
 10 000 at `init_pool` and only the council moves it (`set_provision_bps`, `0..=10 000`). At 100%
 the mark takes the line's whole remaining cost out of the redemption NAV, a recovery puts back
-exactly what it recovered, and the write-off moves nothing more (`tests/provision.rs`).
+exactly what it recovered, and the write-off and a principal quita move nothing more
+(`tests/provision.rs`, `tests/quita.rs`). Below 100% the quita lowers the redemption NAV by the
+unprovisioned part of its cost, as a write-off of that cost would.
 
 Which NAV each reader uses:
 
@@ -1412,6 +1469,7 @@ recorded_at = now`.
 | `Procuracion` | 2 | `endorse_pagare` | pool | procurador | `endoso_hash` |
 | `Revocacion` | 3 | `revoke_procuracion` | pool | recorded procurador | `entry_hash` (the signed revocation) |
 | `Terminacion` | 4 | `repay`, ending a procuración on the título it covers | pool | procurador | the payment's annotation hash |
+| `Terminacion` | 4 | `condone`, ending a procuración on the título it extinguishes | pool | procurador | the `Condonacion`'s hash |
 | `Terminacion` | 4 | `burn_pagare` | owner | owner | `document_hash` (zero allowed) |
 | `Terminacion` | 4 | `annul_pagare` | pool | pool | `document_hash` (the annulment) |
 | `Abono` | 5 | `repay` (applies to the pagaré without covering it) | payer | pool | annotation hash |
@@ -1421,6 +1479,7 @@ recorded_at = now`.
 | `Recibo` | 11 | `annotate_payment` | council | pool | `receipt_hash` |
 | `PagadoAval` | 12 | `repay` (covers it, paid by the aval) | aval | pool | annotation hash |
 | `Entrega` | 13 | `deliver_pagare` | pool | borrower or aval | the record's `receipt_hash` |
+| `Condonacion` | 14 | `condone` with principal (decision 51; reaches the pagaré, covering it or not) | pool | borrower | condonation hash |
 
 Codes 1 and 8 are reserved for the endoso en propiedad and the late endoso; 10 was the holder's
 cancellation request and is retired. None is reused.
@@ -1429,7 +1488,7 @@ cancellation request and is retired. None is reused.
 balance). Each `Abono`, `Pagado` or `PagadoAval` entry's hash is
 
 ```
-annotation_hash = sha256("elote.pago.v1" ‖ receipt_hash ‖ principal_applied u64 ‖
+annotation_hash = sha256("elote.pago.v2" ‖ receipt_hash ‖ principal_applied u64 ‖
                          accessory_applied u64 ‖ principal_balance u64 ‖ by_borrower u8)
 ```
 
@@ -1459,6 +1518,21 @@ payment entry's own position), so anyone can replay `annotation_hash → entry_h
 `receipt_hash` is the payer's, unverified and provisional; zero means "receipt to follow". The
 holder's correction arrives as a `Recibo` entry (`annotate_payment`); no field is rewritten (LGTOC
 41).
+
+**Quita entries** (decision 51). A principal quita is never a payment: each record its principal
+reaches gets a `Condonacion` entry, from the pool (the holder remits) to the borrower, over
+
+```
+condonation_hash = sha256("elote.quita.v1" ‖ document_hash ‖ principal_condoned u64 ‖
+                          principal_balance u64)
+```
+
+built by `registry::condonation_hash`, where `principal_condoned` is the part of the quita's
+principal in the pagaré's range and `principal_balance` its unpaid principal after; a record with
+nothing condoned gets no entry. Accessories condoned are stated in `LineCondoned`, not on the
+títulos. The preimages travel in `LineCondoned.entries` (`CondonationEntry { draw_index,
+entry_count, principal_condoned, principal_balance }`) with its `document_hash`, so anyone can
+replay `condonation_hash -> entry_hash -> log_root`.
 
 ### 9.4 Payment, delivery, burn and annulment
 
@@ -1525,10 +1599,16 @@ included for a council instruction.
 | `draw`, first tranche, 120 installments | 82 260 |
 | `draw`, second tranche, 120 installments | 82 422 |
 | `draw`, tranche 10, 120 installments | 82 435 |
-| `repay`, 18 installments, all missed | 44 634 |
-| `repay`, 120 installments, all missed | 70 152 |
-| `repay` after the mark, 120 installments | 59 757 |
-| `repay` covering three records, 120 installments, all missed | 86 918 |
+| `repay`, 18 installments, all missed | 44 603 |
+| `repay`, 120 installments, all missed | 70 121 |
+| `repay` after the mark, 120 installments | 59 725 |
+| `repay` covering three records, 120 installments, all missed | 86 877 |
+| `repay` recovering a written-off line over three records, 120 installments, all missed | 89 848 |
+| `condone`, late interest only, 120 installments, all missed | 50 397 |
+| `condone` over three records, one under procuración, 120 installments, all missed | 66 902 |
+| `condone` through Squads, three records (one under procuración), 18 installments, all missed | 82 868 |
+| `condone` through Squads of one pagaré (two records, one entry, under procuración), 120 installments, all missed | 94 913 (87 CU inside the margin) |
+| `condone` through Squads writing two / three entries, 120 installments, all missed | 96 380 / 104 452 (108 326 with a procuración): **over the margin / over the rule** |
 | `mark_in_collection`, 18 installments, all missed | 17 985 |
 | `mark_in_collection`, 120 installments, all missed | 34 731 |
 | `mark_in_collection`, 120 installments, 3 missed | 15 808 |
@@ -1551,7 +1631,19 @@ The rows of `request_line` through `annotate_payment` above were re-measured aft
 arrears loop. Earlier, re-measured on the `localnet` build after decisions 38 and 39 (no Core CPI in the
 procuración, the pause by council vote): `endorse_pagare` 17 618 (same again after a revocation;
 43 760 through Squads), `revoke_procuracion` 17 386, `pause` by the council 11 198,
-`annul_pagare` through Squads 46 219. interface.md's table carries the full fresh set.
+`annul_pagare` through Squads 46 219. interface.md's table carries the full fresh set. The `repay`
+rows and the three decision-51 rows were re-measured with decision 51 (the records check and the
+cost moved into helpers `repay` and `condone` share). The recovery is a `repay` (no Squads) and
+keeps the three-record payment's 5 000 CU margin
+(`quita_and_recovery_over_three_sidecars_stay_under_the_ceiling`). The quita is a council
+instruction and runs inside `vault_transaction_execute`, which adds about 25 000 to 41 000 CU: on
+an 18-installment line (the pilot's longest) a total quita over three records fits with the margin,
+but on a 120-installment line with every installment missed only a quita writing one entry does —
+one pagaré per call, records `[k, k+1]` (`tests/squads.rs::the_council_condones_principal_through_squads`);
+two entries exceed the margin and three the 100 000 CU rule (each still runs under the 200 000 CU an
+instruction gets by default). Until that is decided, a client splits a quita on a long schedule one
+pagaré per call: principal up to `drawn_through` of the pagaré at the cursor less
+`principal_repaid`; `MAX_SIDECARS_PER_REPAY` is unchanged.
 
 - **Budget rules in the tests.** Every instruction stays below `CEILING`. `draw` has its own
   `DRAW_CEILING` of 90 000, 10 000 below: of its cost, the Core `CreateV2` CPI with the four
@@ -1577,14 +1669,14 @@ procuración, the pause by council vote): `endorse_pagare` 17 618 (same again af
 
 ## 11. Events and errors
 
-### 11.1 Events (41, `events.rs`, all through `emit_cpi!`)
+### 11.1 Events (42, `events.rs`, all through `emit_cpi!`)
 
 | event | emitted by | fields |
 |---|---|---|
 | `PoolInitialized` | `init_pool` | pool, council, creator, multisig, asset_mint, share_mint, collection, collection_period_seconds, max_line_bps, max_outstanding_principal, acceleration_notice_seconds, asset_controls, permissioned, min_fix_rate, max_fix_rate |
 | `Deposited` | `deposit` | pool, depositor, assets, shares, nav_after, supply_after |
 | `Redeemed` | `redeem` | pool, holder, shares, assets, nav_after, supply_after |
-| `NavUpdated` | `deposit`, `redeem`, `repay`, `write_off`, last in each | pool, total_assets (the provisioned NAV), share_supply |
+| `NavUpdated` | `deposit`, `redeem`, `repay`, `write_off`, `condone` recognising a loss, last in each | pool, total_assets (the provisioned NAV), share_supply |
 | `PoolPaused` | `pause` | pool, by (the council) |
 | `PoolResumed` | `resume` | pool |
 | `MaxLineBpsSet` | `set_max_line_bps` | pool, max_line_bps |
@@ -1604,16 +1696,17 @@ procuración, the pause by council vote): `endorse_pagare` 17 618 (same again af
 | `LineCancelled` | `cancel_line` | pool, line_id |
 | `LineDrawn` | `draw` | pool, line_id, draw_index, amount_mxn, fix_rate, fix_date, usdc_delivered, drawn, available, availability_end, outstanding_after |
 | `PagareIssued` | `draw` | pool, line_id, draw_index, asset, pagare_hash, amount_mxn, delivery_hash, due_at, holder (the pool PDA) |
-| `PagareEntry` | `draw`, `repay`, `deliver_pagare`, `burn_pagare`, `annul_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `annotate_payment` | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
+| `PagareEntry` | `draw`, `repay`, `condone`, `deliver_pagare`, `burn_pagare`, `annul_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `annotate_payment` | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
 | `PagarePayment` | `repay` that took pagaré records | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, entries: `Vec<PaymentEntry { draw_index, kind, entry_count, principal_applied, accessory_applied, principal_balance, by_borrower }>` |
 | `LateInterestCollected` | `repay` with late interest | pool, line_id, amount |
 | `FxRealized` | `repay` that applies principal or realizes a non-zero delta | pool, line_id, receipt_hash, cost, received, delta, nav_after |
+| `LossRecovered` | `repay` on a `WrittenOff` line (decision 51) | pool, line_id, receipt_hash, late_part, interest_part, principal_part, cost_recovered (USDC cost of that principal, off `written_off`), received (the USDC that paid it), written_off_after, nav_after |
 | `LineRepaid` | `repay` | pool, line_id, payer, receipt_hash, usdc_received, fix_rate, principal_part, interest_part, remaining (without late interest), nav_after |
 | `LineInCollection` | `mark_in_collection` | pool, line_id, missed, remaining (principal and the interest accrued to the mark and unpaid), impaired_principal (the pool's whole impairment after the mark) |
 | `LineWrittenOff` | `write_off` | pool, line_id, loss (MXN), loss_usdc, nav_after |
 | `LineDrawsSuspended` | `suspend_draws` | pool, line_id, available_forfeited |
 | `LineDrawsResumed` | `resume_draws` | pool, line_id, availability_end |
-| `InterestCondoned` | `condone_interest` | pool, line_id, late_interest, interest, document_hash, remaining, condoned_at |
+| `LineCondoned` | `condone` (decisions 50, 51) | pool, line_id, document_hash, late_interest, interest, principal (MXN), cost (USDC of that principal), loss_recognized (`cost`, or zero on a written-off line), remaining, nav_after, condoned_at, entries: `Vec<CondonationEntry { draw_index, entry_count, principal_condoned, principal_balance }>` |
 | `AvailabilityRenounced` | `renounce_availability` | pool, line_id, borrower, available_forfeited, renounced_at |
 | `AccelerationProposed` | `propose_acceleration` | pool, line_id, due_at |
 | `AccelerationWithdrawn` | `withdraw_acceleration`, `mark_in_collection` (superseding a proposal) | pool, line_id |
@@ -1626,7 +1719,9 @@ procuración, the pause by council vote): `endorse_pagare` 17 618 (same again af
 Order within one instruction: `deposit` and `redeem` emit their event, then `NavUpdated`; `draw`
 emits `LineDrawn`, `PagareIssued`, `PagareEntry`; `repay` emits the `PagareEntry`s (each payment
 entry, then a `Terminacion` that follows it), `PagarePayment`, `LateInterestCollected`,
-`FxRealized`, `LineRepaid`, `NavUpdated`; `mark_in_collection` emits `LineInCollection`, then
+`FxRealized`, `LossRecovered` (on a written-off line), `LineRepaid`, `NavUpdated`; `condone` emits
+the `PagareEntry`s (each `Condonacion`, then a `Terminacion` that follows it), `LineCondoned`, then
+`NavUpdated` when it recognised a loss; `mark_in_collection` emits `LineInCollection`, then
 `AccelerationWithdrawn` if it superseded a proposal; `deliver_pagare`, `burn_pagare` and
 `annul_pagare` emit `PagareEntry` and then their own event (`burn_pagare` both before the burn);
 `annotate_payment` emits `PagareEntry`, then `PagareReceiptAnnotated`; `write_off` emits
@@ -1783,16 +1878,17 @@ functions in each file.
 | `tests/schedule.rs` | 48 (+1 reference) | LiteSVM, clock warped | schedule validation, installments of principal, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing; decision 48 against `tests/reference/`: interest on the outstanding principal, early payoff, dust and split invariance, no interest unpaid after a principal payment, a proptest state machine (48 cases) |
 | `tests/tranches.rs` | 15 (+1 reference) | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, interest from each draw, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
 | `tests/acceleration.rs` | 12 | LiteSVM | suspension and resumption, acceleration with notice on bullet and scheduled lines, the objective mark superseding a proposal, pool limits and floors, the pause |
+| `tests/quita.rs` | 10 | LiteSVM, clock warped | decision 51: the principal quita (total in collection, partial then paid, split over more than three records, at a 50% provision, on a written-off line, ending a procuración), its guards, arrears and accrual after it; recoveries on a written-off line, partial and full, and each pagaré's own FX cost basis; every pool field and the NAV worked by hand; the registry replayed for `Condonacion` |
 | `tests/provision.rs` | 9 | LiteSVM | decisions 40 and 40b: the mark and the council's acceleration provision the NAV, redemptions at the provisioned NAV, deposits at the unprovisioned NAV and a recovery handing the entrant nothing, recoveries, the write-off, the rate the council's alone |
 | `tests/council.rs` | 17 | LiteSVM | the council constants, `init_pool` against multisig shapes (majority, config authority, size, owner), parameter floors, the two-step rotation |
 | `tests/valid_until.rs` | 4 | LiteSVM | `valid_until` refused past or too far ahead |
-| `tests/squads.rs` | 6 | LiteSVM + Squads v4 | council instructions through the real `vault_transaction_execute`, stale proposals, a multisig lowered below a majority, the rotation |
+| `tests/squads.rs` | 7 | LiteSVM + Squads v4 | council instructions through the real `vault_transaction_execute`, stale proposals, a multisig lowered below a majority, the rotation |
 | `tests/fx.rs` | 27 | LiteSVM | the FIX: conversions, the daily band, the RedStone reference, the bounds, feeder versus council, one publication a day, draws and repayments at the FIX, FX gains and losses |
 | `tests/pagare.rs` | 26 (+1 reference) | LiteSVM + Core 0.15.3 | one frozen asset and one record per draw, every plugin read back through `mpl-core`, the registry and payment entries, the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `tests/core_capabilities.rs` | 8 | LiteSVM + Core 0.15.3 | what Core allows after an asset's creation (§9.1) |
 | `tests/known_limits.rs` | 12 | LiteSVM | documentation tests that pin current behaviour and the known limits SECURITY.md lists; they are inverted when a limit is removed |
 | `tests/audit.rs`, `tests/reaudit.rs` | 4, 4 | LiteSVM | regressions of the 2026-11-01 audit and the 2026-11-02 re-audit |
-| `tests/compute.rs` | 11 | LiteSVM | the figures of §10 under their ceilings |
+| `tests/compute.rs` | 12 | LiteSVM | the figures of §10 under their ceilings |
 | `tests/layout.rs` | 2 | LiteSVM | the account sizes 487 / 528 / 363, the zeroed `reserved` tails, and one `CreditLine` layout with or without a sponsor |
 | `tests/math_props.rs` | 10 (+1 reference) | proptest | the pure functions over random inputs; the payment order; the accrual against the reference under any sequence; split invariance |
 | `tests/reference/mod.rs` | 1 | plain, included by four binaries | the independent oracle: a line as `(time, principal change)` events, `rate × Σ balance × Δt / (10 000 × year)` rounded once; its own hand-number test |

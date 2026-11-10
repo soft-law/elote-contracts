@@ -57,7 +57,9 @@ const payer = await loadSigner(
 );
 const pool = await loadPool(c, poolAddress);
 const { line, data: l } = await loadLine(c, poolAddress, lineId);
-if (l.status !== LineStatus.Active && l.status !== LineStatus.InCollection) fail(`the line is ${LineStatus[l.status]}: nothing to repay`);
+// A written-off line still owes and takes recoveries (decision 51).
+const payable = [LineStatus.Active, LineStatus.InCollection, LineStatus.WrittenOff];
+if (!payable.includes(l.status)) fail(`the line is ${LineStatus[l.status]}: nothing to repay`);
 
 const now = await chainNow(c);
 const late = lineLateDue(l, now);

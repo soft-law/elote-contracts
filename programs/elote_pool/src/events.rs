@@ -154,19 +154,56 @@ pub struct AvailabilityRenounced {
     pub renounced_at: i64,
 }
 
-/// The council condoned interest of a line (`condone_interest`, decision 50): the late interest
-/// accrued to `condoned_at` and `interest` of the ordinary interest accrued and unpaid, against the
-/// written record `document_hash`. `remaining` is what the line owes afterwards: principal and
-/// ordinary interest accrued and unpaid.
+/// One `Condonacion` entry a `condone` wrote (decision 51): the pagaré, the entry's position in its
+/// chain, the principal condoned on it and its unpaid principal after; the preimages of
+/// `registry::condonation_hash` with the event's `document_hash`.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CondonationEntry {
+    pub draw_index: u16,
+    pub entry_count: u32,
+    pub principal_condoned: u64,
+    pub principal_balance: u64,
+}
+
+/// The council's quita (`condone`, decisions 50 and 51), against the written record
+/// `document_hash`: the late interest accrued to `condoned_at`, `interest` of the ordinary interest
+/// and `principal` of the principal, in centavos of MXN. `cost` is the USDC cost of that principal
+/// at each pagaré's own FIX, and `loss_recognized` what it added to `Pool.written_off` now: `cost`,
+/// or zero on a line already written off. `remaining` is what the line owes afterwards, principal
+/// and ordinary interest accrued and unpaid; `entries`, one per pagaré whose principal it reached.
 #[event]
-pub struct InterestCondoned {
+pub struct LineCondoned {
     pub pool: Pubkey,
     pub line_id: u64,
+    pub document_hash: [u8; 32],
     pub late_interest: u64,
     pub interest: u64,
-    pub document_hash: [u8; 32],
+    pub principal: u64,
+    pub cost: u64,
+    pub loss_recognized: u64,
     pub remaining: u64,
+    pub nav_after: u64,
     pub condoned_at: i64,
+    pub entries: Vec<CondonationEntry>,
+}
+
+/// A payment on a written-off line (decision 51), emitted before its `LineRepaid`: `late_part` and
+/// `interest_part` are income like any payment's; `principal_part` recovers principal whose cost,
+/// `cost_recovered` at each pagaré's own FIX, the write-off already took out of the NAV, so it
+/// comes off `Pool.written_off` (now `written_off_after`) and the USDC that paid it,
+/// `received`, is new NAV. The difference is the `FxRealized` delta, as on any repayment.
+#[event]
+pub struct LossRecovered {
+    pub pool: Pubkey,
+    pub line_id: u64,
+    pub receipt_hash: [u8; 32],
+    pub late_part: u64,
+    pub interest_part: u64,
+    pub principal_part: u64,
+    pub cost_recovered: u64,
+    pub received: u64,
+    pub written_off_after: u64,
+    pub nav_after: u64,
 }
 
 #[event]

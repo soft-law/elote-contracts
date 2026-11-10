@@ -321,8 +321,12 @@ fn write_off_after_term_lowers_nav_once() {
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     env.expect_err(ix, &council, &[], E_LINE_STATUS);
     assert_eq!(env.nav(&k), 7 * UNIT, "the loss counts once");
-    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), UNIT);
-    env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
+    // Decision 51: a payment after the write-off is a recovery. It comes off the loss, 3.4 - 1.0,
+    // never off the outstanding principal again, and the NAV takes what it brought: 7.0 + 1.0.
+    env.repay(&k, line_id, &borrower, UNIT);
+    let pool = env.pool(&k);
+    assert_eq!((pool.outstanding_principal, pool.written_off), (0, 2_400_000));
+    assert_eq!(env.nav(&k), 8 * UNIT);
 }
 
 #[test]

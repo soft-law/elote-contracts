@@ -109,6 +109,10 @@ export type CreditLine = {
   principalSeconds: bigint;
   /** The instant `principal_seconds` runs to; never past `accrual_end`. */
   accruedAt: bigint;
+  /**
+   * Principal settled: repaid, or condoned by the council (decision 51), so it meets
+   * installments and stops accruing interest either way.
+   */
   principalRepaid: bigint;
   /** Ordinary interest settled: repaid, or condoned by the council (decision 50). */
   interestRepaid: bigint;
@@ -165,8 +169,8 @@ export type CreditLine = {
   /** USDC delivered over the draws: the pool's cost of the line. */
   usdcDrawn: bigint;
   /**
-   * The cost of the principal repaid, at each pagaré's own FIX; `usdc_drawn - usdc_cost_repaid`
-   * is the cost still outstanding.
+   * The cost of the principal settled (repaid or condoned), at each pagaré's own FIX;
+   * `usdc_drawn - usdc_cost_repaid` is the cost still outstanding.
    */
   usdcCostRepaid: bigint;
   /** Zero; for fields added after mainnet. */
@@ -221,6 +225,10 @@ export type CreditLineArgs = {
   principalSeconds: number | bigint;
   /** The instant `principal_seconds` runs to; never past `accrual_end`. */
   accruedAt: number | bigint;
+  /**
+   * Principal settled: repaid, or condoned by the council (decision 51), so it meets
+   * installments and stops accruing interest either way.
+   */
   principalRepaid: number | bigint;
   /** Ordinary interest settled: repaid, or condoned by the council (decision 50). */
   interestRepaid: number | bigint;
@@ -277,8 +285,8 @@ export type CreditLineArgs = {
   /** USDC delivered over the draws: the pool's cost of the line. */
   usdcDrawn: number | bigint;
   /**
-   * The cost of the principal repaid, at each pagaré's own FIX; `usdc_drawn - usdc_cost_repaid`
-   * is the cost still outstanding.
+   * The cost of the principal settled (repaid or condoned), at each pagaré's own FIX;
+   * `usdc_drawn - usdc_cost_repaid` is the cost still outstanding.
    */
   usdcCostRepaid: number | bigint;
   /** Zero; for fields added after mainnet. */

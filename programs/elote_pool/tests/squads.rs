@@ -245,3 +245,35 @@ fn a_multisig_lowered_below_a_majority_cannot_propose_a_successor_through_squads
     refused(&mut env, 1, ix, PoolError::CouncilInvalid);
     assert_eq!(env.pool(&k).pending_council, Pubkey::default());
 }
+
+/// Decision 51 through Squads, as `vault_transaction_execute` runs it, three pagarés drawn and the
+/// first under a procuración (so the quita also writes the Terminacion), every installment missed:
+/// on an 18-installment line, the pilot's longest, a total quita over the three records; on a
+/// 120-installment line, the quita of the first pagaré alone (records 0 and 1, one entry). At 120
+/// installments a quita writing two entries takes about 96 400 CU and three about 104 500
+/// (108 300 with a procuración): there the client condones one pagaré per call (ARCHITECTURE §10).
+#[test]
+fn the_council_condones_principal_through_squads() {
+    for (installments, condoned) in [(18u16, 3u64), (120, 1)] {
+        let draws = 3u16;
+        let mut env = squads_env();
+        let (k, _) = env.setup_pool();
+        let investor = env.investor(&k, 200 * UNIT);
+        env.deposit(&k, &investor, 200 * UNIT);
+        let borrower = env.borrower(&k);
+        let p = env.scheduled_params(u64::from(draws) * 10 * UNIT, 1_200, installments, 5_000);
+        let (id, _) = env.open_line_with(&k, &borrower, &p, None);
+        for _ in 0..draws {
+            env.draw_amount(&k, id, &borrower, 10 * UNIT);
+        }
+        env.procuracion(&k, id, 0, &Pubkey::new_unique(), ENDOSO_HASH);
+        env.warp(env.line(&k, id).drawn_at + i64::from(installments) * p.interval() + 1);
+        let council = env.council.pubkey();
+        let interest = env.interest_unpaid(&k, id);
+        let ix = env.condone_ix(&k, id, &council, interest, condoned * 10 * UNIT, [0xd5; 32]);
+        let records = ix.accounts.len() - 8;
+        ok(&mut env, 1, ix, &format!("condone of {condoned} pagaré(s) over {records} records at {installments} installments, all missed"));
+        assert_eq!(env.line(&k, id).pagares_paid, condoned as u16);
+        assert_eq!(env.pagare(&k, id, 0).flags, elote_pool::state::PAGARE_FLAG_CONDONED, "the procuración ended");
+    }
+}

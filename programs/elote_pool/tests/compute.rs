@@ -267,6 +267,60 @@ fn a_payment_covering_three_sidecars_stays_under_the_ceiling() {
     assert!(cu + 5_000 <= CEILING, "the three-sidecar repay used {cu} CU, ceiling {CEILING} less a 5 000 CU margin");
 }
 
+/// Decision 51 at the same ceiling shape: a total quita reaching three records (one under a
+/// procuración, so it also writes the Terminacion) and a recovery covering three records on a
+/// written-off line, both on 120-installment lines with every installment missed; and a quita of
+/// interest alone. The same 5 000 CU margin as the payment.
+#[test]
+fn quita_and_recovery_over_three_sidecars_stay_under_the_ceiling() {
+    use elote_pool::state::MAX_SIDECARS_PER_REPAY;
+    let mut env = Env::new();
+    let (k, _) = env.setup_pool();
+    let investor = env.investor(&k, 200 * UNIT);
+    env.deposit(&k, &investor, 200 * UNIT);
+    let council = env.council.insecure_clone();
+    let mut lines = Vec::new();
+    for _ in 0..2 {
+        let borrower = env.borrower(&k);
+        let p = env.scheduled_params(30 * UNIT, 1_200, 120, 5_000);
+        let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+        for _ in 0..MAX_SIDECARS_PER_REPAY {
+            env.draw_amount(&k, line_id, &borrower, 10 * UNIT);
+        }
+        lines.push((borrower, line_id, p));
+    }
+    let procurador = env.funded(1);
+    env.procuracion(&k, lines[0].1, 0, &procurador.pubkey(), ENDOSO_HASH);
+    let t0 = env.line(&k, lines[0].1).drawn_at;
+    env.warp(t0 + 120 * lines[0].2.interval() + 1);
+
+    let line_id = lines[0].1;
+    let interest = env.interest_unpaid(&k, line_id);
+    let ix = env.condone_ix(&k, line_id, &council.pubkey(), 0, 0, [0xd5; 32]);
+    let interest_only = env.send(ix, &council, &[]).compute_units_consumed;
+    let ix = env.condone_ix(&k, line_id, &council.pubkey(), interest, 30 * UNIT, [0xd5; 32]);
+    assert_eq!(ix.accounts.len(), 8 + MAX_SIDECARS_PER_REPAY);
+    let quita = env.send(ix, &council, &[]).compute_units_consumed;
+    assert_eq!(env.line(&k, line_id).status, elote_pool::state::LineStatus::Repaid);
+
+    let (borrower, line_id, _) = &lines[1];
+    let ix = env.write_off_ix(&k, *line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
+    let owed = env.payoff(&k, *line_id);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), owed);
+    assert_eq!(env.payment_sidecars(&k, *line_id, owed).len(), MAX_SIDECARS_PER_REPAY);
+    let ix = env.repay_ix(&k, *line_id, &borrower.pubkey(), owed);
+    let recovery = env.send(ix, borrower, &[]).compute_units_consumed;
+    assert_eq!(env.line(&k, *line_id).status, elote_pool::state::LineStatus::Repaid);
+
+    println!("condone, late interest only, at 120 installments, all missed: {interest_only} CU");
+    println!("condone over three sidecars (one under procuracion) at 120 installments, all missed: {quita} CU");
+    println!("repay recovering a written-off line over three sidecars at 120 installments: {recovery} CU");
+    for (what, cu) in [("condone", interest_only), ("quita", quita), ("recovery", recovery)] {
+        assert!(cu + 5_000 <= CEILING, "{what} used {cu} CU, ceiling {CEILING} less a 5 000 CU margin");
+    }
+}
+
 #[test]
 fn request_and_approve_stay_under_the_ceiling() {
     let mut env = Env::new();

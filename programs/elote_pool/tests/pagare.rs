@@ -456,9 +456,10 @@ fn pagares_are_covered_oldest_first_by_the_principal_repaid() {
 
 /// A título leaves only when its line owes nothing (decision 49, LGTOC 17 and 130), whatever the
 /// line's status: a pagaré a payment covered stays with the pool while its line is in collection,
-/// until a payment settles the line, and forever once the line is written off, since a written-off
-/// line still owes and takes no payment. The pagarés no payment covered stay in force for the
-/// collection. A cancelled line never drew, so there is nothing to deliver.
+/// until a payment settles the line, and while a written-off line still owes: the write-off is the
+/// pool's loss, not the debtor's release, and a recovery that settles it releases them
+/// (decision 51). The pagarés no payment covered stay in force for the collection. A cancelled line
+/// never drew, so there is nothing to deliver.
 #[test]
 fn no_titulo_leaves_a_line_that_owes_whatever_its_status() {
     let mut env = Env::new();
@@ -510,11 +511,18 @@ fn no_titulo_leaves_a_line_that_owes_whatever_its_status() {
     env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
     env.expect_deliver_err(&k, line_id, 1, E_PAGARE_NOT_COVERED);
     assert_eq!(env.pagare(&k, line_id, 1).status, PAGARE_OUTSTANDING);
-    // No payment reaches a written-off line, so its títulos never leave.
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
-    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), UNIT);
-    env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
+    // A recovery reaches the written-off line (decision 51): a part leaves the títulos with the
+    // pool, the rest settles the line and both leave.
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 2 * UNIT);
+    let part = env.payoff(&k, line_id) - UNIT / 2;
+    env.repay(&k, line_id, &borrower, part);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
     env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
+    let rest = env.payoff(&k, line_id);
+    env.repay(&k, line_id, &borrower, rest);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    env.deliver_pagare(&k, line_id, 0);
+    env.deliver_pagare(&k, line_id, 1);
 
     // Cancelled: no sidecar was ever created.
     let borrower = env.borrower(&k);
@@ -681,7 +689,7 @@ fn entry_hash(asset: &solana_pubkey::Pubkey, kind: u8, from: &solana_pubkey::Pub
 fn annotation(receipt: &[u8; 32], principal_applied: u64, accessory_applied: u64, principal_balance: u64, by_borrower: bool) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
-    h.update(b"elote.pago.v1");
+    h.update(b"elote.pago.v2");
     h.update(receipt);
     h.update(principal_applied.to_le_bytes());
     h.update(accessory_applied.to_le_bytes());

@@ -147,8 +147,8 @@ fn limit_pause_blocks_exit_while_repayments_continue() {
 }
 
 /// After a total write-off the NAV is zero while shares still exist, and `deposit` refuses with
-/// `Overflow` (a division by the zero NAV). Only a raw transfer into the vault reopens the pool
-/// (roadmap: "No recoveries").
+/// `Overflow` (a division by the zero NAV). Value entering the vault reopens the pool: a raw
+/// transfer, or since decision 51 a recovery on the written-off line.
 #[test]
 fn limit_total_write_off_leaves_a_pool_that_cannot_take_deposits() {
     let mut env = Env::new();
@@ -172,9 +172,9 @@ fn limit_total_write_off_leaves_a_pool_that_cannot_take_deposits() {
     env.donate(&k, UNIT);
     let minted = env.deposit(&k, &newcomer, UNIT).shares;
     assert_eq!(minted, 2 * UNIT, "priced against the donated NAV of 1.0 and the old supply of 2.0");
-    // The written-off line takes no repayment, so the borrower's money cannot return as such.
-    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), UNIT);
-    env.expect_err(ix, &borrower, &[], E_LINE_STATUS);
+    // Decision 51: the borrower's money returns as a recovery, which comes off the loss.
+    env.repay(&k, line_id, &borrower, UNIT);
+    assert_eq!(env.pool(&k).written_off, UNIT);
 }
 
 /// Inverted 2026-11-08 (decision 41). Collection used to need `covered + max_missed <=

@@ -54,7 +54,7 @@ import {
   getApproveLineInstructionAsync,
   getBurnPagareInstructionAsync,
   getCancelLineInstructionAsync,
-  getCondoneInterestInstructionAsync,
+  getCondoneInstructionAsync,
   getCourtAnnotationInstructionAsync,
   getDeliverPagareInstructionAsync,
   getDepositInstructionAsync,
@@ -92,7 +92,7 @@ import {
   parseApproveLineInstruction,
   parseBurnPagareInstruction,
   parseCancelLineInstruction,
-  parseCondoneInterestInstruction,
+  parseCondoneInstruction,
   parseCourtAnnotationInstruction,
   parseDeliverPagareInstruction,
   parseDepositInstruction,
@@ -130,7 +130,7 @@ import {
   type ApproveLineAsyncInput,
   type BurnPagareAsyncInput,
   type CancelLineAsyncInput,
-  type CondoneInterestAsyncInput,
+  type CondoneAsyncInput,
   type CourtAnnotationAsyncInput,
   type DeliverPagareAsyncInput,
   type DepositAsyncInput,
@@ -145,7 +145,7 @@ import {
   type ParsedApproveLineInstruction,
   type ParsedBurnPagareInstruction,
   type ParsedCancelLineInstruction,
-  type ParsedCondoneInterestInstruction,
+  type ParsedCondoneInstruction,
   type ParsedCourtAnnotationInstruction,
   type ParsedDeliverPagareInstruction,
   type ParsedDepositInstruction,
@@ -273,11 +273,11 @@ export enum ElotePoolEvent {
   FixPosted,
   FxFeederSet,
   FxRealized,
-  InterestCondoned,
   LateInterestCollected,
   LineAccelerated,
   LineApproved,
   LineCancelled,
+  LineCondoned,
   LineDrawn,
   LineDrawsResumed,
   LineDrawsSuspended,
@@ -286,6 +286,7 @@ export enum ElotePoolEvent {
   LineRepaid,
   LineRequested,
   LineWrittenOff,
+  LossRecovered,
   MaxLineBpsSet,
   NavUpdated,
   OutstandingCapSet,
@@ -444,17 +445,6 @@ export function identifyElotePoolEvent(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([137, 101, 113, 238, 226, 136, 48, 186]),
-      ),
-      0,
-    )
-  ) {
-    return ElotePoolEvent.InterestCondoned;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([222, 62, 200, 36, 83, 150, 231, 151]),
       ),
       0,
@@ -494,6 +484,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.LineCancelled;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([54, 52, 124, 234, 43, 79, 200, 146]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LineCondoned;
   }
   if (
     containsBytes(
@@ -582,6 +583,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.LineWrittenOff;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([148, 191, 148, 237, 157, 155, 159, 130]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.LossRecovered;
   }
   if (
     containsBytes(
@@ -772,7 +784,7 @@ export enum ElotePoolInstruction {
   ApproveLine,
   BurnPagare,
   CancelLine,
-  CondoneInterest,
+  Condone,
   CourtAnnotation,
   DeliverPagare,
   Deposit,
@@ -890,12 +902,12 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([42, 60, 187, 64, 25, 250, 129, 124]),
+        new Uint8Array([241, 110, 125, 113, 31, 111, 224, 70]),
       ),
       0,
     )
   ) {
-    return ElotePoolInstruction.CondoneInterest;
+    return ElotePoolInstruction.Condone;
   }
   if (
     containsBytes(
@@ -1258,8 +1270,8 @@ export type ParsedElotePoolInstruction<
       instructionType: ElotePoolInstruction.CancelLine;
     } & ParsedCancelLineInstruction<TProgram>)
   | ({
-      instructionType: ElotePoolInstruction.CondoneInterest;
-    } & ParsedCondoneInterestInstruction<TProgram>)
+      instructionType: ElotePoolInstruction.Condone;
+    } & ParsedCondoneInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.CourtAnnotation;
     } & ParsedCourtAnnotationInstruction<TProgram>)
@@ -1405,11 +1417,11 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseCancelLineInstruction(instruction),
       };
     }
-    case ElotePoolInstruction.CondoneInterest: {
+    case ElotePoolInstruction.Condone: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: ElotePoolInstruction.CondoneInterest,
-        ...parseCondoneInterestInstruction(instruction),
+        instructionType: ElotePoolInstruction.Condone,
+        ...parseCondoneInstruction(instruction),
       };
     }
     case ElotePoolInstruction.CourtAnnotation: {
@@ -1686,11 +1698,10 @@ export type ElotePoolPluginInstructions = {
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getCancelLineInstructionAsync> &
     SelfPlanAndSendFunctions;
-  condoneInterest: (
-    input: CondoneInterestAsyncInput,
+  condone: (
+    input: CondoneAsyncInput,
     config?: { programAddress?: Address | HasAddress },
-  ) => ReturnType<typeof getCondoneInterestInstructionAsync> &
-    SelfPlanAndSendFunctions;
+  ) => ReturnType<typeof getCondoneInstructionAsync> & SelfPlanAndSendFunctions;
   courtAnnotation: (
     input: CourtAnnotationAsyncInput,
     config?: { programAddress?: Address | HasAddress },
@@ -1921,10 +1932,10 @@ export function elotePoolProgram(
                   instructionConfig?.programAddress ?? config.programAddress,
               }),
             ),
-          condoneInterest: (input, instructionConfig) =>
+          condone: (input, instructionConfig) =>
             addSelfPlanAndSendFunctions(
               client,
-              getCondoneInterestInstructionAsync(input, {
+              getCondoneInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),

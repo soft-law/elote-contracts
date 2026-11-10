@@ -47,21 +47,22 @@ import {
 } from "@solana/program-client-core";
 import { ELOTE_POOL_PROGRAM_ADDRESS } from "../programs";
 
-export const CONDONE_INTEREST_DISCRIMINATOR: ReadonlyUint8Array =
-  new Uint8Array([42, 60, 187, 64, 25, 250, 129, 124]);
+export const CONDONE_DISCRIMINATOR: ReadonlyUint8Array = new Uint8Array([
+  241, 110, 125, 113, 31, 111, 224, 70,
+]);
 
-export function getCondoneInterestDiscriminatorBytes(): ReadonlyUint8Array {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(
-    CONDONE_INTEREST_DISCRIMINATOR,
-  );
+export function getCondoneDiscriminatorBytes(): ReadonlyUint8Array {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(CONDONE_DISCRIMINATOR);
 }
 
-export type CondoneInterestInstruction<
+export type CondoneInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountCouncil extends string | AccountMeta<string> = string,
   TAccountMultisig extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
+  TAccountShareMint extends string | AccountMeta<string> = string,
+  TAccountVault extends string | AccountMeta<string> = string,
   TAccountEventAuthority extends string | AccountMeta<string> = string,
   TAccountProgram extends string | AccountMeta<string> =
     "BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM",
@@ -83,6 +84,12 @@ export type CondoneInterestInstruction<
       TAccountLine extends string
         ? WritableAccount<TAccountLine>
         : TAccountLine,
+      TAccountShareMint extends string
+        ? ReadonlyAccount<TAccountShareMint>
+        : TAccountShareMint,
+      TAccountVault extends string
+        ? ReadonlyAccount<TAccountVault>
+        : TAccountVault,
       TAccountEventAuthority extends string
         ? ReadonlyAccount<TAccountEventAuthority>
         : TAccountEventAuthority,
@@ -93,55 +100,61 @@ export type CondoneInterestInstruction<
     ]
   >;
 
-export type CondoneInterestInstructionData = {
+export type CondoneInstructionData = {
   discriminator: ReadonlyUint8Array;
   interest: bigint;
+  principal: bigint;
   documentHash: ReadonlyUint8Array;
   validUntil: bigint;
 };
 
-export type CondoneInterestInstructionDataArgs = {
+export type CondoneInstructionDataArgs = {
   interest: number | bigint;
+  principal: number | bigint;
   documentHash: ReadonlyUint8Array;
   validUntil: number | bigint;
 };
 
-export function getCondoneInterestInstructionDataEncoder(): FixedSizeEncoder<CondoneInterestInstructionDataArgs> {
+export function getCondoneInstructionDataEncoder(): FixedSizeEncoder<CondoneInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["interest", getU64Encoder()],
+      ["principal", getU64Encoder()],
       ["documentHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["validUntil", getI64Encoder()],
     ]),
-    (value) => ({ ...value, discriminator: CONDONE_INTEREST_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: CONDONE_DISCRIMINATOR }),
   );
 }
 
-export function getCondoneInterestInstructionDataDecoder(): FixedSizeDecoder<CondoneInterestInstructionData> {
+export function getCondoneInstructionDataDecoder(): FixedSizeDecoder<CondoneInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["interest", getU64Decoder()],
+    ["principal", getU64Decoder()],
     ["documentHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["validUntil", getI64Decoder()],
   ]);
 }
 
-export function getCondoneInterestInstructionDataCodec(): FixedSizeCodec<
-  CondoneInterestInstructionDataArgs,
-  CondoneInterestInstructionData
+export function getCondoneInstructionDataCodec(): FixedSizeCodec<
+  CondoneInstructionDataArgs,
+  CondoneInstructionData
 > {
   return combineCodec(
-    getCondoneInterestInstructionDataEncoder(),
-    getCondoneInterestInstructionDataDecoder(),
+    getCondoneInstructionDataEncoder(),
+    getCondoneInstructionDataDecoder(),
   );
 }
 
-export type CondoneInterestAsyncInput<
+export type CondoneAsyncInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
+  TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -150,27 +163,36 @@ export type CondoneInterestAsyncInput<
   multisig: TAccountMultisig;
   pool: TAccountPool;
   line: TAccountLine;
+  /** Read for the share supply (`NavUpdated` and the invariant check). */
+  shareMint: TAccountShareMint;
+  /** Read for the NAV. */
+  vault: TAccountVault;
   eventAuthority?: TAccountEventAuthority;
   program?: TAccountProgram;
-  interest: CondoneInterestInstructionDataArgs["interest"];
-  documentHash: CondoneInterestInstructionDataArgs["documentHash"];
-  validUntil: CondoneInterestInstructionDataArgs["validUntil"];
+  interest: CondoneInstructionDataArgs["interest"];
+  principal: CondoneInstructionDataArgs["principal"];
+  documentHash: CondoneInstructionDataArgs["documentHash"];
+  validUntil: CondoneInstructionDataArgs["validUntil"];
 };
 
-export async function getCondoneInterestInstructionAsync<
+export async function getCondoneInstructionAsync<
   TAccountCouncil extends InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput,
+  TAccountVault extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: CondoneInterestAsyncInput<
+  input: CondoneAsyncInput<
     TAccountCouncil,
     TAccountMultisig,
     TAccountPool,
     TAccountLine,
+    TAccountShareMint,
+    TAccountVault,
     TAccountEventAuthority,
     TAccountProgram
   >,
@@ -178,7 +200,7 @@ export async function getCondoneInterestInstructionAsync<
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
 ): Promise<
-  CondoneInterestInstruction<
+  CondoneInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
@@ -195,6 +217,14 @@ export async function getCondoneInterestInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountLine,
       InstructionAccountInputAddress<TAccountLine>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountShareMint,
+      InstructionAccountInputAddress<TAccountShareMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountVault,
+      InstructionAccountInputAddress<TAccountVault>
     >,
     ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
@@ -231,6 +261,12 @@ export async function getCondoneInterestInstructionAsync<
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    shareMint: {
+      value: input.shareMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -268,14 +304,16 @@ export async function getCondoneInterestInstructionAsync<
       getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
+      getAccountMeta("shareMint", accounts.shareMint),
+      getAccountMeta("vault", accounts.vault),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getCondoneInterestInstructionDataEncoder().encode(
-      args as CondoneInterestInstructionDataArgs,
+    data: getCondoneInstructionDataEncoder().encode(
+      args as CondoneInstructionDataArgs,
     ),
     programAddress,
-  } as CondoneInterestInstruction<
+  } as CondoneInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
@@ -294,6 +332,14 @@ export async function getCondoneInterestInstructionAsync<
       InstructionAccountInputAddress<TAccountLine>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareMint,
+      InstructionAccountInputAddress<TAccountShareMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountVault,
+      InstructionAccountInputAddress<TAccountVault>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -304,11 +350,13 @@ export async function getCondoneInterestInstructionAsync<
   >);
 }
 
-export type CondoneInterestInput<
+export type CondoneInput<
   TAccountCouncil extends InstructionSignerInput = InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput = InstructionAccountInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput = InstructionAccountInput,
+  TAccountVault extends InstructionAccountInput = InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput =
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
@@ -317,34 +365,43 @@ export type CondoneInterestInput<
   multisig: TAccountMultisig;
   pool: TAccountPool;
   line: TAccountLine;
+  /** Read for the share supply (`NavUpdated` and the invariant check). */
+  shareMint: TAccountShareMint;
+  /** Read for the NAV. */
+  vault: TAccountVault;
   eventAuthority: TAccountEventAuthority;
   program?: TAccountProgram;
-  interest: CondoneInterestInstructionDataArgs["interest"];
-  documentHash: CondoneInterestInstructionDataArgs["documentHash"];
-  validUntil: CondoneInterestInstructionDataArgs["validUntil"];
+  interest: CondoneInstructionDataArgs["interest"];
+  principal: CondoneInstructionDataArgs["principal"];
+  documentHash: CondoneInstructionDataArgs["documentHash"];
+  validUntil: CondoneInstructionDataArgs["validUntil"];
 };
 
-export function getCondoneInterestInstruction<
+export function getCondoneInstruction<
   TAccountCouncil extends InstructionSignerInput,
   TAccountMultisig extends InstructionAccountInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
+  TAccountShareMint extends InstructionAccountInput,
+  TAccountVault extends InstructionAccountInput,
   TAccountEventAuthority extends InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput,
   TProgramAddress extends Address = typeof ELOTE_POOL_PROGRAM_ADDRESS,
 >(
-  input: CondoneInterestInput<
+  input: CondoneInput<
     TAccountCouncil,
     TAccountMultisig,
     TAccountPool,
     TAccountLine,
+    TAccountShareMint,
+    TAccountVault,
     TAccountEventAuthority,
     TAccountProgram
   >,
   config?: {
     programAddress?: TProgramAddress | { readonly address: TProgramAddress };
   },
-): CondoneInterestInstruction<
+): CondoneInstruction<
   TProgramAddress,
   ResolvedInstructionAccountMeta<
     TAccountCouncil,
@@ -361,6 +418,14 @@ export function getCondoneInterestInstruction<
   ResolvedInstructionAccountMeta<
     TAccountLine,
     InstructionAccountInputAddress<TAccountLine>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountShareMint,
+    InstructionAccountInputAddress<TAccountShareMint>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountVault,
+    InstructionAccountInputAddress<TAccountVault>
   >,
   ResolvedInstructionAccountMeta<
     TAccountEventAuthority,
@@ -396,6 +461,12 @@ export function getCondoneInterestInstruction<
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
     line: { value: input.line ?? null, isSigner: false, isWritable: true },
+    shareMint: {
+      value: input.shareMint ?? null,
+      isSigner: false,
+      isWritable: false,
+    },
+    vault: { value: input.vault ?? null, isSigner: false, isWritable: false },
     eventAuthority: {
       value: input.eventAuthority ?? null,
       isSigner: false,
@@ -427,14 +498,16 @@ export function getCondoneInterestInstruction<
       getAccountMeta("multisig", accounts.multisig),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
+      getAccountMeta("shareMint", accounts.shareMint),
+      getAccountMeta("vault", accounts.vault),
       getAccountMeta("eventAuthority", accounts.eventAuthority),
       getAccountMeta("program", accounts.program),
     ],
-    data: getCondoneInterestInstructionDataEncoder().encode(
-      args as CondoneInterestInstructionDataArgs,
+    data: getCondoneInstructionDataEncoder().encode(
+      args as CondoneInstructionDataArgs,
     ),
     programAddress,
-  } as CondoneInterestInstruction<
+  } as CondoneInstruction<
     TProgramAddress,
     ResolvedInstructionAccountMeta<
       TAccountCouncil,
@@ -453,6 +526,14 @@ export function getCondoneInterestInstruction<
       InstructionAccountInputAddress<TAccountLine>
     >,
     ResolvedInstructionAccountMeta<
+      TAccountShareMint,
+      InstructionAccountInputAddress<TAccountShareMint>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountVault,
+      InstructionAccountInputAddress<TAccountVault>
+    >,
+    ResolvedInstructionAccountMeta<
       TAccountEventAuthority,
       InstructionAccountInputAddress<TAccountEventAuthority>
     >,
@@ -463,7 +544,7 @@ export function getCondoneInterestInstruction<
   >);
 }
 
-export type ParsedCondoneInterestInstruction<
+export type ParsedCondoneInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
@@ -473,26 +554,30 @@ export type ParsedCondoneInterestInstruction<
     multisig: TAccountMetas[1];
     pool: TAccountMetas[2];
     line: TAccountMetas[3];
-    eventAuthority: TAccountMetas[4];
-    program: TAccountMetas[5];
+    /** Read for the share supply (`NavUpdated` and the invariant check). */
+    shareMint: TAccountMetas[4];
+    /** Read for the NAV. */
+    vault: TAccountMetas[5];
+    eventAuthority: TAccountMetas[6];
+    program: TAccountMetas[7];
   };
-  data: CondoneInterestInstructionData;
+  data: CondoneInstructionData;
 };
 
-export function parseCondoneInterestInstruction<
+export function parseCondoneInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedCondoneInterestInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+): ParsedCondoneInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 8) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 6,
+        expectedAccountMetas: 8,
       },
     );
   }
@@ -509,9 +594,11 @@ export function parseCondoneInterestInstruction<
       multisig: getNextAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
+      shareMint: getNextAccount(),
+      vault: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),
     },
-    data: getCondoneInterestInstructionDataDecoder().decode(instruction.data),
+    data: getCondoneInstructionDataDecoder().decode(instruction.data),
   };
 }

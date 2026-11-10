@@ -636,8 +636,10 @@ fn write_off_in_collection_waits_for_the_collection_period_from_the_mark() {
     assert_eq!((ev.line_id, ev.loss, ev.nav_after), (line_id, 6 * UNIT, nav0 - 6 * UNIT));
     assert_eq!(env.line(&k, line_id).status, LineStatus::WrittenOff);
     assert_eq!(env.pool(&k).written_off, 6 * UNIT);
-    let ix = env.repay_ix(&k, line_id, &b.pubkey(), UNIT);
-    env.expect_err(ix, &b, &[], E_LINE_STATUS);
+    // Decision 51: the written-off line still owes, and takes a payment as a recovery.
+    let late = env.arrears(&k, line_id).late_due;
+    env.repay(&k, line_id, &b, late + env.interest_unpaid(&k, line_id) + UNIT);
+    assert_eq!(env.pool(&k).written_off, 5 * UNIT);
 }
 
 #[test]
@@ -990,15 +992,14 @@ const DOCUMENT_HASH: [u8; 32] = [0xd0; 32];
 const E_DOCUMENT_HASH_REQUIRED: u32 = ERR_BASE + elote_pool::errors::PoolError::DocumentHashRequired as u32;
 
 fn condone_ix(env: &Env, k: &PoolKeys, line_id: u64, signer: &solana_pubkey::Pubkey, interest: u64, document_hash: [u8; 32]) -> solana_instruction::Instruction {
-    let data = anchor_lang::InstructionData::data(&elote_pool::instruction::CondoneInterest { interest, document_hash, valid_until: env.valid_until() });
-    env.council_line_ix(k, line_id, signer, data)
+    env.condone_ix(k, line_id, signer, interest, 0, document_hash)
 }
 
 /// Decision 50: the council condones the late interest a line has accrued, against the hash of
 /// the written record. Nothing is collected, the watermark moves, and the next payment owes none.
 #[test]
 fn the_council_condones_the_late_interest_accrued() {
-    use elote_pool::events::InterestCondoned;
+    use elote_pool::events::LineCondoned;
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
@@ -1011,7 +1012,7 @@ fn the_council_condones_the_late_interest_accrued() {
     let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 0, DOCUMENT_HASH);
     let meta = env.send(ix, &council, &[]);
     let now = env.now();
-    let ev: InterestCondoned = find_event(&meta).expect("InterestCondoned");
+    let ev: LineCondoned = find_event(&meta).expect("LineCondoned");
     assert_eq!(
         (ev.pool, ev.line_id, ev.late_interest, ev.interest, ev.document_hash, ev.remaining, ev.condoned_at),
         (k.pool, line_id, 10_000, 0, DOCUMENT_HASH, 6 * UNIT + 127_200, now),
@@ -1032,7 +1033,7 @@ fn the_council_condones_the_late_interest_accrued() {
 /// the títulos leave (decision 49).
 #[test]
 fn a_quita_then_the_principal_settles_the_line_and_the_titulo_leaves() {
-    use elote_pool::events::InterestCondoned;
+    use elote_pool::events::LineCondoned;
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 10_000);
@@ -1044,7 +1045,7 @@ fn a_quita_then_the_principal_settles_the_line_and_the_titulo_leaves() {
     // A year of 12% on 6.0, stopped at the last due date: 0.72.
     let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 720_000, DOCUMENT_HASH);
     let meta = env.send(ix, &council, &[]);
-    let ev: InterestCondoned = find_event(&meta).expect("InterestCondoned");
+    let ev: LineCondoned = find_event(&meta).expect("LineCondoned");
     assert_eq!((ev.interest, ev.remaining), (720_000, 6 * UNIT));
     let line = env.line(&k, line_id);
     assert_eq!((line.status, line.interest_unpaid(env.now())), (LineStatus::Active, Some(0)), "the principal is still owed");
@@ -1063,7 +1064,8 @@ fn a_quita_then_the_principal_settles_the_line_and_the_titulo_leaves() {
 /// Under decision 48 a quita cannot be what leaves a line owing nothing: a payment that repays
 /// principal takes the interest accrued first, and nothing accrues on principal repaid, so once the
 /// principal is gone there is no interest left to condone (`WrongAmount`), and the título leaves
-/// with the payment. (Decision 50's closing branch stays, for a principal condonation to come.)
+/// with the payment. (The quita's closing branch is reached by condoning principal, decision 51:
+/// `tests/quita.rs`.)
 #[test]
 fn a_quita_has_nothing_to_condone_once_the_principal_is_repaid() {
     let mut env = Env::new();
@@ -1093,7 +1095,7 @@ fn a_partial_quita_lowers_what_is_payable_now() {
     let council = env.council.insecure_clone();
     let ix = condone_ix(&env, &k, line_id, &council.pubkey(), 240_000, DOCUMENT_HASH);
     let meta = env.send(ix, &council, &[]);
-    let ev: elote_pool::events::InterestCondoned = find_event(&meta).expect("InterestCondoned");
+    let ev: elote_pool::events::LineCondoned = find_event(&meta).expect("LineCondoned");
     assert_eq!((ev.interest, ev.remaining), (240_000, 6 * UNIT));
     assert_eq!(env.arrears(&k, line_id).missed, 2, "a quita pays no installment");
     let ev = env.repay(&k, line_id, &b, UNIT);
@@ -1528,8 +1530,7 @@ fn after_any_payment_that_touches_principal_no_interest_is_left_unpaid() {
     check(&mut env, &stranger, t0 + MONTH12 + 11, 777_777);
     // A quita of part of the interest, then a payment.
     env.warp(t0 + 3 * MONTH12);
-    let condone = anchor_lang::InstructionData::data(&elote_pool::instruction::CondoneInterest { interest: 1_000, document_hash: DOCUMENT_HASH, valid_until: env.valid_until() });
-    let ix = env.council_line_ix(&k, line_id, &council.pubkey(), condone);
+    let ix = env.condone_ix(&k, line_id, &council.pubkey(), 1_000, 0, DOCUMENT_HASH);
     env.send(ix, &council, &[]);
     let late = env.arrears(&k, line_id).late_due;
     check(&mut env, &borrower, t0 + 3 * MONTH12, late + 500_000);
