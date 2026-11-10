@@ -1402,8 +1402,11 @@ pub struct Condone<'info> {
 ///   (`interest_repaid`, decision 50; CCF 2209, 2210), without reaching `interest_collected`;
 /// - `principal` of the principal outstanding (decision 51, CCF 2209: that debt is extinguished),
 ///   which counts as settled — `principal_repaid` and its cost `usdc_cost_repaid` — so it meets
-///   installments and accrues no more interest from now. Unlike a payment, it may leave ordinary
-///   interest unpaid: the council remits what it decides, and that interest stays owed.
+///   installments and accrues no more interest from now. Unlike a payment, a partial one may
+///   leave ordinary interest unpaid: the council remits what it decides, and that interest stays
+///   owed. A quita of ALL the principal takes all the interest unpaid when it lands, whatever
+///   `interest` says: the figure quoted has grown by the time the council signs, and interest left
+///   alone would be paid with no título left to take its entry.
 ///
 /// `WrongAmount` above what is unpaid or outstanding, or when there is nothing to condone. The cost
 /// of the principal, at each pagaré's own FIX, is a loss now: it leaves `outstanding_principal`
@@ -1429,13 +1432,14 @@ pub fn condone<'info>(ctx: Context<'info, Condone<'info>>, interest: u64, princi
     let late_interest = line_arrears(line, now)?.late_due;
     let interest_unpaid = line.interest_unpaid(now).ok_or(PoolError::Overflow)?;
     let principal_left = line.outstanding().ok_or(PoolError::Overflow)?;
+    // A quita of all the principal takes all the interest there is when it lands, whatever it
+    // named: the council signs after the interest it quoted has grown, and interest left alone
+    // would be paid with no título left to take its entry.
+    let interest = if principal > 0 && principal == principal_left { interest_unpaid } else { interest };
     require!(
         interest <= interest_unpaid && principal <= principal_left && (interest > 0 || principal > 0 || late_interest > 0),
         PoolError::WrongAmount
     );
-    // All the principal goes only with all the interest: interest left alone would be paid with
-    // no título left to take its entry.
-    require!(principal < principal_left || interest == interest_unpaid, PoolError::WrongAmount);
     let principal_before = line.principal_repaid;
     let principal_after = principal_before.checked_add(principal).ok_or(PoolError::Overflow)?;
     let mut touched = touched_pagares(ctx.remaining_accounts, line, principal_after, principal > 0)?;

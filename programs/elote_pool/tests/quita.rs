@@ -299,10 +299,14 @@ fn a_principal_quita_is_the_councils_against_its_record_and_never_more_than_is_o
     // All the principal is condoned only with the interest still unpaid: left alone, that
     // interest would be paid with no título left to take its entry. A day of 10% on 2.0:
     // 2,000,000 * 0.10 / 365 = 547.9, 547.
+    // The council signs minutes after proposing and the interest grows meanwhile, so a quita of
+    // all the principal takes all the interest there is when it lands, whatever figure it named:
+    // built now naming none, sent an hour later (2,000,000 * 0.10 * 90,000 / YEAR = 570.7, 570).
     let ix = env.condone_ix(&k, line_id, &council.pubkey(), 0, 2 * UNIT, DOCUMENT);
-    env.expect_err(ix, &council, &[], E_WRONG_AMOUNT);
-    let ev = env.condone(&k, line_id, 547, 2 * UNIT, DOCUMENT);
-    assert_eq!((ev.interest, ev.principal, ev.remaining), (547, 2 * UNIT, 0));
+    env.warp(env.now() + 3_600);
+    let meta = env.send(ix, &council, &[]);
+    let ev: elote_pool::events::LineCondoned = find_event(&meta).expect("LineCondoned");
+    assert_eq!((ev.interest, ev.principal, ev.remaining), (570, 2 * UNIT, 0));
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     env.deliver_pagare(&k, line_id, 0);
     // A closed line takes no quita.
@@ -445,6 +449,35 @@ fn a_deposit_before_a_recovery_takes_none_of_it() {
     assert!(out <= 60 * UNIT && out >= 60 * UNIT - 2, "the entrant leaves with what it brought: {out}");
     // The 2.0 recovered went to those who bore the loss: 20.0 again.
     assert!(env.nav(&k) >= 20 * UNIT);
+}
+
+/// What the entry price does not cover: the interest and late interest a recovery brings are
+/// income of the moment, shared by whoever holds shares then, as for any payment
+/// (`limit_deposit_just_before_a_repayment_shares_the_interest`). 2.0 at 10%, late 36.5%, ten
+/// days past the term: 200,000 of interest and 20,000 late. The entrant holds 60.0 of 80.0 of
+/// the shares and leaves with three quarters of those 220,000.
+#[test]
+fn limit_a_deposit_before_a_recovery_shares_its_interest_and_late_interest() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let mut p = env.line_params(2 * UNIT, 1_000);
+    p.late_bps = 3_650;
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    let council = env.council.insecure_clone();
+    env.warp(p.term_end + 1);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
+    env.warp(p.term_end + 864_000);
+    let entrant = env.investor(&k, 60 * UNIT);
+    let shares = env.deposit(&k, &entrant, 60 * UNIT).shares;
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), UNIT);
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 2 * UNIT + 220_000);
+    env.send(ix, &borrower, &[]);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    let out = env.redeem(&k, &entrant, shares).assets;
+    assert_eq!(out, 60 * UNIT + 165_000, "none of the principal, three quarters of the accessories");
 }
 
 /// The claim leaves the entry price when the council condones it: nothing is left to recover.

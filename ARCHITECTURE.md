@@ -86,7 +86,9 @@ All three amounts are in the asset's base units (USDC in production).
   defaulted credit as good. Deposits use the entry NAV, with the impaired book at par: whoever
   enters while a line is impaired pays par for that book, so a later recovery, which releases the
   provision, hands the entrant nothing, and depositing just before a recovery nets zero or less,
-  flash-funded or patient. Deposits are never gated. When nothing is impaired the two prices are
+  flash-funded or patient. The same holds for a line written off: its cost stays in the entry NAV
+  (`recoverable`) until it is recovered or the council condones it (decision 51). Deposits are
+  never gated. When nothing is impaired and nothing written off is still owed the two prices are
   the same.
 - **Outstanding principal at USDC cost.** `Pool.outstanding_principal` is the USDC the pool
   delivered on draws and has not recovered, condoned or written off. `draw` adds the USDC it
@@ -1879,7 +1881,7 @@ functions in each file.
 | `tests/schedule.rs` | 48 (+1 reference) | LiteSVM, clock warped | schedule validation, installments of principal, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing; decision 48 against `tests/reference/`: interest on the outstanding principal, early payoff, dust and split invariance, no interest unpaid after a principal payment, a proptest state machine (48 cases) |
 | `tests/tranches.rs` | 15 (+1 reference) | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, interest from each draw, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
 | `tests/acceleration.rs` | 12 | LiteSVM | suspension and resumption, acceleration with notice on bullet and scheduled lines, the objective mark superseding a proposal, pool limits and floors, the pause |
-| `tests/quita.rs` | 12 | LiteSVM, clock warped | decision 51: the principal quita (total in collection, partial then paid, split over more than three records, at a 50% provision, on a written-off line, ending a procuración), its guards, arrears and accrual after it; recoveries on a written-off line, partial and full, and each pagaré's own FX cost basis; every pool field and the NAV worked by hand; the registry replayed for `Condonacion` |
+| `tests/quita.rs` | 13 | LiteSVM, clock warped | decision 51: the principal quita (total in collection, partial then paid, split over more than three records, at a 50% provision, on a written-off line, ending a procuración), its guards, arrears and accrual after it; recoveries on a written-off line, partial and full, and each pagaré's own FX cost basis; every pool field and the NAV worked by hand; the registry replayed for `Condonacion` |
 | `tests/provision.rs` | 9 | LiteSVM | decisions 40 and 40b: the mark and the council's acceleration provision the NAV, redemptions at the provisioned NAV, deposits at the unprovisioned NAV and a recovery handing the entrant nothing, recoveries, the write-off, the rate the council's alone |
 | `tests/council.rs` | 17 | LiteSVM | the council constants, `init_pool` against multisig shapes (majority, config authority, size, owner), parameter floors, the two-step rotation |
 | `tests/valid_until.rs` | 4 | LiteSVM | `valid_until` refused past or too far ahead |
