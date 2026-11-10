@@ -92,7 +92,7 @@ the agreements server, program reference and addresses) lives in `soft-law/elote
 
 Every parameter is a typed field (Borsh, no padding), and each account ends in `reserved` bytes,
 created zero, for fields added after mainnet: 48 on `Pool`, 64 on `CreditLine`, 28 on `Pagare`. With
-the 8-byte discriminator the sizes are `Pool` 487, `CreditLine` 528 and `Pagare` 363 bytes
+the 8-byte discriminator the sizes are `Pool` 495, `CreditLine` 528 and `Pagare` 363 bytes
 (`tests/layout.rs`); ARCHITECTURE.md §3 gives every offset. A bullet line (single maturity) has
 `installments == 0` and the other schedule fields at zero. Clients read the typed fields;
 `lineSchedule(line)` in the client returns a line's schedule, or null for a bullet line, and
@@ -279,7 +279,7 @@ the Solana 3.x runtime inside LiteSVM 0.11 cannot load. Moving to v3 goes togeth
 The integration tests run the compiled program in LiteSVM 0.11.0, which loads SPL Token, Token-2022
 and the Associated Token Account program by default; the harness adds Metaplex Core from
 `programs/elote_pool/tests/fixtures/` (pinned by sha256, see the README there).
-There are 319 Rust tests (unit tests in `src/` and integration tests in 20 binaries) and 26 JS
+There are 321 Rust tests (unit tests in `src/` and integration tests in 20 binaries) and 26 JS
 tests. `programs/elote_pool/tests/` holds:
 
 | File | Tests | What it checks |
@@ -288,12 +288,12 @@ tests. `programs/elote_pool/tests/` holds:
 | `council.rs`, `valid_until.rs`, `squads.rs` | 17, 4, 7 | The Squads multisig check on every council instruction, council rotation; `valid_until` refused past or too far ahead; the hand-built Squads v4 instructions |
 | `fx.rs` | 27 | The FIX: the MXN↔USDC conversion, the daily band, the RedStone MXNe reference, the bounds, feeder versus council, one publication a day |
 | `acceleration.rs` | 12 | `propose_acceleration` / `withdraw_acceleration` / `accelerate_line`, the notice, and the interplay with `suspend_draws` and `resume_draws` |
-| `quita.rs` | 10 | Decision 51: the council's quita of principal (total, partial then paid, split, on a written-off line) and recoveries on a written-off line, every pool field worked by hand, each pagaré at its own FIX, the `Condonacion` entry replayed |
+| `quita.rs` | 12 | Decision 51: the council's quita of principal (total, partial then paid, split, on a written-off line) and recoveries on a written-off line, every pool field worked by hand, each pagaré at its own FIX, the `Condonacion` entry replayed |
 | `known_limits.rs` | 12 | Documentation tests that pin the known design limits listed in SECURITY.md; they pass by design and must be inverted when a limit is removed |
 | `tranches.rs` | 16 | Tranched draws: the draw window, the payability floor, interest from each draw, the cap on tranches, `suspend_draws`, `cancel_line` |
 | `pagare.rs` | 27 | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused; the registry entries; the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `core_capabilities.rs` | 8 | What Metaplex Core allows after an asset's creation: handing off or extinguishing the permanent delegates, thawing, moving the update authority off the collection, adding plugins and adapters, who writes and removes an AppData adapter and whether it follows the asset (the program uses none), the cost of `AddBlocker`, owner-managed delegates for the procuración and a burn delegate held by a program address; pinned against the Core binary so an upgrade that changes an answer fails here |
-| `layout.rs` | 2 | The account sizes (`Pool` 487, `CreditLine` 528, `Pagare` 363 bytes), the zeroed `reserved` tail of each account, and one `CreditLine` layout whether or not the line has a sponsor (the zero key for none) |
+| `layout.rs` | 2 | The account sizes (`Pool` 495, `CreditLine` 528, `Pagare` 363 bytes), the zeroed `reserved` tail of each account, and one `CreditLine` layout whether or not the line has a sponsor (the zero key for none) |
 | `audit.rs`, `reaudit.rs` | 4, 4 | Regression tests of the findings of the 2026-11-01 audit and the 2026-11-02 re-audit |
 | `compute.rs` | 12 | Compute units of `init_pool`, `draw` (with the Core CPI), `repay` (one covering three pagaré records and a recovery on a written-off line included), `condone` (over three records), `deliver_pagare` and `burn_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `mark_in_collection` and `write_off`, at 18 and 120 installments, stay under 100,000 |
 | `math_props.rs` | 11 | Property tests (proptest) over the share accounting, the arrears arithmetic, the payment order and the accrual against the reference |

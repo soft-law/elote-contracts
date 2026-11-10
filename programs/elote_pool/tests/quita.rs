@@ -296,21 +296,13 @@ fn a_principal_quita_is_the_councils_against_its_record_and_never_more_than_is_o
     env.warp(env.now() + DAY_SECONDS);
     let ix = env.condone_ix_full(&k, line_id, &council.pubkey(), 1, 0, DOCUMENT, &env.condone_sidecars(&k, line_id, UNIT));
     env.expect_err(ix, &council, &[], E_PAGARE_ACCOUNTS_MISMATCH);
-    // Exactly the outstanding is fine, and then the line owes only its interest.
-    let ev = env.condone(&k, line_id, 0, 2 * UNIT, DOCUMENT);
-    assert_eq!(ev.principal, 2 * UNIT);
-    // A day of 10% on 2.0: 2,000,000 * 0.10 / 365 = 547.9, 547.
-    assert_eq!(ev.remaining, 547);
-    let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.interest_unpaid(env.now())), (LineStatus::Active, Some(547)), "the interest is still owed");
-    env.expect_deliver_err(&k, line_id, 0, E_BALANCE_OUTSTANDING);
-    let ix = env.condone_ix(&k, line_id, &council.pubkey(), 0, 1, DOCUMENT);
+    // All the principal is condoned only with the interest still unpaid: left alone, that
+    // interest would be paid with no título left to take its entry. A day of 10% on 2.0:
+    // 2,000,000 * 0.10 / 365 = 547.9, 547.
+    let ix = env.condone_ix(&k, line_id, &council.pubkey(), 0, 2 * UNIT, DOCUMENT);
     env.expect_err(ix, &council, &[], E_WRONG_AMOUNT);
-    // The interest, paid, closes it; nothing accrues on principal condoned.
-    env.warp(env.now() + DAY_SECONDS);
-    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 547);
-    let ev = env.repay(&k, line_id, &borrower, 547);
-    assert_eq!((ev.interest_part, ev.principal_part, ev.remaining), (547, 0, 0));
+    let ev = env.condone(&k, line_id, 547, 2 * UNIT, DOCUMENT);
+    assert_eq!((ev.interest, ev.principal, ev.remaining), (547, 2 * UNIT, 0));
     assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
     env.deliver_pagare(&k, line_id, 0);
     // A closed line takes no quita.
@@ -422,6 +414,62 @@ fn a_written_off_line_takes_recoveries_and_its_titulos_leave_when_it_owes_nothin
     env.deliver_pagare(&k, line_id, 0);
     env.deliver_pagare(&k, line_id, 1);
     assert_eq!(env.pagare(&k, line_id, 1).flags, PAGARE_FLAG_DELIVERED);
+}
+
+/// Whoever deposits just before a recovery takes none of it (decision 51, with decision 40b): a
+/// written-off line's cost stays in the price deposits pay until it is recovered or condoned, so
+/// the entrant bought that claim at par. 20.0 in the pool, 2.0 written off at 0%; 60.0 deposited
+/// before the debtor pays the 2.0 back, then redeemed: 60.0 at most.
+#[test]
+fn a_deposit_before_a_recovery_takes_none_of_it() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let mut p = env.line_params(2 * UNIT, 0);
+    p.late_bps = 0;
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    let council = env.council.insecure_clone();
+    env.warp(p.term_end + 1);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
+    assert_eq!(books(&env, &k, 18 * UNIT, 0, 0, 2 * UNIT), 18 * UNIT);
+    assert_eq!(env.pool(&k).recoverable, 2 * UNIT, "the claim written off is still owed");
+
+    let entrant = env.investor(&k, 60 * UNIT);
+    let shares = env.deposit(&k, &entrant, 60 * UNIT).shares;
+    let ix = env.repay_ix(&k, line_id, &borrower.pubkey(), 2 * UNIT);
+    env.send(ix, &borrower, &[]);
+    assert_eq!(env.pool(&k).recoverable, 0);
+    let out = env.redeem(&k, &entrant, shares).assets;
+    assert!(out <= 60 * UNIT && out >= 60 * UNIT - 2, "the entrant leaves with what it brought: {out}");
+    // The 2.0 recovered went to those who bore the loss: 20.0 again.
+    assert!(env.nav(&k) >= 20 * UNIT);
+}
+
+/// The claim leaves the entry price when the council condones it: nothing is left to recover.
+#[test]
+fn a_quita_on_a_written_off_line_takes_its_claim_out_of_the_entry_price() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let mut p = env.line_params(2 * UNIT, 0);
+    p.late_bps = 0;
+    let (line_id, _) = env.open_line_with(&k, &borrower, &p, None);
+    env.draw_amount(&k, line_id, &borrower, 2 * UNIT);
+    let council = env.council.insecure_clone();
+    env.warp(p.term_end + 1);
+    let ix = env.write_off_ix(&k, line_id, &council.pubkey());
+    env.send(ix, &council, &[]);
+    env.condone(&k, line_id, 0, UNIT, DOCUMENT);
+    assert_eq!(env.pool(&k).recoverable, UNIT);
+    env.condone(&k, line_id, 0, UNIT, DOCUMENT);
+    let pool = env.pool(&k);
+    assert_eq!((pool.recoverable, pool.written_off), (0, 2 * UNIT));
+    // A deposit now prices at the 18.0 the pool holds: 18.0 buys as many shares as there are.
+    let supply = env.supply(&k);
+    let entrant = env.investor(&k, 18 * UNIT);
+    assert_eq!(env.deposit(&k, &entrant, 18 * UNIT).shares, supply);
 }
 
 /// A quita on a line already written off recognises nothing again: the write-off took the loss,

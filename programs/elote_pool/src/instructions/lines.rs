@@ -864,6 +864,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         // The write-off already took this cost out of the book: the principal recovered comes
         // off the loss, never off `outstanding_principal` again (decision 51).
         pool.written_off = pool.written_off.checked_sub(cost).ok_or(PoolError::Overflow)?;
+        pool.recoverable = pool.recoverable.checked_sub(cost).ok_or(PoolError::Overflow)?;
     } else {
         pool.outstanding_principal = pool.outstanding_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
         // A recovery on a line in collection takes its cost out of the provision (decision 40).
@@ -1259,6 +1260,8 @@ pub fn write_off(ctx: Context<WriteOff>, valid_until: i64) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     pool.outstanding_principal = pool.outstanding_principal.checked_sub(loss_usdc).ok_or(PoolError::Overflow)?;
     pool.written_off = pool.written_off.checked_add(loss_usdc).ok_or(PoolError::Overflow)?;
+    // The claim is still owed: deposits keep paying for it until it is recovered or condoned.
+    pool.recoverable = pool.recoverable.checked_add(loss_usdc).ok_or(PoolError::Overflow)?;
     // What the provision anticipated becomes the loss (decision 40).
     if was_in_collection {
         pool.impaired_principal = pool.impaired_principal.checked_sub(loss_usdc).ok_or(PoolError::Overflow)?;
@@ -1430,6 +1433,9 @@ pub fn condone<'info>(ctx: Context<'info, Condone<'info>>, interest: u64, princi
         interest <= interest_unpaid && principal <= principal_left && (interest > 0 || principal > 0 || late_interest > 0),
         PoolError::WrongAmount
     );
+    // All the principal goes only with all the interest: interest left alone would be paid with
+    // no título left to take its entry.
+    require!(principal < principal_left || interest == interest_unpaid, PoolError::WrongAmount);
     let principal_before = line.principal_repaid;
     let principal_after = principal_before.checked_add(principal).ok_or(PoolError::Overflow)?;
     let mut touched = touched_pagares(ctx.remaining_accounts, line, principal_after, principal > 0)?;
@@ -1437,6 +1443,10 @@ pub fn condone<'info>(ctx: Context<'info, Condone<'info>>, interest: u64, princi
 
     let loss_recognized = if status == LineStatus::WrittenOff { 0 } else { cost };
     let pool = &mut ctx.accounts.pool;
+    if status == LineStatus::WrittenOff {
+        // Condoned, the claim written off is no longer owed.
+        pool.recoverable = pool.recoverable.checked_sub(cost).ok_or(PoolError::Overflow)?;
+    }
     if loss_recognized > 0 {
         pool.outstanding_principal = pool.outstanding_principal.checked_sub(cost).ok_or(PoolError::Overflow)?;
         // What the provision anticipated becomes the loss (decision 40).

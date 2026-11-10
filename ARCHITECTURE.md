@@ -67,7 +67,7 @@ late rate and the collection threshold.
 ### 1.2 The money model
 
 ```
-entry NAV       = vault.amount + outstanding_principal                        Pool::entry_nav
+entry NAV       = vault.amount + outstanding_principal + recoverable          Pool::entry_nav
 NAV             = entry NAV − ⌊impaired_principal × provision_bps / 10 000⌋   Pool::nav
 deposit price   = entry NAV / share_mint.supply
 redeem price    = NAV / share_mint.supply
@@ -248,7 +248,7 @@ pool never rotates to an address that cannot sign or to a multisig without a maj
 ## 3. Accounts and the PDA tree
 
 ```
-Pool            PDA ["pool", creator, asset_mint]              program-owned, 487 bytes
+Pool            PDA ["pool", creator, asset_mint]              program-owned, 495 bytes
 ├── share_mint  creator-supplied mint                          classic or Token-2022, decimals = asset's,
 │                                                              mint authority = pool PDA
 ├── vault       PDA ["vault", pool]                            token account of asset_mint, authority = pool
@@ -289,7 +289,7 @@ The seeds are `state::seeds`.
   `burn_pagare`.
 
 All three accounts are Borsh-serialized with no padding, end in a zeroed `reserved` tail for fields
-added after mainnet, and are sized by `InitSpace` (`tests/layout.rs` pins 487, 528 and 363 bytes).
+added after mainnet, and are sized by `InitSpace` (`tests/layout.rs` pins 495, 528 and 363 bytes).
 Offsets below include the 8-byte Anchor discriminator, so they can be used directly in `memcmp`
 filters.
 
@@ -299,7 +299,7 @@ filters.
 | `CreditLine` | `dce2cd18dc978168` |
 | `Pagare` | `8c8e1bef938349f7` |
 
-### 3.1 `Pool` (487 bytes)
+### 3.1 `Pool` (495 bytes)
 
 | offset | size | field | notes |
 |---|---|---|---|
@@ -337,7 +337,8 @@ filters.
 | 415 | 8 | `fx_realized` | `i64`, Σ `FxRealized.delta` |
 | 423 | 8 | `min_fix_rate` | the lowest FIX `post_fix` accepts; zero with `max_fix_rate` zero for no bounds |
 | 431 | 8 | `max_fix_rate` | the highest |
-| 439 | 48 | `reserved` | zero |
+| 439 | 8 | `recoverable` | the cost written off and still owed: `write_off` adds, a recovery and a quita on a written-off line subtract; counted by `entry_nav` (decision 51) |
+| 447 | 48 | `reserved` | zero |
 
 Methods: `asset_freezable()`, `asset_pausable()`, `max_line_principal(nav) = nav × max_line_bps /
 10 000` rounded down, `entry_nav(vault)`, `nav(vault)`, `check(vault, supply)` (§1.2).
@@ -1878,7 +1879,7 @@ functions in each file.
 | `tests/schedule.rs` | 48 (+1 reference) | LiteSVM, clock warped | schedule validation, installments of principal, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing; decision 48 against `tests/reference/`: interest on the outstanding principal, early payoff, dust and split invariance, no interest unpaid after a principal payment, a proptest state machine (48 cases) |
 | `tests/tranches.rs` | 15 (+1 reference) | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, interest from each draw, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
 | `tests/acceleration.rs` | 12 | LiteSVM | suspension and resumption, acceleration with notice on bullet and scheduled lines, the objective mark superseding a proposal, pool limits and floors, the pause |
-| `tests/quita.rs` | 10 | LiteSVM, clock warped | decision 51: the principal quita (total in collection, partial then paid, split over more than three records, at a 50% provision, on a written-off line, ending a procuración), its guards, arrears and accrual after it; recoveries on a written-off line, partial and full, and each pagaré's own FX cost basis; every pool field and the NAV worked by hand; the registry replayed for `Condonacion` |
+| `tests/quita.rs` | 12 | LiteSVM, clock warped | decision 51: the principal quita (total in collection, partial then paid, split over more than three records, at a 50% provision, on a written-off line, ending a procuración), its guards, arrears and accrual after it; recoveries on a written-off line, partial and full, and each pagaré's own FX cost basis; every pool field and the NAV worked by hand; the registry replayed for `Condonacion` |
 | `tests/provision.rs` | 9 | LiteSVM | decisions 40 and 40b: the mark and the council's acceleration provision the NAV, redemptions at the provisioned NAV, deposits at the unprovisioned NAV and a recovery handing the entrant nothing, recoveries, the write-off, the rate the council's alone |
 | `tests/council.rs` | 17 | LiteSVM | the council constants, `init_pool` against multisig shapes (majority, config authority, size, owner), parameter floors, the two-step rotation |
 | `tests/valid_until.rs` | 4 | LiteSVM | `valid_until` refused past or too far ahead |
@@ -1889,7 +1890,7 @@ functions in each file.
 | `tests/known_limits.rs` | 12 | LiteSVM | documentation tests that pin current behaviour and the known limits SECURITY.md lists; they are inverted when a limit is removed |
 | `tests/audit.rs`, `tests/reaudit.rs` | 4, 4 | LiteSVM | regressions of the 2026-11-01 audit and the 2026-11-02 re-audit |
 | `tests/compute.rs` | 12 | LiteSVM | the figures of §10 under their ceilings |
-| `tests/layout.rs` | 2 | LiteSVM | the account sizes 487 / 528 / 363, the zeroed `reserved` tails, and one `CreditLine` layout with or without a sponsor |
+| `tests/layout.rs` | 2 | LiteSVM | the account sizes 495 / 528 / 363, the zeroed `reserved` tails, and one `CreditLine` layout with or without a sponsor |
 | `tests/math_props.rs` | 10 (+1 reference) | proptest | the pure functions over random inputs; the payment order; the accrual against the reference under any sequence; split invariance |
 | `tests/reference/mod.rs` | 1 | plain, included by four binaries | the independent oracle: a line as `(time, principal change)` events, `rate × Σ balance × Δt / (10 000 × year)` rounded once; its own hand-number test |
 | `tests/vectors.rs` | 1 | plain | 427 arrears vectors (48 accelerated) shared with `clients/js/test/arrears-vectors.json` |

@@ -157,6 +157,12 @@ export type Pool = {
    */
   minFixRate: bigint;
   maxFixRate: bigint;
+  /**
+   * The cost of the principal written off and still owed: `write_off` adds a line's loss, each
+   * recovery subtracts what it recovered and a quita on a written-off line what it condoned.
+   * Deposits pay for it at par (`entry_nav`, decision 51).
+   */
+  recoverable: bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -261,6 +267,12 @@ export type PoolArgs = {
    */
   minFixRate: number | bigint;
   maxFixRate: number | bigint;
+  /**
+   * The cost of the principal written off and still owed: `write_off` adds a line's loss, each
+   * recovery subtracts what it recovered and a quita on a written-off line what it condoned.
+   * Deposits pay for it at par (`entry_nav`, decision 51).
+   */
+  recoverable: number | bigint;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -303,6 +315,7 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["fxRealized", getI64Encoder()],
       ["minFixRate", getU64Encoder()],
       ["maxFixRate", getU64Encoder()],
+      ["recoverable", getU64Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 48)],
     ]),
     (value) => ({ ...value, discriminator: POOL_DISCRIMINATOR }),
@@ -346,6 +359,7 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["fxRealized", getI64Decoder()],
     ["minFixRate", getU64Decoder()],
     ["maxFixRate", getU64Decoder()],
+    ["recoverable", getU64Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 48)],
   ]);
 }
@@ -417,5 +431,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 487;
+  return 495;
 }

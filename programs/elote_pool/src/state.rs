@@ -185,6 +185,10 @@ pub struct Pool {
     /// for no bounds. Set at `init_pool` and with `set_fix_bounds`.
     pub min_fix_rate: u64,
     pub max_fix_rate: u64,
+    /// The cost of the principal written off and still owed: `write_off` adds a line's loss, each
+    /// recovery subtracts what it recovered and a quita on a written-off line what it condoned.
+    /// Deposits pay for it at par (`entry_nav`, decision 51).
+    pub recoverable: u64,
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 48],
 }
@@ -216,11 +220,12 @@ impl Pool {
     }
 
     /// The NAV with no provision: the vault plus the whole principal lent out, the impaired cost
-    /// at par. Deposits are priced here (decision 40b, Maple's dual price): whoever enters while a
-    /// line is impaired buys that book at par, so a later recovery hands the entrant nothing and
-    /// the sandwich — flash or patient — nets zero or less, while deposits are never gated.
+    /// at par, plus the cost written off and still owed (`recoverable`, decision 51). Deposits are
+    /// priced here (decision 40b, Maple's dual price): whoever enters while a line is impaired or
+    /// written off buys that claim at par, so a later recovery hands the entrant nothing and the
+    /// sandwich — flash or patient — nets zero or less, while deposits are never gated.
     pub fn entry_nav(&self, vault_amount: u64) -> Option<u64> {
-        vault_amount.checked_add(self.outstanding_principal)
+        vault_amount.checked_add(self.outstanding_principal)?.checked_add(self.recoverable)
     }
 
     /// Net asset value at `vault_amount`: the vault plus the principal lent out, minus the
@@ -622,6 +627,7 @@ mod tests {
             fix_date: 0,
             fix_posted_at: 0,
             fx_realized: 0,
+            recoverable: 0,
             min_fix_rate: 0,
             max_fix_rate: 0,
             reserved: [0; 48],

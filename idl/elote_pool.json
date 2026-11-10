@@ -7228,6 +7228,15 @@
             "type": "u64"
           },
           {
+            "name": "recoverable",
+            "docs": [
+              "The cost of the principal written off and still owed: `write_off` adds a line's loss, each",
+              "recovery subtracts what it recovered and a quita on a written-off line what it condoned.",
+              "Deposits pay for it at par (`entry_nav`, decision 51)."
+            ],
+            "type": "u64"
+          },
+          {
             "name": "reserved",
             "docs": [
               "Zero; for fields added after mainnet."

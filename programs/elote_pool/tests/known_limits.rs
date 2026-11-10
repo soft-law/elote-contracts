@@ -146,11 +146,12 @@ fn limit_pause_blocks_exit_while_repayments_continue() {
     env.expect_err(ix, &investor, &[], E_PAUSED);
 }
 
-/// After a total write-off the NAV is zero while shares still exist, and `deposit` refuses with
-/// `Overflow` (a division by the zero NAV). Value entering the vault reopens the pool: a raw
-/// transfer, or since decision 51 a recovery on the written-off line.
+/// After a total write-off the NAV is zero while shares still exist. Deposits stay open, priced at
+/// the entry NAV, which still counts the claim written off (decision 51): the newcomer buys that
+/// claim at par, so what it can redeem at once is its share of the cash alone, and it is whole
+/// again only if the claim is recovered. The front end shows both prices.
 #[test]
-fn limit_total_write_off_leaves_a_pool_that_cannot_take_deposits() {
+fn limit_after_a_total_write_off_a_deposit_buys_the_claim_at_par() {
     let mut env = Env::new();
     let (k, _) = env.setup_pool_capped(BPS); // the whole NAV lent to one line
     let investor = env.investor(&k, 2 * UNIT);
@@ -163,18 +164,18 @@ fn limit_total_write_off_leaves_a_pool_that_cannot_take_deposits() {
     let council = env.council.insecure_clone();
     let ix = env.write_off_ix(&k, line_id, &council.pubkey());
     env.send(ix, &council, &[]);
-    assert_eq!((env.nav(&k), env.supply(&k)), (0, 2 * UNIT));
+    assert_eq!((env.nav(&k), env.supply(&k), env.pool(&k).recoverable), (0, 2 * UNIT, 2 * UNIT));
 
+    // 1.0 at an entry NAV of 2.0 (the claim) against a supply of 2.0: 1.0 of shares, a third of
+    // the pool, whose only cash is the 1.0 just brought.
     let newcomer = env.investor(&k, UNIT);
-    let ix = env.deposit_ix(&k, &newcomer.pubkey(), UNIT);
-    env.expect_err(ix, &newcomer, &[], E_OVERFLOW);
-    // A recovery can only arrive as an untracked donation, and then deposits work again.
-    env.donate(&k, UNIT);
     let minted = env.deposit(&k, &newcomer, UNIT).shares;
-    assert_eq!(minted, 2 * UNIT, "priced against the donated NAV of 1.0 and the old supply of 2.0");
-    // Decision 51: the borrower's money returns as a recovery, which comes off the loss.
-    env.repay(&k, line_id, &borrower, UNIT);
-    assert_eq!(env.pool(&k).written_off, UNIT);
+    assert_eq!((minted, env.nav(&k)), (UNIT, UNIT));
+    // The borrower's money returns as a recovery: 3.0 in the pool, and the newcomer's third is 1.0.
+    env.repay(&k, line_id, &borrower, 2 * UNIT);
+    let pool = env.pool(&k);
+    assert_eq!((pool.written_off, pool.recoverable, env.nav(&k)), (0, 0, 3 * UNIT));
+    assert_eq!(env.redeem(&k, &newcomer, minted).assets, UNIT);
 }
 
 /// Inverted 2026-11-08 (decision 41). Collection used to need `covered + max_missed <=

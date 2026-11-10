@@ -11,7 +11,7 @@ use solana_signer::Signer;
 /// created zero, so zero there always means "no value".
 #[test]
 fn account_sizes_are_fixed_and_reserved_starts_zero() {
-    assert_eq!(8 + Pool::INIT_SPACE, 487);
+    assert_eq!(8 + Pool::INIT_SPACE, 495);
     assert_eq!(8 + CreditLine::INIT_SPACE, 528);
     assert_eq!(8 + Pagare::INIT_SPACE, 363);
 

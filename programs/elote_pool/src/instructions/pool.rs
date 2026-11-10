@@ -299,6 +299,7 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         fix_date: 0,
         fix_posted_at: 0,
         fx_realized: 0,
+        recoverable: 0,
         min_fix_rate: p.min_fix_rate,
         max_fix_rate: p.max_fix_rate,
         reserved: [0; 48],
@@ -401,7 +402,8 @@ pub struct Deposit<'info> {
 /// The first deposit locks `DEAD_SHARES` of its shares in the pool-owned dead account; the
 /// depositor receives the rest. `min_shares_out` is the depositor's slippage floor. Deposits are
 /// priced at the NAV **with no provision** (`Pool::entry_nav`, decision 40b — Maple's dual
-/// price): the entrant buys any impaired book at par, so a recovery hands the entrant nothing
+/// price): the entrant buys any impaired book and any claim written off and still owed at par
+/// (decision 51), so a recovery hands the entrant nothing
 /// and depositing just before one nets zero or less; redemptions price at the provisioned NAV.
 pub fn deposit(ctx: Context<Deposit>, assets: u64, min_shares_out: u64) -> Result<()> {
     let pool = &ctx.accounts.pool;
