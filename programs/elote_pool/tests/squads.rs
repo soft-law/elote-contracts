@@ -258,7 +258,7 @@ fn a_multisig_lowered_below_a_majority_cannot_propose_a_successor_through_squads
 /// first under a procuración (so the quita also writes the Terminacion), every installment missed:
 /// on an 18-installment line, the pilot's longest, a total quita over the three records; on a
 /// 120-installment line, the quita of the first pagaré alone (records 0 and 1, one entry). At 120
-/// installments a quita writing two entries takes about 96 400 CU and three about 104 500
+/// installments a quita writing two entries took about 96 400 CU and three about 104 500 before decision 55
 /// (108 300 with a procuración): there the client condones one pagaré per call (ARCHITECTURE §10).
 #[test]
 fn the_council_condones_principal_through_squads() {

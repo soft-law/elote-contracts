@@ -1619,9 +1619,9 @@ included for a council instruction.
 | `repay` recovering a written-off line over three records, 120 installments, all missed | 90 992 |
 | `condone`, late interest only, 120 installments, all missed | 50 397 |
 | `condone` over three records, one under procuración, 120 installments, all missed | 68 043 |
-| `condone` through Squads, three records (one under procuración), 18 installments, all missed | 82 868 |
+| `condone` through Squads, three records (one under procuración), 18 installments, all missed | 83 949 |
 | `condone` through Squads of one pagaré (two records, one entry, under procuración), 120 installments, all missed | 95 504 to 95 566 (94 913 before decision 55): **inside the rule, over the 5 000 CU margin** |
-| `condone` through Squads writing two / three entries, 120 installments, all missed | 96 380 / 104 452 (108 326 with a procuración): **over the margin / over the rule** |
+| `condone` through Squads writing two / three entries, 120 installments, all missed (before decision 55, which adds about 330 CU a record) | 96 380 / 104 452 (108 326 with a procuración): **over the margin / over the rule** |
 | `mark_in_collection`, 18 installments, all missed | 17 985 |
 | `mark_in_collection`, 120 installments, all missed | 34 731 |
 | `mark_in_collection`, 120 installments, 3 missed | 15 808 |
@@ -1641,7 +1641,9 @@ included for a council instruction.
 Decision 55 added 100 bytes to every `Pagare` record (the signed message's hash, signature and
 day): each instruction that loads and stores a record pays about 330 CU more per record, and
 `draw` and `deliver_pagare` also carry the ninth Core attribute. The rows above that touch records
-were re-measured with it.
+were re-measured with it; the prose figures below for `endorse_pagare`, `revoke_procuracion` and
+`annul_pagare` are earlier (now 17 938, 17 706 and, through Squads, 46 597; `endorse_pagare`
+through Squads 44 142).
 
 The rows of `request_line` through `annotate_payment` above were re-measured after decision 48
 (ordinary interest on the outstanding principal) and the layout clean-up that followed it (one
@@ -1896,8 +1898,8 @@ functions in each file.
 | `tests/pool.rs` | 22 | LiteSVM | `init_pool` and the mint and collection policies, deposits and redemptions, dead shares, rounding and slippage, a Token-2022 asset cycle, `NavUpdated` |
 | `tests/lines.rs` | 11 | LiteSVM | the line cycle end to end, sponsor, overpayment, liquidity, write-off, the bullet window, the line cap |
 | `tests/requests.rs` | 7 | LiteSVM | request, approval of the exact terms, the 15-day window, members as borrowers, reject and withdraw returning rent, the pause on requests |
-| `tests/schedule.rs` | 48 (+1 reference) | LiteSVM, clock warped | schedule validation, installments of principal, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing; decision 48 against `tests/reference/`: interest on the outstanding principal, early payoff, dust and split invariance, no interest unpaid after a principal payment, a proptest state machine (48 cases) |
-| `tests/tranches.rs` | 15 (+1 reference) | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, interest from each draw, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
+| `tests/schedule.rs` | 48 (+2 reference) | LiteSVM, clock warped | schedule validation, installments of principal, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing; decision 48 against `tests/reference/`: interest on the outstanding principal, early payoff, dust and split invariance, no interest unpaid after a principal payment, a proptest state machine (48 cases) |
+| `tests/tranches.rs` | 15 (+2 reference) | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, interest from each draw, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
 | `tests/acceleration.rs` | 12 | LiteSVM | suspension and resumption, acceleration with notice on bullet and scheduled lines, the objective mark superseding a proposal, pool limits and floors, the pause |
 | `tests/quita.rs` | 13 | LiteSVM, clock warped | decision 51: the principal quita (total in collection, partial then paid, split over more than three records, at a 50% provision, on a written-off line, ending a procuración), its guards, arrears and accrual after it; recoveries on a written-off line, partial and full, and each pagaré's own FX cost basis; every pool field and the NAV worked by hand; the registry replayed for `Condonacion` |
 | `tests/provision.rs` | 9 | LiteSVM | decisions 40 and 40b: the mark and the council's acceleration provision the NAV, redemptions at the provisioned NAV, deposits at the unprovisioned NAV and a recovery handing the entrant nothing, recoveries, the write-off, the rate the council's alone |
@@ -1911,7 +1913,7 @@ functions in each file.
 | `tests/audit.rs`, `tests/reaudit.rs` | 4, 4 | LiteSVM | regressions of the 2026-11-01 audit and the 2026-11-02 re-audit |
 | `tests/compute.rs` | 12 | LiteSVM | the figures of §10 under their ceilings |
 | `tests/layout.rs` | 2 | LiteSVM | the account sizes 495 / 528 / 463, the zeroed `reserved` tails, and one `CreditLine` layout with or without a sponsor |
-| `tests/math_props.rs` | 10 (+1 reference) | proptest | the pure functions over random inputs; the payment order; the accrual against the reference under any sequence; split invariance |
+| `tests/math_props.rs` | 10 (+2 reference) | proptest | the pure functions over random inputs; the payment order; the accrual against the reference under any sequence; split invariance |
 | `tests/reference/mod.rs` | 2 | plain, included by four binaries | the independent oracle (and, decision 55, the pagaré hash, the issuance hash and the registry entry, from their specification): a line as `(time, principal change)` events, `rate × Σ balance × Δt / (10 000 × year)` rounded once; its own hand-number test |
 | `tests/vectors.rs` | 1 | plain | 427 arrears vectors (48 accelerated) shared with `clients/js/test/arrears-vectors.json` |
 | `clients/js/test/*.test.ts` | | `node --test` (tsx) | `schedule.ts` (the shared vectors), `pagare.ts`, `hashes.ts`, `terms.ts` (the shared vector), `fx.ts`, `core.ts` |

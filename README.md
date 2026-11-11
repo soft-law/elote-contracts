@@ -284,19 +284,19 @@ tests. `programs/elote_pool/tests/` holds:
 
 | File | Tests | What it checks |
 |---|---|---|
-| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 49 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection; ordinary interest on the outstanding principal (decision 48) against an independent reference (`tests/reference/`), dust and split invariance, and a proptest state machine over random draws, payments and marks |
+| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 50 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection; ordinary interest on the outstanding principal (decision 48) against an independent reference (`tests/reference/`), dust and split invariance, and a proptest state machine over random draws, payments and marks |
 | `council.rs`, `valid_until.rs`, `squads.rs` | 17, 4, 7 | The Squads multisig check on every council instruction, council rotation; `valid_until` refused past or too far ahead; the hand-built Squads v4 instructions |
 | `fx.rs` | 27 | The FIX: the MXN↔USDC conversion, the daily band, the RedStone MXNe reference, the bounds, feeder versus council, one publication a day |
 | `acceleration.rs` | 12 | `propose_acceleration` / `withdraw_acceleration` / `accelerate_line`, the notice, and the interplay with `suspend_draws` and `resume_draws` |
 | `quita.rs` | 13 | Decision 51: the council's quita of principal (total, partial then paid, split, on a written-off line) and recoveries on a written-off line, every pool field worked by hand, each pagaré at its own FIX, the `Condonacion` entry replayed |
 | `known_limits.rs` | 12 | Documentation tests that pin the known design limits listed in SECURITY.md; they pass by design and must be inverted when a limit is removed |
-| `tranches.rs` | 16 | Tranched draws: the draw window, the payability floor, interest from each draw, the cap on tranches, `suspend_draws`, `cancel_line` |
+| `tranches.rs` | 17 | Tranched draws: the draw window, the payability floor, interest from each draw, the cap on tranches, `suspend_draws`, `cancel_line` |
 | `pagare.rs` | 36 | The pagaré token: one frozen Core asset and one `Pagare` record per draw, every plugin read back through the `mpl-core` crate against the pinned Core binary, wrong accounts refused; the registry entries; the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `core_capabilities.rs` | 8 | What Metaplex Core allows after an asset's creation: handing off or extinguishing the permanent delegates, thawing, moving the update authority off the collection, adding plugins and adapters, who writes and removes an AppData adapter and whether it follows the asset (the program uses none), the cost of `AddBlocker`, owner-managed delegates for the procuración and a burn delegate held by a program address; pinned against the Core binary so an upgrade that changes an answer fails here |
 | `layout.rs` | 2 | The account sizes (`Pool` 495, `CreditLine` 528, `Pagare` 463 bytes), the zeroed `reserved` tail of each account, and one `CreditLine` layout whether or not the line has a sponsor (the zero key for none) |
 | `audit.rs`, `reaudit.rs` | 4, 4 | Regression tests of the findings of the 2026-11-01 audit and the 2026-11-02 re-audit |
 | `compute.rs` | 12 | Compute units of `init_pool`, `draw` (with the Core CPI), `repay` (one covering three pagaré records and a recovery on a written-off line included), `condone` (over three records), `deliver_pagare` and `burn_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `mark_in_collection` and `write_off`, at 18 and 120 installments, stay under 100,000 |
-| `math_props.rs` | 11 | Property tests (proptest) over the share accounting, the arrears arithmetic, the payment order and the accrual against the reference |
+| `math_props.rs` | 12 | Property tests (proptest) over the share accounting, the arrears arithmetic, the payment order and the accrual against the reference |
 | `vectors.rs` | 1 | Evaluates the arrears arithmetic on 427 cases (48 accelerated) and compares with `clients/js/test/arrears-vectors.json`, which `npm run test:client` replays against the TypeScript mirror. After a deliberate change to `math.rs`, regenerate with `UPDATE_VECTORS=1 cargo test --test vectors` in the same commit |
 
 ## Deployments and upgrade authority
@@ -415,7 +415,9 @@ settings through Squads: `set-fx-feeder --address`, `set-fix-bounds`, `set-max-l
 `scripts/draw.ts --pool <address> --line-id <n> --borrower-keypair <path> --amount <MXN>` draws one
 tranche and mints its pagaré, with `--signature-method wallet|psc|efirma`; psc and efirma need
 `--cert-fingerprint` and `--cert-salt`, and the draw records `sha256(salt || fingerprint)`, never the
-fingerprint (the SAT publishes e.firma certificates by RFC). The script prints the FIX and the tUSDC it
+fingerprint (the SAT publishes e.firma certificates by RFC). The borrower's key signs the pagaré
+message (decision 55): the text in `--pagare-text <path>`, or without it a placeholder labelled DEMO,
+which is no pagaré text; the draw records its SHA-256, the signature and today's date in Mexico City. The script prints the FIX and the tUSDC it
 delivers before asking; the borrower signs alone (a FIX published in between fails the draw).
 
 `scripts/repay.ts --pool <address> --line-id <n> --amount <tUSDC> | --all` pays on a line (the

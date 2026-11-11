@@ -54,7 +54,7 @@ Every other transfer is rent (SOL): a rejected or withdrawn request returns its 
 
 ## Personal data on chain
 
-Nothing the program or the scripts write on chain names a person. Accounts and events hold keys (pseudonyms), amounts, dates and hashes; no event has a free-text field. The Core asset is named `PAGARE <line_id>-<draw_index>`, its URI is empty, and it carries eight attributes (pagaré hash, amount in MXN, currency, issue and due dates, line, draw index, signature method). The certificate fingerprint is stored only in the pagaré record, as a salted commitment.
+Nothing the program or the scripts write on chain names a person. Accounts and events hold keys (pseudonyms), amounts, dates and hashes; no event has a free-text field. The Core asset is named `PAGARE <line_id>-<draw_index>`, its URI is empty, and it carries nine attributes (pagaré hash, the hash of the message the borrower signed, amount in MXN, currency, issue and due dates, line, draw index, signature method). The certificate fingerprint is stored only in the pagaré record, as a salted commitment. The record also holds the borrower's ed25519 signature over the signed pagaré message and the message's plain SHA-256 (decision 55): no text, but anyone holding the exact text can match the hash, so the app should put a random nonce inside the signed message.
 
 What keeps a defaulted borrower from being identified is operational, and these rules apply in any case:
 
