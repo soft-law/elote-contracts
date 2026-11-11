@@ -19,6 +19,7 @@ import {
   type CreditLine,
   type Pool,
   LineStatus,
+  assertPagareMessageText,
   MAX_SIDECARS_PER_REPAY,
   fetchCreditLine,
   fetchMaybePool,
@@ -47,7 +48,8 @@ import { type Cluster, SendError, chainNow, fail, fmtMxn, send } from "./cli.ts"
  * The `draw` arguments for the message the borrower subscribes the pagaré with (decision 55): its
  * SHA-256, the borrower's ed25519 signature over it, and today in Mexico City by the cluster's
  * clock, the day the program requires. `message` is the full filled pagaré text; the scripts have
- * none, so without it they sign a placeholder that says what it is.
+ * none, so without it they sign a placeholder that says what it is. Bytes that are not plain text
+ * are refused before anything is signed (`assertPagareMessageText`).
  */
 export async function signPagare(
   c: Cluster,
@@ -57,6 +59,7 @@ export async function signPagare(
   const signedOn = mexicoCityDate(await chainNow(c));
   const message =
     args.message ?? new TextEncoder().encode(`DEMO pagaré message, not a pagaré text: ${c.name}, line ${args.lineId} (${args.line}) draw ${args.drawIndex} ${signedOn}`);
+  assertPagareMessageText(message);
   return {
     signedPagareHash: await signedPagareHash(message),
     pagareSignature: await signBytes(borrower.keyPair.privateKey, message),

@@ -19,7 +19,9 @@
 // --cert-salt         the salt kept in the expediente: the draw records sha256(salt || fingerprint),
 //                     never the fingerprint, which can be looked up to the signer's RFC
 // --pagare-text       the file holding the filled pagaré text the borrower signs, as bytes; without
-//                     it the borrower signs a placeholder labelled DEMO, which is no pagaré text
+//                     it the borrower signs a placeholder labelled DEMO, which is no pagaré text.
+//                     A file that is not plain UTF-8 text (no control character but \n, so no
+//                     CRLF or tab, no BOM or invisible mark) is refused before anything is signed
 // --cotejo-keypair    the cotejo key that co-signs; required when the pool names any (its key must
 //                     be one of them), ignored by the program otherwise
 // --sealed-hash       SHA-256 of the encrypted content of the sealed copy the parties keep,
