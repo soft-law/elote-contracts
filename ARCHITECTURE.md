@@ -706,11 +706,14 @@ of them as co-signer.
 
 The council's own key (vault 0) cannot be a cotejo key. Another vault of the same multisig can:
 the council names, say, vault 1, and co-signs a draw through a Squads vault transaction of vault 1
-whose execution the borrower also signs; Squads requires each non-vault signer of the inner message
-to sign the execution and the CPI forwards that signature to `draw`
+whose execution the borrower also signs, and the CPI forwards that signature to `draw`
 (`tests/squads.rs::a_second_vault_of_the_council_co_signs_a_draw_through_squads`). The CPI depth is
 Squads (1), `elote_pool` (2), Core (3), system (4), the limit, and the whole execution takes about
-124 000 CU: above the 100 000 CU rule, within the 200 000 an instruction gets by default. The
+123 000 CU: above the 100 000 CU rule, within the 200 000 an instruction gets by default. The
+test writes the vault transaction and its approved proposal into the SVM: the size of the
+`vault_transaction_create` carrying a 16-account draw message, and of the execution, against the
+1 232-byte limit is not measured, and `scripts/lib/council.ts` drives vault 0 only, so the flow
+has no script. The
 proposal fixes the FIX, `signed_on`, the draw index (the PDAs) and the amount when it is created,
 so it must execute the same Mexico City day, before any other draw of the line and before the FIX
 moves; otherwise it fails and a new proposal is needed. It is a fallback for an incident, not the
@@ -1976,7 +1979,7 @@ functions in each file.
 | `tests/council.rs` | 17 | LiteSVM | the council constants, `init_pool` against multisig shapes (majority, config authority, size, owner), parameter floors, the two-step rotation |
 | `tests/valid_until.rs` | 4 | LiteSVM | `valid_until` refused past or too far ahead |
 | `tests/squads.rs` | 9 | LiteSVM + Squads v4 | council instructions through the real `vault_transaction_execute`, stale proposals, a multisig lowered below a majority, the rotation, the cotejo keys set by the council, and vault 1 of the council co-signing a draw (the borrower's signature forwarded through the execution) |
-| `tests/cotejo.rs` | 11 (+2 reference) | LiteSVM, proptest | decisions 56 and 57: the cotejo rule against `reference::cotejo` (fixed cases and 32 random key sets), refused draws writing nothing, the zero key never matching, each of the three keys recorded, rotation, only the council setting keys, refused sets, setting keys while paused, the sealed hash stored as given and outside the issuance entry, and a byte-level run through every instruction: only `set_cotejo_keys` moves `cotejo_keys`, and no instruction changes an issued record outside its payment state and registry |
+| `tests/cotejo.rs` | 11 (+2 reference) | LiteSVM, proptest | decisions 56 and 57: the cotejo rule against `reference::cotejo` (fixed cases and 32 random key sets), refused draws writing nothing, the zero key never matching, each of the three keys recorded, rotation, only the council setting keys, refused sets, setting keys while paused, the sealed hash stored as given and outside the issuance entry, and a byte-level run through every instruction but `init_pool` and `accept_council`: only `set_cotejo_keys` moves `cotejo_keys`, and no instruction changes an issued record outside its payment state and registry |
 | `tests/fx.rs` | 27 | LiteSVM | the FIX: conversions, the daily band, the RedStone reference, the bounds, feeder versus council, one publication a day, draws and repayments at the FIX, FX gains and losses |
 | `tests/pagare.rs` | 34 (+2 reference) | LiteSVM + Core 0.15.3 | one frozen asset and one record per draw, every plugin read back through `mpl-core`, the registry and payment entries, the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `tests/core_capabilities.rs` | 8 | LiteSVM + Core 0.15.3 | what Core allows after an asset's creation (§9.1) |

@@ -292,7 +292,8 @@ impl Watch {
 
 /// Every instruction but `set_cotejo_keys` leaves `pool.cotejo_keys` alone, and none rewrites a
 /// pagaré's `cotejo`, `sealed_hash` or any other issued field: a byte-level check after each step
-/// of a run through the whole instruction set.
+/// of a run through the instruction set (all but `init_pool`, which creates the keys zero, and
+/// `accept_council`, which writes only the council fields and is not driven here).
 #[test]
 fn only_set_cotejo_keys_moves_the_keys_and_no_instruction_rewrites_an_issued_pagare() {
     let mut env = Env::new();

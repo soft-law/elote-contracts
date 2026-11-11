@@ -281,14 +281,14 @@ the Solana 3.x runtime inside LiteSVM 0.11 cannot load. Moving to v3 goes togeth
 The integration tests run the compiled program in LiteSVM 0.11.0, which loads SPL Token, Token-2022
 and the Associated Token Account program by default; the harness adds Metaplex Core from
 `programs/elote_pool/tests/fixtures/` (pinned by sha256, see the README there).
-There are 352 Rust tests (unit tests in `src/` and integration tests in 21 binaries; the shared
+There are 352 Rust tests (unit tests in `src/` and integration tests in 22 binaries; the shared
 reference's own tests run in each binary that includes it) and 37 JS tests. `programs/elote_pool/tests/` holds:
 
 | File | Tests | What it checks |
 |---|---|---|
 | `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 50 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection; ordinary interest on the outstanding principal (decision 48) against an independent reference (`tests/reference/`), dust and split invariance, and a proptest state machine over random draws, payments and marks |
 | `council.rs`, `valid_until.rs`, `squads.rs` | 17, 4, 9 | The Squads multisig check on every council instruction, council rotation; `valid_until` refused past or too far ahead; the hand-built Squads v4 instructions, the council setting the cotejo keys, and a second vault of the council co-signing a draw as cotejo |
-| `cotejo.rs` | 13 | Decisions 56 and 57: the cotejo rule against an independent reference (`tests/reference/`), a property test over random key sets, refusals that write nothing, the zero key never matching, rotation, only the council setting keys, also while paused, the sealed hash stored as given, and a byte-level run through every instruction showing only `set_cotejo_keys` moves the keys and nothing rewrites an issued record |
+| `cotejo.rs` | 13 | Decisions 56 and 57: the cotejo rule against an independent reference (`tests/reference/`), a property test over random key sets, refusals that write nothing, the zero key never matching, rotation, only the council setting keys, also while paused, the sealed hash stored as given, and a byte-level run through every instruction but `init_pool` and `accept_council` showing only `set_cotejo_keys` moves the keys and nothing rewrites an issued record |
 | `fx.rs` | 27 | The FIX: the MXN↔USDC conversion, the daily band, the RedStone MXNe reference, the bounds, feeder versus council, one publication a day |
 | `acceleration.rs` | 12 | `propose_acceleration` / `withdraw_acceleration` / `accelerate_line`, the notice, and the interplay with `suspend_draws` and `resume_draws` |
 | `quita.rs` | 13 | Decision 51: the council's quita of principal (total, partial then paid, split, on a written-off line) and recoveries on a written-off line, every pool field worked by hand, each pagaré at its own FIX, the `Condonacion` entry replayed |
