@@ -98,6 +98,27 @@ fn every_draw_issues_one_frozen_pagare_held_by_the_pool() {
     assert_eq!(env.line(&k, line_id).draws, 2);
 }
 
+/// Decision 55 leaves the pagaré hash as it was: a draw's `pagare_hash`, in the record and the
+/// event, is the independent reference's derivation over the approved template, the terms, the
+/// line, the index, the amount and the time, whatever message the borrower signed.
+#[test]
+fn the_pagare_hash_is_derived_as_before_decision_55() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let line_key = line_pda(&k.pool, line_id).0;
+    for (i, amount) in [(0u16, UNIT), (1, 2 * UNIT)] {
+        let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), amount);
+        let ev: PagareIssued = find_event(&env.send(ix, &borrower, &[])).expect("PagareIssued");
+        let line = env.line(&k, line_id);
+        let expected = reference::pagare::pagare_hash(&line.pagare_template_hash, &line.terms_hash, &line_key.to_bytes(), i, amount, env.now());
+        assert_eq!((ev.pagare_hash, env.pagare(&k, line_id, i).pagare_hash), (expected, expected));
+        env.warp(env.now() + 60);
+    }
+}
+
 /// The compatibility proof the coordinator asked for: every plugin set at creation is read back
 /// through the crate's decoder, with its authority and its content.
 #[test]
@@ -138,7 +159,7 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     // Immutable metadata, nobody's.
     let immutable = asset.plugin_list.immutable_metadata.as_ref().expect("ImmutableMetadata");
     assert_eq!(immutable.base.authority.authority_type, AuthorityType::None);
-    // Attributes, nobody's, with the eight facts and nothing personal (the certificate commitment is not one of them).
+    // Attributes, nobody's, with the nine facts and nothing personal (the certificate commitment is not one of them).
     let attributes = asset.plugin_list.attributes.as_ref().expect("Attributes");
     assert_eq!(attributes.base.authority.authority_type, AuthorityType::None);
     let list: Vec<(&str, &str)> =
@@ -147,10 +168,12 @@ fn every_plugin_of_a_fresh_pagare_reads_back_as_set() {
     let issued = issued_at.to_string();
     let due = p.term_end.to_string();
     let line_s = line_id.to_string();
+    let signed = hex(&env.default_pagare_signature(&line_key, 0).hash);
     assert_eq!(
         list,
         vec![
             ("pagare_hash", hex(&hash).as_str()),
+            ("signed_pagare_hash", signed.as_str()),
             ("amount_mxn", amount.as_str()),
             ("currency", "MXN"),
             ("issued_at", issued.as_str()),
@@ -804,7 +827,10 @@ fn a_draw_writes_the_issuance_entry_of_the_registry() {
     let meta = env.send(ix, &borrower, &[]);
     let now = env.now();
     let sidecar = env.pagare(&k, line_id, 0);
-    let expected = entry_hash(&sidecar.asset, KIND_EMISION, &k.pool, &k.pool, &env.expected_pagare_hash(&k, line_id, 0, UNIT, now), now, 1);
+    // Decision 55: the issuance states the pagaré hash bound to the hash of the signed message.
+    let signed = env.default_pagare_signature(&line_pda(&k.pool, line_id).0, 0).hash;
+    let issuance = reference::pagare::issuance_hash(&env.expected_pagare_hash(&k, line_id, 0, UNIT, now), &signed);
+    let expected = entry_hash(&sidecar.asset, KIND_EMISION, &k.pool, &k.pool, &issuance, now, 1);
     assert_eq!((sidecar.entry_count, sidecar.last_kind, sidecar.flags), (1, KIND_EMISION, 0));
     assert_eq!(sidecar.log_root, chain(&[0; 32], &expected), "genesis: the issuance entry over an empty root");
     let ev: PagareEntry = find_event(&meta).expect("PagareEntry");
@@ -1465,4 +1491,226 @@ fn annotate_payment_attaches_the_receipt_to_a_payment_entry() {
     let ix = env.annotate_payment_ix(&k, line_id, 0, &council.pubkey(), 2, [0x22; 32]);
     env.send(ix, &council, &[]);
     assert_eq!(env.pagare(&k, line_id, 0).entry_count, 4);
+}
+
+// -----------------------------------------------------------------------------------------------
+// decision 55: the message the borrower signed
+// -----------------------------------------------------------------------------------------------
+
+const E_PAGARE_SIGNATURE_MISSING: u32 = ERR_BASE + PoolError::PagareSignatureMissing as u32;
+const E_SIGNED_DAY_MISMATCH: u32 = ERR_BASE + PoolError::SignedDayMismatch as u32;
+const E_SIGNED_DAY_INVALID: u32 = ERR_BASE + PoolError::SignedDayInvalid as u32;
+/// 2026-11-04T00:00 in Mexico City, 06:00Z: ten hours after `START_TIME`.
+const MX_MIDNIGHT_NOV_4: i64 = 1_793_772_000;
+
+/// The borrower's real ed25519 signature over `message`, with its SHA-256 and `signed_on`.
+fn signed_by(borrower: &Keypair, message: &[u8], signed_on: u32) -> PagareSignature {
+    use sha2::{Digest, Sha256};
+    let signature: [u8; 64] = borrower.sign_message(message).as_ref().try_into().unwrap();
+    PagareSignature { hash: Sha256::digest(message).into(), signature, signed_on }
+}
+
+fn signed_fields(p: &elote_pool::state::Pagare) -> PagareSignature {
+    PagareSignature { hash: p.signed_pagare_hash, signature: p.pagare_signature, signed_on: p.signed_on }
+}
+
+/// The draw keeps the hash, the signature and the day exactly as the borrower sent them; the event
+/// carries the hash and the day, the Core asset the hash, and the issuance entry binds it through
+/// `sha256(pagare_hash || signed_pagare_hash)`. The signature verifies against the borrower's key
+/// for whoever holds the text; the program does not check it.
+#[test]
+fn a_draw_keeps_the_signed_pagare_message_and_the_issuance_commits_to_it() {
+    use elote_pool::state::KIND_EMISION;
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let message = "Debo y pagaré incondicionalmente… pagaré 0 de la línea, texto completo".as_bytes();
+    let signed = signed_by(&borrower, message, 20261103);
+    assert_eq!(mexico_city_date(env.now()), 20261103);
+
+    let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, signed);
+    let meta = env.send(ix, &borrower, &[]);
+    let now = env.now();
+    let record = env.pagare(&k, line_id, 0);
+    assert_eq!(signed_fields(&record), signed, "stored as given");
+    assert!(solana_signature::Signature::from(record.pagare_signature).verify(borrower.pubkey().as_ref(), message));
+
+    let ev: PagareIssued = find_event(&meta).expect("PagareIssued");
+    assert_eq!((ev.signed_pagare_hash, ev.signed_on, ev.pagare_hash), (signed.hash, signed.signed_on, record.pagare_hash));
+
+    let asset = env.asset_state(&record.asset);
+    let attributes = &asset.plugin_list.attributes.as_ref().expect("Attributes").attributes.attribute_list;
+    let value = attributes.iter().find(|a| a.key == "signed_pagare_hash").map(|a| a.value.clone());
+    assert_eq!(value, Some(hex(&signed.hash)));
+
+    let issuance = reference::pagare::issuance_hash(&record.pagare_hash, &signed.hash);
+    let entry = reference::pagare::entry_hash(&record.asset.to_bytes(), KIND_EMISION, &k.pool.to_bytes(), &k.pool.to_bytes(), &issuance, now, 1);
+    assert_eq!(record.log_root, reference::pagare::genesis_root(&entry));
+}
+
+/// A zero hash or a zero signature is no subscription: refused before anything is written.
+#[test]
+fn a_draw_without_the_signed_hash_or_the_signature_is_refused_and_writes_nothing() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let line_key = line_pda(&k.pool, line_id).0;
+    let good = signed_by(&borrower, b"the pagare text", mexico_city_date(env.now()));
+    let vault = env.token_balance(&k.vault);
+    for signed in [PagareSignature { hash: [0; 32], ..good }, PagareSignature { signature: [0; 64], ..good }] {
+        let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, signed);
+        env.expect_err(ix, &borrower, &[], E_PAGARE_SIGNATURE_MISSING);
+    }
+    assert_eq!((env.line(&k, line_id).draws, env.token_balance(&k.vault)), (0, vault));
+    assert!(env.svm.get_account(&pagare_pda(&line_key, 0).0).is_none());
+    assert!(env.svm.get_account(&pagare_asset_pda(&line_key, 0).0).is_none());
+}
+
+/// The pagaré is subscribed the day of the draw, in Mexico City: yesterday and tomorrow are
+/// refused, and a date that does not exist is invalid.
+#[test]
+fn a_pagare_signed_another_day_in_mexico_city_is_refused() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    // START_TIME is 2026-11-03T20:00Z, 14:00 on the 3rd in Mexico City.
+    for (day, code) in [(20261102, E_SIGNED_DAY_MISMATCH), (20261104, E_SIGNED_DAY_MISMATCH), (20261131, E_SIGNED_DAY_INVALID), (0, E_SIGNED_DAY_INVALID)] {
+        let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, signed_by(&borrower, b"text", day));
+        env.expect_err(ix, &borrower, &[], code);
+    }
+    let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, signed_by(&borrower, b"text", 20261103));
+    env.send(ix, &borrower, &[]);
+    assert_eq!(env.pagare(&k, line_id, 0).signed_on, 20261103);
+}
+
+/// Mexico City's midnight is 06:00Z (UTC-6): a second before it the 3rd is today and the 4th
+/// refused; at it the 4th is today and the 3rd refused.
+#[test]
+fn the_signed_day_turns_at_mexico_city_midnight() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    for (at, today, other) in [(MX_MIDNIGHT_NOV_4 - 1, 20261103, 20261104), (MX_MIDNIGHT_NOV_4, 20261104, 20261103)] {
+        env.warp(at);
+        let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, signed_by(&borrower, b"text", other));
+        env.expect_err(ix, &borrower, &[], E_SIGNED_DAY_MISMATCH);
+        let draws = env.line(&k, line_id).draws;
+        let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, signed_by(&borrower, b"text", today));
+        env.send(ix, &borrower, &[]);
+        assert_eq!(env.pagare(&k, line_id, draws).signed_on, today);
+    }
+}
+
+/// The program keeps no index of signed messages: the same hash, signature and day pass again on
+/// a retry the same day, and even on a second draw. Uniqueness is the app's and the expediente's.
+#[test]
+fn the_program_does_not_track_uniqueness_a_signed_message_reused_the_same_day_passes() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let signed = signed_by(&borrower, b"one text", mexico_city_date(env.now()));
+    // A first attempt fails for another reason (more than the line has) and the retry passes.
+    let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), 5 * UNIT, signed);
+    env.expect_err(ix, &borrower, &[], E_WRONG_AMOUNT);
+    let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, signed);
+    env.send(ix, &borrower, &[]);
+    env.warp(env.now() + 60);
+    let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, signed);
+    env.send(ix, &borrower, &[]);
+    assert_eq!((signed_fields(&env.pagare(&k, line_id, 0)), signed_fields(&env.pagare(&k, line_id, 1))), (signed, signed));
+}
+
+/// The registry's first root of a fresh pagaré depends on the signed hash: the same draw facts
+/// with another signed hash would give another root.
+#[test]
+fn the_registry_root_of_a_fresh_pagare_changes_with_the_signed_hash_alone() {
+    use elote_pool::state::KIND_EMISION;
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let p = env.line_params(4 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let signed = signed_by(&borrower, b"text A", mexico_city_date(env.now()));
+    let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, signed);
+    env.send(ix, &borrower, &[]);
+    let now = env.now();
+    let r = env.pagare(&k, line_id, 0);
+    let root = |signed_hash: &[u8; 32]| {
+        let issuance = reference::pagare::issuance_hash(&r.pagare_hash, signed_hash);
+        let entry = reference::pagare::entry_hash(&r.asset.to_bytes(), KIND_EMISION, &k.pool.to_bytes(), &k.pool.to_bytes(), &issuance, now, 1);
+        reference::pagare::genesis_root(&entry)
+    };
+    let mut other = signed.hash;
+    other[31] ^= 1;
+    assert_eq!(r.log_root, root(&signed.hash));
+    assert_ne!(root(&other), root(&signed.hash));
+    // Before decision 55 the entry stated the pagaré hash alone: not what the record holds now.
+    let bare = reference::pagare::entry_hash(&r.asset.to_bytes(), KIND_EMISION, &k.pool.to_bytes(), &k.pool.to_bytes(), &r.pagare_hash, now, 1);
+    assert_ne!(r.log_root, reference::pagare::genesis_root(&bare));
+}
+
+/// No instruction after `draw` rewrites the signed message: an Abono, a receipt annotation, a
+/// procuración and its revocation, a court annotation, the payoff, the delivery and the owner's
+/// burn leave the three fields as the draw wrote them (the quita: tests/quita.rs).
+#[test]
+fn no_instruction_after_the_draw_rewrites_the_signed_message() {
+    use elote_pool::state::KIND_ANOTACION_JUDICIAL;
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 20 * UNIT);
+    let borrower = env.borrower(&k);
+    let council = env.council.insecure_clone();
+    let p = env.line_params(2 * UNIT, 1_000);
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let s0 = signed_by(&borrower, b"pagare 0", mexico_city_date(env.now()));
+    let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, s0);
+    env.send(ix, &borrower, &[]);
+    env.warp(env.now() + 3_600);
+    let s1 = signed_by(&borrower, b"pagare 1", mexico_city_date(env.now()));
+    let ix = env.draw_ix_with_signature(&k, line_id, &borrower.pubkey(), UNIT, s1);
+    env.send(ix, &borrower, &[]);
+    let check = |env: &Env, step: &str| {
+        assert_eq!(signed_fields(&env.pagare(&k, line_id, 0)), s0, "pagaré 0 after {step}");
+        assert_eq!(signed_fields(&env.pagare(&k, line_id, 1)), s1, "pagaré 1 after {step}");
+    };
+
+    env.warp(env.now() + 30 * 86_400);
+    env.mint_to(&k.asset_mint, &council, &borrower.pubkey(), 10 * UNIT);
+    let amount = env.interest_unpaid(&k, line_id) + 1;
+    let ix = env.repay_ix_full(&k, line_id, &borrower.pubkey(), amount, [0; 32], &env.payment_sidecars(&k, line_id, amount));
+    env.send(ix, &borrower, &[]);
+    check(&env, "an Abono");
+    let ix = env.annotate_payment_ix(&k, line_id, 0, &council.pubkey(), 2, RECEIPT_HASH);
+    env.send(ix, &council, &[]);
+    check(&env, "a receipt annotation");
+    let procurador = env.funded(1);
+    env.procuracion(&k, line_id, 0, &procurador.pubkey(), ENDOSO_HASH);
+    check(&env, "a procuración");
+    let ix = env.revoke_procuracion_ix(&k, line_id, 0, &council.pubkey(), [0x7e; 32]);
+    env.send(ix, &council, &[]);
+    check(&env, "its revocation");
+    env.court_annotation(&k, line_id, 1, KIND_ANOTACION_JUDICIAL, [0x6a; 32]);
+    check(&env, "a court annotation");
+    let payoff = env.payoff(&k, line_id);
+    env.repay(&k, line_id, &borrower, payoff);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Repaid);
+    check(&env, "the payoff");
+    for i in 0..2 {
+        if env.pagare(&k, line_id, i).flags & PAGARE_FLAG_DELIVERED == 0 {
+            env.deliver_pagare(&k, line_id, i);
+        }
+    }
+    check(&env, "the delivery");
+    let ix = env.burn_pagare_ix(&k, line_id, 0, &borrower.pubkey(), [0x7a; 32]);
+    env.send(ix, &borrower, &[]);
+    check(&env, "the owner's burn");
 }

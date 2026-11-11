@@ -394,6 +394,19 @@ pub const PARITY_FIX: u64 = 100_000_000;
 /// The clock every `Env` starts at: 2026-11-03T20:00Z.
 pub const START_TIME: i64 = 1_793_736_000;
 
+/// What a draw carries of the message the borrower signed (decision 55).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PagareSignature {
+    pub hash: [u8; 32],
+    pub signature: [u8; 64],
+    pub signed_on: u32,
+}
+
+/// `yyyymmdd` in Mexico City (UTC-6) of the unix time `ts`.
+pub fn mexico_city_date(ts: i64) -> u32 {
+    yyyymmdd((ts - 6 * 3_600).div_euclid(86_400))
+}
+
 /// `yyyymmdd` of a day number (days since 1970-01-01).
 pub fn yyyymmdd(days: i64) -> u32 {
     let z = days + 719_468;
@@ -1431,6 +1444,28 @@ impl Env {
         self.draw_ix_full(k, line_id, borrower, borrower, amount, asset_bump, pagare_bump, cert_fingerprint, signature_method)
     }
 
+    /// The harness's message for draw `draw_index` of `line` (decision 55): a fixed text naming the
+    /// line, the draw and today in Mexico City, its SHA-256, and a deterministic non-zero stand-in
+    /// for the signature (the program stores it unverified); `signed_on` is today by the SVM clock.
+    pub fn default_pagare_signature(&self, line: &Pubkey, draw_index: u16) -> PagareSignature {
+        use sha2::{Digest, Sha256};
+        let signed_on = mexico_city_date(self.now());
+        let message = format!("TEST pagaré message, line {line} draw {draw_index} {signed_on}");
+        let hash: [u8; 32] = Sha256::digest(message.as_bytes()).into();
+        let mut signature = [0u8; 64];
+        signature[..32].copy_from_slice(&Sha256::digest([b"signature 1 ".as_slice(), &hash].concat()));
+        signature[32..].copy_from_slice(&Sha256::digest([b"signature 2 ".as_slice(), &hash].concat()));
+        PagareSignature { hash, signature, signed_on }
+    }
+
+    /// A tranche of `amount` paid by the borrower, with the signed pagaré message given explicitly.
+    pub fn draw_ix_with_signature(&self, k: &PoolKeys, line_id: u64, borrower: &Pubkey, amount: u64, signed: PagareSignature) -> Instruction {
+        let line = line_pda(&k.pool, line_id).0;
+        let draw_index = self.line(k, line_id).draws;
+        let (asset_bump, pagare_bump) = (pagare_asset_pda(&line, draw_index).1, pagare_pda(&line, draw_index).1);
+        self.draw_ix_complete(k, line_id, borrower, borrower, amount, asset_bump, pagare_bump, CERT_FINGERPRINT, SIGNATURE_METHOD, signed)
+    }
+
     /// As `draw_ix_paid_by`, with the two PDA bumps given explicitly (the program verifies them).
     #[allow(clippy::too_many_arguments)]
     pub fn draw_ix_full(
@@ -1444,6 +1479,26 @@ impl Env {
         pagare_bump: u8,
         cert_fingerprint: [u8; 32],
         signature_method: u8,
+    ) -> Instruction {
+        let line = line_pda(&k.pool, line_id).0;
+        let signed = self.default_pagare_signature(&line, self.line(k, line_id).draws);
+        self.draw_ix_complete(k, line_id, borrower, payer, amount, asset_bump, pagare_bump, cert_fingerprint, signature_method, signed)
+    }
+
+    /// Every argument of `draw` given explicitly.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_ix_complete(
+        &self,
+        k: &PoolKeys,
+        line_id: u64,
+        borrower: &Pubkey,
+        payer: &Pubkey,
+        amount: u64,
+        asset_bump: u8,
+        pagare_bump: u8,
+        cert_fingerprint: [u8; 32],
+        signature_method: u8,
+        signed: PagareSignature,
     ) -> Instruction {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
@@ -1470,7 +1525,19 @@ impl Env {
             .to_account_metas(None),
             data: {
                 let pool = self.pool(k);
-                elote_pool::instruction::Draw { amount_mxn: amount, fix_rate: pool.fix_rate, fix_date: pool.fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method }.data()
+                elote_pool::instruction::Draw {
+                    amount_mxn: amount,
+                    fix_rate: pool.fix_rate,
+                    fix_date: pool.fix_date,
+                    asset_bump,
+                    pagare_bump,
+                    cert_fingerprint,
+                    signature_method,
+                    signed_pagare_hash: signed.hash,
+                    pagare_signature: signed.signature,
+                    signed_on: signed.signed_on,
+                }
+                .data()
             },
         }
     }

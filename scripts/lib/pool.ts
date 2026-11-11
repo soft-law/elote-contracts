@@ -12,6 +12,7 @@ import {
   pipe,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
+  signBytes,
 } from "@solana/kit";
 import { TOKEN_PROGRAM_ADDRESS, fetchToken, findAssociatedTokenPda } from "@solana-program/token";
 import {
@@ -32,13 +33,36 @@ import {
   lineLateDue,
   lineOwed,
   lineSponsor,
+  mexicoCityDate,
   mxnForUsdc,
   usdcCeilForMxn,
   repayPrincipalCap,
   repaySidecars,
+  signedPagareHash,
   withRemainingAccounts,
 } from "../../clients/js/src/index.ts";
 import { type Cluster, SendError, chainNow, fail, fmtMxn, send } from "./cli.ts";
+
+/**
+ * The `draw` arguments for the message the borrower subscribes the pagaré with (decision 55): its
+ * SHA-256, the borrower's ed25519 signature over it, and today in Mexico City by the cluster's
+ * clock, the day the program requires. `message` is the full filled pagaré text; the scripts have
+ * none, so without it they sign a placeholder that says what it is.
+ */
+export async function signPagare(
+  c: Cluster,
+  borrower: KeyPairSigner,
+  args: { line: Address; lineId: bigint; drawIndex: number; message?: Uint8Array }
+): Promise<{ signedPagareHash: Uint8Array; pagareSignature: Uint8Array; signedOn: number }> {
+  const signedOn = mexicoCityDate(await chainNow(c));
+  const message =
+    args.message ?? new TextEncoder().encode(`DEMO pagaré message, not a pagaré text: ${c.name}, line ${args.lineId} (${args.line}) draw ${args.drawIndex} ${signedOn}`);
+  return {
+    signedPagareHash: await signedPagareHash(message),
+    pagareSignature: await signBytes(borrower.keyPair.privateKey, message),
+    signedOn,
+  };
+}
 
 /** The pool at `address`, checked to be an elote_pool pool at its own PDA. */
 export async function loadPool(c: Cluster, address: Address): Promise<Pool> {

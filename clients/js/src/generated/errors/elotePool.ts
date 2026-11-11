@@ -173,6 +173,12 @@ export const ELOTE_POOL_ERROR__POOL_IMPAIRED = 0x17bc; // 6076
 export const ELOTE_POOL_ERROR__BALANCE_OUTSTANDING = 0x17bd; // 6077
 /** AssetDecimalsInvalid: The asset mint must have 6 decimals, the scale the FIX conversion counts in */
 export const ELOTE_POOL_ERROR__ASSET_DECIMALS_INVALID = 0x17be; // 6078
+/** PagareSignatureMissing: The draw carries no hash or no signature of the pagaré message the borrower signed */
+export const ELOTE_POOL_ERROR__PAGARE_SIGNATURE_MISSING = 0x17bf; // 6079
+/** SignedDayMismatch: The pagaré was not signed today in Mexico City */
+export const ELOTE_POOL_ERROR__SIGNED_DAY_MISMATCH = 0x17c0; // 6080
+/** SignedDayInvalid: The pagaré's signing date is not a valid date */
+export const ELOTE_POOL_ERROR__SIGNED_DAY_INVALID = 0x17c1; // 6081
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -231,6 +237,7 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__PAGARE_ALREADY_DELIVERED
   | typeof ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID
   | typeof ELOTE_POOL_ERROR__PAGARE_NOT_COVERED
+  | typeof ELOTE_POOL_ERROR__PAGARE_SIGNATURE_MISSING
   | typeof ELOTE_POOL_ERROR__PAGARE_TEMPLATE_HASH_REQUIRED
   | typeof ELOTE_POOL_ERROR__PAUSED
   | typeof ELOTE_POOL_ERROR__POOL_IMPAIRED
@@ -241,6 +248,8 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM
   | typeof ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID
+  | typeof ELOTE_POOL_ERROR__SIGNED_DAY_INVALID
+  | typeof ELOTE_POOL_ERROR__SIGNED_DAY_MISMATCH
   | typeof ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED
   | typeof ELOTE_POOL_ERROR__SPONSOR_REQUIRED
   | typeof ELOTE_POOL_ERROR__SPONSOR_ROLE_INVALID
@@ -314,6 +323,7 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__PAGARE_ALREADY_DELIVERED]: `This pagaré was already delivered`,
     [ELOTE_POOL_ERROR__PAGARE_ALREADY_PAID]: `This pagaré is already paid`,
     [ELOTE_POOL_ERROR__PAGARE_NOT_COVERED]: `No repayment has marked this pagaré paid`,
+    [ELOTE_POOL_ERROR__PAGARE_SIGNATURE_MISSING]: `The draw carries no hash or no signature of the pagaré message the borrower signed`,
     [ELOTE_POOL_ERROR__PAGARE_TEMPLATE_HASH_REQUIRED]: `The pagaré template's hash is required`,
     [ELOTE_POOL_ERROR__PAUSED]: `The pool is paused`,
     [ELOTE_POOL_ERROR__POOL_IMPAIRED]: `Retired: deposits price at the unprovisioned NAV instead of waiting (decision 40b)`,
@@ -324,6 +334,8 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__SCHEDULE_ENDS_AFTER_TERM]: `The last installment would fall due after the term`,
     [ELOTE_POOL_ERROR__SHARE_MINT_NOT_ALLOWED]: `The share mint is not one this pool can own and price: wrong authority, supply, decimals or extensions`,
     [ELOTE_POOL_ERROR__SIGNATURE_METHOD_INVALID]: `signature_method is unknown, or lacks its certificate fingerprint`,
+    [ELOTE_POOL_ERROR__SIGNED_DAY_INVALID]: `The pagaré's signing date is not a valid date`,
+    [ELOTE_POOL_ERROR__SIGNED_DAY_MISMATCH]: `The pagaré was not signed today in Mexico City`,
     [ELOTE_POOL_ERROR__SLIPPAGE_EXCEEDED]: `The result is below the minimum the caller accepts`,
     [ELOTE_POOL_ERROR__SPONSOR_REQUIRED]: `The sponsor named on this line must sign`,
     [ELOTE_POOL_ERROR__SPONSOR_ROLE_INVALID]: `sponsor_role is unknown`,

@@ -186,4 +186,10 @@ pub enum PoolError {
     BalanceOutstanding,
     #[msg("The asset mint must have 6 decimals, the scale the FIX conversion counts in")]
     AssetDecimalsInvalid,
+    #[msg("The draw carries no hash or no signature of the pagaré message the borrower signed")]
+    PagareSignatureMissing,
+    #[msg("The pagaré was not signed today in Mexico City")]
+    SignedDayMismatch,
+    #[msg("The pagaré's signing date is not a valid date")]
+    SignedDayInvalid,
 }

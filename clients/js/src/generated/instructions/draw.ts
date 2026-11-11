@@ -144,6 +144,9 @@ export type DrawInstructionData = {
   pagareBump: number;
   certFingerprint: ReadonlyUint8Array;
   signatureMethod: number;
+  signedPagareHash: ReadonlyUint8Array;
+  pagareSignature: ReadonlyUint8Array;
+  signedOn: number;
 };
 
 export type DrawInstructionDataArgs = {
@@ -154,6 +157,9 @@ export type DrawInstructionDataArgs = {
   pagareBump: number;
   certFingerprint: ReadonlyUint8Array;
   signatureMethod: number;
+  signedPagareHash: ReadonlyUint8Array;
+  pagareSignature: ReadonlyUint8Array;
+  signedOn: number;
 };
 
 export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructionDataArgs> {
@@ -167,6 +173,9 @@ export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructio
       ["pagareBump", getU8Encoder()],
       ["certFingerprint", fixEncoderSize(getBytesEncoder(), 32)],
       ["signatureMethod", getU8Encoder()],
+      ["signedPagareHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["pagareSignature", fixEncoderSize(getBytesEncoder(), 64)],
+      ["signedOn", getU32Encoder()],
     ]),
     (value) => ({ ...value, discriminator: DRAW_DISCRIMINATOR }),
   );
@@ -182,6 +191,9 @@ export function getDrawInstructionDataDecoder(): FixedSizeDecoder<DrawInstructio
     ["pagareBump", getU8Decoder()],
     ["certFingerprint", fixDecoderSize(getBytesDecoder(), 32)],
     ["signatureMethod", getU8Decoder()],
+    ["signedPagareHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["pagareSignature", fixDecoderSize(getBytesDecoder(), 64)],
+    ["signedOn", getU32Decoder()],
   ]);
 }
 
@@ -248,6 +260,9 @@ export type DrawAsyncInput<
   pagareBump: DrawInstructionDataArgs["pagareBump"];
   certFingerprint: DrawInstructionDataArgs["certFingerprint"];
   signatureMethod: DrawInstructionDataArgs["signatureMethod"];
+  signedPagareHash: DrawInstructionDataArgs["signedPagareHash"];
+  pagareSignature: DrawInstructionDataArgs["pagareSignature"];
+  signedOn: DrawInstructionDataArgs["signedOn"];
 };
 
 export async function getDrawInstructionAsync<
@@ -590,6 +605,9 @@ export type DrawInput<
   pagareBump: DrawInstructionDataArgs["pagareBump"];
   certFingerprint: DrawInstructionDataArgs["certFingerprint"];
   signatureMethod: DrawInstructionDataArgs["signatureMethod"];
+  signedPagareHash: DrawInstructionDataArgs["signedPagareHash"];
+  pagareSignature: DrawInstructionDataArgs["pagareSignature"];
+  signedOn: DrawInstructionDataArgs["signedOn"];
 };
 
 export function getDrawInstruction<

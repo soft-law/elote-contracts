@@ -2,23 +2,28 @@
 // tranche's pagaré (a frozen Metaplex Core asset owned by the pool, in the pool's collection) and its
 // record. The borrower signs alone, over the FIX in force, which the script prints with the USDC
 // to be delivered before asking; the admin pays the two accounts' rent as the app's relayer would.
-// The pagaré hash is derived on chain from the approved template and terms.
+// The pagaré hash is derived on chain from the approved template and terms. The borrower subscribes
+// the pagaré by signing a message with its full text (decision 55); the draw records the message's
+// SHA-256, the signature and today's date in Mexico City.
 //
 //   npx tsx scripts/draw.ts --cluster local|devnet --pool <address> --line-id <n>
 //        --borrower-keypair <path> --amount <MXN> [--signature-method wallet|psc|efirma
-//        --cert-fingerprint <64 hex> --cert-salt <64 hex>] [--yes]
+//        --cert-fingerprint <64 hex> --cert-salt <64 hex>] [--pagare-text <path>] [--yes]
 //
 // --amount            the tranche in MXN pesos, up to 2 decimals, at most what the line has left
 // --signature-method  how the pagaré text was signed: wallet (the default), psc or efirma
 // --cert-fingerprint  the signing certificate's fingerprint; with psc or efirma, and only with
 // --cert-salt         the salt kept in the expediente: the draw records sha256(salt || fingerprint),
 //                     never the fingerprint, which can be looked up to the signer's RFC
+// --pagare-text       the file holding the filled pagaré text the borrower signs, as bytes; without
+//                     it the borrower signs a placeholder labelled DEMO, which is no pagaré text
 // --yes               send without asking when the cluster is not this machine
 //
 // The admin key comes from ELOTE_ADMIN_KEYPAIR or .demo-keys/admin.json; ELOTE_RPC overrides the
 // cluster's RPC URL. Keys are never printed, only addresses.
 //
 // Demo on Solana devnet with test assets. Not an offer of securities.
+import { readFileSync } from "node:fs";
 import { address } from "@solana/kit";
 import { SYSTEM_PROGRAM_ADDRESS } from "@solana-program/system";
 import { TOKEN_PROGRAM_ADDRESS, getCreateAssociatedTokenIdempotentInstructionAsync } from "@solana-program/token";
@@ -48,13 +53,13 @@ import {
   required,
   sendOrFail,
 } from "./lib/cli.ts";
-import { ataOf, loadLine, loadPool } from "./lib/pool.ts";
+import { ataOf, loadLine, loadPool, signPagare } from "./lib/pool.ts";
 
 const METHODS = { wallet: 0, psc: 1, efirma: 2 } as const; // state::SIGNATURE_*
 
 checkFlags([
   "cluster", "pool", "line-id", "borrower-keypair", "amount", "signature-method", "cert-fingerprint", "cert-salt",
-  "yes",
+  "pagare-text", "yes",
 ]);
 const c = cluster();
 const poolAddress = address(required("pool"));
@@ -84,6 +89,9 @@ const drawIndex = l.draws;
 // (FixMismatch) and the script must be run again.
 const usdc = usdcForMxn(amount, pool.fixRate);
 console.log(`FIX ${pool.fixRate} (x10^4 MXN per USD) of ${pool.fixDate}: MXN ${fmtMxn(amount)} delivered as ${fmt(usdc)} USDC`);
+const textPath = arg("pagare-text");
+const signed = await signPagare(c, borrower, { line, lineId, drawIndex, message: textPath === undefined ? undefined : readFileSync(textPath) });
+console.log(`pagaré text ${textPath ?? "DEMO placeholder"}: sha256 ${Buffer.from(signed.signedPagareHash).toString("hex")}, signed on ${signed.signedOn}`);
 await confirmCluster(c, "draw");
 const borrowerAsset = await ataOf(borrower.address, pool.assetMint);
 const signature = await sendOrFail(c, `draw MXN ${fmtMxn(amount)}, pagaré ${drawIndex}`, borrower, [
@@ -104,6 +112,7 @@ const signature = await sendOrFail(c, `draw MXN ${fmtMxn(amount)}, pagaré ${dra
     fixDate: pool.fixDate,
     certFingerprint,
     signatureMethod,
+    ...signed,
   }),
 ]);
 

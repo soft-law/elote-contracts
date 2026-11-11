@@ -40,6 +40,13 @@ pub fn condonation_hash(document_hash: &[u8; 32], principal_condoned: u64, princ
     hashv(&[QUITA_DOMAIN, document_hash, &principal_condoned.to_le_bytes(), &principal_balance.to_le_bytes()]).to_bytes()
 }
 
+/// What the issuance entry states (decision 55): `sha256(pagare_hash || signed_pagare_hash)`, the
+/// on-chain derivation bound to the message the borrower signed. Both preimages travel in the
+/// `PagareIssued` event.
+pub fn issuance_hash(pagare_hash: &[u8; 32], signed_pagare_hash: &[u8; 32]) -> [u8; 32] {
+    hashv(&[pagare_hash, signed_pagare_hash]).to_bytes()
+}
+
 /// `sha256(asset || kind || from || to || hash || stated_at LE || entry_count LE)`: the asset first,
 /// so two pagarés with the same facts never share a chain.
 pub fn entry_hash(asset: &Pubkey, kind: u8, from: &Pubkey, to: &Pubkey, hash: &[u8; 32], stated_at: i64, entry_count: u32) -> [u8; 32] {

@@ -61,7 +61,10 @@ export type Pagare = {
   drawIndex: number;
   /** The Core asset at `[PAGARE_ASSET, line, draw_index]`. */
   asset: Address;
-  /** Hash of the signed pagaré data message, as `draw` received it. */
+  /**
+   * Derived on chain by `draw`: `sha256(pagare_template_hash || terms_hash || line ||
+   * draw_index || amount_mxn || drawn_at)` (`instructions::lines::pagare_hash`).
+   */
   pagareHash: ReadonlyUint8Array;
   /** The tranche this pagaré documents, in centavos of MXN: the sum the pagaré promises. */
   amountMxn: bigint;
@@ -118,6 +121,12 @@ export type Pagare = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
+  /** SHA-256 of the message with the full pagaré text the borrower signed off chain (decision 55). */
+  signedPagareHash: ReadonlyUint8Array;
+  /** The borrower's ed25519 signature over that message, stored unverified: the program never sees the text. */
+  pagareSignature: ReadonlyUint8Array;
+  /** The day the borrower signed, `yyyymmdd` in Mexico City: the day of the draw. */
+  signedOn: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -128,7 +137,10 @@ export type PagareArgs = {
   drawIndex: number;
   /** The Core asset at `[PAGARE_ASSET, line, draw_index]`. */
   asset: Address | HasAddress;
-  /** Hash of the signed pagaré data message, as `draw` received it. */
+  /**
+   * Derived on chain by `draw`: `sha256(pagare_template_hash || terms_hash || line ||
+   * draw_index || amount_mxn || drawn_at)` (`instructions::lines::pagare_hash`).
+   */
   pagareHash: ReadonlyUint8Array;
   /** The tranche this pagaré documents, in centavos of MXN: the sum the pagaré promises. */
   amountMxn: number | bigint;
@@ -185,6 +197,12 @@ export type PagareArgs = {
    * instructed, kept apart from the pagaré, which promises MXN only.
    */
   deliveryHash: ReadonlyUint8Array;
+  /** SHA-256 of the message with the full pagaré text the borrower signed off chain (decision 55). */
+  signedPagareHash: ReadonlyUint8Array;
+  /** The borrower's ed25519 signature over that message, stored unverified: the program never sees the text. */
+  pagareSignature: ReadonlyUint8Array;
+  /** The day the borrower signed, `yyyymmdd` in Mexico City: the day of the draw. */
+  signedOn: number;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -217,6 +235,9 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["fixDate", getU32Encoder()],
       ["usdcDelivered", getU64Encoder()],
       ["deliveryHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["signedPagareHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["pagareSignature", fixEncoderSize(getBytesEncoder(), 64)],
+      ["signedOn", getU32Encoder()],
       ["reserved", fixEncoderSize(getBytesEncoder(), 28)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
@@ -250,6 +271,9 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["fixDate", getU32Decoder()],
     ["usdcDelivered", getU64Decoder()],
     ["deliveryHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["signedPagareHash", fixDecoderSize(getBytesDecoder(), 32)],
+    ["pagareSignature", fixDecoderSize(getBytesDecoder(), 64)],
+    ["signedOn", getU32Decoder()],
     ["reserved", fixDecoderSize(getBytesDecoder(), 28)],
   ]);
 }
@@ -321,5 +345,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 363;
+  return 463;
 }

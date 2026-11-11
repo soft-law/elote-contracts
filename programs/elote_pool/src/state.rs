@@ -429,7 +429,8 @@ pub struct Pagare {
     pub draw_index: u16,
     /// The Core asset at `[PAGARE_ASSET, line, draw_index]`.
     pub asset: Pubkey,
-    /// Hash of the signed pagaré data message, as `draw` received it.
+    /// Derived on chain by `draw`: `sha256(pagare_template_hash || terms_hash || line ||
+    /// draw_index || amount_mxn || drawn_at)` (`instructions::lines::pagare_hash`).
     pub pagare_hash: [u8; 32],
     /// The tranche this pagaré documents, in centavos of MXN: the sum the pagaré promises.
     pub amount_mxn: u64,
@@ -474,6 +475,12 @@ pub struct Pagare {
     /// `sha256(pagare_hash || fix_rate || fix_date || usdc_delivered)`: the delivery the borrower
     /// instructed, kept apart from the pagaré, which promises MXN only.
     pub delivery_hash: [u8; 32],
+    /// SHA-256 of the message with the full pagaré text the borrower signed off chain (decision 55).
+    pub signed_pagare_hash: [u8; 32],
+    /// The borrower's ed25519 signature over that message, stored unverified: the program never sees the text.
+    pub pagare_signature: [u8; 64],
+    /// The day the borrower signed, `yyyymmdd` in Mexico City: the day of the draw.
+    pub signed_on: u32,
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 28],
 }

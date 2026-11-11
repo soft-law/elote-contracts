@@ -13,7 +13,7 @@ use solana_signer::Signer;
 fn account_sizes_are_fixed_and_reserved_starts_zero() {
     assert_eq!(8 + Pool::INIT_SPACE, 495);
     assert_eq!(8 + CreditLine::INIT_SPACE, 528);
-    assert_eq!(8 + Pagare::INIT_SPACE, 363);
+    assert_eq!(8 + Pagare::INIT_SPACE, 463, "363 before decision 55 added the signed message's hash, signature and day");
 
     let mut env = Env::new();
     let (k, _) = env.setup_pool();

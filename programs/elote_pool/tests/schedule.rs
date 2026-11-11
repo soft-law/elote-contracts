@@ -1597,6 +1597,9 @@ mod state_machine {
             let last_due = env.line(&k, line_id).last_due().unwrap();
             let mut r = RefLine::new(rate, last_due);
             let keeper = env.funded(1);
+            // The signed message of every pagaré, as its draw sent it (decision 55).
+            let mut signed: Vec<PagareSignature> = Vec::new();
+            let line_key = line_pda(&k.pool, line_id).0;
             for op in ops {
                 let before = env.line(&k, line_id);
                 match op {
@@ -1606,8 +1609,12 @@ mod state_machine {
                         let amount = amount.max(100_000).min(available);
                         if amount == 0 { continue; }
                         let ix = env.draw_ix_amount(&k, line_id, &b.pubkey(), amount);
+                        let message = env.default_pagare_signature(&line_key, before.draws);
                         match env.try_send(ix, &b, &[]) {
-                            Ok(_) => r.draw(env.now(), amount),
+                            Ok(_) => {
+                                r.draw(env.now(), amount);
+                                signed.push(message);
+                            }
                             Err(e) => {
                                 let code = custom_error_code(&e.err);
                                 prop_assert!(
@@ -1673,6 +1680,10 @@ mod state_machine {
                 prop_assert!(line.interest_repaid <= line.interest_accrued(now).unwrap());
                 prop_assert_eq!(u128::from(line.interest_accrued(now).unwrap()), r.interest_accrued(now), "the accrual against the reference");
                 prop_assert_eq!(u128::from(line.interest_repaid), r.interest_paid);
+                for (i, s) in signed.iter().enumerate() {
+                    let p = env.pagare(&k, line_id, i as u16);
+                    prop_assert_eq!((p.signed_pagare_hash, p.pagare_signature, p.signed_on), (s.hash, s.signature, s.signed_on), "no instruction rewrites the signed message");
+                }
             }
         }
     }

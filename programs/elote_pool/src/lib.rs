@@ -150,7 +150,9 @@ pub mod elote_pool {
     /// Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the
     /// borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain
     /// from the approved template and terms) as a frozen Core asset owned by the pool, with its
-    /// `Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw
+    /// `Pagare` record, which keeps the hash, the signature and the day of the message with the
+    /// pagaré's text the borrower signed off chain (decision 55; the issuance entry binds the hash).
+    /// The borrower and the rent payer sign; refused while paused, once the draw
     /// window has closed, on a changed or stale FIX, or above what the line, the line cap (the line's
     /// USDC drawn within `max_line_bps` of the NAV now), the vault or the pool cap allows.
     #[allow(clippy::too_many_arguments)]
@@ -163,8 +165,12 @@ pub mod elote_pool {
         pagare_bump: u8,
         cert_fingerprint: [u8; 32],
         signature_method: u8,
+        signed_pagare_hash: [u8; 32],
+        pagare_signature: [u8; 64],
+        signed_on: u32,
     ) -> Result<()> {
-        instructions::lines::draw(ctx, amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method)
+        let signed = instructions::lines::SignedPagare { hash: signed_pagare_hash, signature: pagare_signature, signed_on };
+        instructions::lines::draw(ctx, amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method, signed)
     }
 
     /// Delivers paid pagaré `draw_index` to the line's borrower — or to the aval who settled it

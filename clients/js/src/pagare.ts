@@ -17,8 +17,13 @@ import {
   getAddressEncoder,
   getBase58Decoder,
   getProgramDerivedAddress,
+  getI64Encoder,
+  getPublicKeyFromAddress,
   getU16Encoder,
+  getU32Encoder,
   getUtf8Encoder,
+  type SignatureBytes,
+  verifySignature,
 } from "@solana/kit";
 import { ELOTE_POOL_PROGRAM_ADDRESS, type PagareSeeds, findPagarePda, getPagareDiscriminatorBytes } from "./generated";
 
@@ -156,4 +161,77 @@ export async function pagaresUnderProcuracion(
     })
     .send();
   return accounts.map((a) => a.pubkey);
+}
+
+async function sha256(...parts: ReadonlyUint8Array[]): Promise<Uint8Array> {
+  const total = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    total.set(p, at);
+    at += p.length;
+  }
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", total));
+}
+
+const asBytes = (message: string | ReadonlyUint8Array) => (typeof message === "string" ? getUtf8Encoder().encode(message) : message);
+
+/**
+ * The `signed_pagare_hash` a draw records (decision 55): SHA-256 over the bytes of the message the
+ * borrower signed, the full filled pagaré text (UTF-8 when given as a string).
+ */
+export const signedPagareHash = (message: string | ReadonlyUint8Array): Promise<Uint8Array> => sha256(asBytes(message));
+
+/**
+ * Whether `signature` (a record's `pagare_signature`) is `borrower`'s ed25519 signature over
+ * `message`, and, when `signedPagareHash` (the record's) is given, whether `message` is the text
+ * it commits to. The program stores both without verifying them: it never sees the text.
+ */
+export async function verifyPagareSignature(input: {
+  message: string | ReadonlyUint8Array;
+  signature: ReadonlyUint8Array;
+  borrower: Address;
+  signedPagareHash?: ReadonlyUint8Array;
+}): Promise<boolean> {
+  const bytes = asBytes(input.message);
+  if (input.signature.length !== 64) return false;
+  if (input.signedPagareHash) {
+    const hash = await sha256(bytes);
+    if (hash.length !== input.signedPagareHash.length || hash.some((b, i) => b !== input.signedPagareHash![i])) return false;
+  }
+  const key = await getPublicKeyFromAddress(input.borrower);
+  return await verifySignature(key, input.signature as SignatureBytes, bytes);
+}
+
+/**
+ * The hash the issuance (`Emision`) entry states: `sha256(pagare_hash || signed_pagare_hash)`, so the
+ * registry's first entry binds both the on-chain derivation and the message the borrower signed
+ * (`registry::issuance_hash`). Both preimages travel in the `PagareIssued` event.
+ */
+export const issuanceDocumentHash = (pagareHash: ReadonlyUint8Array, signedHash: ReadonlyUint8Array): Promise<Uint8Array> =>
+  sha256(pagareHash, signedHash);
+
+/**
+ * A registry entry's hash, `sha256(asset || kind || from || to || hash || stated_at i64 LE ||
+ * entry_count u32 LE)` (`registry::entry_hash`); the record's `log_root` is
+ * `sha256(log_root || entry_hash)` over every entry from 32 zero bytes, the issuance entry first.
+ */
+export function registryEntryHash(input: {
+  asset: Address;
+  kind: number;
+  from: Address;
+  to: Address;
+  hash: ReadonlyUint8Array;
+  statedAt: bigint;
+  entryCount: number;
+}): Promise<Uint8Array> {
+  const enc = getAddressEncoder();
+  return sha256(
+    enc.encode(input.asset),
+    Uint8Array.of(input.kind),
+    enc.encode(input.from),
+    enc.encode(input.to),
+    input.hash,
+    getI64Encoder().encode(input.statedAt),
+    getU32Encoder().encode(input.entryCount)
+  );
 }

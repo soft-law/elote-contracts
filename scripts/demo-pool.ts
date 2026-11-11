@@ -94,7 +94,7 @@ import {
   sleep,
 } from "./lib/cli.ts";
 import { approveLine, councilExecute, loadCouncil } from "./lib/council.ts";
-import { ataOf, repayInParts } from "./lib/pool.ts";
+import { ataOf, repayInParts, signPagare } from "./lib/pool.ts";
 
 checkFlags(["cluster", "multisig", "council-keypairs", "asset-mint", "fix", "scale", "agreement-hash", "sponsor", "schedule", "interval-seconds", "max-line-bps", "yes"]);
 const c = cluster();
@@ -332,8 +332,11 @@ await send("request_line", admin, [
 await approveLine(c, council, pool, lineCount).catch((e) => fail((e as Error).message));
 const borrowerAsset = await ataOf(borrower.address, assetMintAddress);
 
-/** A draw: the borrower receives `amount`; the admin pays the pagaré's rent as the app's relayer. */
-async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
+/**
+ * A draw: the borrower receives `amount`; the admin pays the pagaré's rent as the app's relayer. The
+ * demo has no pagaré text: the borrower signs a placeholder labelled DEMO (decision 55).
+ */
+async function drawIx(lineAddress: Address, lineId: bigint, drawIndex: number, amount: bigint) {
   return getDrawInstructionAsync({
     borrower,
     pool,
@@ -350,11 +353,12 @@ async function drawIx(lineAddress: Address, drawIndex: number, amount: bigint) {
     fixDate: (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data.fixDate,
     certFingerprint: new Uint8Array(32), // wallet-only signature in the demo: no certificate
     signatureMethod: 0,
+    ...(await signPagare(c, borrower, { line: lineAddress, lineId, drawIndex })),
   });
 }
 
 await send(`draw: MXN ${fmtMxn(S(60_000n) * CENTAVOS)} as ${fmt(usdcForMxn(S(60_000n) * CENTAVOS, FIX))} ${ASSET} to the borrower, pagaré 0 minted`, borrower, [
-  await drawIx(line, 0, S(60_000n) * CENTAVOS),
+  await drawIx(line, lineCount, 0, S(60_000n) * CENTAVOS),
 ]);
 const drawn = await snapshot();
 const poolData = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
@@ -433,7 +437,7 @@ async function scheduleDemo() {
     }),
   ]);
   await approveLine(c, council, pool, id).catch((e) => fail((e as Error).message));
-  await send(`draw: MXN ${fmtMxn(principal)} to the borrower, pagaré 0 minted`, borrower, [await drawIx(sLine, 0, principal)]);
+  await send(`draw: MXN ${fmtMxn(principal)} to the borrower, pagaré 0 minted`, borrower, [await drawIx(sLine, id, 0, principal)]);
 
   const read = async () => {
     const l = (await fetchCreditLine(c.rpc, sLine, { commitment: "confirmed" })).data;

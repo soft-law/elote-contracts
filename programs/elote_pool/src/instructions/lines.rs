@@ -436,7 +436,7 @@ fn dec_u(mut m: u64) -> String {
 /// - `PermanentFreezeDelegate`, frozen, authority `UpdateAuthority` (the collection's, the pool
 ///   PDA): the asset cannot move, and only the program can thaw it, which `deliver_pagare` does
 ///   right before renouncing the freeze and transferring the título to its debtor.
-/// - `ImmutableMetadata` and `Attributes` (the eight facts, 32-byte values as hex; the certificate commitment stays in the record only), authority
+/// - `ImmutableMetadata` and `Attributes` (the nine facts, 32-byte values as hex; the certificate commitment and the signature stay in the record only), authority
 ///   `None`: name, URI and facts never change.
 /// - `AddBlocker`, authority `None`: no authority-managed plugin can be added later.
 ///
@@ -457,6 +457,7 @@ fn issue_pagare<'info>(accounts: &Draw<'info>, asset_bump: u8, record: &Pagare) 
     // Hex, not base58: base58 of a 32-byte key is too costly on chain.
     let attributes = vec![
         Attribute { key: "pagare_hash".into(), value: hex(&document_hash) },
+        Attribute { key: "signed_pagare_hash".into(), value: hex(&record.signed_pagare_hash) },
         Attribute { key: "amount_mxn".into(), value: dec_u(amount) },
         Attribute { key: "currency".into(), value: "MXN".into() },
         Attribute { key: "issued_at".into(), value: dec(issued_at) },
@@ -563,6 +564,15 @@ pub fn delivery_hash(pagare_hash: &[u8; 32], fix_rate: u64, fix_date: u32, usdc_
     solana_sha256_hasher::hashv(&[pagare_hash, &fix_rate.to_le_bytes(), &fix_date.to_le_bytes(), &usdc_delivered.to_le_bytes()]).to_bytes()
 }
 
+/// The message the borrower subscribed the pagaré with, off chain (decision 55): its SHA-256, the
+/// borrower's ed25519 signature over it and the day, `yyyymmdd` in Mexico City.
+#[derive(Clone, Copy)]
+pub struct SignedPagare {
+    pub hash: [u8; 32],
+    pub signature: [u8; 64],
+    pub signed_on: u32,
+}
+
 /// One tranche of `amount_mxn` centavos, signed by the borrower alone, delivered as USDC at the FIX
 /// in force, which the borrower signs as `fix_rate` and `fix_date` (`FixMismatch` if it changed,
 /// `FixStale` if older than `fx::MAX_FIX_AGE_DAYS`). Every check runs before anything is written:
@@ -571,9 +581,11 @@ pub fn delivery_hash(pagare_hash: &[u8; 32], fix_rate: u64, fix_date: u32, usdc_
 /// of principal (`InvalidSchedule`); fewer than `MAX_DRAWS` tranches; at least one USDC base unit
 /// delivered; the vault has it; the line's USDC drawn, this tranche included, at most
 /// `max_line_bps` of the NAV now (`LineTooLarge`); the pool's outstanding cost stays within
-/// `max_outstanding_principal`; a valid signature method. The program derives the pagaré hash and
-/// the delivery hash. No interest is fixed: it accrues on the principal outstanding from now
-/// (decision 48).
+/// `max_outstanding_principal`; a valid signature method; a non-zero hash and signature of the
+/// message the borrower signed (`PagareSignatureMissing`), signed on a real date
+/// (`SignedDayInvalid`) that is today in Mexico City (`SignedDayMismatch`). The program derives the pagaré hash and the delivery hash, and stores
+/// the signed message's hash, signature and day unverified (decision 55). No interest is fixed: it
+/// accrues on the principal outstanding from now (decision 48).
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ctx: Context<Draw>,
@@ -584,6 +596,7 @@ pub fn draw(
     pagare_bump: u8,
     cert_fingerprint: [u8; 32],
     signature_method: u8,
+    signed: SignedPagare,
 ) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let line = &ctx.accounts.line;
@@ -617,6 +630,10 @@ pub fn draw(
         signature_method <= SIGNATURE_EFIRMA_WALLET && (signature_method == SIGNATURE_WALLET || cert_fingerprint != [0u8; 32]),
         PoolError::SignatureMethodInvalid
     );
+    // Decision 55: the borrower signed the pagaré's text off chain, today in Mexico City.
+    require!(signed.hash != [0u8; 32] && signed.signature != [0u8; 64], PoolError::PagareSignatureMissing);
+    let signed_day = fx::fix_day(signed.signed_on).map_err(|_| PoolError::SignedDayInvalid)?;
+    require!(signed_day == fx::mexico_city_day(now), PoolError::SignedDayMismatch);
     let draw_index = line.draws;
     let document_hash = pagare_hash(line, &line.key(), draw_index, amount_mxn, now);
     let delivery = delivery_hash(&document_hash, fix_rate, fix_date, usdc);
@@ -660,13 +677,18 @@ pub fn draw(
         fix_date,
         usdc_delivered: usdc,
         delivery_hash: delivery,
+        signed_pagare_hash: signed.hash,
+        pagare_signature: signed.signature,
+        signed_on: signed.signed_on,
         reserved: [0; 28],
     };
-    // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash.
+    // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash
+    // bound to the signed message's.
     let mut record = record;
     let pool_key = ctx.accounts.pool.key();
+    let issuance = registry::issuance_hash(&document_hash, &signed.hash);
     let entry_hash =
-        registry::append(&mut record, KIND_EMISION, &pool_key, &pool_key, &document_hash, now).ok_or(PoolError::Overflow)?;
+        registry::append(&mut record, KIND_EMISION, &pool_key, &pool_key, &issuance, now).ok_or(PoolError::Overflow)?;
     issue_pagare(ctx.accounts, asset_bump, &record)?;
     create_sidecar(ctx.accounts, pagare_bump, &record)?;
 
@@ -709,6 +731,8 @@ pub fn draw(
         delivery_hash: delivery,
         due_at: last_due,
         holder: pool.key(),
+        signed_pagare_hash: signed.hash,
+        signed_on: signed.signed_on,
     });
     emit_cpi!(PagareEntry {
         pool: pool.key(),

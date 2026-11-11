@@ -103,3 +103,53 @@ fn the_reference_on_hand_numbers() {
     r.draw(0, 262_800_000);
     assert_eq!(r.interest_accrued(3_600), 3_600);
 }
+
+/// The pagaré's hashes, written from their specification with `sha2`, not from the program.
+pub mod pagare {
+    use sha2::{Digest, Sha256};
+
+    fn sha256(parts: &[&[u8]]) -> [u8; 32] {
+        let mut h = Sha256::new();
+        for p in parts {
+            h.update(p);
+        }
+        h.finalize().into()
+    }
+
+    /// `sha256(pagare_template_hash || terms_hash || line || draw_index u16 LE || amount_mxn u64 LE
+    /// || drawn_at i64 LE)`: what `draw` derives on chain, unchanged by decision 55.
+    pub fn pagare_hash(template: &[u8; 32], terms: &[u8; 32], line: &[u8; 32], draw_index: u16, amount_mxn: u64, drawn_at: i64) -> [u8; 32] {
+        sha256(&[template, terms, line, &draw_index.to_le_bytes(), &amount_mxn.to_le_bytes(), &drawn_at.to_le_bytes()])
+    }
+
+    /// Decision 55: the issuance entry states `sha256(pagare_hash || signed_pagare_hash)`.
+    pub fn issuance_hash(pagare_hash: &[u8; 32], signed_pagare_hash: &[u8; 32]) -> [u8; 32] {
+        sha256(&[pagare_hash, signed_pagare_hash])
+    }
+
+    /// `sha256(asset || kind || from || to || hash || stated_at i64 LE || entry_count u32 LE)`.
+    pub fn entry_hash(asset: &[u8; 32], kind: u8, from: &[u8; 32], to: &[u8; 32], hash: &[u8; 32], stated_at: i64, count: u32) -> [u8; 32] {
+        sha256(&[asset, &[kind], from, to, hash, &stated_at.to_le_bytes(), &count.to_le_bytes()])
+    }
+
+    /// The record's root after its first entry: `sha256(zero || entry)`.
+    pub fn genesis_root(entry: &[u8; 32]) -> [u8; 32] {
+        sha256(&[&[0u8; 32], entry])
+    }
+
+    #[test]
+    fn the_pagare_hashes_on_pinned_vectors() {
+        let hex = |h: [u8; 32]| h.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let line: [u8; 32] = core::array::from_fn(|i| i as u8 + 1);
+        // Computed outside Rust (Python hashlib) before decision 55.
+        assert_eq!(
+            hex(pagare_hash(&[0x7e; 32], &[0x5a; 32], &line, 3, 123_456_789, 1_793_736_000)),
+            "d89deb6ed82459435103e1ba364dbaed47a91f18a0617a57834f608643c96ade"
+        );
+        assert_eq!(
+            hex(issuance_hash(&[0x11; 32], &[0x22; 32])),
+            "5189c77d29fe5d546a045ec46986852785fea5c13ac7da9c115ff5fb6edf817c",
+            "the vector clients/js/test/signed-pagare.test.ts pins"
+        );
+    }
+}

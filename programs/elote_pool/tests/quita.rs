@@ -143,6 +143,11 @@ fn a_total_quita_in_collection_closes_the_line_and_its_titulo_leaves() {
     let p = env.pagare(&k, line_id, 0);
     assert_eq!((p.status, p.flags, p.paid_at, p.receipt_hash), (PAGARE_PAID, PAGARE_FLAG_CONDONED, at, DOCUMENT));
     assert_eq!((p.last_kind, p.entry_count), (KIND_CONDONACION, 2));
+    assert_eq!(
+        (p.signed_pagare_hash, p.pagare_signature, p.signed_on),
+        (before.signed_pagare_hash, before.pagare_signature, before.signed_on),
+        "the quita leaves the signed message as the draw wrote it (decision 55)"
+    );
     // The registry replays: from the pool to the suscriptor, over the record and the amounts.
     let expected = chain(&before.log_root, &p.asset, KIND_CONDONACION, &k.pool, &borrower.pubkey(), &condonation(&DOCUMENT, 4 * UNIT, 0), at, 2);
     assert_eq!(p.log_root, expected);

@@ -30,7 +30,7 @@ programs/elote_pool/src/
 ├── terms.rs      LineTerms and the terms hash the council approves
 ├── math.rs       pure arithmetic: share pricing, ordinary interest, the payment order, installments, arrears
 ├── registry.rs   the pagaré registry: payment annotation hashes, entry hashes, the hash chain
-├── errors.rs     PoolError (79 codes, 6000..=6078)
+├── errors.rs     PoolError (82 codes, 6000..=6081)
 ├── events.rs     41 events, all emitted through emit_cpi!
 └── instructions/
     ├── pool.rs   init_pool, deposit, redeem, pause, resume, the council's pool setters,
@@ -257,7 +257,7 @@ Pool            PDA ["pool", creator, asset_mint]              program-owned, 49
 ├── dead_shares PDA ["dead", pool]                             token account of share_mint, authority = pool
 ├── collection  creator-supplied Core CollectionV1             update authority = pool PDA, bare at init
 └── CreditLine  PDA ["line", pool, line_id u64 LE]             program-owned, 528 bytes
-    ├── Pagare  PDA ["pagare", line, draw_index u16 LE]        program-owned, 363 bytes: the pagaré record
+    ├── Pagare  PDA ["pagare", line, draw_index u16 LE]        program-owned, 463 bytes: the pagaré record
     └── asset   PDA ["pagare_asset", line, draw_index u16 LE]  Metaplex Core AssetV1, owned by the Core
                                                                program; held by the pool PDA until
                                                                deliver_pagare, then by the debtor
@@ -291,7 +291,7 @@ The seeds are `state::seeds`.
   `burn_pagare`.
 
 All three accounts are Borsh-serialized with no padding, end in a zeroed `reserved` tail for fields
-added after mainnet, and are sized by `InitSpace` (`tests/layout.rs` pins 495, 528 and 363 bytes).
+added after mainnet, and are sized by `InitSpace` (`tests/layout.rs` pins 495, 528 and 463 bytes).
 Offsets below include the 8-byte Anchor discriminator, so they can be used directly in `memcmp`
 filters.
 
@@ -401,7 +401,7 @@ Methods: `schedule()` is `None` when `installments == 0` (a bullet line); `ancho
 principal_repaid`; `accrual_end()`, `accrue(now)`, `interest_accrued(now)`, `interest_unpaid(now)`,
 `owed(now)` and `can_draw(now)`, the accrual of decision 48 (§7.5), which every handler reads.
 
-### 3.3 `Pagare` (363 bytes)
+### 3.3 `Pagare` (463 bytes)
 
 The program's record of one pagaré, written by `draw` next to the Core asset. It holds no folio and
 nothing personal and is never closed: after the payment, the delivery and even the owner's burn it
@@ -415,7 +415,7 @@ payer.
 | 8 | 32 | `line` | |
 | 40 | 2 | `draw_index` | |
 | 42 | 32 | `asset` | `["pagare_asset", line, draw_index]` |
-| 74 | 32 | `pagare_hash` | derived on chain at `draw` (§4.3) |
+| 74 | 32 | `pagare_hash` | derived on chain at `draw` (§4.3); decision 55 leaves it unchanged |
 | 106 | 8 | `amount_mxn` | the sum the pagaré promises, MXN centavos |
 | 114 | 8 | `issued_at` | |
 | 122 | 8 | `due_at` | the line's `last_due()` at issuance |
@@ -435,7 +435,10 @@ payer.
 | 291 | 4 | `fix_date` | its date |
 | 295 | 8 | `usdc_delivered` | `usdc_for_mxn(amount_mxn, fix_rate)`: the pool's cost of the tranche |
 | 303 | 32 | `delivery_hash` | `sha256(pagare_hash ‖ fix_rate ‖ fix_date ‖ usdc_delivered)` |
-| 335 | 28 | `reserved` | zero |
+| 335 | 32 | `signed_pagare_hash` | SHA-256 of the message with the full pagaré text the borrower signed off chain (decision 55) |
+| 367 | 64 | `pagare_signature` | the borrower's ed25519 signature over that message, stored unverified |
+| 431 | 4 | `signed_on` | the signing day, `yyyymmdd` in Mexico City: the draw's day |
+| 435 | 28 | `reserved` | zero |
 
 ### 3.4 Constants
 
@@ -746,7 +749,7 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   `drawn == 0` (`LineStatus`).
 - **Writes:** `status = Cancelled`, `closed_at = now`. **Events:** `LineCancelled`.
 
-#### `draw(amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method)`
+#### `draw(amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method, signed_pagare_hash, pagare_signature, signed_on)`
 
 - **Accounts:** `borrower` (signer, alone: the signature covers the FIX and the pagaré the program
   derives); `pool` (mut); `line` (mut, seeds, `has_one = pool` → `WrongAccount`, `has_one =
@@ -767,10 +770,14 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   vault.amount` (`InsufficientLiquidity`); `usdc_drawn + usdc <= max_line_principal(nav)`, the
   line's whole USDC drawn against the provisioned NAV now (`LineTooLarge`); `outstanding + usdc <=
   max_outstanding_principal` (`OutstandingCapExceeded`); `signature_method <= 2` and a non-zero
-  `cert_fingerprint` unless the method is 0 (`SignatureMethodInvalid`).
+  `cert_fingerprint` unless the method is 0 (`SignatureMethodInvalid`); decision 55: a non-zero
+  `signed_pagare_hash` and `pagare_signature` (`PagareSignatureMissing`), `signed_on` a real date
+  (`SignedDayInvalid`) equal to today in Mexico City (`SignedDayMismatch`). The program never sees
+  the text, so it verifies no signature and tracks no uniqueness; it stores and commits.
 - **Derived on chain:** `pagare_hash = sha256(pagare_template_hash ‖ terms_hash ‖ line ‖
   draw_index u16 ‖ amount_mxn u64 ‖ now i64)`; `delivery_hash = sha256(pagare_hash ‖ fix_rate u64 ‖
-  fix_date u32 ‖ usdc u64)`. No interest is fixed (decision 48).
+  fix_date u32 ‖ usdc u64)`. No interest is fixed (decision 48). The signed message does not enter
+  `pagare_hash`: a draw made outside the app leaves the same evidence as before decision 55.
 - **CPIs:** `transfer_checked` of `usdc` vault → borrower (pool signs); any lamports already on the
   asset or record address are swept to `payer` (signed by each PDA), because both creations
   require an unfunded address and both addresses are predictable; Core `CreateV2` of the asset
@@ -778,7 +785,9 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   `create_account` of the record.
 - **Writes:** `pool.outstanding_principal += usdc`; `line.accrue(now)` (§7.5), then `line.drawn
   += amount_mxn`, `usdc_drawn += usdc`, `draws += 1`; on the first tranche `status = Active`, `drawn_at = now`; the `Pagare` record with the
-  issuance entry (`entry_count = 1`, `last_kind = Emision`). `Pool::check` on the reloaded vault.
+  issuance entry (`entry_count = 1`, `last_kind = Emision`) over `registry::issuance_hash =
+  sha256(pagare_hash ‖ signed_pagare_hash)`, and the signed message's hash, signature and day,
+  which no instruction rewrites. `Pool::check` on the reloaded vault.
 - **Events:** `LineDrawn`, `PagareIssued`, `PagareEntry` (Emision).
 
 #### `repay(max_usdc: u64, fix_rate: u64, fix_date: u32, receipt_hash: [u8; 32])`
@@ -1427,9 +1436,10 @@ MXN.
     the pool PDA): the asset cannot move, and only the program can thaw it, which `deliver_pagare`
     does right before renouncing the freeze and transferring the título;
   - `ImmutableMetadata`, authority `None`;
-  - `Attributes`, authority `None`, eight facts: `pagare_hash` (lower-case hex), `amount_mxn`,
-    `currency` = `MXN`, `issued_at`, `due_at`, `line` (the line id), `draw_index`,
-    `signature_method` (decimal text). The certificate commitment stays in the record only;
+  - `Attributes`, authority `None`, nine facts: `pagare_hash` and `signed_pagare_hash` (decision
+    55; lower-case hex), `amount_mxn`, `currency` = `MXN`, `issued_at`, `due_at`, `line` (the line
+    id), `draw_index`, `signature_method` (decimal text). The certificate commitment and the
+    signature stay in the record only;
   - `AddBlocker`, authority `None`: no authority-managed plugin can be added later.
 - **no transfer or burn delegate:** the pool owns the asset, only the program signs for it, and a
   procuración lends no power over it. `init_pool` admits only a bare collection, so no
@@ -1468,7 +1478,7 @@ recorded_at = now`.
 
 | kind | code | written by | from | to | hash |
 |---|---|---|---|---|---|
-| `Emision` | 0 | `draw` | pool | pool | `pagare_hash` |
+| `Emision` | 0 | `draw` | pool | pool | `sha256(pagare_hash ‖ signed_pagare_hash)` (decision 55) |
 | `Procuracion` | 2 | `endorse_pagare` | pool | procurador | `endoso_hash` |
 | `Revocacion` | 3 | `revoke_procuracion` | pool | recorded procurador | `entry_hash` (the signed revocation) |
 | `Terminacion` | 4 | `repay`, ending a procuración on the título it covers | pool | procurador | the payment's annotation hash |
@@ -1599,18 +1609,18 @@ included for a council instruction.
 | `post_fix` by the feeder | 11 588 |
 | `post_fix` by the feeder, against the reference | 11 875 |
 | `propose_council` through Squads | 34 972 |
-| `draw`, first tranche, 120 installments | 82 260 |
-| `draw`, second tranche, 120 installments | 82 422 |
-| `draw`, tranche 10, 120 installments | 82 435 |
-| `repay`, 18 installments, all missed | 44 603 |
-| `repay`, 120 installments, all missed | 70 121 |
-| `repay` after the mark, 120 installments | 59 725 |
-| `repay` covering three records, 120 installments, all missed | 86 877 |
-| `repay` recovering a written-off line over three records, 120 installments, all missed | 89 848 |
+| `draw`, first tranche, 120 installments | 86 001 (82 260 before decision 55) |
+| `draw`, second tranche, 120 installments | 86 163 |
+| `draw`, tranche 10, 120 installments | 86 118 |
+| `repay`, 18 installments, all missed | 45 020 |
+| `repay`, 120 installments, all missed | 70 538 |
+| `repay` after the mark, 120 installments | 60 142 |
+| `repay` covering three records, 120 installments, all missed | 88 016 |
+| `repay` recovering a written-off line over three records, 120 installments, all missed | 90 992 |
 | `condone`, late interest only, 120 installments, all missed | 50 397 |
-| `condone` over three records, one under procuración, 120 installments, all missed | 66 902 |
+| `condone` over three records, one under procuración, 120 installments, all missed | 68 043 |
 | `condone` through Squads, three records (one under procuración), 18 installments, all missed | 82 868 |
-| `condone` through Squads of one pagaré (two records, one entry, under procuración), 120 installments, all missed | 94 913 (87 CU inside the margin) |
+| `condone` through Squads of one pagaré (two records, one entry, under procuración), 120 installments, all missed | 95 504 to 95 566 (94 913 before decision 55): **inside the rule, over the 5 000 CU margin** |
 | `condone` through Squads writing two / three entries, 120 installments, all missed | 96 380 / 104 452 (108 326 with a procuración): **over the margin / over the rule** |
 | `mark_in_collection`, 18 installments, all missed | 17 985 |
 | `mark_in_collection`, 120 installments, all missed | 34 731 |
@@ -1622,11 +1632,16 @@ included for a council instruction.
 | `resume_draws` | 13 892 |
 | `propose_acceleration` | 14 587 |
 | `accelerate_line`, 120 installments, all due | 16 879 |
-| `deliver_pagare`, 120 installments | 68 209 |
-| `deliver_pagare` after a procuración | 68 115 |
-| `burn_pagare` | 30 568 |
-| `court_annotation`, 120 installments | 17 370 |
-| `annotate_payment`, 120 installments | 20 043 |
+| `deliver_pagare`, 120 installments | 70 115 |
+| `deliver_pagare` after a procuración | 70 191 |
+| `burn_pagare` | 31 338 |
+| `court_annotation`, 120 installments | 17 704 |
+| `annotate_payment`, 120 installments | 20 377 |
+
+Decision 55 added 100 bytes to every `Pagare` record (the signed message's hash, signature and
+day): each instruction that loads and stores a record pays about 330 CU more per record, and
+`draw` and `deliver_pagare` also carry the ninth Core attribute. The rows above that touch records
+were re-measured with it.
 
 The rows of `request_line` through `annotate_payment` above were re-measured after decision 48
 (ordinary interest on the outstanding principal) and the layout clean-up that followed it (one
@@ -1698,7 +1713,7 @@ pagaré per call: principal up to `drawn_through` of the pagaré at the cursor l
 | `RequestWithdrawn` | `withdraw_request` | pool, line_id |
 | `LineCancelled` | `cancel_line` | pool, line_id |
 | `LineDrawn` | `draw` | pool, line_id, draw_index, amount_mxn, fix_rate, fix_date, usdc_delivered, drawn, available, availability_end, outstanding_after |
-| `PagareIssued` | `draw` | pool, line_id, draw_index, asset, pagare_hash, amount_mxn, delivery_hash, due_at, holder (the pool PDA) |
+| `PagareIssued` | `draw` | pool, line_id, draw_index, asset, pagare_hash, amount_mxn, delivery_hash, due_at, holder (the pool PDA), signed_pagare_hash, signed_on |
 | `PagareEntry` | `draw`, `repay`, `condone`, `deliver_pagare`, `burn_pagare`, `annul_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `annotate_payment` | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
 | `PagarePayment` | `repay` that took pagaré records | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, entries: `Vec<PaymentEntry { draw_index, kind, entry_count, principal_applied, accessory_applied, principal_balance, by_borrower }>` |
 | `LateInterestCollected` | `repay` with late interest | pool, line_id, amount |
@@ -1820,6 +1835,9 @@ route, decision 38), 6075 (the judicial hold, decision 38-g) and 6076 (the depos
 | 6076 | `PoolImpaired` | Appended | Retired: deposits price at the unprovisioned NAV instead of waiting (decision 40b) |
 | 6077 | `BalanceOutstanding` | Appended | The line still owes principal or interest; no título leaves until it owes nothing |
 | 6078 | `AssetDecimalsInvalid` | Appended | The asset mint must have 6 decimals, the scale the FIX conversion counts in |
+| 6079 | `PagareSignatureMissing` | Appended | The draw carries no hash or no signature of the pagaré message the borrower signed |
+| 6080 | `SignedDayMismatch` | Appended | The pagaré was not signed today in Mexico City |
+| 6081 | `SignedDayInvalid` | Appended | The pagaré's signing date is not a valid date |
 
 ## 12. Toolchain, build and tests
 
@@ -1887,14 +1905,14 @@ functions in each file.
 | `tests/valid_until.rs` | 4 | LiteSVM | `valid_until` refused past or too far ahead |
 | `tests/squads.rs` | 7 | LiteSVM + Squads v4 | council instructions through the real `vault_transaction_execute`, stale proposals, a multisig lowered below a majority, the rotation |
 | `tests/fx.rs` | 27 | LiteSVM | the FIX: conversions, the daily band, the RedStone reference, the bounds, feeder versus council, one publication a day, draws and repayments at the FIX, FX gains and losses |
-| `tests/pagare.rs` | 26 (+1 reference) | LiteSVM + Core 0.15.3 | one frozen asset and one record per draw, every plugin read back through `mpl-core`, the registry and payment entries, the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
+| `tests/pagare.rs` | 34 (+2 reference) | LiteSVM + Core 0.15.3 | one frozen asset and one record per draw, every plugin read back through `mpl-core`, the registry and payment entries, the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `tests/core_capabilities.rs` | 8 | LiteSVM + Core 0.15.3 | what Core allows after an asset's creation (§9.1) |
 | `tests/known_limits.rs` | 12 | LiteSVM | documentation tests that pin current behaviour and the known limits SECURITY.md lists; they are inverted when a limit is removed |
 | `tests/audit.rs`, `tests/reaudit.rs` | 4, 4 | LiteSVM | regressions of the 2026-11-01 audit and the 2026-11-02 re-audit |
 | `tests/compute.rs` | 12 | LiteSVM | the figures of §10 under their ceilings |
-| `tests/layout.rs` | 2 | LiteSVM | the account sizes 495 / 528 / 363, the zeroed `reserved` tails, and one `CreditLine` layout with or without a sponsor |
+| `tests/layout.rs` | 2 | LiteSVM | the account sizes 495 / 528 / 463, the zeroed `reserved` tails, and one `CreditLine` layout with or without a sponsor |
 | `tests/math_props.rs` | 10 (+1 reference) | proptest | the pure functions over random inputs; the payment order; the accrual against the reference under any sequence; split invariance |
-| `tests/reference/mod.rs` | 1 | plain, included by four binaries | the independent oracle: a line as `(time, principal change)` events, `rate × Σ balance × Δt / (10 000 × year)` rounded once; its own hand-number test |
+| `tests/reference/mod.rs` | 2 | plain, included by four binaries | the independent oracle (and, decision 55, the pagaré hash, the issuance hash and the registry entry, from their specification): a line as `(time, principal change)` events, `rate × Σ balance × Δt / (10 000 × year)` rounded once; its own hand-number test |
 | `tests/vectors.rs` | 1 | plain | 427 arrears vectors (48 accelerated) shared with `clients/js/test/arrears-vectors.json` |
 | `clients/js/test/*.test.ts` | | `node --test` (tsx) | `schedule.ts` (the shared vectors), `pagare.ts`, `hashes.ts`, `terms.ts` (the shared vector), `fx.ts`, `core.ts` |
 

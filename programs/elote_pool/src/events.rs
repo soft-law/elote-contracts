@@ -73,6 +73,9 @@ pub struct PagareIssued {
     pub delivery_hash: [u8; 32],
     pub due_at: i64,
     pub holder: Pubkey,
+    /// Decision 55: the hash of the message the borrower signed and its day.
+    pub signed_pagare_hash: [u8; 32],
+    pub signed_on: u32,
 }
 
 /// One entry of a pagaré's registry: the full content the sidecar's hash chain commits to.

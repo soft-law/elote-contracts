@@ -25,6 +25,8 @@ import {
   getStructEncoder,
   getU16Decoder,
   getU16Encoder,
+  getU32Decoder,
+  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
   type Address,
@@ -54,6 +56,9 @@ export type PagareIssuedEvent = {
   deliveryHash: ReadonlyUint8Array;
   dueAt: bigint;
   holder: Address;
+  /** Decision 55: the hash of the message the borrower signed and its day. */
+  signedPagareHash: ReadonlyUint8Array;
+  signedOn: number;
 };
 
 export type PagareIssuedEventArgs = {
@@ -66,6 +71,9 @@ export type PagareIssuedEventArgs = {
   deliveryHash: ReadonlyUint8Array;
   dueAt: number | bigint;
   holder: Address | HasAddress;
+  /** Decision 55: the hash of the message the borrower signed and its day. */
+  signedPagareHash: ReadonlyUint8Array;
+  signedOn: number;
 };
 
 /** Gets the encoder for {@link PagareIssuedEventArgs} event data. */
@@ -81,6 +89,8 @@ export function getPagareIssuedEventEncoder(): FixedSizeEncoder<PagareIssuedEven
       ["deliveryHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["dueAt", getI64Encoder()],
       ["holder", getAddressEncoder()],
+      ["signedPagareHash", fixEncoderSize(getBytesEncoder(), 32)],
+      ["signedOn", getU32Encoder()],
     ]),
     [getConstantEncoder(PAGARE_ISSUED_EVENT_DISCRIMINATOR)],
   );
@@ -99,6 +109,8 @@ export function getPagareIssuedEventDecoder(): FixedSizeDecoder<PagareIssuedEven
       ["deliveryHash", fixDecoderSize(getBytesDecoder(), 32)],
       ["dueAt", getI64Decoder()],
       ["holder", getAddressDecoder()],
+      ["signedPagareHash", fixDecoderSize(getBytesDecoder(), 32)],
+      ["signedOn", getU32Decoder()],
     ]),
     [getConstantDecoder(PAGARE_ISSUED_EVENT_DISCRIMINATOR)],
   );

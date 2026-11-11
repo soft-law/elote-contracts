@@ -1324,7 +1324,9 @@
         "Pays a tranche of `amount_mxn` centavos to the borrower as USDC at the FIX in force, which the",
         "borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain",
         "from the approved template and terms) as a frozen Core asset owned by the pool, with its",
-        "`Pagare` record. The borrower and the rent payer sign; refused while paused, once the draw",
+        "`Pagare` record, which keeps the hash, the signature and the day of the message with the",
+        "pagaré's text the borrower signed off chain (decision 55; the issuance entry binds the hash).",
+        "The borrower and the rent payer sign; refused while paused, once the draw",
         "window has closed, on a changed or stale FIX, or above what the line, the line cap (the line's",
         "USDC drawn within `max_line_bps` of the NAV now), the vault or the pool cap allows."
       ],
@@ -1554,6 +1556,28 @@
         {
           "name": "signature_method",
           "type": "u8"
+        },
+        {
+          "name": "signed_pagare_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "pagare_signature",
+          "type": {
+            "array": [
+              "u8",
+              64
+            ]
+          }
+        },
+        {
+          "name": "signed_on",
+          "type": "u32"
         }
       ]
     },
@@ -4892,6 +4916,21 @@
       "code": 6078,
       "name": "AssetDecimalsInvalid",
       "msg": "The asset mint must have 6 decimals, the scale the FIX conversion counts in"
+    },
+    {
+      "code": 6079,
+      "name": "PagareSignatureMissing",
+      "msg": "The draw carries no hash or no signature of the pagaré message the borrower signed"
+    },
+    {
+      "code": 6080,
+      "name": "SignedDayMismatch",
+      "msg": "The pagaré was not signed today in Mexico City"
+    },
+    {
+      "code": 6081,
+      "name": "SignedDayInvalid",
+      "msg": "The pagaré's signing date is not a valid date"
     }
   ],
   "types": [
@@ -6413,7 +6452,8 @@
           {
             "name": "pagare_hash",
             "docs": [
-              "Hash of the signed pagaré data message, as `draw` received it."
+              "Derived on chain by `draw`: `sha256(pagare_template_hash || terms_hash || line ||",
+              "draw_index || amount_mxn || drawn_at)` (`instructions::lines::pagare_hash`)."
             ],
             "type": {
               "array": [
@@ -6573,6 +6613,37 @@
                 32
               ]
             }
+          },
+          {
+            "name": "signed_pagare_hash",
+            "docs": [
+              "SHA-256 of the message with the full pagaré text the borrower signed off chain (decision 55)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "pagare_signature",
+            "docs": [
+              "The borrower's ed25519 signature over that message, stored unverified: the program never sees the text."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          },
+          {
+            "name": "signed_on",
+            "docs": [
+              "The day the borrower signed, `yyyymmdd` in Mexico City: the day of the draw."
+            ],
+            "type": "u32"
           },
           {
             "name": "reserved",
@@ -6840,6 +6911,22 @@
           {
             "name": "holder",
             "type": "pubkey"
+          },
+          {
+            "name": "signed_pagare_hash",
+            "docs": [
+              "Decision 55: the hash of the message the borrower signed and its day."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "signed_on",
+            "type": "u32"
           }
         ]
       }
