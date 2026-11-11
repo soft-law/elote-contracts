@@ -189,6 +189,43 @@ async function sha256(...parts: ReadonlyUint8Array[]): Promise<Uint8Array> {
 
 const asBytes = (message: string | ReadonlyUint8Array) => (typeof message === "string" ? getUtf8Encoder().encode(message) : message);
 
+const strictUtf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
+// C0 controls but `\n`, DEL, C1 controls, zero-width and bidi marks, embeddings and overrides,
+// word joiner and invisible operators, and the BOM.
+const FORBIDDEN_IN_PAGARE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/u;
+
+/**
+ * Throws unless `message` is plain text: non-empty, valid UTF-8, with no control character but
+ * `\n` and no invisible format character. The borrower's wallet key signs the pagaré text itself,
+ * with no domain separation, and the signature is published; a transaction message carries a
+ * binary header and a 32-byte blockhash, so it cannot pass.
+ */
+export function assertPagareMessageText(message: ReadonlyUint8Array): void {
+  if (message.length === 0) throw new Error("the pagaré message is not plain text: it is empty");
+  let text: string;
+  try {
+    text = strictUtf8.decode(message);
+  } catch {
+    throw new Error("the pagaré message is not plain text: it is not valid UTF-8");
+  }
+  const found = FORBIDDEN_IN_PAGARE.exec(text);
+  if (found) {
+    const codePoint = found[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0");
+    const offset = new TextEncoder().encode(text.slice(0, found.index)).length;
+    throw new Error(`the pagaré message is not plain text: U+${codePoint} at byte ${offset}`);
+  }
+}
+
+const isPagareMessageText = (message: ReadonlyUint8Array): boolean => {
+  try {
+    assertPagareMessageText(message);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /**
  * The `signed_pagare_hash` a draw records (decision 55): SHA-256 over the bytes of the message the
  * borrower signed, the full filled pagaré text (UTF-8 when given as a string).
@@ -198,7 +235,8 @@ export const signedPagareHash = (message: string | ReadonlyUint8Array): Promise<
 /**
  * Whether `signature` (a record's `pagare_signature`) is `borrower`'s ed25519 signature over
  * `message`, and, when `signedPagareHash` (the record's) is given, whether `message` is the text
- * it commits to. The program stores both without verifying them: it never sees the text.
+ * it commits to. The program stores both without verifying them: it never sees the text. False
+ * also for a message that is not plain text (`assertPagareMessageText`), whatever the signature.
  */
 export async function verifyPagareSignature(input: {
   message: string | ReadonlyUint8Array;
@@ -208,6 +246,7 @@ export async function verifyPagareSignature(input: {
 }): Promise<boolean> {
   const bytes = asBytes(input.message);
   if (input.signature.length !== 64) return false;
+  if (!isPagareMessageText(bytes)) return false;
   if (input.signedPagareHash) {
     const hash = await sha256(bytes);
     if (hash.length !== input.signedPagareHash.length || hash.some((b, i) => b !== input.signedPagareHash![i])) return false;
