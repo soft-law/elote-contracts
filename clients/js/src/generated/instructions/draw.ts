@@ -61,6 +61,7 @@ export function getDrawDiscriminatorBytes(): ReadonlyUint8Array {
 export type DrawInstruction<
   TProgram extends string = typeof ELOTE_POOL_PROGRAM_ADDRESS,
   TAccountBorrower extends string | AccountMeta<string> = string,
+  TAccountCotejo extends string | AccountMeta<string> = string,
   TAccountPool extends string | AccountMeta<string> = string,
   TAccountLine extends string | AccountMeta<string> = string,
   TAccountAssetMint extends string | AccountMeta<string> = string,
@@ -88,6 +89,9 @@ export type DrawInstruction<
         ? ReadonlySignerAccount<TAccountBorrower> &
             AccountSignerMeta<TAccountBorrower>
         : TAccountBorrower,
+      TAccountCotejo extends string
+        ? ReadonlyAccount<TAccountCotejo>
+        : TAccountCotejo,
       TAccountPool extends string
         ? WritableAccount<TAccountPool>
         : TAccountPool,
@@ -147,6 +151,7 @@ export type DrawInstructionData = {
   signedPagareHash: ReadonlyUint8Array;
   pagareSignature: ReadonlyUint8Array;
   signedOn: number;
+  sealedHash: ReadonlyUint8Array;
 };
 
 export type DrawInstructionDataArgs = {
@@ -160,6 +165,7 @@ export type DrawInstructionDataArgs = {
   signedPagareHash: ReadonlyUint8Array;
   pagareSignature: ReadonlyUint8Array;
   signedOn: number;
+  sealedHash: ReadonlyUint8Array;
 };
 
 export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructionDataArgs> {
@@ -176,6 +182,7 @@ export function getDrawInstructionDataEncoder(): FixedSizeEncoder<DrawInstructio
       ["signedPagareHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["pagareSignature", fixEncoderSize(getBytesEncoder(), 64)],
       ["signedOn", getU32Encoder()],
+      ["sealedHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     (value) => ({ ...value, discriminator: DRAW_DISCRIMINATOR }),
   );
@@ -194,6 +201,7 @@ export function getDrawInstructionDataDecoder(): FixedSizeDecoder<DrawInstructio
     ["signedPagareHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["pagareSignature", fixDecoderSize(getBytesDecoder(), 64)],
     ["signedOn", getU32Decoder()],
+    ["sealedHash", fixDecoderSize(getBytesDecoder(), 32)],
   ]);
 }
 
@@ -209,6 +217,8 @@ export function getDrawInstructionDataCodec(): FixedSizeCodec<
 
 export type DrawAsyncInput<
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCotejo extends InstructionAccountInput | InstructionSignerInput =
+    InstructionAccountInput | InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
@@ -229,8 +239,14 @@ export type DrawAsyncInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** Signs alone: the signature covers the pagaré hash the program derives and the FIX. */
+  /** Signs: the signature covers the pagaré hash the program derives and the FIX. */
   borrower: TAccountBorrower;
+  /**
+   * One of `pool.cotejo_keys`, signing, when the pool names any (decision 56); ignored when it
+   * names none. Read only. Unchecked so a missing signature or a key outside the set is the
+   * handler's `CotejoRequired`, and an account passed to a pool without keys is ignored.
+   */
+  cotejo?: TAccountCotejo;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for its decimals (`transfer_checked`). */
@@ -263,10 +279,12 @@ export type DrawAsyncInput<
   signedPagareHash: DrawInstructionDataArgs["signedPagareHash"];
   pagareSignature: DrawInstructionDataArgs["pagareSignature"];
   signedOn: DrawInstructionDataArgs["signedOn"];
+  sealedHash: DrawInstructionDataArgs["sealedHash"];
 };
 
 export async function getDrawInstructionAsync<
   TAccountBorrower extends InstructionSignerInput,
+  TAccountCotejo extends InstructionAccountInput | InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput,
@@ -285,6 +303,7 @@ export async function getDrawInstructionAsync<
 >(
   input: DrawAsyncInput<
     TAccountBorrower,
+    TAccountCotejo,
     TAccountPool,
     TAccountLine,
     TAccountAssetMint,
@@ -309,6 +328,12 @@ export async function getDrawInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
       InstructionAccountInputAddress<TAccountBorrower>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountCotejo,
+      InstructionAccountInputAddress<TAccountCotejo>,
+      ReadonlySignerAccount<InstructionAccountInputAddress<TAccountCotejo>> &
+        AccountSignerMeta<InstructionAccountInputAddress<TAccountCotejo>>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -384,6 +409,11 @@ export async function getDrawInstructionAsync<
     borrower: {
       value: input.borrower ?? null,
       isSigner: true,
+      isWritable: false,
+    },
+    cotejo: {
+      value: input.cotejo ?? null,
+      isSigner: "either",
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
@@ -468,6 +498,7 @@ export async function getDrawInstructionAsync<
   return Object.freeze({
     accounts: [
       getAccountMeta("borrower", accounts.borrower),
+      getAccountMeta("cotejo", accounts.cotejo),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("assetMint", accounts.assetMint),
@@ -492,6 +523,12 @@ export async function getDrawInstructionAsync<
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
       InstructionAccountInputAddress<TAccountBorrower>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountCotejo,
+      InstructionAccountInputAddress<TAccountCotejo>,
+      ReadonlySignerAccount<InstructionAccountInputAddress<TAccountCotejo>> &
+        AccountSignerMeta<InstructionAccountInputAddress<TAccountCotejo>>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -554,6 +591,8 @@ export async function getDrawInstructionAsync<
 
 export type DrawInput<
   TAccountBorrower extends InstructionSignerInput = InstructionSignerInput,
+  TAccountCotejo extends InstructionAccountInput | InstructionSignerInput =
+    InstructionAccountInput | InstructionSignerInput,
   TAccountPool extends InstructionAccountInput = InstructionAccountInput,
   TAccountLine extends InstructionAccountInput = InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput = InstructionAccountInput,
@@ -574,8 +613,14 @@ export type DrawInput<
     InstructionAccountInput,
   TAccountProgram extends InstructionAccountInput = InstructionAccountInput,
 > = {
-  /** Signs alone: the signature covers the pagaré hash the program derives and the FIX. */
+  /** Signs: the signature covers the pagaré hash the program derives and the FIX. */
   borrower: TAccountBorrower;
+  /**
+   * One of `pool.cotejo_keys`, signing, when the pool names any (decision 56); ignored when it
+   * names none. Read only. Unchecked so a missing signature or a key outside the set is the
+   * handler's `CotejoRequired`, and an account passed to a pool without keys is ignored.
+   */
+  cotejo?: TAccountCotejo;
   pool: TAccountPool;
   line: TAccountLine;
   /** Read for its decimals (`transfer_checked`). */
@@ -608,10 +653,12 @@ export type DrawInput<
   signedPagareHash: DrawInstructionDataArgs["signedPagareHash"];
   pagareSignature: DrawInstructionDataArgs["pagareSignature"];
   signedOn: DrawInstructionDataArgs["signedOn"];
+  sealedHash: DrawInstructionDataArgs["sealedHash"];
 };
 
 export function getDrawInstruction<
   TAccountBorrower extends InstructionSignerInput,
+  TAccountCotejo extends InstructionAccountInput | InstructionSignerInput,
   TAccountPool extends InstructionAccountInput,
   TAccountLine extends InstructionAccountInput,
   TAccountAssetMint extends InstructionAccountInput,
@@ -630,6 +677,7 @@ export function getDrawInstruction<
 >(
   input: DrawInput<
     TAccountBorrower,
+    TAccountCotejo,
     TAccountPool,
     TAccountLine,
     TAccountAssetMint,
@@ -653,6 +701,12 @@ export function getDrawInstruction<
   ResolvedInstructionAccountMeta<
     TAccountBorrower,
     InstructionAccountInputAddress<TAccountBorrower>
+  >,
+  ResolvedInstructionAccountMeta<
+    TAccountCotejo,
+    InstructionAccountInputAddress<TAccountCotejo>,
+    ReadonlySignerAccount<InstructionAccountInputAddress<TAccountCotejo>> &
+      AccountSignerMeta<InstructionAccountInputAddress<TAccountCotejo>>
   >,
   ResolvedInstructionAccountMeta<
     TAccountPool,
@@ -727,6 +781,11 @@ export function getDrawInstruction<
     borrower: {
       value: input.borrower ?? null,
       isSigner: true,
+      isWritable: false,
+    },
+    cotejo: {
+      value: input.cotejo ?? null,
+      isSigner: "either",
       isWritable: false,
     },
     pool: { value: input.pool ?? null, isSigner: false, isWritable: true },
@@ -805,6 +864,7 @@ export function getDrawInstruction<
   return Object.freeze({
     accounts: [
       getAccountMeta("borrower", accounts.borrower),
+      getAccountMeta("cotejo", accounts.cotejo),
       getAccountMeta("pool", accounts.pool),
       getAccountMeta("line", accounts.line),
       getAccountMeta("assetMint", accounts.assetMint),
@@ -829,6 +889,12 @@ export function getDrawInstruction<
     ResolvedInstructionAccountMeta<
       TAccountBorrower,
       InstructionAccountInputAddress<TAccountBorrower>
+    >,
+    ResolvedInstructionAccountMeta<
+      TAccountCotejo,
+      InstructionAccountInputAddress<TAccountCotejo>,
+      ReadonlySignerAccount<InstructionAccountInputAddress<TAccountCotejo>> &
+        AccountSignerMeta<InstructionAccountInputAddress<TAccountCotejo>>
     >,
     ResolvedInstructionAccountMeta<
       TAccountPool,
@@ -895,30 +961,36 @@ export type ParsedDrawInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    /** Signs alone: the signature covers the pagaré hash the program derives and the FIX. */
+    /** Signs: the signature covers the pagaré hash the program derives and the FIX. */
     borrower: TAccountMetas[0];
-    pool: TAccountMetas[1];
-    line: TAccountMetas[2];
+    /**
+     * One of `pool.cotejo_keys`, signing, when the pool names any (decision 56); ignored when it
+     * names none. Read only. Unchecked so a missing signature or a key outside the set is the
+     * handler's `CotejoRequired`, and an account passed to a pool without keys is ignored.
+     */
+    cotejo?: TAccountMetas[1] | undefined;
+    pool: TAccountMetas[2];
+    line: TAccountMetas[3];
     /** Read for its decimals (`transfer_checked`). */
-    assetMint: TAccountMetas[3];
-    vault: TAccountMetas[4];
-    borrowerAssetAccount: TAccountMetas[5];
-    tokenProgram: TAccountMetas[6];
+    assetMint: TAccountMetas[4];
+    vault: TAccountMetas[5];
+    borrowerAssetAccount: TAccountMetas[6];
+    tokenProgram: TAccountMetas[7];
     /** Pays the rent of the pagaré asset and its sidecar. Any signer. */
-    payer: TAccountMetas[7];
+    payer: TAccountMetas[8];
     /**
      * The pagaré's Core asset, created here by the Core program. The client passes the bump so the
      * constraint does not search for it.
      */
-    asset: TAccountMetas[8];
+    asset: TAccountMetas[9];
     /** The pagaré's record, created by the handler (Anchor's `init` would search for the bump). */
-    pagare: TAccountMetas[9];
+    pagare: TAccountMetas[10];
     /** The series' collection the pool controls (validated at `init_pool`). */
-    collection: TAccountMetas[10];
-    mplCoreProgram: TAccountMetas[11];
-    systemProgram: TAccountMetas[12];
-    eventAuthority: TAccountMetas[13];
-    program: TAccountMetas[14];
+    collection: TAccountMetas[11];
+    mplCoreProgram: TAccountMetas[12];
+    systemProgram: TAccountMetas[13];
+    eventAuthority: TAccountMetas[14];
+    program: TAccountMetas[15];
   };
   data: DrawInstructionData;
 };
@@ -931,12 +1003,12 @@ export function parseDrawInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedDrawInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 15) {
+  if (instruction.accounts.length < 16) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 15,
+        expectedAccountMetas: 16,
       },
     );
   }
@@ -946,10 +1018,17 @@ export function parseDrawInstruction<
     accountIndex += 1;
     return accountMeta;
   };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === ELOTE_POOL_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
+  };
   return {
     programAddress: instruction.programAddress,
     accounts: {
       borrower: getNextAccount(),
+      cotejo: getNextOptionalAccount(),
       pool: getNextAccount(),
       line: getNextAccount(),
       assetMint: getNextAccount(),

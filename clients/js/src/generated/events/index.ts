@@ -11,6 +11,7 @@ export * from "./accelerationProposed";
 export * from "./accelerationWithdrawn";
 export * from "./availabilityRenounced";
 export * from "./collectionPeriodSet";
+export * from "./cotejoKeysSet";
 export * from "./councilAccepted";
 export * from "./councilProposed";
 export * from "./deposited";

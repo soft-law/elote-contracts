@@ -8,7 +8,7 @@ use anchor_spl::token_interface::{self as token, Burn, Mint, MintTo, TokenAccoun
 
 use crate::errors::PoolError;
 use crate::events::{
-    AccelerationNoticeSet, CollectionPeriodSet, CouncilAccepted, CouncilProposed, Deposited, FixBoundsSet, FixPosted, FxFeederSet,
+    AccelerationNoticeSet, CollectionPeriodSet, CotejoKeysSet, CouncilAccepted, CouncilProposed, Deposited, FixBoundsSet, FixPosted, FxFeederSet,
     MaxLineBpsSet, NavUpdated, ProvisionSet, OutstandingCapSet, PoolInitialized, PoolPaused, PoolResumed, Redeemed,
 };
 use crate::council;
@@ -302,6 +302,7 @@ pub fn init_pool(ctx: Context<InitPool>, p: InitPoolParams) -> Result<()> {
         recoverable: 0,
         min_fix_rate: p.min_fix_rate,
         max_fix_rate: p.max_fix_rate,
+        cotejo_keys: [Pubkey::default(); 3],
         reserved: [0; 48],
     });
 
@@ -693,6 +694,28 @@ pub fn set_acceleration_notice(ctx: Context<CouncilPool>, acceleration_notice_se
     let pool = &mut ctx.accounts.pool;
     pool.acceleration_notice_seconds = acceleration_notice_seconds;
     emit_cpi!(AccelerationNoticeSet { pool: pool.key(), acceleration_notice_seconds });
+    Ok(())
+}
+
+/// Council only, also while paused: replaces the cotejo keys as a whole (decision 56). The zero
+/// key is an empty slot, and all zero lets draws go without a co-signer. `CotejoKeyInvalid` when a
+/// non-zero key repeats or is the pool, the council or this program.
+pub fn set_cotejo_keys(ctx: Context<CouncilPool>, keys: [Pubkey; 3], valid_until: i64) -> Result<()> {
+    council::fresh(valid_until)?;
+    let (pool_key, council_key) = (ctx.accounts.pool.key(), ctx.accounts.pool.council);
+    for (i, key) in keys.iter().enumerate() {
+        if *key == Pubkey::default() {
+            continue;
+        }
+        require!(
+            !keys[..i].contains(key) && *key != pool_key && *key != council_key && *key != crate::ID,
+            PoolError::CotejoKeyInvalid
+        );
+    }
+    ctx.accounts.check_council()?;
+    let pool = &mut ctx.accounts.pool;
+    pool.cotejo_keys = keys;
+    emit_cpi!(CotejoKeysSet { pool: pool_key, keys });
     Ok(())
 }
 

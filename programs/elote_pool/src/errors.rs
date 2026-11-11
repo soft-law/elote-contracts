@@ -192,4 +192,8 @@ pub enum PoolError {
     SignedDayMismatch,
     #[msg("The pagaré's signing date is not a valid date")]
     SignedDayInvalid,
+    #[msg("The pool names cotejo keys: one of them must co-sign the draw")]
+    CotejoRequired,
+    #[msg("A cotejo key is repeated, or is the pool, the council or the program")]
+    CotejoKeyInvalid,
 }

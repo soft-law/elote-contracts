@@ -324,8 +324,14 @@ fn last_due_of(s: &ScheduleParams) -> Result<i64> {
 #[derive(Accounts)]
 #[instruction(amount_mxn: u64, fix_rate: u64, fix_date: u32, asset_bump: u8, pagare_bump: u8)]
 pub struct Draw<'info> {
-    /// Signs alone: the signature covers the pagaré hash the program derives and the FIX.
+    /// Signs: the signature covers the pagaré hash the program derives and the FIX.
     pub borrower: Signer<'info>,
+
+    /// One of `pool.cotejo_keys`, signing, when the pool names any (decision 56); ignored when it
+    /// names none. Read only. Unchecked so a missing signature or a key outside the set is the
+    /// handler's `CotejoRequired`, and an account passed to a pool without keys is ignored.
+    /// CHECK: `cotejo_signer`.
+    pub cotejo: Option<UncheckedAccount<'info>>,
 
     #[account(
         mut,
@@ -395,13 +401,23 @@ pub struct Draw<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Lower-case hex of `bytes`, byte by byte, without the formatting machinery.
-fn hex(bytes: &[u8]) -> String {
+/// The two lower-case hex digits of every byte.
+const HEX_PAIRS: [[u8; 2]; 256] = {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
-    let mut s = Vec::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        s.push(DIGITS[usize::from(b >> 4)]);
-        s.push(DIGITS[usize::from(b & 0x0f)]);
+    let mut t = [[0u8; 2]; 256];
+    let mut i = 0;
+    while i < 256 {
+        t[i] = [DIGITS[i >> 4], DIGITS[i & 0x0f]];
+        i += 1;
+    }
+    t
+};
+
+/// Lower-case hex of `bytes`, a table lookup per byte, without the formatting machinery.
+fn hex(bytes: &[u8]) -> String {
+    let mut s = vec![0u8; bytes.len() * 2];
+    for (pair, b) in s.chunks_exact_mut(2).zip(bytes) {
+        pair.copy_from_slice(&HEX_PAIRS[usize::from(*b)]);
     }
     // Every byte pushed is an ASCII digit.
     String::from_utf8(s).unwrap_or_default()
@@ -572,9 +588,24 @@ pub struct SignedPagare {
     pub hash: [u8; 32],
     pub signature: [u8; 64],
     pub signed_on: u32,
+    /// Decision 57: the sealed copy's hash, opaque, zero when there is none.
+    pub sealed_hash: [u8; 32],
 }
 
-/// One tranche of `amount_mxn` centavos, signed by the borrower alone, delivered as USDC at the FIX
+/// Decision 56: the key that co-signs a draw. A pool with no cotejo key needs none and records the
+/// zero key, whatever account is passed; otherwise `cotejo` must be present, sign and be one of the
+/// pool's non-zero keys (`CotejoRequired`). The zero key marks an empty slot and never matches.
+fn cotejo_signer(keys: &[Pubkey; 3], cotejo: Option<&UncheckedAccount>) -> Result<Pubkey> {
+    let zero = Pubkey::default();
+    if keys.iter().all(|k| *k == zero) {
+        return Ok(zero);
+    }
+    let signer = cotejo.filter(|c| c.is_signer).map(|c| c.key()).ok_or(PoolError::CotejoRequired)?;
+    require!(signer != zero && keys.contains(&signer), PoolError::CotejoRequired);
+    Ok(signer)
+}
+
+/// One tranche of `amount_mxn` centavos, signed by the borrower, delivered as USDC at the FIX
 /// in force, which the borrower signs as `fix_rate` and `fix_date` (`FixMismatch` if it changed,
 /// `FixStale` if older than `fx::MAX_FIX_AGE_DAYS`). Every check runs before anything is written:
 /// not paused; `Approved` or `Active`; `0 < amount_mxn <= principal - drawn`; `now <
@@ -584,9 +615,11 @@ pub struct SignedPagare {
 /// `max_line_bps` of the NAV now (`LineTooLarge`); the pool's outstanding cost stays within
 /// `max_outstanding_principal`; a valid signature method; a non-zero hash and signature of the
 /// message the borrower signed (`PagareSignatureMissing`), signed on a real date
-/// (`SignedDayInvalid`) that is today in Mexico City (`SignedDayMismatch`). The program derives the pagaré hash and the delivery hash, and stores
-/// the signed message's hash, signature and day unverified (decision 55). No interest is fixed: it
-/// accrues on the principal outstanding from now (decision 48).
+/// (`SignedDayInvalid`) that is today in Mexico City (`SignedDayMismatch`); one of the pool's
+/// cotejo keys co-signing when it names any (`cotejo_signer`, decision 56). The program derives the
+/// pagaré hash and the delivery hash, and stores the signed message's hash, signature and day
+/// unverified (decision 55), the cotejo key and the sealed copy's hash as given (decision 57). No
+/// interest is fixed: it accrues on the principal outstanding from now (decision 48).
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ctx: Context<Draw>,
@@ -635,6 +668,7 @@ pub fn draw(
     require!(signed.hash != [0u8; 32] && signed.signature != [0u8; 64], PoolError::PagareSignatureMissing);
     let signed_day = fx::fix_day(signed.signed_on).map_err(|_| PoolError::SignedDayInvalid)?;
     require!(signed_day == fx::mexico_city_day(now), PoolError::SignedDayMismatch);
+    let cotejo = cotejo_signer(&pool.cotejo_keys, ctx.accounts.cotejo.as_ref())?;
     let draw_index = line.draws;
     let document_hash = pagare_hash(line, &line.key(), draw_index, amount_mxn, now);
     let delivery = delivery_hash(&document_hash, fix_rate, fix_date, usdc);
@@ -681,6 +715,8 @@ pub fn draw(
         signed_pagare_hash: signed.hash,
         pagare_signature: signed.signature,
         signed_on: signed.signed_on,
+        cotejo,
+        sealed_hash: signed.sealed_hash,
         reserved: [0; 28],
     };
     // The registry opens with the issuance entry, from and to the pool, over the pagaré's hash
@@ -734,6 +770,8 @@ pub fn draw(
         holder: pool.key(),
         signed_pagare_hash: signed.hash,
         signed_on: signed.signed_on,
+        cotejo: record.cotejo,
+        sealed_hash: record.sealed_hash,
     });
     emit_cpi!(PagareEntry {
         pool: pool.key(),

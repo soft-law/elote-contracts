@@ -153,3 +153,61 @@ pub mod pagare {
         );
     }
 }
+
+/// Where decisions 56 and 57 put their fields, summed from the field sizes the specification lists,
+/// discriminator first: not from the program's types.
+pub mod layout {
+    const fn sum(sizes: &[usize]) -> usize {
+        let mut i = 0;
+        let mut total = 0;
+        while i < sizes.len() {
+            total += sizes[i];
+            i += 1;
+        }
+        total
+    }
+
+    /// Discriminator, council .. collection (6 keys), four u64, collection period u32, line cap
+    /// u16, four u8, creator, council kind u8, multisig, vault bump u8, pending council and kind,
+    /// outstanding cap u64, notice u32, impaired u64, provision u16, feeder, FIX u64, date u32,
+    /// posted i64, realized i64, bounds 2 * u64, recoverable u64.
+    pub const POOL_COTEJO_KEYS: usize =
+        sum(&[8, 32 * 6, 8 * 4, 4, 2, 1, 1, 1, 1, 32, 1, 32, 1, 32, 1, 8, 4, 8, 2, 32, 8, 4, 8, 8, 8, 8, 8]);
+    pub const POOL_LEN: usize = POOL_COTEJO_KEYS + 3 * 32 + 48;
+
+    /// Discriminator, line, draw index u16, asset, pagaré hash, amount, issued, due, drawn through,
+    /// certificate, method, status, paid at, receipt, procurador, flags, log root, count u32, last
+    /// kind, bump, FIX u64, date u32, USDC u64, delivery hash, signed hash, signature (64), day u32.
+    pub const PAGARE_COTEJO: usize =
+        sum(&[8, 32, 2, 32, 32, 8, 8, 8, 8, 32, 1, 1, 8, 32, 32, 1, 32, 4, 1, 1, 8, 4, 8, 32, 32, 64, 4]);
+    pub const PAGARE_SEALED_HASH: usize = PAGARE_COTEJO + 32;
+    pub const PAGARE_LEN: usize = PAGARE_SEALED_HASH + 32 + 28;
+}
+
+/// Decision 56 written from its statement: who co-signs a draw. Keys are raw bytes; the zero key
+/// is an empty slot.
+pub mod cotejo {
+    pub const ZERO: [u8; 32] = [0; 32];
+
+    /// The key the pagaré records, or `Err` (`CotejoRequired`). `cotejo` is the optional account
+    /// as `(key, signed)`. With no key set, whatever is passed is ignored and the record names the
+    /// zero key; with any set, a signer whose key is one of the non-zero keys.
+    pub fn co_signer(keys: &[[u8; 32]; 3], cotejo: Option<([u8; 32], bool)>) -> Result<[u8; 32], ()> {
+        let set: Vec<[u8; 32]> = keys.iter().copied().filter(|k| *k != ZERO).collect();
+        if set.is_empty() {
+            return Ok(ZERO);
+        }
+        match cotejo {
+            Some((key, true)) if set.contains(&key) => Ok(key),
+            _ => Err(()),
+        }
+    }
+
+    /// Whether `set_cotejo_keys` takes `keys`: no non-zero key twice, none equal to the pool, the
+    /// council or the program.
+    pub fn keys_valid(keys: &[[u8; 32]; 3], pool: [u8; 32], council: [u8; 32], program: [u8; 32]) -> bool {
+        let set: Vec<[u8; 32]> = keys.iter().copied().filter(|k| *k != ZERO).collect();
+        let distinct = set.iter().enumerate().all(|(i, k)| !set[..i].contains(k));
+        distinct && set.iter().all(|k| *k != pool && *k != council && *k != program)
+    }
+}

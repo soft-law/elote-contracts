@@ -140,6 +140,20 @@ export function repayPrincipalCap(input: {
 /** Byte offset of `procurador` in a `Pagare` account (pinned against the generated codec in the tests). */
 export const PAGARE_PROCURADOR_OFFSET = 212;
 
+const ZERO_ADDRESS = "11111111111111111111111111111111" as Address;
+
+/**
+ * The cotejo keys a pool names (decision 56), empty slots (the zero key) dropped. When this is not
+ * empty, every `draw` needs one of them as its `cotejo`, signing; otherwise the program fails it
+ * with `CotejoRequired`. Empty: no co-signer is needed and a `cotejo` passed is ignored.
+ */
+export function poolCotejoKeys(pool: { cotejoKeys: readonly Address[] }): Address[] {
+  return pool.cotejoKeys.filter((k) => k !== ZERO_ADDRESS);
+}
+
+/** A `draw`'s `sealedHash` when the parties keep no sealed copy (decision 57). */
+export const NO_SEALED_HASH: ReadonlyUint8Array = new Uint8Array(32);
+
 /**
  * The pagaré records whose procuración in force names `procurador`. A procurador key must serve
  * one case only: a key with several pagarés lets anyone list the lines in collection from it.

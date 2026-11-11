@@ -40,8 +40,27 @@ fn disc(ns: &str, name: &str) -> [u8; 8] {
 /// The vault's signature comes from Squads; it is not among the outer transaction's signers.
 #[allow(clippy::result_large_err)] // litesvm's error carries the whole transaction metadata
 fn via_squads(env: &mut Env, index: u64, ix: Instruction) -> Result<TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
+    via_squads_vault(env, index, 0, ix, &[])
+}
+
+/// Vault `vault_index` of the env's multisig.
+fn vault_of(env: &Env, vault_index: u8) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"multisig", env.multisig.as_ref(), b"vault", &[vault_index]], &SQUADS_ID)
+}
+
+/// As `via_squads`, signed by vault `vault_index`, with `signers` (keys the inner instruction marks
+/// as signers besides the vault) signing the outer transaction next to the executing member:
+/// Squads requires each such account to be a signer of the execution and forwards it to the CPI.
+#[allow(clippy::result_large_err)]
+fn via_squads_vault(
+    env: &mut Env,
+    index: u64,
+    vault_index: u8,
+    ix: Instruction,
+    signers: &[&Keypair],
+) -> Result<TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
     let multisig = env.multisig;
-    let (vault, vault_bump) = squads_vault_pda(&multisig);
+    let (vault, vault_bump) = vault_of(env, vault_index);
     let mut metas: Vec<(Pubkey, bool, bool)> = Vec::new();
     for m in ix.accounts.iter().map(|m| (m.pubkey, m.is_signer, m.is_writable)).chain([(ix.program_id, false, false)]) {
         match metas.iter_mut().find(|x| x.0 == m.0) {
@@ -82,7 +101,7 @@ fn via_squads(env: &mut Env, index: u64, ix: Instruction) -> Result<TransactionM
     t.extend_from_slice(multisig.as_ref());
     t.extend_from_slice(member.pubkey().as_ref()); // creator
     t.extend_from_slice(&index_bytes);
-    t.extend_from_slice(&[tx_bump, 0, vault_bump]); // bump, vault_index, vault_bump
+    t.extend_from_slice(&[tx_bump, vault_index, vault_bump]); // bump, vault_index, vault_bump
     t.extend_from_slice(&0u32.to_le_bytes()); // ephemeral signer bumps
     t.extend_from_slice(&msg);
     put_squads_account(&mut env.svm, &tx, t);
@@ -114,7 +133,7 @@ fn via_squads(env: &mut Env, index: u64, ix: Instruction) -> Result<TransactionM
     assert!(!accounts.iter().any(|a| a.pubkey == vault && a.is_signer), "the vault never signs the outer transaction");
     let exec = Instruction { program_id: SQUADS_ID, accounts, data: disc("global", "vault_transaction_execute").to_vec() };
     env.svm.airdrop(&member.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
-    env.try_send(exec, &member, &[])
+    env.try_send(exec, &member, signers)
 }
 
 fn ok(env: &mut Env, index: u64, ix: Instruction, what: &str) -> u64 {
@@ -276,4 +295,53 @@ fn the_council_condones_principal_through_squads() {
         assert_eq!(env.line(&k, id).pagares_paid, condoned as u16);
         assert_eq!(env.pagare(&k, id, 0).flags, elote_pool::state::PAGARE_FLAG_CONDONED, "the procuración ended");
     }
+}
+
+/// Decision 56 through Squads: the council sets the cotejo keys with a vault transaction, and a
+/// set that names the council itself (vault 0) is refused.
+#[test]
+fn the_council_sets_the_cotejo_keys_through_squads() {
+    let mut env = squads_env();
+    let (k, _) = env.setup_pool();
+    let council = env.council.pubkey();
+    let keys = [Pubkey::new_unique(), Pubkey::default(), Pubkey::new_unique()];
+    let ix = env.set_cotejo_keys_ix(&k, &council, keys);
+    ok(&mut env, 1, ix, "set_cotejo_keys");
+    assert_eq!(env.pool(&k).cotejo_keys, keys);
+    let ix = env.set_cotejo_keys_ix(&k, &council, [council, Pubkey::default(), Pubkey::default()]);
+    refused(&mut env, 2, ix, PoolError::CotejoKeyInvalid);
+    assert_eq!(env.pool(&k).cotejo_keys, keys);
+}
+
+/// Can the council act as the cotejo of a draw? Its own key, vault 0, cannot be named
+/// (`CotejoKeyInvalid`, above). Another vault of the same multisig can: the council names vault 1,
+/// and a vault transaction of vault 1 runs `draw` with the vault signing as cotejo through Squads'
+/// `invoke_signed`, the borrower's own signature on the outer execution forwarded by the CPI.
+/// The proposal fixes the FIX, `signed_on` and the draw index, so it must execute the same Mexico
+/// City day, before any other draw of the line and before the FIX moves.
+#[test]
+fn a_second_vault_of_the_council_co_signs_a_draw_through_squads() {
+    let mut env = squads_env();
+    let (k, borrower, id, p) = pool_with_line(&mut env);
+    env.approve_line(&k, id, &borrower.pubkey(), &p);
+    let council = env.council.pubkey();
+    let (vault1, _) = vault_of(&env, 1);
+    let ix = env.set_cotejo_keys_ix(&k, &council, [vault1, Pubkey::default(), Pubkey::default()]);
+    ok(&mut env, 1, ix, "set_cotejo_keys");
+    // Without the vault's signature the borrower alone is refused.
+    let alone = env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT);
+    env.expect_err(alone, &borrower, &[], ERR_BASE + PoolError::CotejoRequired as u32);
+    let ix = with_cotejo(env.draw_ix_amount(&k, id, &borrower.pubkey(), UNIT), Some((vault1, true)));
+    let accounts = ix.accounts.len();
+    let b = borrower.insecure_clone();
+    match via_squads_vault(&mut env, 2, 1, ix, &[&b]) {
+        Ok(meta) => {
+            let cu = meta.compute_units_consumed;
+            println!("draw co-signed by vault 1 through Squads ({accounts} accounts): {cu} CU");
+            assert!(cu < 200_000, "within the 200 000 CU an instruction gets by default");
+        }
+        Err(e) => panic!("draw through Squads failed: {:?}\n{}", e.err, e.meta.pretty_logs()),
+    }
+    assert_eq!(env.pagare(&k, id, 0).cotejo, vault1);
+    assert_eq!(env.line(&k, id).draws, 1);
 }

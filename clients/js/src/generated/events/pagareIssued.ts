@@ -59,6 +59,10 @@ export type PagareIssuedEvent = {
   /** Decision 55: the hash of the message the borrower signed and its day. */
   signedPagareHash: ReadonlyUint8Array;
   signedOn: number;
+  /** Decision 56: the cotejo key that co-signed, the zero key when none was required. */
+  cotejo: Address;
+  /** Decision 57: the sealed copy's hash, zero when there is none. */
+  sealedHash: ReadonlyUint8Array;
 };
 
 export type PagareIssuedEventArgs = {
@@ -74,6 +78,10 @@ export type PagareIssuedEventArgs = {
   /** Decision 55: the hash of the message the borrower signed and its day. */
   signedPagareHash: ReadonlyUint8Array;
   signedOn: number;
+  /** Decision 56: the cotejo key that co-signed, the zero key when none was required. */
+  cotejo: Address | HasAddress;
+  /** Decision 57: the sealed copy's hash, zero when there is none. */
+  sealedHash: ReadonlyUint8Array;
 };
 
 /** Gets the encoder for {@link PagareIssuedEventArgs} event data. */
@@ -91,6 +99,8 @@ export function getPagareIssuedEventEncoder(): FixedSizeEncoder<PagareIssuedEven
       ["holder", getAddressEncoder()],
       ["signedPagareHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["signedOn", getU32Encoder()],
+      ["cotejo", getAddressEncoder()],
+      ["sealedHash", fixEncoderSize(getBytesEncoder(), 32)],
     ]),
     [getConstantEncoder(PAGARE_ISSUED_EVENT_DISCRIMINATOR)],
   );
@@ -111,6 +121,8 @@ export function getPagareIssuedEventDecoder(): FixedSizeDecoder<PagareIssuedEven
       ["holder", getAddressDecoder()],
       ["signedPagareHash", fixDecoderSize(getBytesDecoder(), 32)],
       ["signedOn", getU32Decoder()],
+      ["cotejo", getAddressDecoder()],
+      ["sealedHash", fixDecoderSize(getBytesDecoder(), 32)],
     ]),
     [getConstantDecoder(PAGARE_ISSUED_EVENT_DISCRIMINATOR)],
   );

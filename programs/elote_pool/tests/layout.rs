@@ -1,6 +1,7 @@
 //! The account layouts: their final sizes, and the reserved tail every account is created with.
 
 mod common;
+mod reference;
 
 use common::*;
 use anchor_lang::Space;
@@ -11,9 +12,13 @@ use solana_signer::Signer;
 /// created zero, so zero there always means "no value".
 #[test]
 fn account_sizes_are_fixed_and_reserved_starts_zero() {
-    assert_eq!(8 + Pool::INIT_SPACE, 495);
+    assert_eq!(8 + Pool::INIT_SPACE, 591, "495 before decision 56 added the three cotejo keys");
     assert_eq!(8 + CreditLine::INIT_SPACE, 528);
-    assert_eq!(8 + Pagare::INIT_SPACE, 463, "363 before decision 55 added the signed message's hash, signature and day");
+    assert_eq!(
+        8 + Pagare::INIT_SPACE,
+        527,
+        "363 before decision 55 added the signed message's hash, signature and day; 463 before decisions 56 and 57 added the cotejo key and the sealed hash"
+    );
 
     let mut env = Env::new();
     let (k, _) = env.setup_pool();
@@ -34,6 +39,8 @@ fn account_sizes_are_fixed_and_reserved_starts_zero() {
     assert_eq!((line.acceleration_due_at, line.availability_end_saved), (0, 0));
     assert_eq!(line.reserved, [0u8; 64]);
     assert_eq!(pagare.reserved, [0u8; 28]);
+    assert_eq!(pool.cotejo_keys, [solana_pubkey::Pubkey::default(); 3], "no cotejo keys until the council sets them");
+    assert_eq!((pagare.cotejo, pagare.sealed_hash), (solana_pubkey::Pubkey::default(), [0u8; 32]));
     for (key, len) in [
         (k.pool, 8 + Pool::INIT_SPACE),
         (line_pda(&k.pool, line_id).0, 8 + CreditLine::INIT_SPACE),
@@ -73,6 +80,8 @@ fn distinct_pagare() -> Pagare {
         signed_pagare_hash: [0xb0; 32],
         pagare_signature: [0xc0; 64],
         signed_on: 20_261_111,
+        cotejo: key(200),
+        sealed_hash: [0xd0; 32],
         reserved: [0; 28],
     }
 }
@@ -88,6 +97,11 @@ fn the_in_place_record_view_matches_the_borsh_layout() {
     let mut data = Vec::new();
     p.try_serialize(&mut data).unwrap();
     assert_eq!(data.len(), 8 + Pagare::INIT_SPACE);
+    // Decisions 56 and 57 append after `signed_on`, at the reference's offsets.
+    let (c, s) = (reference::layout::PAGARE_COTEJO, reference::layout::PAGARE_SEALED_HASH);
+    assert_eq!(&data[c..c + 32], p.cotejo.as_ref());
+    assert_eq!(&data[s..s + 32], &p.sealed_hash);
+    assert_eq!(reference::layout::PAGARE_LEN, data.len());
     let f = SidecarFields::parse(&data).expect("a record");
     assert_eq!(
         f,

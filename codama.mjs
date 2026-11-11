@@ -7,6 +7,7 @@ import {
   pdaValueNode,
   programIdValueNode,
   setInstructionAccountDefaultValuesVisitor,
+  updateInstructionsVisitor,
 } from "codama";
 import { rootNodeFromAnchor } from "@codama/nodes-from-anchor";
 import { renderVisitor } from "@codama/renderers-js";
@@ -27,5 +28,10 @@ codama.update(
     { account: "program", defaultValue: programIdValueNode() },
   ])
 );
+
+// `draw`'s cotejo is an unchecked optional account so the program, not Anchor, answers a missing
+// signature (`CotejoRequired`, decision 56): the IDL cannot say it signs. A client passes the
+// cotejo's signer, which then signs the transaction.
+codama.update(updateInstructionsVisitor({ draw: { accounts: { cotejo: { isSigner: "either" } } } }));
 
 codama.accept(renderVisitor("clients/js", { deleteFolderBeforeRendering: true, syncPackageJson: false }));

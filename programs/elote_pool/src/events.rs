@@ -76,6 +76,10 @@ pub struct PagareIssued {
     /// Decision 55: the hash of the message the borrower signed and its day.
     pub signed_pagare_hash: [u8; 32],
     pub signed_on: u32,
+    /// Decision 56: the cotejo key that co-signed, the zero key when none was required.
+    pub cotejo: Pubkey,
+    /// Decision 57: the sealed copy's hash, zero when there is none.
+    pub sealed_hash: [u8; 32],
 }
 
 /// One entry of a pagaré's registry: the full content the sidecar's hash chain commits to.
@@ -484,6 +488,13 @@ pub struct FixPosted {
 pub struct FxFeederSet {
     pub pool: Pubkey,
     pub fx_feeder: Pubkey,
+}
+
+/// The cotejo keys after `set_cotejo_keys` (decision 56); all zero: draws need no co-signer.
+#[event]
+pub struct CotejoKeysSet {
+    pub pool: Pubkey,
+    pub keys: [Pubkey; 3],
 }
 
 /// The FIX bounds after `set_fix_bounds`: `post_fix` accepts `min_fix_rate ..= max_fix_rate`, or

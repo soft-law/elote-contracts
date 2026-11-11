@@ -127,6 +127,13 @@ export type Pagare = {
   pagareSignature: ReadonlyUint8Array;
   /** The day the borrower signed, `yyyymmdd` in Mexico City: the day of the draw. */
   signedOn: number;
+  /** The cotejo key that co-signed the draw (decision 56); the zero key when none was required. */
+  cotejo: Address;
+  /**
+   * SHA-256 of the encrypted content of the sealed copy the parties keep, recipients excluded;
+   * zero when there is none (decision 57).
+   */
+  sealedHash: ReadonlyUint8Array;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -203,6 +210,13 @@ export type PagareArgs = {
   pagareSignature: ReadonlyUint8Array;
   /** The day the borrower signed, `yyyymmdd` in Mexico City: the day of the draw. */
   signedOn: number;
+  /** The cotejo key that co-signed the draw (decision 56); the zero key when none was required. */
+  cotejo: Address | HasAddress;
+  /**
+   * SHA-256 of the encrypted content of the sealed copy the parties keep, recipients excluded;
+   * zero when there is none (decision 57).
+   */
+  sealedHash: ReadonlyUint8Array;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -238,6 +252,8 @@ export function getPagareEncoder(): FixedSizeEncoder<PagareArgs> {
       ["signedPagareHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["pagareSignature", fixEncoderSize(getBytesEncoder(), 64)],
       ["signedOn", getU32Encoder()],
+      ["cotejo", getAddressEncoder()],
+      ["sealedHash", fixEncoderSize(getBytesEncoder(), 32)],
       ["reserved", fixEncoderSize(getBytesEncoder(), 28)],
     ]),
     (value) => ({ ...value, discriminator: PAGARE_DISCRIMINATOR }),
@@ -274,6 +290,8 @@ export function getPagareDecoder(): FixedSizeDecoder<Pagare> {
     ["signedPagareHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["pagareSignature", fixDecoderSize(getBytesDecoder(), 64)],
     ["signedOn", getU32Decoder()],
+    ["cotejo", getAddressDecoder()],
+    ["sealedHash", fixDecoderSize(getBytesDecoder(), 32)],
     ["reserved", fixDecoderSize(getBytesDecoder(), 28)],
   ]);
 }
@@ -345,5 +363,5 @@ export async function fetchAllMaybePagare(
 }
 
 export function getPagareSize(): number {
-  return 463;
+  return 527;
 }

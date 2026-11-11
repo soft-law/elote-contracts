@@ -17,6 +17,8 @@ import {
   fixEncoderSize,
   getAddressDecoder,
   getAddressEncoder,
+  getArrayDecoder,
+  getArrayEncoder,
   getBooleanDecoder,
   getBooleanEncoder,
   getBytesDecoder,
@@ -163,6 +165,11 @@ export type Pool = {
    * Deposits pay for it at par (`entry_nav`, decision 51).
    */
   recoverable: bigint;
+  /**
+   * The cotejo services' keys (decision 56): while any is non-zero, every `draw` is co-signed by
+   * one of them. The zero key is an empty slot. Set, as a whole, only by `set_cotejo_keys`.
+   */
+  cotejoKeys: Array<Address>;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -273,6 +280,11 @@ export type PoolArgs = {
    * Deposits pay for it at par (`entry_nav`, decision 51).
    */
   recoverable: number | bigint;
+  /**
+   * The cotejo services' keys (decision 56): while any is non-zero, every `draw` is co-signed by
+   * one of them. The zero key is an empty slot. Set, as a whole, only by `set_cotejo_keys`.
+   */
+  cotejoKeys: Array<Address | HasAddress>;
   /** Zero; for fields added after mainnet. */
   reserved: ReadonlyUint8Array;
 };
@@ -316,6 +328,7 @@ export function getPoolEncoder(): FixedSizeEncoder<PoolArgs> {
       ["minFixRate", getU64Encoder()],
       ["maxFixRate", getU64Encoder()],
       ["recoverable", getU64Encoder()],
+      ["cotejoKeys", getArrayEncoder(getAddressEncoder(), { size: 3 })],
       ["reserved", fixEncoderSize(getBytesEncoder(), 48)],
     ]),
     (value) => ({ ...value, discriminator: POOL_DISCRIMINATOR }),
@@ -360,6 +373,7 @@ export function getPoolDecoder(): FixedSizeDecoder<Pool> {
     ["minFixRate", getU64Decoder()],
     ["maxFixRate", getU64Decoder()],
     ["recoverable", getU64Decoder()],
+    ["cotejoKeys", getArrayDecoder(getAddressDecoder(), { size: 3 })],
     ["reserved", fixDecoderSize(getBytesDecoder(), 48)],
   ]);
 }
@@ -431,5 +445,5 @@ export async function fetchAllMaybePool(
 }
 
 export function getPoolSize(): number {
-  return 495;
+  return 591;
 }

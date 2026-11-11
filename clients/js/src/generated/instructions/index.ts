@@ -35,6 +35,7 @@ export * from "./resumeDraws";
 export * from "./revokeProcuracion";
 export * from "./setAccelerationNotice";
 export * from "./setCollectionPeriod";
+export * from "./setCotejoKeys";
 export * from "./setFixBounds";
 export * from "./setFxFeeder";
 export * from "./setMaxLineBps";

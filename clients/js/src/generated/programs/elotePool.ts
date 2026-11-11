@@ -76,6 +76,7 @@ import {
   getRevokeProcuracionInstructionAsync,
   getSetAccelerationNoticeInstructionAsync,
   getSetCollectionPeriodInstructionAsync,
+  getSetCotejoKeysInstructionAsync,
   getSetFixBoundsInstructionAsync,
   getSetFxFeederInstructionAsync,
   getSetMaxLineBpsInstructionAsync,
@@ -114,6 +115,7 @@ import {
   parseRevokeProcuracionInstruction,
   parseSetAccelerationNoticeInstruction,
   parseSetCollectionPeriodInstruction,
+  parseSetCotejoKeysInstruction,
   parseSetFixBoundsInstruction,
   parseSetFxFeederInstruction,
   parseSetMaxLineBpsInstruction,
@@ -167,6 +169,7 @@ import {
   type ParsedRevokeProcuracionInstruction,
   type ParsedSetAccelerationNoticeInstruction,
   type ParsedSetCollectionPeriodInstruction,
+  type ParsedSetCotejoKeysInstruction,
   type ParsedSetFixBoundsInstruction,
   type ParsedSetFxFeederInstruction,
   type ParsedSetMaxLineBpsInstruction,
@@ -190,6 +193,7 @@ import {
   type RevokeProcuracionAsyncInput,
   type SetAccelerationNoticeAsyncInput,
   type SetCollectionPeriodAsyncInput,
+  type SetCotejoKeysAsyncInput,
   type SetFixBoundsAsyncInput,
   type SetFxFeederAsyncInput,
   type SetMaxLineBpsAsyncInput,
@@ -266,6 +270,7 @@ export enum ElotePoolEvent {
   AccelerationWithdrawn,
   AvailabilityRenounced,
   CollectionPeriodSet,
+  CotejoKeysSet,
   CouncilAccepted,
   CouncilProposed,
   Deposited,
@@ -363,6 +368,17 @@ export function identifyElotePoolEvent(
     )
   ) {
     return ElotePoolEvent.CollectionPeriodSet;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([210, 159, 88, 101, 83, 148, 21, 106]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolEvent.CotejoKeysSet;
   }
   if (
     containsBytes(
@@ -806,6 +822,7 @@ export enum ElotePoolInstruction {
   RevokeProcuracion,
   SetAccelerationNotice,
   SetCollectionPeriod,
+  SetCotejoKeys,
   SetFixBounds,
   SetFxFeeder,
   SetMaxLineBps,
@@ -1144,6 +1161,17 @@ export function identifyElotePoolInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([13, 233, 127, 29, 58, 20, 184, 0]),
+      ),
+      0,
+    )
+  ) {
+    return ElotePoolInstruction.SetCotejoKeys;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([181, 80, 176, 65, 233, 29, 33, 12]),
       ),
       0,
@@ -1335,6 +1363,9 @@ export type ParsedElotePoolInstruction<
   | ({
       instructionType: ElotePoolInstruction.SetCollectionPeriod;
     } & ParsedSetCollectionPeriodInstruction<TProgram>)
+  | ({
+      instructionType: ElotePoolInstruction.SetCotejoKeys;
+    } & ParsedSetCotejoKeysInstruction<TProgram>)
   | ({
       instructionType: ElotePoolInstruction.SetFixBounds;
     } & ParsedSetFixBoundsInstruction<TProgram>)
@@ -1571,6 +1602,13 @@ export function parseElotePoolInstruction<TProgram extends string>(
         ...parseSetCollectionPeriodInstruction(instruction),
       };
     }
+    case ElotePoolInstruction.SetCotejoKeys: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: ElotePoolInstruction.SetCotejoKeys,
+        ...parseSetCotejoKeysInstruction(instruction),
+      };
+    }
     case ElotePoolInstruction.SetFixBounds: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -1799,6 +1837,11 @@ export type ElotePoolPluginInstructions = {
     input: SetCollectionPeriodAsyncInput,
     config?: { programAddress?: Address | HasAddress },
   ) => ReturnType<typeof getSetCollectionPeriodInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  setCotejoKeys: (
+    input: SetCotejoKeysAsyncInput,
+    config?: { programAddress?: Address | HasAddress },
+  ) => ReturnType<typeof getSetCotejoKeysInstructionAsync> &
     SelfPlanAndSendFunctions;
   setFixBounds: (
     input: SetFixBoundsAsyncInput,
@@ -2119,6 +2162,14 @@ export function elotePoolProgram(
             addSelfPlanAndSendFunctions(
               client,
               getSetCollectionPeriodInstructionAsync(input, {
+                programAddress:
+                  instructionConfig?.programAddress ?? config.programAddress,
+              }),
+            ),
+          setCotejoKeys: (input, instructionConfig) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetCotejoKeysInstructionAsync(input, {
                 programAddress:
                   instructionConfig?.programAddress ?? config.programAddress,
               }),

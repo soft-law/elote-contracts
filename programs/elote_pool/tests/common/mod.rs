@@ -19,7 +19,7 @@ use anchor_spl::token_2022::spl_token_2022;
 use spl_token_2022::extension::{BaseStateWithExtensions, ExtensionType, StateWithExtensions};
 use litesvm::types::{FailedTransactionMetadata, TransactionMetadata};
 use litesvm::LiteSVM;
-use solana_instruction::Instruction;
+use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::{pubkey, Pubkey};
 pub use keys::Keypair;
 use solana_signer::Signer;
@@ -217,6 +217,8 @@ pub const E_FX_REFERENCE_STALE: u32 = ERR_BASE + PoolError::FxReferenceStale as 
 pub const E_FIX_OFF_REFERENCE: u32 = ERR_BASE + PoolError::FixOffReference as u32;
 pub const E_FIX_ALREADY_POSTED_TODAY: u32 = ERR_BASE + PoolError::FixAlreadyPostedToday as u32;
 pub const E_ASSET_DECIMALS_INVALID: u32 = ERR_BASE + PoolError::AssetDecimalsInvalid as u32;
+pub const E_COTEJO_REQUIRED: u32 = ERR_BASE + PoolError::CotejoRequired as u32;
+pub const E_COTEJO_KEY_INVALID: u32 = ERR_BASE + PoolError::CotejoKeyInvalid as u32;
 /// Anchor's `AccountNotInitialized`: an account the instruction expects does not exist.
 pub const E_ACCOUNT_NOT_INITIALIZED: u32 = 3012;
 
@@ -474,6 +476,20 @@ pub struct Env {
     /// The `valid_until` every council builder passes when a test sets it; otherwise
     /// `valid_until()` is one day from the SVM's clock at the time the instruction is built.
     pub valid_until: Option<i64>,
+    /// The cotejo key every harness draw carries as a co-signer (decision 56); none by default.
+    pub cotejo: Option<Keypair>,
+    /// The sealed copy's hash every harness draw passes (decision 57); zero by default.
+    pub sealed_hash: [u8; 32],
+}
+
+/// Puts `cotejo` in `draw`'s optional slot (index 1, after the borrower), signing or not; `None`
+/// leaves the program id there, Anchor's "absent".
+pub fn with_cotejo(mut ix: Instruction, cotejo: Option<(Pubkey, bool)>) -> Instruction {
+    ix.accounts[1] = match cotejo {
+        Some((key, signs)) => AccountMeta::new_readonly(key, signs),
+        None => AccountMeta::new_readonly(PROGRAM_ID, false),
+    };
+    ix
 }
 
 fn event_metas() -> (Pubkey, Pubkey) {
@@ -523,7 +539,18 @@ impl Env {
         let mut clock = svm.get_sysvar::<anchor_lang::prelude::Clock>();
         clock.unix_timestamp = START_TIME;
         svm.set_sysvar(&clock);
-        Self { svm, council, creator, multisig, council_vault_bump, curators, parity_pools: Vec::new(), valid_until: None }
+        Self {
+            svm,
+            council,
+            creator,
+            multisig,
+            council_vault_bump,
+            curators,
+            parity_pools: Vec::new(),
+            valid_until: None,
+            cotejo: None,
+            sealed_hash: [0; 32],
+        }
     }
 
     pub fn funded(&mut self, sol: u64) -> Keypair {
@@ -1503,10 +1530,11 @@ impl Env {
         let (event_authority, program) = event_metas();
         let line = line_pda(&k.pool, line_id).0;
         let draw_index = self.line(k, line_id).draws;
-        Instruction {
+        let ix = Instruction {
             program_id: PROGRAM_ID,
             accounts: elote_pool::accounts::Draw {
                 borrower: *borrower,
+                cotejo: None,
                 pool: k.pool,
                 line,
                 asset_mint: k.asset_mint,
@@ -1536,10 +1564,31 @@ impl Env {
                     signed_pagare_hash: signed.hash,
                     pagare_signature: signed.signature,
                     signed_on: signed.signed_on,
+                    sealed_hash: self.sealed_hash,
                 }
                 .data()
             },
-        }
+        };
+        with_cotejo(ix, self.cotejo.as_ref().map(|c| (c.pubkey(), true)))
+    }
+
+    /// Sends a harness draw, the env's cotejo key co-signing when it has one.
+    pub fn send_draw(&mut self, ix: Instruction, borrower: &Keypair) -> TransactionMetadata {
+        let cotejo = self.cotejo.as_ref().map(|c| c.insecure_clone());
+        let extra: Vec<&Keypair> = cotejo.iter().collect();
+        self.send(ix, borrower, &extra)
+    }
+
+    /// `set_cotejo_keys(keys)` signed by `council`.
+    pub fn set_cotejo_keys_ix(&self, k: &PoolKeys, council: &Pubkey, keys: [Pubkey; 3]) -> Instruction {
+        self.council_pool_ix(k, council, elote_pool::instruction::SetCotejoKeys { keys, valid_until: self.valid_until() }.data())
+    }
+
+    /// Sets the cotejo keys as the env's council.
+    pub fn set_cotejo_keys(&mut self, k: &PoolKeys, keys: [Pubkey; 3]) -> TransactionMetadata {
+        let council = self.council.insecure_clone();
+        let ix = self.set_cotejo_keys_ix(k, &council.pubkey(), keys);
+        self.send(ix, &council, &[])
     }
 
     /// `cancel_pagare(draw_index, receipt_hash)` signed by `holder`: the council, or the line's
@@ -1746,14 +1795,14 @@ impl Env {
     /// Draws everything still available; signed by the borrower.
     pub fn draw(&mut self, k: &PoolKeys, line_id: u64, borrower: &Keypair) -> elote_pool::events::LineDrawn {
         let ix = self.draw_ix(k, line_id, &borrower.pubkey());
-        let meta = self.send(ix, borrower, &[]);
+        let meta = self.send_draw(ix, borrower);
         find_event(&meta).expect("LineDrawn event")
     }
 
     /// Draws one tranche of `amount`; signed by the borrower.
     pub fn draw_amount(&mut self, k: &PoolKeys, line_id: u64, borrower: &Keypair, amount: u64) -> elote_pool::events::LineDrawn {
         let ix = self.draw_ix_amount(k, line_id, &borrower.pubkey(), amount);
-        let meta = self.send(ix, borrower, &[]);
+        let meta = self.send_draw(ix, borrower);
         find_event(&meta).expect("LineDrawn event")
     }
 

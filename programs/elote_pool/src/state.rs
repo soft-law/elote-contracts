@@ -189,6 +189,9 @@ pub struct Pool {
     /// recovery subtracts what it recovered and a quita on a written-off line what it condoned.
     /// Deposits pay for it at par (`entry_nav`, decision 51).
     pub recoverable: u64,
+    /// The cotejo services' keys (decision 56): while any is non-zero, every `draw` is co-signed by
+    /// one of them. The zero key is an empty slot. Set, as a whole, only by `set_cotejo_keys`.
+    pub cotejo_keys: [Pubkey; 3],
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 48],
 }
@@ -481,6 +484,11 @@ pub struct Pagare {
     pub pagare_signature: [u8; 64],
     /// The day the borrower signed, `yyyymmdd` in Mexico City: the day of the draw.
     pub signed_on: u32,
+    /// The cotejo key that co-signed the draw (decision 56); the zero key when none was required.
+    pub cotejo: Pubkey,
+    /// SHA-256 of the encrypted content of the sealed copy the parties keep, recipients excluded;
+    /// zero when there is none (decision 57).
+    pub sealed_hash: [u8; 32],
     /// Zero; for fields added after mainnet.
     pub reserved: [u8; 28],
 }
@@ -637,6 +645,7 @@ mod tests {
             recoverable: 0,
             min_fix_rate: 0,
             max_fix_rate: 0,
+            cotejo_keys: [Pubkey::default(); 3],
             reserved: [0; 48],
         }
     }

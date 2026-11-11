@@ -179,6 +179,10 @@ export const ELOTE_POOL_ERROR__PAGARE_SIGNATURE_MISSING = 0x17bf; // 6079
 export const ELOTE_POOL_ERROR__SIGNED_DAY_MISMATCH = 0x17c0; // 6080
 /** SignedDayInvalid: The pagaré's signing date is not a valid date */
 export const ELOTE_POOL_ERROR__SIGNED_DAY_INVALID = 0x17c1; // 6081
+/** CotejoRequired: The pool names cotejo keys: one of them must co-sign the draw */
+export const ELOTE_POOL_ERROR__COTEJO_REQUIRED = 0x17c2; // 6082
+/** CotejoKeyInvalid: A cotejo key is repeated, or is the pool, the council or the program */
+export const ELOTE_POOL_ERROR__COTEJO_KEY_INVALID = 0x17c3; // 6083
 
 export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__ACCELERATION_NOT_DUE
@@ -199,6 +203,8 @@ export type ElotePoolError =
   | typeof ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_SHORT
   | typeof ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED
   | typeof ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT
+  | typeof ELOTE_POOL_ERROR__COTEJO_KEY_INVALID
+  | typeof ELOTE_POOL_ERROR__COTEJO_REQUIRED
   | typeof ELOTE_POOL_ERROR__COUNCIL_INVALID
   | typeof ELOTE_POOL_ERROR__COUNCIL_KIND_INVALID
   | typeof ELOTE_POOL_ERROR__COUNCIL_TOO_LARGE
@@ -285,6 +291,8 @@ if (process.env["NODE_ENV"] !== "production") {
     [ELOTE_POOL_ERROR__CANCEL_GRACE_TOO_SHORT]: `Retired: the cancel grace is gone with the cancellation route (decision 38)`,
     [ELOTE_POOL_ERROR__COLLECTION_NOT_ALLOWED]: `The collection is not a bare Metaplex Core collection whose update authority is the pool`,
     [ELOTE_POOL_ERROR__COLLECTION_PERIOD_TOO_SHORT]: `The collection period is shorter than the minimum`,
+    [ELOTE_POOL_ERROR__COTEJO_KEY_INVALID]: `A cotejo key is repeated, or is the pool, the council or the program`,
+    [ELOTE_POOL_ERROR__COTEJO_REQUIRED]: `The pool names cotejo keys: one of them must co-sign the draw`,
     [ELOTE_POOL_ERROR__COUNCIL_INVALID]: `The council is not the vault of an autonomous Squads v4 multisig with a majority threshold`,
     [ELOTE_POOL_ERROR__COUNCIL_KIND_INVALID]: `This council kind is not accepted`,
     [ELOTE_POOL_ERROR__COUNCIL_TOO_LARGE]: `The council multisig has more members than the program checks`,

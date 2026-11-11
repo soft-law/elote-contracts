@@ -1325,8 +1325,10 @@
         "borrower signs as `fix_rate` and `fix_date`, and mints the pagaré (its hash derived on chain",
         "from the approved template and terms) as a frozen Core asset owned by the pool, with its",
         "`Pagare` record, which keeps the hash, the signature and the day of the message with the",
-        "pagaré's text the borrower signed off chain (decision 55; the issuance entry binds the hash).",
-        "The borrower and the rent payer sign; refused while paused, once the draw",
+        "pagaré's text the borrower signed off chain (decision 55; the issuance entry binds the hash),",
+        "and `sealed_hash`, the sealed copy's hash, as given (decision 57). The borrower and the rent",
+        "payer sign, and one of the pool's cotejo keys when it names any (decision 56,",
+        "`CotejoRequired`); refused while paused, once the draw",
         "window has closed, on a changed or stale FIX, or above what the line, the line cap (the line's",
         "USDC drawn within `max_line_bps` of the NAV now), the vault or the pool cap allows."
       ],
@@ -1344,12 +1346,21 @@
         {
           "name": "borrower",
           "docs": [
-            "Signs alone: the signature covers the pagaré hash the program derives and the FIX."
+            "Signs: the signature covers the pagaré hash the program derives and the FIX."
           ],
           "signer": true,
           "relations": [
             "line"
           ]
+        },
+        {
+          "name": "cotejo",
+          "docs": [
+            "One of `pool.cotejo_keys`, signing, when the pool names any (decision 56); ignored when it",
+            "names none. Read only. Unchecked so a missing signature or a key outside the set is the",
+            "handler's `CotejoRequired`, and an account passed to a pool without keys is ignored."
+          ],
+          "optional": true
         },
         {
           "name": "pool",
@@ -1578,6 +1589,15 @@
         {
           "name": "signed_on",
           "type": "u32"
+        },
+        {
+          "name": "sealed_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -3224,6 +3244,83 @@
       ]
     },
     {
+      "name": "set_cotejo_keys",
+      "docs": [
+        "Replaces the cotejo keys (decision 56): while any is set, a draw needs one of them as",
+        "co-signer. Council only, also while paused; the zero key is an empty slot."
+      ],
+      "discriminator": [
+        13,
+        233,
+        127,
+        29,
+        58,
+        20,
+        184,
+        0
+      ],
+      "accounts": [
+        {
+          "name": "council",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "multisig"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.creator",
+                "account": "Pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.asset_mint",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "event_authority"
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "keys",
+          "type": {
+            "array": [
+              "pubkey",
+              3
+            ]
+          }
+        },
+        {
+          "name": "valid_until",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "set_fix_bounds",
       "docs": [
         "Sets the lowest and highest FIX `post_fix` accepts (zero and zero for none). Council only."
@@ -4037,6 +4134,19 @@
         168,
         42,
         132
+      ]
+    },
+    {
+      "name": "CotejoKeysSet",
+      "discriminator": [
+        210,
+        159,
+        88,
+        101,
+        83,
+        148,
+        21,
+        106
       ]
     },
     {
@@ -4931,6 +5041,16 @@
       "code": 6081,
       "name": "SignedDayInvalid",
       "msg": "The pagaré's signing date is not a valid date"
+    },
+    {
+      "code": 6082,
+      "name": "CotejoRequired",
+      "msg": "The pool names cotejo keys: one of them must co-sign the draw"
+    },
+    {
+      "code": 6083,
+      "name": "CotejoKeyInvalid",
+      "msg": "A cotejo key is repeated, or is the pool, the council or the program"
     }
   ],
   "types": [
@@ -5070,6 +5190,30 @@
           {
             "name": "principal_balance",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CotejoKeysSet",
+      "docs": [
+        "The cotejo keys after `set_cotejo_keys` (decision 56); all zero: draws need no co-signer."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "keys",
+            "type": {
+              "array": [
+                "pubkey",
+                3
+              ]
+            }
           }
         ]
       }
@@ -6646,6 +6790,26 @@
             "type": "u32"
           },
           {
+            "name": "cotejo",
+            "docs": [
+              "The cotejo key that co-signed the draw (decision 56); the zero key when none was required."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "sealed_hash",
+            "docs": [
+              "SHA-256 of the encrypted content of the sealed copy the parties keep, recipients excluded;",
+              "zero when there is none (decision 57)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "reserved",
             "docs": [
               "Zero; for fields added after mainnet."
@@ -6927,6 +7091,25 @@
           {
             "name": "signed_on",
             "type": "u32"
+          },
+          {
+            "name": "cotejo",
+            "docs": [
+              "Decision 56: the cotejo key that co-signed, the zero key when none was required."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "sealed_hash",
+            "docs": [
+              "Decision 57: the sealed copy's hash, zero when there is none."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -7322,6 +7505,19 @@
               "Deposits pay for it at par (`entry_nav`, decision 51)."
             ],
             "type": "u64"
+          },
+          {
+            "name": "cotejo_keys",
+            "docs": [
+              "The cotejo services' keys (decision 56): while any is non-zero, every `draw` is co-signed by",
+              "one of them. The zero key is an empty slot. Set, as a whole, only by `set_cotejo_keys`."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                3
+              ]
+            }
           },
           {
             "name": "reserved",

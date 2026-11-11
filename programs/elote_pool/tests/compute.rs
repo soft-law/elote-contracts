@@ -87,11 +87,19 @@ fn draw_stays_under_its_ceiling_at_120_installments() {
         let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
         tenth = env.send(ix, &borrower, &[]).compute_units_consumed;
     }
-    assert_eq!(env.line(&k, line_id).draws, 11);
+    // Decision 56: three cotejo keys, the last one co-signing (the longest match), and a sealed hash.
+    let cotejo = Keypair::new();
+    env.set_cotejo_keys(&k, [solana_pubkey::Pubkey::new_unique(), solana_pubkey::Pubkey::new_unique(), cotejo.pubkey()]);
+    env.cotejo = Some(cotejo.insecure_clone());
+    env.sealed_hash = [0x57; 32];
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
+    let with_cotejo = env.send(ix, &borrower, &[&cotejo]).compute_units_consumed;
+    assert_eq!(env.line(&k, line_id).draws, 12);
     println!("draw, first tranche at 120 installments: {first} CU");
     println!("draw, second tranche at 120 installments: {second} CU");
     println!("draw, tranche 10 at 120 installments: {tenth} CU");
-    for (what, cu) in [("first", first), ("second", second), ("tranche 10", tenth)] {
+    println!("draw, tranche 11 at 120 installments, co-signed by the third cotejo key: {with_cotejo} CU");
+    for (what, cu) in [("first", first), ("second", second), ("tranche 10", tenth), ("with a cotejo", with_cotejo)] {
         assert!(cu <= DRAW_CEILING, "draw ({what}) used {cu} CU, ceiling {DRAW_CEILING}");
     }
 }
