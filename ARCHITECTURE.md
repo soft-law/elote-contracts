@@ -17,11 +17,11 @@ owner review of 2026-10-31 and the record of 2026-11-08 in the decision register
 
 ## 1. Overview and model
 
-### 1.1 One program, nine modules
+### 1.1 One program, ten modules
 
 ```
 programs/elote_pool/src/
-├── lib.rs        declare_id!, security.txt, the #[program] module: 38 thin entry points
+├── lib.rs        declare_id!, security.txt, the #[program] module: 39 thin entry points
 ├── state.rs      Pool, CreditLine and Pagare layouts, LineStatus, PDA seeds, constants, the
 │                 asset allow-list, Pool::nav / Pool::entry_nav / Pool::check
 ├── council.rs    the Squads v4 council: fresh (valid_until), check, is_member, the vault address
@@ -30,11 +30,13 @@ programs/elote_pool/src/
 ├── terms.rs      LineTerms and the terms hash the council approves
 ├── math.rs       pure arithmetic: share pricing, ordinary interest, the payment order, installments, arrears
 ├── registry.rs   the pagaré registry: payment annotation hashes, entry hashes, the hash chain
-├── errors.rs     PoolError (82 codes, 6000..=6081)
-├── events.rs     41 events, all emitted through emit_cpi!
+├── record.rs     a Pagare record read and written in place at its Borsh offsets (repay, condone)
+├── errors.rs     PoolError (84 codes, 6000..=6083)
+├── events.rs     43 events, all emitted through emit_cpi!
 └── instructions/
     ├── pool.rs   init_pool, deposit, redeem, pause, resume, the council's pool setters,
-    │             propose_council, accept_council, set_fx_feeder, post_fix, pool_signer!
+    │             propose_council, accept_council, set_fx_feeder, set_cotejo_keys, post_fix,
+    │             pool_signer!
     ├── lines.rs  request_line, approve_line, reject_line, withdraw_request, draw (mints the
     │             pagaré), repay, mark_in_collection, write_off, suspend_draws, resume_draws,
     │             propose_acceleration, withdraw_acceleration, accelerate_line, cancel_line
@@ -180,11 +182,12 @@ NAV, which is the `nav_after` of every event and `NavUpdated.total_assets`.
 
 | role | identified by | can |
 |---|---|---|
-| council | `Pool.council`: vault 0 of `Pool.multisig`, a Squads v4 multisig (`council_kind = COUNCIL_SQUADS`) | every council instruction (§4, marked **C**): approve and reject requests; cancel, suspend, resume and accelerate lines; write off; pause and resume the pool; set the pool's parameters (line cap, outstanding cap, provision, FIX bounds, acceleration notice, collection period); publish the FIX outside the feeder's band and name the feeder; rotate itself; and, as the holder of the pagarés in the pool, endorse en procuración, revoke, annotate court acts and receipts, and annul a título issued in error |
+| council | `Pool.council`: vault 0 of `Pool.multisig`, a Squads v4 multisig (`council_kind = COUNCIL_SQUADS`) | every council instruction (§4, marked **C**): approve and reject requests; cancel, suspend, resume and accelerate lines; write off; pause and resume the pool; set the pool's parameters (line cap, outstanding cap, provision, FIX bounds, acceleration notice, collection period); publish the FIX outside the feeder's band and name the feeder; name the cotejo keys; rotate itself; and, as the holder of the pagarés in the pool, endorse en procuración, revoke, annotate court acts and receipts, and annul a título issued in error |
 | council member | a key in the multisig's member list | nothing alone (decision 39); votes in Squads. Cannot be a borrower (`BorrowerIsCurator` at `approve_line`) or a procurador (`EndorseeInvalid`) |
 | fx_feeder | `Pool.fx_feeder` (the zero key for none), set by `set_fx_feeder` | `post_fix` for a later date, within the band from the FIX in force, within 2% of the RedStone reference, within the pool's FIX bounds, once per Mexico City day (§6) |
+| cotejo | one of `Pool.cotejo_keys` (the zero key an empty slot), set by `set_cotejo_keys` (decision 56) | co-sign `draw` when the pool names any key; nothing else. It moves no funds, pays nothing and changes no amount; by not signing it blocks draws (§4.3) |
 | creator | `Pool.creator`: signer and payer of `init_pool`, a seed of the pool's address | nothing after `init_pool`; cannot be a procurador |
-| borrower | `CreditLine.borrower` | `request_line`, `withdraw_request`, `draw` its approved line alone (signing the FIX); receives its paid pagarés from `deliver_pagare` once the line owes nothing (decision 49) and, as their owner, may `burn_pagare` them |
+| borrower | `CreditLine.borrower` | `request_line`, `withdraw_request`, `draw` its approved line (signing the FIX; with a cotejo key's co-signature when the pool names any); receives its paid pagarés from `deliver_pagare` once the line owes nothing (decision 49) and, as their owner, may `burn_pagare` them |
 | payer (relayer) | any signer passed as `payer` | funds the rent of a request (`CreditLine.payer`, refunded on reject or withdraw) and of the pagaré asset and its record at `draw`; sends `deliver_pagare` and pays what its CPIs need. The `payer` of `repay` is a different role: whoever's USDC moves |
 | sponsor | `CreditLine.sponsor`, `sponsor_role` 0 promoter or 1 guarantor | co-signs `request_line` when named (`SponsorRequired`). A guarantor (aval) whose payment covers a pagaré receives that título at `deliver_pagare` once the line owes nothing (LGTOC 115, decision 49); otherwise the role is recorded, not enforced |
 | procurador | `Pagare.procurador`, named by `endorse_pagare` | nothing over the asset (decision 38): it collects through `repay` like any payer and litigates with the registry entry as the endorsement |
@@ -250,14 +253,14 @@ pool never rotates to an address that cannot sign or to a multisig without a maj
 ## 3. Accounts and the PDA tree
 
 ```
-Pool            PDA ["pool", creator, asset_mint]              program-owned, 495 bytes
+Pool            PDA ["pool", creator, asset_mint]              program-owned, 591 bytes
 ├── share_mint  creator-supplied mint                          classic or Token-2022, decimals = asset's,
 │                                                              mint authority = pool PDA
 ├── vault       PDA ["vault", pool]                            token account of asset_mint, authority = pool
 ├── dead_shares PDA ["dead", pool]                             token account of share_mint, authority = pool
 ├── collection  creator-supplied Core CollectionV1             update authority = pool PDA, bare at init
 └── CreditLine  PDA ["line", pool, line_id u64 LE]             program-owned, 528 bytes
-    ├── Pagare  PDA ["pagare", line, draw_index u16 LE]        program-owned, 463 bytes: the pagaré record
+    ├── Pagare  PDA ["pagare", line, draw_index u16 LE]        program-owned, 527 bytes: the pagaré record
     └── asset   PDA ["pagare_asset", line, draw_index u16 LE]  Metaplex Core AssetV1, owned by the Core
                                                                program; held by the pool PDA until
                                                                deliver_pagare, then by the debtor
@@ -291,7 +294,7 @@ The seeds are `state::seeds`.
   `burn_pagare`.
 
 All three accounts are Borsh-serialized with no padding, end in a zeroed `reserved` tail for fields
-added after mainnet, and are sized by `InitSpace` (`tests/layout.rs` pins 495, 528 and 463 bytes).
+added after mainnet, and are sized by `InitSpace` (`tests/layout.rs` pins 591, 528 and 527 bytes).
 Offsets below include the 8-byte Anchor discriminator, so they can be used directly in `memcmp`
 filters.
 
@@ -301,7 +304,7 @@ filters.
 | `CreditLine` | `dce2cd18dc978168` |
 | `Pagare` | `8c8e1bef938349f7` |
 
-### 3.1 `Pool` (495 bytes)
+### 3.1 `Pool` (591 bytes)
 
 | offset | size | field | notes |
 |---|---|---|---|
@@ -340,7 +343,8 @@ filters.
 | 423 | 8 | `min_fix_rate` | the lowest FIX `post_fix` accepts; zero with `max_fix_rate` zero for no bounds |
 | 431 | 8 | `max_fix_rate` | the highest |
 | 439 | 8 | `recoverable` | the cost written off and still owed: `write_off` adds, a recovery and a quita on a written-off line subtract; counted by `entry_nav` (decision 51) |
-| 447 | 48 | `reserved` | zero |
+| 447 | 96 | `cotejo_keys` | `[Pubkey; 3]`, the cotejo services' keys (decision 56); the zero key is an empty slot; only `set_cotejo_keys` writes them |
+| 543 | 48 | `reserved` | zero |
 
 Methods: `asset_freezable()`, `asset_pausable()`, `max_line_principal(nav) = nav × max_line_bps /
 10 000` rounded down, `entry_nav(vault)`, `nav(vault)`, `check(vault, supply)` (§1.2).
@@ -401,7 +405,7 @@ Methods: `schedule()` is `None` when `installments == 0` (a bullet line); `ancho
 principal_repaid`; `accrual_end()`, `accrue(now)`, `interest_accrued(now)`, `interest_unpaid(now)`,
 `owed(now)` and `can_draw(now)`, the accrual of decision 48 (§7.5), which every handler reads.
 
-### 3.3 `Pagare` (463 bytes)
+### 3.3 `Pagare` (527 bytes)
 
 The program's record of one pagaré, written by `draw` next to the Core asset. It holds no folio and
 nothing personal and is never closed: after the payment, the delivery and even the owner's burn it
@@ -438,7 +442,15 @@ payer.
 | 335 | 32 | `signed_pagare_hash` | SHA-256 of the message with the full pagaré text the borrower signed off chain (decision 55) |
 | 367 | 64 | `pagare_signature` | the borrower's ed25519 signature over that message, stored unverified |
 | 431 | 4 | `signed_on` | the signing day, `yyyymmdd` in Mexico City: the draw's day |
-| 435 | 28 | `reserved` | zero |
+| 435 | 32 | `cotejo` | the cotejo key that co-signed the draw (decision 56); the zero key when none was required |
+| 467 | 32 | `sealed_hash` | SHA-256 of the encrypted content of the sealed copy the parties keep, recipients excluded; zero when there is none (decision 57). Opaque: in neither `pagare_hash` nor the issuance entry |
+| 499 | 28 | `reserved` | zero |
+
+`repay` and `condone` do not deserialize the records they touch: `record::Sidecar` reads the
+fields they need at the offsets above and writes back only `status` through `last_kind` (171..282),
+checking owner, discriminator and length first (`tests/layout.rs` pins every offset against the
+Borsh encoding). No instruction changes a byte outside 171..282 of a record after `draw`
+(`tests/cotejo.rs`).
 
 ### 3.4 Constants
 
@@ -496,25 +508,26 @@ instructions that run `council::check`; **V** the ones that take `valid_until`.
 | `propose_council` | `pool` | council | V | C | allowed |
 | `accept_council` | `pool` | proposed vault | V | on the new multisig | allowed |
 | `set_fx_feeder` | `pool` | council | V | C | allowed |
+| `set_cotejo_keys` | `pool` | council | V | C | allowed |
 | `post_fix` | `pool` | feeder or council | V | council path | allowed |
 | `request_line` | `lines` | borrower, payer, sponsor if named | | | blocked |
 | `approve_line` | `lines` | council | V | C | blocked |
 | `reject_line` | `lines` | council | V | C | allowed |
 | `withdraw_request` | `lines` | borrower | | | allowed |
 | `cancel_line` | `lines` | council | V | C | allowed |
-| `draw` | `lines` | borrower, payer | | | blocked |
+| `draw` | `lines` | borrower, payer, a cotejo key when the pool names any | | | blocked |
 | `repay` | `lines` | payer | | | allowed |
 | `mark_in_collection` | `lines` | anyone (fee payer) | | | allowed |
 | `write_off` | `lines` | council | V | C | allowed |
-| `suspend_draws` | 16 532 |
-| `resume_draws` | 15 849 |
+| `suspend_draws` | `lines` | council | V | C | allowed |
+| `resume_draws` | `lines` | council | V | C | allowed |
 | `condone` | `lines` | council | V | C | allowed |
 | `renounce_availability` | `lines` | borrower | | | allowed |
-| `propose_acceleration` | 16 544 |
+| `propose_acceleration` | `lines` | council | V | C | allowed |
 | `withdraw_acceleration` | `lines` | council | V | C | allowed |
 | `accelerate_line` | `lines` | council | V | C | allowed |
 | `deliver_pagare` | `pagare` | anyone (payer) | | | allowed |
-| `burn_pagare` | 31 004 |
+| `burn_pagare` | `pagare` | the título's owner | | | allowed |
 | `annul_pagare` | `pagare` | council (holder) | V | C | allowed |
 | `endorse_pagare` | `pagare` | council (holder) | V | C | allowed |
 | `revoke_procuracion` | `pagare` | council (holder) | V | C | allowed |
@@ -674,6 +687,36 @@ pagaré council instructions take `holder` (or `annotator`), `multisig`, `pool`,
 - **Writes:** `fx_feeder` (zero for none: then only the council publishes). **Events:**
   `FxFeederSet`.
 
+#### `set_cotejo_keys(keys: [Pubkey; 3], valid_until)` — **V C**
+
+Decision 56. The lender runs automatic cotejo services that check, before a draw, the pagaré text,
+its hash and the borrower's signature over it — which the program cannot do: the text never reaches
+the chain (decision 55). Each service holds a key; while the pool names any, every `draw` needs one
+of them as co-signer.
+
+- **Accounts:** `CouncilPool` (`council` signer, `multisig`, `pool` mut with `has_one = council` →
+  `Unauthorized`).
+- **Checks, in order:** `valid_until`; every non-zero key differs from the non-zero keys before it,
+  from the pool, from the council and from this program's id (`CotejoKeyInvalid`); `council::check`.
+  The zero key is an empty slot and may repeat; all zero is allowed and lifts the requirement. Not
+  blocked by the pause: in an incident the council rotates a key while the pool is paused.
+- **Writes:** `pool.cotejo_keys = keys`, the whole set (rotation is a replacement). No other
+  instruction writes the field (`tests/cotejo.rs` checks the bytes after every instruction).
+- **Events:** `CotejoKeysSet { pool, keys }`.
+
+The council's own key (vault 0) cannot be a cotejo key. Another vault of the same multisig can:
+the council names, say, vault 1, and co-signs a draw through a Squads vault transaction of vault 1
+whose execution the borrower also signs; Squads requires each non-vault signer of the inner message
+to sign the execution and the CPI forwards that signature to `draw`
+(`tests/squads.rs::a_second_vault_of_the_council_co_signs_a_draw_through_squads`). The CPI depth is
+Squads (1), `elote_pool` (2), Core (3), system (4), the limit, and the whole execution takes about
+124 000 CU: above the 100 000 CU rule, within the 200 000 an instruction gets by default. The
+proposal fixes the FIX, `signed_on`, the draw index (the PDAs) and the amount when it is created,
+so it must execute the same Mexico City day, before any other draw of the line and before the FIX
+moves; otherwise it fails and a new proposal is needed. It is a fallback for an incident, not the
+operating path: the operating path is a service key, and a compromised or lost one is replaced by
+the council with `set_cotejo_keys`.
+
 #### `post_fix(fix_rate: u64, fix_date: u32, valid_until)` — **V**, **C** on the council path
 
 See §6.
@@ -749,10 +792,10 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   `drawn == 0` (`LineStatus`).
 - **Writes:** `status = Cancelled`, `closed_at = now`. **Events:** `LineCancelled`.
 
-#### `draw(amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method, signed_pagare_hash, pagare_signature, signed_on)`
+#### `draw(amount_mxn, fix_rate, fix_date, asset_bump, pagare_bump, cert_fingerprint, signature_method, signed_pagare_hash, pagare_signature, signed_on, sealed_hash)`
 
-- **Accounts:** `borrower` (signer, alone: the signature covers the FIX and the pagaré the program
-  derives); `pool` (mut); `line` (mut, seeds, `has_one = pool` → `WrongAccount`, `has_one =
+- **Accounts:** `borrower` (signer: the signature covers the FIX and the pagaré the program
+  derives); `cotejo` (optional, read only, unchecked: decision 56, below); `pool` (mut); `line` (mut, seeds, `has_one = pool` → `WrongAccount`, `has_one =
   borrower` → `Unauthorized`); `asset_mint`; `vault` (mut); `borrower_asset_account` (mut, mint
   and owner); `token_program`; `payer` (signer, mut, rent of the asset and the record); `asset`
   (mut, `["pagare_asset", line, line.draws]` with `asset_bump`); `pagare` (mut, `["pagare", line,
@@ -774,6 +817,13 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   `signed_pagare_hash` and `pagare_signature` (`PagareSignatureMissing`), `signed_on` a real date
   (`SignedDayInvalid`) equal to today in Mexico City (`SignedDayMismatch`). The program never sees
   the text, so it verifies no signature and tracks no uniqueness; it stores and commits.
+  Decision 56 (`cotejo_signer`): when every `pool.cotejo_keys` is zero the `cotejo` account is
+  ignored, present or not, and the record names the zero key; otherwise `cotejo` must be present,
+  sign and be one of the non-zero keys (`CotejoRequired`). The zero key never matches, even where a
+  slot is empty. The account is an `UncheckedAccount`, not a `Signer`, so that a missing signature
+  is this error rather than Anchor's and an account passed to a pool without keys is ignored; the
+  client marks it a signer (`codama.mjs`). An absent optional account is the program id in its
+  slot; `set_cotejo_keys` refuses the program id as a key.
 - **Derived on chain:** `pagare_hash = sha256(pagare_template_hash ‖ terms_hash ‖ line ‖
   draw_index u16 ‖ amount_mxn u64 ‖ now i64)`; `delivery_hash = sha256(pagare_hash ‖ fix_rate u64 ‖
   fix_date u32 ‖ usdc u64)`. No interest is fixed (decision 48). The signed message does not enter
@@ -787,8 +837,11 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   += amount_mxn`, `usdc_drawn += usdc`, `draws += 1`; on the first tranche `status = Active`, `drawn_at = now`; the `Pagare` record with the
   issuance entry (`entry_count = 1`, `last_kind = Emision`) over `registry::issuance_hash =
   sha256(pagare_hash ‖ signed_pagare_hash)`, and the signed message's hash, signature and day,
-  which no instruction rewrites. `Pool::check` on the reloaded vault.
-- **Events:** `LineDrawn`, `PagareIssued`, `PagareEntry` (Emision).
+  which no instruction rewrites; `cotejo`, the key that co-signed (decision 56), and `sealed_hash`
+  as given (decision 57: the SHA-256 of the encrypted content of the sealed copy the parties keep,
+  recipients excluded, zero when there is none; in neither `pagare_hash` nor the issuance entry),
+  never rewritten either. `Pool::check` on the reloaded vault.
+- **Events:** `LineDrawn`, `PagareIssued` (with `cotejo` and `sealed_hash`), `PagareEntry` (Emision).
 
 #### `repay(max_usdc: u64, fix_rate: u64, fix_date: u32, receipt_hash: [u8; 32])`
 
@@ -1596,84 +1649,98 @@ The figures below are the interface reference's, measured by
 `programs/elote_pool/tests/compute.rs` (the program's instruction alone) and `tests/squads.rs` (the
 whole Squads `vault_transaction_execute` transaction). The rule is 100 000 CU per transaction
 (`CEILING`), half the 200 000 CU an instruction gets without a compute-budget request, Squads
-included for a council instruction.
+included for a council instruction. The second column is the figure before decisions 56 and 57
+(the decision-55 build); the third, now.
 
-| case | CU |
-|---|---|
-| `init_pool`, classic asset and plain shares | 38 639 |
-| `init_pool`, classic asset and permissioned shares | 38 173 |
-| `request_line`, 120 installments | 21 952 (20 452 to 23 452 across runs: the PDA bump searches of random keys) |
-| `approve_line` (with the multisig check) | 15 357 |
-| `approve_line` through Squads | 41 411 |
-| `post_fix` by the council | 12 760 |
-| `post_fix` by the feeder | 11 588 |
-| `post_fix` by the feeder, against the reference | 11 875 |
-| `propose_council` through Squads | 34 972 |
-| `draw`, first tranche, 120 installments | 86 001 (82 260 before decision 55) |
-| `draw`, second tranche, 120 installments | 86 163 |
-| `draw`, tranche 10, 120 installments | 86 118 |
-| `repay`, 18 installments, all missed | 45 020 |
-| `repay`, 120 installments, all missed | 70 538 |
-| `repay` after the mark, 120 installments | 60 142 |
-| `repay` covering three records, 120 installments, all missed | 88 016 |
-| `repay` recovering a written-off line over three records, 120 installments, all missed | 90 992 |
-| `condone`, late interest only, 120 installments, all missed | 50 397 |
-| `condone` over three records, one under procuración, 120 installments, all missed | 68 043 |
-| `condone` through Squads, three records (one under procuración), 18 installments, all missed | 83 949 |
-| `condone` through Squads of one pagaré (two records, one entry, under procuración), 120 installments, all missed | 95 504 to 95 566 (94 913 before decision 55): **inside the rule, over the 5 000 CU margin** |
-| `condone` through Squads writing two / three entries, 120 installments, all missed (before decision 55, which adds about 330 CU a record) | 96 380 / 104 452 (108 326 with a procuración): **over the margin / over the rule** |
-| `mark_in_collection`, 18 installments, all missed | 17 985 |
-| `mark_in_collection`, 120 installments, all missed | 34 731 |
-| `mark_in_collection`, 120 installments, 3 missed | 15 808 |
-| `write_off`, 18 installments | 25 430 |
-| `write_off`, 120 installments | 50 828 |
-| `write_off` after the mark, 120 installments | 50 830 |
-| `suspend_draws` | 14 577 |
-| `resume_draws` | 13 892 |
-| `propose_acceleration` | 14 587 |
-| `accelerate_line`, 120 installments, all due | 16 879 |
-| `deliver_pagare`, 120 installments | 70 115 |
-| `deliver_pagare` after a procuración | 70 191 |
-| `burn_pagare` | 31 338 |
-| `court_annotation`, 120 installments | 17 704 |
-| `annotate_payment`, 120 installments | 20 377 |
+| case | before 56/57 | CU |
+|---|---|---|
+| `init_pool`, classic asset and plain shares | 38 639 to 50 044 | 39 870 to 50 370 (the PDA bump searches of random keys) |
+| `init_pool`, classic asset and permissioned shares | 38 173 to 48 078 | 39 404 to 48 404 |
+| `request_line`, 120 installments | 20 423 | 20 715 (± 1 500 a bump try) |
+| `approve_line` (with the multisig check) | 15 366 | 15 524 |
+| `approve_line` through Squads | 41 443 | 41 664 |
+| `post_fix` by the council | 12 811 | 13 107 |
+| `post_fix` by the feeder | 11 639 | 11 935 |
+| `post_fix` by the feeder, against the reference | 11 926 | 12 222 |
+| `propose_council` through Squads | 34 880 | 35 173 |
+| `set_cotejo_keys` through Squads | — | 35 981 |
+| `draw`, first tranche, 120 installments | 86 001 | 85 854 |
+| `draw`, second tranche, 120 installments | 86 163 | 86 016 |
+| `draw`, tranche 10, 120 installments | 86 118 | 85 971 |
+| `draw`, tranche 11, co-signed by the third of three cotejo keys | — | 86 195 |
+| `draw` co-signed by vault 1 of the council, through Squads (§4.2) | — | 122 642: **over the rule**, under the 200 000 default |
+| `repay`, 18 installments, all missed | 45 020 | 43 411 |
+| `repay`, 120 installments, all missed | 70 559 | 68 929 |
+| `repay` after the mark, 120 installments | 60 142 | 58 533 |
+| `repay` covering three records, 120 installments, all missed | 88 016 | 82 606 |
+| `repay` recovering a written-off line over three records, 120 installments, all missed | 90 992 | 85 581 |
+| `condone`, late interest only, 120 installments, all missed | 50 451 | 50 743 |
+| `condone` over three records, one under procuración, 120 installments, all missed | 68 043 | 62 625 |
+| `condone` through Squads, three records (one under procuración), 18 installments, all missed | 84 011 | 78 535 |
+| `condone` through Squads of one pagaré (two records, one entry, under procuración), 120 installments, all missed | 95 564 (4 000 CU margin) | 93 253: **5 000 CU margin restored** |
+| `mark_in_collection`, 18 installments, all missed | 18 036 | 18 328 |
+| `mark_in_collection`, 120 installments, all missed | 34 782 | 35 074 |
+| `mark_in_collection`, 120 installments, 3 missed | 15 859 | 16 151 |
+| `write_off`, 18 installments | 25 489 | 25 779 |
+| `write_off`, 120 installments | 50 887 | 51 177 |
+| `write_off` after the mark, 120 installments | 50 889 | 51 179 |
+| `suspend_draws` | 16 583 | 16 875 |
+| `resume_draws` | 15 900 | 16 192 |
+| `propose_acceleration` | 16 595 | 16 887 |
+| `accelerate_line`, 120 installments, all due | 16 930 | 17 222 |
+| `pause` by the council | 11 184 | 11 476 |
+| `deliver_pagare`, 120 installments | 70 115 | 70 514 |
+| `deliver_pagare` after a procuración | 70 191 | 70 590 |
+| `burn_pagare` | 31 338 | 31 732 |
+| `endorse_pagare`, 120 installments | 17 938 | 18 336 |
+| `endorse_pagare` through Squads | 44 142 | 44 480 |
+| `revoke_procuracion`, 120 installments | 17 706 | 18 100 |
+| `court_annotation`, 120 installments | 17 704 | 18 100 |
+| `annotate_payment`, 120 installments | 20 377 | 20 773 |
+| `annul_pagare` through Squads | 46 597 | 46 937 |
 
-Decision 55 added 100 bytes to every `Pagare` record (the signed message's hash, signature and
-day): each instruction that loads and stores a record pays about 330 CU more per record, and
-`draw` and `deliver_pagare` also carry the ninth Core attribute. The rows above that touch records
-were re-measured with it; the prose figures below for `endorse_pagare`, `revoke_procuracion` and
-`annul_pagare` are earlier (now 17 938, 17 706 and, through Squads, 46 597; `endorse_pagare`
-through Squads 44 142).
+**What decisions 56 and 57 cost, and what paid for it.** `Pool` grew 96 bytes (the three cotejo
+keys) and `Pagare` 64 (the cotejo key and the sealed hash). Every instruction that loads the pool
+pays about 290 CU more for it, and each that loads and stores a record through Anchor about 400
+(`deliver_pagare`, `burn_pagare`, the procuración, the annotations, `annul_pagare`). Two changes,
+neither a change of behaviour, pay for the hot paths:
 
-The rows of `request_line` through `annotate_payment` above were re-measured after decision 48
-(ordinary interest on the outstanding principal) and the layout clean-up that followed it (one
-`CreditLine` offset per field, no `grace_period_seconds`); `accelerate_line` no longer runs the
-arrears loop. Earlier, re-measured on the `localnet` build after decisions 38 and 39 (no Core CPI in the
-procuración, the pause by council vote): `endorse_pagare` 17 618 (same again after a revocation;
-43 760 through Squads), `revoke_procuracion` 17 386, `pause` by the council 11 198,
-`annul_pagare` through Squads 46 219. interface.md's table carries the full fresh set. The `repay`
-rows and the three decision-51 rows were re-measured with decision 51 (the records check and the
-cost moved into helpers `repay` and `condone` share). The recovery is a `repay` (no Squads) and
-keeps the three-record payment's 5 000 CU margin
-(`quita_and_recovery_over_three_sidecars_stay_under_the_ceiling`). The quita is a council
-instruction and runs inside `vault_transaction_execute`, which adds about 25 000 to 41 000 CU: on
-an 18-installment line (the pilot's longest) a total quita over three records fits with the margin,
-but on a 120-installment line with every installment missed only a quita writing one entry does —
-one pagaré per call, records `[k, k+1]` (`tests/squads.rs::the_council_condones_principal_through_squads`);
-two entries exceed the margin and three the 100 000 CU rule (each still runs under the 200 000 CU an
-instruction gets by default). Until that is decided, a client splits a quita on a long schedule one
-pagaré per call: principal up to `drawn_through` of the pagaré at the cursor less
+- `repay` and `condone` no longer deserialize and serialize the records they touch. `record::Sidecar`
+  checks owner, discriminator and length, reads the fields at their Borsh offsets and writes back
+  only `status` through `last_kind` (bytes 171..282). That saves about 1 900 CU a record: the
+  three-record payment fell from 88 016 to 82 606, and the Squads quita of one pagaré at 120
+  installments from 95 564 to 93 253, so the 5 000 CU margin that commit 3f8b948 had cut to 4 000
+  is back for every council instruction (`MARGIN` in `tests/squads.rs`).
+- `draw` writes the Core attributes' hex through a 256-entry byte-pair table instead of a nibble
+  loop with `push`: about 1 400 CU less, so `draw` costs less than before decision 56 even with a
+  cotejo co-signing (86 195 against `DRAW_CEILING` 90 000).
+
+The quita through Squads writing two or three entries at 120 installments was 96 380 / 104 452
+before decision 55 (108 326 with a procuración) and was not re-measured: with about 1 900 CU less
+per record it may now fit two entries, but until that is measured the client keeps condoning one
+pagaré per call on a long schedule.
+
+The quita is a council instruction and runs inside `vault_transaction_execute`, which adds about
+25 000 to 41 000 CU: on an 18-installment line (the pilot's longest) a total quita over three
+records fits with the margin, and on a 120-installment line with every installment missed a quita
+writing one entry does — one pagaré per call, records `[k, k+1]`
+(`tests/squads.rs::the_council_condones_principal_through_squads`). A client splits a quita on a
+long schedule one pagaré per call: principal up to `drawn_through` of the pagaré at the cursor less
 `principal_repaid`; `MAX_SIDECARS_PER_REPAY` is unchanged.
 
 - **Budget rules in the tests.** Every instruction stays below `CEILING`. `draw` has its own
   `DRAW_CEILING` of 90 000, 10 000 below: of its cost, the Core `CreateV2` CPI with the four
   plugins is about 37 000 CU, fixed by the plugin set. The three-record `repay`
   (`a_payment_covering_three_sidecars_stays_under_the_ceiling`) must leave a 5 000 CU margin,
-  so at most 95 000; `tests/squads.rs` requires the same margin for the council instructions
+  so at most 95 000; `tests/squads.rs` requires the same margin for every council instruction
   through Squads. This is why `MAX_SIDECARS_PER_REPAY` is 3: three records keep the heaviest
   payment, every installment of a 120-installment line missed, under the ceiling with that
   margin, and the client splits a payment that would touch more into several `repay` calls (the
-  amount is free).
+  amount is free). The draw a council vault co-signs through Squads is outside the rule; it is an
+  incident fallback, not the operating path (§4.2).
+- **Transaction size.** The transaction `scripts/draw.ts` sends (an idempotent ATA creation and the
+  draw, v0, no lookup table, the borrower paying the fee, the relayer the rent) is 905 bytes
+  with two signatures and 1 001 bytes with a cotejo co-signing, of the 1 232-byte limit.
 - **Key-dependent figures.** `init_pool` runs Anchor's `init` bump searches for the pool, the vault
   and the dead-shares account, plus `council::canonical_vault`; each extra try costs about
   1 500 CU, so the figure varies with the keys. `init_pool_cost_follows_the_pda_bump_searches`
@@ -1682,14 +1749,14 @@ pagaré per call: principal up to `drawn_through` of the pagaré at the cursor l
   `deliver_pagare` makes three Core CPIs (update the plugin, approve `None`, transfer).
 - **The arrears loop** (`math::arrears`) is the only loop over the schedule, at most 120
   iterations; with every installment missed each iteration takes the accrual branch. `repay` also
-  loops over the records it is given (each loaded and written).
+  loops over the records it is given (each read and written in place).
 - **Not driven by `tests/compute.rs`:** `deposit`, `redeem`, `reject_line`, `withdraw_request`,
-  `withdraw_acceleration`, `cancel_line`, `resume`, the council setters, `accept_council`,
-  `set_fx_feeder` and `annul_pagare`.
+  `withdraw_acceleration`, `cancel_line`, `resume`, the council setters (`set_cotejo_keys` is
+  measured through Squads), `accept_council`, `set_fx_feeder` and `annul_pagare`.
 
 ## 11. Events and errors
 
-### 11.1 Events (42, `events.rs`, all through `emit_cpi!`)
+### 11.1 Events (43, `events.rs`, all through `emit_cpi!`)
 
 | event | emitted by | fields |
 |---|---|---|
@@ -1708,6 +1775,7 @@ pagaré per call: principal up to `drawn_through` of the pagaré at the cursor l
 | `CouncilProposed` | `propose_council` | pool, council, kind |
 | `CouncilAccepted` | `accept_council` | pool, old, new, kind |
 | `FxFeederSet` | `set_fx_feeder` | pool, fx_feeder |
+| `CotejoKeysSet` | `set_cotejo_keys` | pool, keys (the three slots; the zero key an empty one) |
 | `FixPosted` | `post_fix` | pool, fix_rate, fix_date, previous_rate, by, slot, posted_at, reference_rate, reference_at |
 | `LineRequested` | `request_line` | pool, line_id, borrower, payer, sponsor, sponsor_role, agreement_hash, expediente_root, pagare_template_hash, terms_hash, currency, principal, rate_bps, term_end, first_due_at, interval_seconds, installments, late_bps, max_missed |
 | `LineApproved` | `approve_line` | pool, line_id, expediente_root, terms_hash, availability_end |
@@ -1715,7 +1783,7 @@ pagaré per call: principal up to `drawn_through` of the pagaré at the cursor l
 | `RequestWithdrawn` | `withdraw_request` | pool, line_id |
 | `LineCancelled` | `cancel_line` | pool, line_id |
 | `LineDrawn` | `draw` | pool, line_id, draw_index, amount_mxn, fix_rate, fix_date, usdc_delivered, drawn, available, availability_end, outstanding_after |
-| `PagareIssued` | `draw` | pool, line_id, draw_index, asset, pagare_hash, amount_mxn, delivery_hash, due_at, holder (the pool PDA), signed_pagare_hash, signed_on |
+| `PagareIssued` | `draw` | pool, line_id, draw_index, asset, pagare_hash, amount_mxn, delivery_hash, due_at, holder (the pool PDA), signed_pagare_hash, signed_on, cotejo (decision 56; zero when none was required), sealed_hash (decision 57) |
 | `PagareEntry` | `draw`, `repay`, `condone`, `deliver_pagare`, `burn_pagare`, `annul_pagare`, `endorse_pagare`, `revoke_procuracion`, `court_annotation`, `annotate_payment` | pool, line_id, draw_index, asset, kind, from, to, entry_hash, entry_count, recorded_at, stated_at |
 | `PagarePayment` | `repay` that took pagaré records | pool, line_id, payer, receipt_hash, late_part, interest_part, principal_part, entries: `Vec<PaymentEntry { draw_index, kind, entry_count, principal_applied, accessory_applied, principal_balance, by_borrower }>` |
 | `LateInterestCollected` | `repay` with late interest | pool, line_id, amount |
@@ -1747,7 +1815,7 @@ the `PagareEntry`s (each `Condonacion`, then a `Terminacion` that follows it), `
 `annotate_payment` emits `PagareEntry`, then `PagareReceiptAnnotated`; `write_off` emits
 `LineWrittenOff`, then `NavUpdated`.
 
-### 11.2 Errors (78, `errors.rs`, numbered from 6000 in declaration order)
+### 11.2 Errors (84, `errors.rs`, numbered from 6000 in declaration order)
 
 Squads v4 also numbers its errors from 6000 (its `NotAMember` is 6005, which is `CouncilTooLarge`
 here). Decode an error by the program that
@@ -1840,6 +1908,8 @@ route, decision 38), 6075 (the judicial hold, decision 38-g) and 6076 (the depos
 | 6079 | `PagareSignatureMissing` | Appended | The draw carries no hash or no signature of the pagaré message the borrower signed |
 | 6080 | `SignedDayMismatch` | Appended | The pagaré was not signed today in Mexico City |
 | 6081 | `SignedDayInvalid` | Appended | The pagaré's signing date is not a valid date |
+| 6082 | `CotejoRequired` | Appended | The pool names cotejo keys: one of them must co-sign the draw |
+| 6083 | `CotejoKeyInvalid` | Appended | A cotejo key is repeated, or is the pool, the council or the program |
 
 ## 12. Toolchain, build and tests
 
@@ -1905,18 +1975,19 @@ functions in each file.
 | `tests/provision.rs` | 9 | LiteSVM | decisions 40 and 40b: the mark and the council's acceleration provision the NAV, redemptions at the provisioned NAV, deposits at the unprovisioned NAV and a recovery handing the entrant nothing, recoveries, the write-off, the rate the council's alone |
 | `tests/council.rs` | 17 | LiteSVM | the council constants, `init_pool` against multisig shapes (majority, config authority, size, owner), parameter floors, the two-step rotation |
 | `tests/valid_until.rs` | 4 | LiteSVM | `valid_until` refused past or too far ahead |
-| `tests/squads.rs` | 7 | LiteSVM + Squads v4 | council instructions through the real `vault_transaction_execute`, stale proposals, a multisig lowered below a majority, the rotation |
+| `tests/squads.rs` | 9 | LiteSVM + Squads v4 | council instructions through the real `vault_transaction_execute`, stale proposals, a multisig lowered below a majority, the rotation, the cotejo keys set by the council, and vault 1 of the council co-signing a draw (the borrower's signature forwarded through the execution) |
+| `tests/cotejo.rs` | 11 (+2 reference) | LiteSVM, proptest | decisions 56 and 57: the cotejo rule against `reference::cotejo` (fixed cases and 32 random key sets), refused draws writing nothing, the zero key never matching, each of the three keys recorded, rotation, only the council setting keys, refused sets, setting keys while paused, the sealed hash stored as given and outside the issuance entry, and a byte-level run through every instruction: only `set_cotejo_keys` moves `cotejo_keys`, and no instruction changes an issued record outside its payment state and registry |
 | `tests/fx.rs` | 27 | LiteSVM | the FIX: conversions, the daily band, the RedStone reference, the bounds, feeder versus council, one publication a day, draws and repayments at the FIX, FX gains and losses |
 | `tests/pagare.rs` | 34 (+2 reference) | LiteSVM + Core 0.15.3 | one frozen asset and one record per draw, every plugin read back through `mpl-core`, the registry and payment entries, the delivery to the borrower or the aval once the line owes nothing, the owner's burn, the council's annulment, coverage oldest first, the procuración, the refusals |
 | `tests/core_capabilities.rs` | 8 | LiteSVM + Core 0.15.3 | what Core allows after an asset's creation (§9.1) |
 | `tests/known_limits.rs` | 12 | LiteSVM | documentation tests that pin current behaviour and the known limits SECURITY.md lists; they are inverted when a limit is removed |
 | `tests/audit.rs`, `tests/reaudit.rs` | 4, 4 | LiteSVM | regressions of the 2026-11-01 audit and the 2026-11-02 re-audit |
 | `tests/compute.rs` | 12 | LiteSVM | the figures of §10 under their ceilings |
-| `tests/layout.rs` | 2 | LiteSVM | the account sizes 495 / 528 / 463, the zeroed `reserved` tails, and one `CreditLine` layout with or without a sponsor |
+| `tests/layout.rs` | 3 (+2 reference) | LiteSVM | the account sizes 591 / 528 / 527, the in-place record view (`record::SidecarFields`) against the Borsh encoding and the reference's offsets, the zeroed `reserved` tails, and one `CreditLine` layout with or without a sponsor |
 | `tests/math_props.rs` | 10 (+2 reference) | proptest | the pure functions over random inputs; the payment order; the accrual against the reference under any sequence; split invariance |
-| `tests/reference/mod.rs` | 2 | plain, included by four binaries | the independent oracle (and, decision 55, the pagaré hash, the issuance hash and the registry entry, from their specification): a line as `(time, principal change)` events, `rate × Σ balance × Δt / (10 000 × year)` rounded once; its own hand-number test |
+| `tests/reference/mod.rs` | 2 | plain, included by six binaries | the independent oracle (and, decision 55, the pagaré hash, the issuance hash and the registry entry, from their specification; decisions 56 and 57, the cotejo rule, the key-set rule and the new fields' offsets summed from the field sizes): a line as `(time, principal change)` events, `rate × Σ balance × Δt / (10 000 × year)` rounded once; its own hand-number test |
 | `tests/vectors.rs` | 1 | plain | 427 arrears vectors (48 accelerated) shared with `clients/js/test/arrears-vectors.json` |
-| `clients/js/test/*.test.ts` | | `node --test` (tsx) | `schedule.ts` (the shared vectors), `pagare.ts`, `hashes.ts`, `terms.ts` (the shared vector), `fx.ts`, `core.ts` |
+| `clients/js/test/*.test.ts` | | `node --test` (tsx) | `schedule.ts` (the shared vectors), `pagare.ts`, `hashes.ts`, `terms.ts` (the shared vector), `fx.ts`, `core.ts`, `cotejo` (the new fields' offsets, the cotejo slot and signer role, the sealed hash in the draw data) |
 
 After a deliberate change to `math.rs`, regenerate the vectors with `UPDATE_VECTORS=1 cargo test
 --test vectors` in the same commit.
