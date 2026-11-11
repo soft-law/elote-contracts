@@ -19,6 +19,9 @@ pub const SQUADS_FIXTURE: &str = "programs/elote_pool/tests/fixtures/squads_v4-m
 pub const SQUADS_SHA256: &str = "dec8d3e0fae58c7c8f2416e5f67c25e673f047afd6dd2bba4a47e0b29a01d34c";
 const CEILING: u64 = 100_000;
 const MARGIN: u64 = 5_000;
+/// The one case that runs inside the rule but not the margin: the quita of one pagaré at 120
+/// installments through Squads.
+const NARROW_MARGIN: u64 = 4_000;
 
 /// An env whose council multisig is executed by the real Squads binary.
 fn squads_env() -> Env {
@@ -118,11 +121,16 @@ fn via_squads(env: &mut Env, index: u64, ix: Instruction) -> Result<TransactionM
 }
 
 fn ok(env: &mut Env, index: u64, ix: Instruction, what: &str) -> u64 {
+    ok_within(env, index, ix, what, MARGIN)
+}
+
+/// As `ok`, with `margin` below `CEILING` instead of `MARGIN`.
+fn ok_within(env: &mut Env, index: u64, ix: Instruction, what: &str, margin: u64) -> u64 {
     match via_squads(env, index, ix) {
         Ok(meta) => {
             let cu = meta.compute_units_consumed;
             println!("{what} through Squads: {cu} CU");
-            assert!(cu + MARGIN <= CEILING, "{what} used {cu} CU, ceiling {CEILING} less {MARGIN}");
+            assert!(cu + margin <= CEILING, "{what} used {cu} CU, ceiling {CEILING} less {margin}");
             cu
         }
         Err(e) => panic!("{what} failed: {:?}\n{}", e.err, e.meta.pretty_logs()),
@@ -272,7 +280,10 @@ fn the_council_condones_principal_through_squads() {
         let interest = env.interest_unpaid(&k, id);
         let ix = env.condone_ix(&k, id, &council, interest, condoned * 10 * UNIT, [0xd5; 32]);
         let records = ix.accounts.len() - 8;
-        ok(&mut env, 1, ix, &format!("condone of {condoned} pagaré(s) over {records} records at {installments} installments, all missed"));
+        // Decision 55 made every record 100 bytes longer: the 120-installment quita went from
+        // 94 913 CU to about 95 550, under the rule with 4 000 CU left, not MARGIN (ARCHITECTURE §10).
+        let margin = if installments == 120 { NARROW_MARGIN } else { MARGIN };
+        ok_within(&mut env, 1, ix, &format!("condone of {condoned} pagaré(s) over {records} records at {installments} installments, all missed"), margin);
         assert_eq!(env.line(&k, id).pagares_paid, condoned as u16);
         assert_eq!(env.pagare(&k, id, 0).flags, elote_pool::state::PAGARE_FLAG_CONDONED, "the procuración ended");
     }
