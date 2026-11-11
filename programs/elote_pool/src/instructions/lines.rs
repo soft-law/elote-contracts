@@ -22,6 +22,7 @@ use crate::math::{self, Arrears, ScheduleTerms};
 use crate::council;
 use crate::fx;
 use crate::pool_signer;
+use crate::record::Sidecar;
 use crate::registry;
 use crate::terms::{self, LineTerms};
 use crate::state::{
@@ -955,7 +956,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
         }
         let principal_balance = sidecar.amount_mxn.min(sidecar.drawn_through.saturating_sub(principal_after));
         let annotation = registry::annotation_hash(&receipt_hash, principal_applied, accessory_applied, principal_balance, by_borrower);
-        let hash = registry::append(sidecar, kind, &payer_key, &pool_key, &annotation, now).ok_or(PoolError::Overflow)?;
+        let hash = sidecar.append(kind, &payer_key, &pool_key, &annotation, now).ok_or(PoolError::Overflow)?;
         // The payment entry's own number: a Terminacion may chain right after it, and the
         // PaymentEntry must name the entry whose preimages it carries.
         let payment_entry_count = sidecar.entry_count;
@@ -986,7 +987,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
             // transfer.
             if sidecar.flags & PAGARE_FLAG_PROCURACION != 0 {
                 let procurador = sidecar.procurador;
-                let hash = registry::append(sidecar, KIND_TERMINACION, &pool_key, &procurador, &annotation, now).ok_or(PoolError::Overflow)?;
+                let hash = sidecar.append(KIND_TERMINACION, &pool_key, &procurador, &annotation, now).ok_or(PoolError::Overflow)?;
                 sidecar.flags &= !PAGARE_FLAG_PROCURACION;
                 sidecar.procurador = Pubkey::default();
                 emit_cpi!(PagareEntry {
@@ -1013,7 +1014,7 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
             principal_balance,
             by_borrower,
         });
-        sidecar.exit(ctx.program_id)?;
+        sidecar.store()?;
     }
     if !touched.is_empty() {
         emit_cpi!(PagarePayment { pool: pool_key, line_id, payer: payer_key, receipt_hash, late_part, interest_part, principal_part, entries });
@@ -1071,20 +1072,20 @@ pub fn repay<'info>(ctx: Context<'info, Repay<'info>>, max_usdc: u64, fix_rate: 
 /// one left partly unpaid, or the last draw; none once the cursor has passed the last draw, or when
 /// `required` is false (`PagareAccountsMismatch`); never more than `MAX_SIDECARS_PER_REPAY`
 /// (`TooManySidecars`).
-fn touched_pagares<'info>(sidecars: &'info [AccountInfo<'info>], line: &Account<'info, CreditLine>, principal_after: u64, required: bool) -> Result<Vec<Account<'info, Pagare>>> {
+fn touched_pagares<'info>(sidecars: &'info [AccountInfo<'info>], line: &Account<'info, CreditLine>, principal_after: u64, required: bool) -> Result<Vec<Sidecar<'info>>> {
     let line_key = line.key();
     let cursor = line.pagares_paid;
     let draws = line.draws;
     require!(sidecars.len() <= MAX_SIDECARS_PER_REPAY, PoolError::TooManySidecars);
     require!(sidecars.is_empty() == (cursor >= draws || !required), PoolError::PagareAccountsMismatch);
-    let mut touched: Vec<Account<'info, Pagare>> = Vec::with_capacity(sidecars.len());
+    let mut touched: Vec<Sidecar<'info>> = Vec::with_capacity(sidecars.len());
     for (i, info) in sidecars.iter().enumerate() {
         let idx = u16::try_from(i).ok().and_then(|i| cursor.checked_add(i)).ok_or(PoolError::PagareAccountsMismatch)?;
         require!(idx < draws, PoolError::PagareAccountsMismatch);
-        // Owned by the program with the `Pagare` discriminator (`try_from`), naming this line and
-        // this index: only `draw` writes such an account, at `["pagare", line, index]`, so these
-        // three facts identify the record without recomputing its address.
-        let sidecar = Account::<Pagare>::try_from(info).map_err(|_| PoolError::PagareAccountsMismatch)?;
+        // Owned by the program with the `Pagare` discriminator and length (`Sidecar::load`),
+        // naming this line and this index: only `draw` writes such an account, at `["pagare",
+        // line, index]`, so these facts identify the record without recomputing its address.
+        let sidecar = Sidecar::load(info).ok_or(PoolError::PagareAccountsMismatch)?;
         require!(
             sidecar.line == line_key && sidecar.draw_index == idx && sidecar.status == PAGARE_OUTSTANDING,
             PoolError::PagareAccountsMismatch
@@ -1100,7 +1101,7 @@ fn touched_pagares<'info>(sidecars: &'info [AccountInfo<'info>], line: &Account<
 
 /// The cost of the principal settled from `before` to `after`, pagaré by pagaré at the FIX each
 /// was drawn at.
-fn principal_cost(touched: &[Account<Pagare>], before: u64, after: u64) -> Result<u64> {
+fn principal_cost(touched: &[Sidecar], before: u64, after: u64) -> Result<u64> {
     let mut cost = 0u64;
     for sidecar in touched {
         let start = sidecar.drawn_through.checked_sub(sidecar.amount_mxn).ok_or(PoolError::Overflow)?;
@@ -1518,7 +1519,7 @@ pub fn condone<'info>(ctx: Context<'info, Condone<'info>>, interest: u64, princi
         }
         let principal_balance = sidecar.amount_mxn.min(sidecar.drawn_through.saturating_sub(principal_after));
         let annotation = registry::condonation_hash(&document_hash, principal_condoned, principal_balance);
-        let hash = registry::append(sidecar, KIND_CONDONACION, &pool_key, &borrower, &annotation, now).ok_or(PoolError::Overflow)?;
+        let hash = sidecar.append(KIND_CONDONACION, &pool_key, &borrower, &annotation, now).ok_or(PoolError::Overflow)?;
         let entry_count = sidecar.entry_count;
         emit_cpi!(PagareEntry {
             pool: pool_key,
@@ -1543,7 +1544,7 @@ pub fn condone<'info>(ctx: Context<'info, Condone<'info>>, interest: u64, princi
             // The extinction ends a procuración in force, as a payment does.
             if sidecar.flags & PAGARE_FLAG_PROCURACION != 0 {
                 let procurador = sidecar.procurador;
-                let hash = registry::append(sidecar, KIND_TERMINACION, &pool_key, &procurador, &annotation, now).ok_or(PoolError::Overflow)?;
+                let hash = sidecar.append(KIND_TERMINACION, &pool_key, &procurador, &annotation, now).ok_or(PoolError::Overflow)?;
                 sidecar.flags &= !PAGARE_FLAG_PROCURACION;
                 sidecar.procurador = Pubkey::default();
                 emit_cpi!(PagareEntry {
@@ -1562,7 +1563,7 @@ pub fn condone<'info>(ctx: Context<'info, Condone<'info>>, interest: u64, princi
             }
         }
         entries.push(CondonationEntry { draw_index: sidecar.draw_index, entry_count, principal_condoned, principal_balance });
-        sidecar.exit(ctx.program_id)?;
+        sidecar.store()?;
     }
 
     // No CPI in this instruction, so the balances read by Anchor are current.

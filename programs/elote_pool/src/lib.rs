@@ -21,6 +21,7 @@ pub mod events;
 pub mod fx;
 pub mod instructions;
 pub mod math;
+pub mod record;
 pub mod registry;
 pub mod state;
 pub mod terms;

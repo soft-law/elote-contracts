@@ -56,10 +56,26 @@ pub fn entry_hash(asset: &Pubkey, kind: u8, from: &Pubkey, to: &Pubkey, hash: &[
 /// Appends an entry to the sidecar's chain and returns its hash. `None` when the count would
 /// overflow.
 pub fn append(p: &mut Pagare, kind: u8, from: &Pubkey, to: &Pubkey, hash: &[u8; 32], stated_at: i64) -> Option<[u8; 32]> {
-    let count = p.entry_count.checked_add(1)?;
-    let entry = entry_hash(&p.asset, kind, from, to, hash, stated_at, count);
-    p.log_root = hashv(&[&p.log_root, &entry]).to_bytes();
-    p.entry_count = count;
-    p.last_kind = kind;
+    append_entry(&p.asset, &mut p.log_root, &mut p.entry_count, &mut p.last_kind, kind, from, to, hash, stated_at)
+}
+
+/// `append` over the chain's fields alone.
+#[allow(clippy::too_many_arguments)]
+pub fn append_entry(
+    asset: &Pubkey,
+    log_root: &mut [u8; 32],
+    entry_count: &mut u32,
+    last_kind: &mut u8,
+    kind: u8,
+    from: &Pubkey,
+    to: &Pubkey,
+    hash: &[u8; 32],
+    stated_at: i64,
+) -> Option<[u8; 32]> {
+    let count = entry_count.checked_add(1)?;
+    let entry = entry_hash(asset, kind, from, to, hash, stated_at, count);
+    *log_root = hashv(&[log_root.as_slice(), &entry]).to_bytes();
+    *entry_count = count;
+    *last_kind = kind;
     Some(entry)
 }
