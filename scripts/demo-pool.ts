@@ -1,7 +1,9 @@
 // End-to-end demo of the elote_pool program: two investors deposit test USDC, the council (a Squads
 // v4 multisig) publishes the FIX and approves a line in MXN, the borrower draws it as USDC at the
 // FIX and repays it (principal by the borrower, interest by a sponsor), and the value of every
-// share rises with the collected interest. With --schedule, a second line is repaid in six
+// share rises with the collected interest. Before the draw the council names a cotejo key (decision
+// 56): a draw the borrower signs alone is refused, the one the cotejo co-signs goes through, and the
+// council then clears the keys. With --schedule, a second line is repaid in six
 // installments: one is missed and the next repayment collects late interest first.
 //
 //   npx tsx scripts/demo-pool.ts --cluster local|devnet --multisig <address> [--council-keypairs <a.json,b.json>]
@@ -33,7 +35,7 @@
 //
 // Keys live in .demo-keys/ (generated on first run, ignored by git) unless a path is given in
 // ELOTE_ADMIN_KEYPAIR, ELOTE_INVESTOR_A_KEYPAIR, ELOTE_INVESTOR_B_KEYPAIR, ELOTE_BORROWER_KEYPAIR or
-// ELOTE_SPONSOR_KEYPAIR. Only addresses are printed. ELOTE_RPC overrides the cluster's RPC URL.
+// ELOTE_SPONSOR_KEYPAIR (the cotejo key: ELOTE_COTEJO_KEYPAIR). Only addresses are printed. ELOTE_RPC overrides the cluster's RPC URL.
 //
 // Demo on Solana devnet with test assets. Not an offer of securities.
 import { type Address, type Instruction, address, type KeyPairSigner, generateKeyPairSigner, lamports } from "@solana/kit";
@@ -53,9 +55,11 @@ import {
   LineStatus,
   drawPagareAccounts,
   fetchCreditLine,
+  fetchPagare,
   fetchPool,
   findDeadSharesPda,
   findLinePda,
+  findPagarePda,
   findPoolPda,
   findVaultPda,
   getCreateCollectionV2Instruction,
@@ -65,6 +69,7 @@ import {
   getPostFixInstructionAsync,
   getRequestLineInstructionAsync,
   getRedeemInstructionAsync,
+  getSetCotejoKeysInstructionAsync,
   interestUnpaid,
   lineArrears,
   lineSchedule,
@@ -90,6 +95,8 @@ import {
   fmtMxn,
   integer,
   hash32,
+  SendError,
+  send as sendRaw,
   sendOrFail,
   sleep,
 } from "./lib/cli.ts";
@@ -119,6 +126,7 @@ const investorA = await demoSigner("investor-a", "ELOTE_INVESTOR_A_KEYPAIR");
 const investorB = await demoSigner("investor-b", "ELOTE_INVESTOR_B_KEYPAIR");
 const borrower = await demoSigner("borrower", "ELOTE_BORROWER_KEYPAIR");
 const sponsor = await demoSigner("sponsor", "ELOTE_SPONSOR_KEYPAIR");
+const cotejo = await demoSigner("cotejo", "ELOTE_COTEJO_KEYPAIR");
 console.log(
   [
     `admin      ${admin.address}`,
@@ -126,6 +134,7 @@ console.log(
     `investor B ${investorB.address}`,
     `borrower   ${borrower.address}`,
     `sponsor    ${sponsor.address}`,
+    `cotejo     ${cotejo.address}`,
   ].join("\n") + "\n"
 );
 
@@ -336,9 +345,10 @@ const borrowerAsset = await ataOf(borrower.address, assetMintAddress);
  * A draw: the borrower receives `amount`; the admin pays the pagaré's rent as the app's relayer. The
  * demo has no pagaré text: the borrower signs a placeholder labelled DEMO (decision 55).
  */
-async function drawIx(lineAddress: Address, lineId: bigint, drawIndex: number, amount: bigint) {
+async function drawIx(lineAddress: Address, lineId: bigint, drawIndex: number, amount: bigint, coSigner?: KeyPairSigner) {
   return getDrawInstructionAsync({
     borrower,
+    cotejo: coSigner,
     pool,
     line: lineAddress,
     assetMint: assetMintAddress,
@@ -354,12 +364,34 @@ async function drawIx(lineAddress: Address, lineId: bigint, drawIndex: number, a
     certFingerprint: new Uint8Array(32), // wallet-only signature in the demo: no certificate
     signatureMethod: 0,
     ...(await signPagare(c, borrower, { line: lineAddress, lineId, drawIndex })),
+    sealedHash: new Uint8Array(32), // no sealed copy in the demo (decision 57)
   });
 }
 
-await send(`draw: MXN ${fmtMxn(S(60_000n) * CENTAVOS)} as ${fmt(usdcForMxn(S(60_000n) * CENTAVOS, FIX))} ${ASSET} to the borrower, pagaré 0 minted`, borrower, [
-  await drawIx(line, lineCount, 0, S(60_000n) * CENTAVOS),
+/** The council replaces the cotejo keys (decision 56); `[]` clears them. */
+async function setCotejoKeys(keys: Address[]) {
+  const zero = address("11111111111111111111111111111111");
+  const all = [...keys, zero, zero, zero].slice(0, 3);
+  await councilExecute(c, council, `set_cotejo_keys ${keys.length ? keys.join(", ") : "none"}`, [
+    await getSetCotejoKeysInstructionAsync({ council: council.signer, multisig, pool, keys: all, validUntil: (await chainNow(c)) + 86_400n }),
+  ]).catch((e) => fail((e as Error).message));
+}
+
+console.log("\nCotejo (decision 56): the council names a key; a draw needs it as co-signer");
+await setCotejoKeys([cotejo.address]);
+try {
+  await sendRaw(c, "draw signed by the borrower alone", borrower, [await drawIx(line, lineCount, 0, S(60_000n) * CENTAVOS)]);
+  fail("a draw without the cotejo's signature went through");
+} catch (e) {
+  if (!(e instanceof SendError) || !/cotejo/i.test(e.message)) throw e;
+  console.log(`  refused as expected: ${e.message}`);
+}
+
+await send(`draw: MXN ${fmtMxn(S(60_000n) * CENTAVOS)} as ${fmt(usdcForMxn(S(60_000n) * CENTAVOS, FIX))} ${ASSET} to the borrower, pagaré 0 minted, co-signed by the cotejo`, borrower, [
+  await drawIx(line, lineCount, 0, S(60_000n) * CENTAVOS, cotejo),
 ]);
+console.log(`  pagaré 0 records cotejo ${(await fetchPagare(c.rpc, (await findPagarePda({ line, drawIndex: 0 }))[0], { commitment: "confirmed" })).data.cotejo}`);
+await setCotejoKeys([]);
 const drawn = await snapshot();
 const poolData = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
 const noReceipt = new Uint8Array(32); // the demo has no receipt: "to follow"

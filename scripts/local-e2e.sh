@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # The scripts end to end on a local validator, with the council a real Squads v4 multisig:
 # the demo (pool, the council's FIX, deposits, a MXN line approved by the council, drawn as USDC and
-# repaid, a redemption), then request-line.ts and approve-line.ts, six draws with draw.ts, one payoff
+# repaid, a redemption; the demo's draw needs the cotejo key the council names, decision 56), then
+# request-line.ts and approve-line.ts, six draws with draw.ts co-signed by a cotejo key set with
+# council-propose.ts (one refused without it), one payoff
 # with repay.ts (split into parts of at most three pagaré records), the council's settings and FIX,
 # the delivery of every paid pagaré and the owner's burn. A third line covers
 # endorse-pagare.ts (an endoso en procuración to a key made for the case, a revocation) and the
@@ -93,6 +95,9 @@ run demo-pool.ts --multisig "$MULTISIG" | tee "$WORK/demo.log"
 POOL="$(sed -n 's/^pool \([1-9A-HJ-NP-Za-km-z]\{32,44\}\)$/\1/p' "$WORK/demo.log" | tail -1)"
 [ -n "$POOL" ] || { echo "error: no pool address in the demo's output" >&2; exit 1; }
 grep -q 'execute approve_line 0' "$WORK/demo.log" || { echo "error: the council did not approve through Squads" >&2; exit 1; }
+grep -q 'refused as expected: draw signed by the borrower alone was rejected: .*cotejo' "$WORK/demo.log" \
+  || { echo "error: the demo's draw without the cotejo was not refused by the program" >&2; exit 1; }
+grep -q 'co-signed by the cotejo' "$WORK/demo.log" || { echo "error: the demo's co-signed draw did not land" >&2; exit 1; }
 
 echo "== deliver-pagare.ts: the demo repay already delivered pagaré 0; a second delivery is refused"
 if run deliver-pagare.ts --pool "$POOL" --line-id 0 --draw-index 0 2>"$WORK/redeliver.err"; then
@@ -115,9 +120,23 @@ run request-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --pr
 run approve-line.ts --pool "$POOL" --line-id 1 | tee "$WORK/approve.log"
 grep -q 'status       Approved' "$WORK/approve.log" || { echo "error: the line was not approved" >&2; exit 1; }
 
-echo "== draw.ts: six tranches of MXN 1,000"
-for i in 0 1 2 3 4 5; do
-  run draw.ts --pool "$POOL" --line-id 1 --borrower-keypair "$KEYS/borrower.json" --amount 1000
+echo "== council-propose.ts set-cotejo-keys: a cotejo key co-signs every draw (decision 56)"
+solana-keygen new --no-bip39-passphrase --silent -o "$KEYS/cotejo-e2e.json" >/dev/null
+COTEJO="$(solana-keygen pubkey "$KEYS/cotejo-e2e.json")"
+run council-propose.ts --pool "$POOL" --op set-cotejo-keys --keys "$COTEJO"
+if run draw.ts --pool "$POOL" --line-id 1 --borrower-keypair "$KEYS/borrower.json" --amount 1000 2>"$WORK/nocotejo.err"; then
+  echo "error: a draw without the cotejo went through" >&2; exit 1
+fi
+grep -q "cotejo" "$WORK/nocotejo.err" || { echo "error: unexpected refusal:" >&2; cat "$WORK/nocotejo.err" >&2; exit 1; }
+echo "  refused as expected: $(cat "$WORK/nocotejo.err")"
+
+echo "== draw.ts: six tranches of MXN 1,000, co-signed by the cotejo, the first with a sealed copy's hash"
+SEALED="$(printf 'e2e sealed copy' | shasum -a 256 | cut -d' ' -f1)"
+run draw.ts --pool "$POOL" --line-id 1 --borrower-keypair "$KEYS/borrower.json" --amount 1000 \
+  --cotejo-keypair "$KEYS/cotejo-e2e.json" --sealed-hash "$SEALED" | tee "$WORK/draw0.log"
+grep -q "cotejo       $COTEJO; sealed hash $SEALED" "$WORK/draw0.log" || { echo "error: the pagaré does not record the cotejo and the sealed hash" >&2; exit 1; }
+for i in 1 2 3 4 5; do
+  run draw.ts --pool "$POOL" --line-id 1 --borrower-keypair "$KEYS/borrower.json" --amount 1000 --cotejo-keypair "$KEYS/cotejo-e2e.json"
 done
 
 echo "== repay.ts --all: six pagaré records, so two repay parts"
@@ -139,6 +158,7 @@ run deliver-pagare.ts --pool "$POOL" --line-id 1 --draw-index 0 --burn --owner-k
 echo "== endorse-pagare.ts: a third line, pagaré 0 en procuración to a key made for the case, pagaré 1 endorsed and revoked"
 run request-line.ts --pool "$POOL" --borrower-keypair "$KEYS/borrower.json" --principal 3000 --agreement-hash "$HASH"
 run approve-line.ts --pool "$POOL" --line-id 2
+run council-propose.ts --pool "$POOL" --op set-cotejo-keys --keys none
 for i in 0 1 2; do
   run draw.ts --pool "$POOL" --line-id 2 --borrower-keypair "$KEYS/borrower.json" --amount 1000
 done

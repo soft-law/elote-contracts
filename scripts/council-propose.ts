@@ -9,14 +9,18 @@
 //   --op set-outstanding-cap --usdc <amount> the most USDC the pool lends at once
 //   --op set-fix-bounds --min <18.0000> --max <22.0000>
 //                                            the lowest and highest FIX post_fix accepts (0 and 0 for none)
+//   --op set-cotejo-keys --keys <a,b,c>     the cotejo keys, up to three, one of which co-signs every draw
+//                                            (decision 56); "none" clears them and draws need no co-signer.
+//                                            Replaces the whole set; also while the pool is paused
 //   --op reject-line --line-id <n>           close a requested line; its rent returns to the payer
 //   --op resume                              resume a paused pool
 //
 // Demo on Solana devnet with test assets. Not an offer of securities.
-import { type Instruction, address } from "@solana/kit";
+import { type Address, type Instruction, address } from "@solana/kit";
 import {
   getRejectLineInstructionAsync,
   getResumeInstructionAsync,
+  getSetCotejoKeysInstructionAsync,
   getSetFixBoundsInstructionAsync,
   getSetFxFeederInstructionAsync,
   getSetMaxLineBpsInstructionAsync,
@@ -27,7 +31,7 @@ import { DISCLAIMER, arg, chainNow, checkFlags, cluster, confirmCluster, fail, i
 import { councilExecute, loadCouncil } from "./lib/council.ts";
 import { loadLine, loadPool } from "./lib/pool.ts";
 
-checkFlags(["cluster", "pool", "op", "address", "bps", "usdc", "min", "max", "line-id", "council-keypairs", "yes"]);
+checkFlags(["cluster", "pool", "op", "address", "bps", "usdc", "min", "max", "line-id", "keys", "council-keypairs", "yes"]);
 const c = cluster();
 const poolAddress = address(required("pool"));
 const op = required("op");
@@ -60,6 +64,22 @@ switch (op) {
     ix = await getSetFixBoundsInstructionAsync({ ...common, minFixRate: fix("min"), maxFixRate: fix("max") });
     break;
   }
+  case "set-cotejo-keys": {
+    const raw = required("keys");
+    const given = raw === "none" ? [] : raw.split(",").map((k) => k.trim());
+    if (given.length > 3) fail("--keys takes at most three keys");
+    let keys: Address[];
+    try {
+      keys = given.map((k) => address(k));
+    } catch {
+      fail("--keys must be comma-separated base58 addresses, or none");
+    }
+    if (new Set(keys).size !== keys.length) fail("--keys repeats a key");
+    const zero = address("11111111111111111111111111111111");
+    while (keys.length < 3) keys.push(zero);
+    ix = await getSetCotejoKeysInstructionAsync({ ...common, keys });
+    break;
+  }
   case "reject-line": {
     const raw = required("line-id");
     if (!/^\d+$/.test(raw)) fail("--line-id must be a whole number");
@@ -74,6 +94,7 @@ switch (op) {
     fail(`unknown --op ${op}`);
 }
 if (arg("address") !== undefined && !op.endsWith("feeder")) fail("--address goes with set-fx-feeder");
+if (arg("keys") !== undefined && op !== "set-cotejo-keys") fail("--keys goes with set-cotejo-keys");
 if ((arg("min") !== undefined || arg("max") !== undefined) && op !== "set-fix-bounds") fail("--min and --max go with set-fix-bounds");
 await councilExecute(c, council, op, [ix]).catch((e) => fail((e as Error).message));
 console.log(`\n${DISCLAIMER}`);
