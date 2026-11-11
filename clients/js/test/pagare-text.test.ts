@@ -82,10 +82,16 @@ test("empty bytes, invalid UTF-8 and control or invisible characters are refused
     ["tab", enc("Debo\ty pagaré")],
     ["DEL", enc("Debo y pagaré\u007f")],
     ["C1", enc("Debo y pagaré\u0085")],
-    ["zero-width space", enc("Debo y​ pagaré")],
-    ["bidi override", enc("Debo y ‮pagaré")],
-    ["word joiner", enc("Debo y⁠ pagaré")],
-    ["leading BOM", enc("﻿Debo y pagaré")],
+    ["zero-width space", enc("Debo y\u200b pagaré")],
+    ["bidi override", enc("Debo y \u202epagaré")],
+    ["word joiner", enc("Debo y\u2060 pagaré")],
+    ["leading BOM", enc("\ufeffDebo y pagaré")],
+    ["line separator", enc("Debo y\u2028pagaré")],
+    ["paragraph separator", enc("Debo y\u2029pagaré")],
+    ["left-to-right isolate", enc("Debo y \u2066pagaré")],
+    ["right-to-left isolate", enc("Debo y \u2067pagaré")],
+    ["first strong isolate", enc("Debo y \u2068pagaré")],
+    ["pop directional isolate", enc("Debo y pagaré\u2069")],
     ["invalid UTF-8", Uint8Array.of(0x44, 0x65, 0x62, 0x6f, 0xc3, 0x28)],
     ["lone continuation byte", Uint8Array.of(0x80, 0x41)],
   ];
@@ -96,7 +102,7 @@ test("empty bytes, invalid UTF-8 and control or invisible characters are refused
 
 test("verifyPagareSignature is false for a good signature over bytes that are not plain text", async () => {
   const borrower = await generateKeyPairSigner();
-  for (const bytes of [await transactionMessageBytes(0), enc("Debo y pagaré\u0000"), enc("Debo y​ pagaré")]) {
+  for (const bytes of [await transactionMessageBytes(0), enc("Debo y pagaré\u0000"), enc("Debo y\u200b pagaré")]) {
     const signature = await signBytes(borrower.keyPair.privateKey, bytes);
     assert.equal(await pagare.verifyPagareSignature({ message: bytes, signature, borrower: borrower.address }), false);
   }

@@ -191,9 +191,10 @@ const asBytes = (message: string | ReadonlyUint8Array) => (typeof message === "s
 
 const strictUtf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
-// C0 controls but `\n`, DEL, C1 controls, zero-width and bidi marks, embeddings and overrides,
-// word joiner and invisible operators, and the BOM.
-const FORBIDDEN_IN_PAGARE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/u;
+// C0 controls but `\n`, DEL, C1 controls, zero-width and bidi marks, the line and paragraph
+// separators, embeddings and overrides, word joiner and invisible operators, bidi isolates, the BOM.
+const FORBIDDEN_IN_PAGARE =
+  /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/u;
 
 /**
  * Throws unless `message` is plain text: non-empty, valid UTF-8, with no control character but
