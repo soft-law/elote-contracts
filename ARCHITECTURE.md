@@ -368,7 +368,7 @@ and `fx_feeder` are.
 | 178 | 8 | `principal` | MXN centavos; the commitment |
 | 186 | 2 | `rate_bps` | annual, ≤ 10 000 |
 | 188 | 8 | `term_end` | unix seconds |
-| 196 | 8 | `availability_end` | draws accepted while `now < availability_end`; 0 until approval |
+| 196 | 8 | `availability_end` | draws accepted while `now < availability_end`: 00:00:00 Mexico City of the first due day, or `term_end` on a bullet line (decision 59); 0 until approval |
 | 204 | 8 | `drawn` | MXN centavos drawn; never decreases |
 | 212 | 2 | `draws` | tranches so far, ≤ 64 |
 | 214 | 16 | `principal_seconds` | `u128`, centavo-seconds: `∫ (drawn − principal_repaid) dt` to `accrued_at` (decision 48) |
@@ -769,8 +769,11 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   (`fix_pinned`: `min_fix_rate == max_fix_rate != 0`, decision 42), is at most `MAX_FIX_AGE_DAYS`
   (5) old in Mexico City days (`FixStale`); `principal <= mxn_for_usdc(max_line_principal(nav), fix_rate)`,
   the cap measured on the provisioned NAV now and converted at the FIX in force (`LineTooLarge`);
-  the window end (`first_due_at`, or `term_end` on a bullet line) is after now (`TermEnded`).
-- **Writes:** `status = Approved`, `approved_at = now`, `availability_end`.
+  `first_due_at` (`term_end` on a bullet line) is after now (`TermEnded`).
+- **Writes:** `status = Approved`, `approved_at = now`, `availability_end` =
+  `fx::mexico_city_midnight(first_due_at)`, 00:00:00 Mexico City of the first due day (decision 59;
+  the offset `post_fix` uses), or `term_end` on a bullet line. A first due date later today in
+  Mexico City is approved with a window already closed: every draw is `AvailabilityEnded`.
 - **Events:** `LineApproved { expediente_root, terms_hash, availability_end }`.
 
 #### `reject_line(valid_until)` — **V C**
@@ -1653,24 +1656,25 @@ The figures below are the interface reference's, measured by
 whole Squads `vault_transaction_execute` transaction). The rule is 100 000 CU per transaction
 (`CEILING`), half the 200 000 CU an instruction gets without a compute-budget request, Squads
 included for a council instruction. The second column is the figure before decisions 56 and 57
-(the decision-55 build); the third, now.
+(the decision-55 build); the third, now (the `approve_line` and `draw` rows measured after
+decision 59).
 
 | case | before 56/57 | CU |
 |---|---|---|
 | `init_pool`, classic asset and plain shares | 38 639 to 50 044 | 39 870 to 50 370 (the PDA bump searches of random keys) |
 | `init_pool`, classic asset and permissioned shares | 38 173 to 48 078 | 39 404 to 48 404 |
 | `request_line`, 120 installments | 20 423 | 20 715 (± 1 500 a bump try) |
-| `approve_line` (with the multisig check) | 15 366 | 15 524 |
-| `approve_line` through Squads | 41 443 | 41 664 |
+| `approve_line` (with the multisig check) | 15 366 | 15 840 (decision 59) |
+| `approve_line` through Squads | 41 443 | 41 918 (decision 59) |
 | `post_fix` by the council | 12 811 | 13 107 |
 | `post_fix` by the feeder | 11 639 | 11 935 |
 | `post_fix` by the feeder, against the reference | 11 926 | 12 222 |
 | `propose_council` through Squads | 34 880 | 35 173 |
 | `set_cotejo_keys` through Squads | — | 35 981 |
-| `draw`, first tranche, 120 installments | 86 001 | 85 854 |
-| `draw`, second tranche, 120 installments | 86 163 | 86 016 |
-| `draw`, tranche 10, 120 installments | 86 118 | 85 971 |
-| `draw`, tranche 11, co-signed by the third of three cotejo keys | — | 86 195 |
+| `draw`, first tranche, 120 installments | 86 001 | 85 837 |
+| `draw`, second tranche, 120 installments | 86 163 | 85 999 |
+| `draw`, tranche 10, 120 installments | 86 118 | 85 954 |
+| `draw`, tranche 11, co-signed by the third of three cotejo keys | — | 86 178 |
 | `draw` co-signed by vault 1 of the council, through Squads (§4.2) | — | 122 642: **over the rule**, under the 200 000 default |
 | `repay`, 18 installments, all missed | 45 020 | 43 411 |
 | `repay`, 120 installments, all missed | 70 559 | 68 929 |
@@ -1716,7 +1720,7 @@ neither a change of behaviour, pay for the hot paths:
   is back for every council instruction (`MARGIN` in `tests/squads.rs`).
 - `draw` writes the Core attributes' hex through a 256-entry byte-pair table instead of a nibble
   loop with `push`: about 1 400 CU less, so `draw` costs less than before decision 56 even with a
-  cotejo co-signing (86 195 against `DRAW_CEILING` 90 000).
+  cotejo co-signing (86 178 against `DRAW_CEILING` 90 000).
 
 The quita through Squads writing two or three entries at 120 installments was 96 380 / 104 452
 before decision 55 (108 326 with a procuración) and was not re-measured: with about 1 900 CU less
@@ -1967,11 +1971,11 @@ functions in each file.
 
 | file | `#[test]` | harness | what it checks |
 |---|---|---|---|
-| `src/` | 49 | plain | `math` (25), `fx` (9), `state` (10, of which two of the three allow-list tests are compiled out by any one cluster feature), `terms` (2), `instructions::lines` (2), `council` (1) |
+| `src/` | 50 | plain | `math` (25), `fx` (10), `state` (10, of which two of the three allow-list tests are compiled out by any one cluster feature), `terms` (2), `instructions::lines` (2), `council` (1) |
 | `tests/pool.rs` | 22 | LiteSVM | `init_pool` and the mint and collection policies, deposits and redemptions, dead shares, rounding and slippage, a Token-2022 asset cycle, `NavUpdated` |
 | `tests/lines.rs` | 11 | LiteSVM | the line cycle end to end, sponsor, overpayment, liquidity, write-off, the bullet window, the line cap |
 | `tests/requests.rs` | 7 | LiteSVM | request, approval of the exact terms, the 15-day window, members as borrowers, reject and withdraw returning rent, the pause on requests |
-| `tests/schedule.rs` | 48 (+2 reference) | LiteSVM, clock warped | schedule validation, installments of principal, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing; decision 48 against `tests/reference/`: interest on the outstanding principal, early payoff, dust and split invariance, no interest unpaid after a principal payment, a proptest state machine (48 cases) |
+| `tests/schedule.rs` | 50 (+2 reference) | LiteSVM, clock warped | schedule validation, the draw window closing at 00:00:00 Mexico City of the first due day (decision 59, the backend's `drawDeadlineMexicoCity` vector) and a first due date on the day of the request leaving none, installments of principal, missed count, late interest and its caps, repayment order, collection and acceleration, write-off timing; decision 48 against `tests/reference/`: interest on the outstanding principal, early payoff, dust and split invariance, no interest unpaid after a principal payment, a proptest state machine (48 cases) |
 | `tests/tranches.rs` | 15 (+2 reference) | LiteSVM, clock warped | tranched draws, the strict window, the payability floor, interest from each draw, `MAX_DRAWS`, calendars, `suspend_draws` and `cancel_line` |
 | `tests/acceleration.rs` | 12 | LiteSVM | suspension and resumption, acceleration with notice on bullet and scheduled lines, the objective mark superseding a proposal, pool limits and floors, the pause |
 | `tests/quita.rs` | 13 | LiteSVM, clock warped | decision 51: the principal quita (total in collection, partial then paid, split over more than three records, at a 50% provision, on a written-off line, ending a procuración), its guards, arrears and accrual after it; recoveries on a written-off line, partial and full, and each pagaré's own FX cost basis; every pool field and the NAV worked by hand; the registry replayed for `Condonacion` |

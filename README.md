@@ -110,7 +110,7 @@ more than 15 days ahead (`ProposalTooFar`). `init_pool` does not.
 | `deposit(assets, min_shares_out)` | depositor | assets in, shares out at the current NAV; the first deposit meets the minimum and locks 1,000 dead shares |
 | `redeem(shares, min_assets_out)` | holder | shares burned, assets out at the current NAV, up to the vault's liquidity |
 | `request_line(line_id, terms)` | borrower, payer, sponsor if named | the borrower requests line `line_id` (the pool's next) on `terms`, in centavos of MXN; stored as `Requested` with the terms hash; a separate payer funds the account; moves no money; refused while paused |
-| `approve_line(expediente_root, terms_hash, valid_until)` | council | approves a requested line, naming its expediente root and terms hash, within 15 days of the request and within the line cap (its principal in MXN against the NAV) at a FIX at most five days old (age unchecked when the bounds pin the FIX, `min == max`); the borrower is neither the council nor a member of it |
+| `approve_line(expediente_root, terms_hash, valid_until)` | council | approves a requested line, naming its expediente root and terms hash, within 15 days of the request and within the line cap (its principal in MXN against the NAV) at a FIX at most five days old (age unchecked when the bounds pin the FIX, `min == max`); the borrower is neither the council nor a member of it; opens the draw window until 00:00:00 Mexico City of the first due day (decision 59), or until the term on a bullet line |
 | `reject_line(valid_until)` | council | rejects a requested line; the rent returns to the payer |
 | `withdraw_request()` | borrower | withdraws a requested line, expired or not; the rent returns to the payer |
 | `cancel_line(valid_until)` | council | clears an approved commitment nobody drew (`Cancelled`, terminal); refused once anything was drawn |
@@ -164,6 +164,12 @@ The 84 error codes (6000 to 6083) are numbered from 6000 in the order of `PoolEr
   collection), `first_due_at` after the opening, the last due date no later than `term_end`, and
   at least one centavo of principal per installment both for the whole commitment at the opening
   and for what is drawn after each tranche.
+- **Draw window** (decision 59). Draws end at 00:00:00 Mexico City (UTC-6 all year) of the day of
+  `first_due_at`: `approve_line` stores that instant as `availability_end` and `draw` is refused from
+  it on (`AvailabilityEnded`); one second before, 23:59:59 of the day before, is accepted. The
+  client's `mexicoCityMidnight(firstDueAt)` gives it. Nothing checks the window at the request or
+  the approval beyond `first_due_at > now`, so a first due date later the same Mexico City day is
+  approved with no window: the agreements engine must not offer one.
 - **Missed installments** are computed, never stored: installments fallen due minus installments fully
   covered by the principal repaid; one centavo short is a miss. At its due second an installment
   already counts as due. Paying exactly an installment's principal on its due date leaves it short
@@ -281,12 +287,12 @@ the Solana 3.x runtime inside LiteSVM 0.11 cannot load. Moving to v3 goes togeth
 The integration tests run the compiled program in LiteSVM 0.11.0, which loads SPL Token, Token-2022
 and the Associated Token Account program by default; the harness adds Metaplex Core from
 `programs/elote_pool/tests/fixtures/` (pinned by sha256, see the README there).
-There are 352 Rust tests (unit tests in `src/` and integration tests in 22 binaries; the shared
-reference's own tests run in each binary that includes it) and 37 JS tests. `programs/elote_pool/tests/` holds:
+There are 355 Rust tests (unit tests in `src/` and integration tests in 22 binaries; the shared
+reference's own tests run in each binary that includes it) and 43 JS tests. `programs/elote_pool/tests/` holds:
 
 | File | Tests | What it checks |
 |---|---|---|
-| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 50 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection; ordinary interest on the outstanding principal (decision 48) against an independent reference (`tests/reference/`), dust and split invariance, and a proptest state machine over random draws, payments and marks |
+| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 52 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection; the draw window closing at 00:00:00 Mexico City of the first due day (decision 59); ordinary interest on the outstanding principal (decision 48) against an independent reference (`tests/reference/`), dust and split invariance, and a proptest state machine over random draws, payments and marks |
 | `council.rs`, `valid_until.rs`, `squads.rs` | 17, 4, 9 | The Squads multisig check on every council instruction, council rotation; `valid_until` refused past or too far ahead; the hand-built Squads v4 instructions, the council setting the cotejo keys, and a second vault of the council co-signing a draw as cotejo |
 | `cotejo.rs` | 13 | Decisions 56 and 57: the cotejo rule against an independent reference (`tests/reference/`), a property test over random key sets, refusals that write nothing, the zero key never matching, rotation, only the council setting keys, also while paused, the sealed hash stored as given, and a byte-level run through every instruction but `init_pool` and `accept_council` showing only `set_cotejo_keys` moves the keys and nothing rewrites an issued record |
 | `fx.rs` | 27 | The FIX: the MXN↔USDC conversion, the daily band, the RedStone MXNe reference, the bounds, feeder versus council, one publication a day |
