@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type Address, type Instruction, type KeyPairSigner, type TransactionSigner, createNoopSigner } from "@solana/kit";
-import { LineStatus, getApproveLineInstructionAsync, lineSponsor, termsHash } from "../../clients/js/src/index.ts";
+import { LineStatus, getApproveLineInstructionAsync, lineSponsor, mexicoCityMidnight, termsHash } from "../../clients/js/src/index.ts";
 import { type Cluster, KEY_DIR, arg, chainNow, fail, loadSigner, send } from "./cli.ts";
 import { loadLine, loadPool } from "./pool.ts";
 import {
@@ -107,12 +107,17 @@ export async function councilExecute(
 /**
  * `approve_line` by the council for line `lineId`: the terms hash is recomputed from the stored
  * terms with the client's `termsHash` and must equal the one the program stored (the curators'
- * tooling computes it from the documents instead). The decision expires a day after it is built.
+ * tooling computes it from the documents instead). Refused here, as the program would, when the draw
+ * window would already be closed. The decision expires a day after it is built.
  */
 export async function approveLine(c: Cluster, council: Council, pool: Address, lineId: bigint): Promise<string> {
   const poolData = await loadPool(c, pool);
   const { line, data: l } = await loadLine(c, pool, lineId);
   if (l.status !== LineStatus.Requested) fail(`line ${lineId} is ${LineStatus[l.status]}, not Requested`);
+  const windowEnd = l.installments > 0 ? mexicoCityMidnight(l.firstDueAt) : l.termEnd;
+  if (windowEnd <= (await chainNow(c))) {
+    fail(`line ${lineId}'s draw window would end at ${new Date(Number(windowEnd) * 1000).toISOString()}, already past: the program refuses the approval (TermEnded)`);
+  }
   const computed = await termsHash(
     pool,
     lineId,
