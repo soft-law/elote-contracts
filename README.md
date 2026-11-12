@@ -313,16 +313,29 @@ reference's own tests run in each binary that includes it) and 43 JS tests. `pro
 
 | Cluster | Program id | Upgrade authority | Deployed from | Verified |
 |---|---|---|---|---|
-| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) | `main` @ `435f1af`, 2026-11-10 | hash `93c4ab3bc1e7ff8928368d070c5425b03e696f100f2cf8caee821e1afb74cea6` matches the `--features devnet --arch v0 --tools-version v1.54` build of that commit |
+| devnet | `BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM` | `GU7CfoGZYsfkx23aJoqFjfwyAmLCExqBBoBFrn2EvZKS` (single key) | `main` @ `cc0d95d` (decisions 55, 56, 57 and 59), 2026-11-12, slot 521495526 | executable hash `213763ea9f1051cd88fa72eaaf57a1a8cb2e63bf4f0c6b784aca2e41b84f68d7`: the deployed binary is the `solana-verify build` (Docker) of that commit with `--features devnet --arch v0 --tools-version v1.54`, and `solana-verify verify-from-repo` of the public repository at `cc0d95d` printed "Program hash matches" (verification data not uploaded on chain) |
 | mainnet-beta | not deployed | | | |
 
 The devnet council is vault 0 (`6s6aBtkG6Wm9N6Gx1igKnc3Q3fcJt2r1WtyyLSQrnS6x`) of the Squads v4
 multisig `C3sa3p6WRkEULZbVmYGDB3i6YaoDAWJXM9euUPJg8Vap` (2 of 3, created with
-`scripts/devnet-multisig.ts`). The smoke pool of 2026-11-08 is
-`BfhH5R2mtQaJDeTY15CQth2B75xcYWzhwypvBYYdUTWb` on Circle's devnet USDC
-(`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, `--scale 1500` with `ELOTE_ADMIN_KEYPAIR=.demo-keys/admin-2.json` (the pool before it, `7ezjge…`, was created by `.demo-keys/admin.json` and cannot be read by this build)): FIX published by the council,
-a MXN 60 bullet line requested, approved through Squads, drawn in two tranches, repaid in one
-transaction that delivered both pagarés, and pagaré 0 burnt by its owner. The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
+`scripts/devnet-multisig.ts`). Both devnet pools are on Circle's devnet USDC
+(`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`), with `init_pool` as in `scripts/demo-pool.ts`
+(5,000 bps line cap, no FIX bounds), and the council published Banxico's FIX of 2026-11-11
+(18.6192) on each:
+
+| Pool | Address | Creator | Share token | Pagaré collection | Cotejo keys |
+|---|---|---|---|---|---|
+| main (the app's) | `A1bNQufs6va2JcsBWA6WnxaXifatryacUx5xTZ59cNXE` | `.demo-keys/admin-3.json` | `79eMcMCNGBJF7yCcXg8dJgFQX3F2tMn2s5yyPZWWDB9k` | `2HekrwdTzexiG85K2gmJuSXFK2G8KTPYBRtFbqeyUct8` | none |
+| cotejo smoke | `FExNrsXwHhjSjZgPc1hRNv8GYNiE9gEitvPQtmKPsuks` | `.demo-keys/admin-4.json` | `BKz5mExocBDnuAWjPskKLFiN76YJWU9e7THXDDF33aF4` | `9PF96Tyu7uKeHSWJTKV6M1DoAxYNWyh3QVBZyvFP59VZ` | `599NAPErV6kVi1hcPyGcZtBZxwpDYwLhqUjE7BFTJ2oL` |
+
+Smoke test of 2026-11-12 on the main pool: a deposit of 1.8 tUSDC, a MXN 10 line in three weekly
+installments requested, approved through Squads (draws until 2026-11-19 06:00:00Z, decision 59), MXN
+5 drawn against a plain-text pagaré message with fictitious data signed by the borrower (the record's
+`signed_pagare_hash`, `pagare_signature` and `signed_on` read back, and the client's
+`verifyPagareSignature` true for them and the text), and one repayment. On the cotejo smoke pool the
+council named one cotejo key: a draw without its co-signature was refused (`CotejoRequired`, 6082)
+and the draw it co-signed went through. The earlier pools, `BfhH5R2mtQaJDeTY15CQth2B75xcYWzhwypvBYYdUTWb`
+and `7ezjge…`, cannot be read by this build: the account layouts changed. The devnet authority is a single hot wallet, acceptable for a test deployment only. Before any
 mainnet deployment the authority moves to a [Squads](https://squads.so) multisig, the IDL is
 published on chain (`anchor idl init`), and the build is verified. The program embeds a
 `security.txt` (see `SECURITY.md`).
