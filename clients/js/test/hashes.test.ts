@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { address, getAddressEncoder } from "@solana/kit";
 import { certCommitment, saltedHash } from "../src/hashes";
-import { mexicoCityDate, parseFix } from "../src/fx";
+import { mexicoCityDate, mexicoCityMidnight, parseFix } from "../src/fx";
 import { PAGARE_PROCURADOR_OFFSET } from "../src/pagare";
 import { getPagareEncoder } from "../src/generated";
 
@@ -26,6 +26,14 @@ test("the FIX parses at four decimals and dates follow Mexico City", () => {
   assert.equal(mexicoCityDate(1_793_707_200n), 20261103, "2026-11-03T12:00Z");
   assert.equal(mexicoCityDate(1_793_707_200n + 15n * 3_600n), 20261103, "03:00Z on the 4th is still the 3rd in Mexico City");
   assert.equal(mexicoCityDate(1_793_707_200n + 18n * 3_600n), 20261104);
+});
+
+test("the draw window ends at 00:00:00 Mexico City of the first due day, as drawDeadlineMexicoCity", () => {
+  // softlaw-backend: a first payment on 2026-12-10 is due at 2026-12-11T05:59:59Z; draws end at 2026-12-10T06:00:00Z.
+  const deadline = 1_796_882_400n;
+  assert.equal(mexicoCityMidnight(1_796_968_799n), deadline);
+  assert.equal(mexicoCityMidnight(deadline), deadline);
+  assert.equal(mexicoCityMidnight(deadline - 1n), deadline - 86_400n);
 });
 
 test("procurador sits at the offset the lookup filters on", () => {

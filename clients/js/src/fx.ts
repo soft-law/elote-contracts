@@ -23,6 +23,15 @@ export function mexicoCityDate(seconds: bigint): number {
   return d.getUTCFullYear() * 10_000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
 }
 
+/**
+ * 00:00:00 in Mexico City of the day of unix time `seconds` (`fx::mexico_city_midnight`). Of
+ * `firstDueAt` it is where a scheduled line's draw window ends, `availabilityEnd` (decision 59).
+ */
+export function mexicoCityMidnight(seconds: bigint): bigint {
+  const local = seconds - 6n * 3_600n;
+  return local - (((local % 86_400n) + 86_400n) % 86_400n) + 6n * 3_600n;
+}
+
 /** "18.3740" to 183,740; refuses more than four decimals. */
 export function parseFix(raw: string): bigint {
   const m = /^(\d+)(?:\.(\d{1,4}))?$/.exec(raw);
