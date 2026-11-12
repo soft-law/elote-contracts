@@ -26,7 +26,8 @@
 // --sponsor           the sponsor co-signs the opening and is named on the line
 // --schedule          also open a 6-installment line, miss one installment and repay it with late interest
 // --interval-seconds  seconds between installments (default: one month, 2,592,000; 20 on local, a
-//                     compressed "demo month", since a validator's clock cannot be moved forward)
+//                     compressed "demo month", since a validator's clock cannot be moved forward;
+//                     the first installment never falls before tomorrow in Mexico City, decision 59)
 // --max-line-bps      largest line as a share of the NAV, in basis points (default 5000 here, so
 //                     the MXN 60,000 line fits the 15,000 USDC of deposits; production pools use 1000)
 // --multisig          the Squads v4 multisig whose vault 0 is the council; its members' keys come
@@ -74,6 +75,7 @@ import {
   lineArrears,
   lineSchedule,
   mexicoCityDate,
+  mexicoCityMidnight,
   usdcCeilForMxn,
   usdcForMxn,
   parseFix,
@@ -445,9 +447,12 @@ async function scheduleDemo() {
   console.log(`\nInstallment line: MXN ${fmtMxn(principal)} at 12%, ${installments} installments ${label}, late interest 100% a year, collection after 3 missed`);
   const { lineCount: id } = (await fetchPool(c.rpc, pool, { commitment: "confirmed" })).data;
   const [sLine] = await findLinePda({ pool, lineId: id });
-  // The calendar comes from the contract: the first installment one interval from now, the draw
-  // window open until then.
-  const firstDueAt = (await chainNow(c)) + intervalSeconds;
+  // The calendar comes from the contract: the first installment one interval from now, and never
+  // before tomorrow in Mexico City, since the draw window closes at 00:00:00 Mexico City of the first
+  // due day (decision 59). A compressed demo month then starts at tomorrow's midnight.
+  const now = await chainNow(c);
+  const tomorrow = mexicoCityMidnight(now) + 86_400n;
+  const firstDueAt = now + intervalSeconds > tomorrow ? now + intervalSeconds : tomorrow;
   const sTermEnd = firstDueAt + BigInt(installments) * intervalSeconds;
   await send("request_line with a schedule", admin, [
     await getRequestLineInstructionAsync({
@@ -480,12 +485,12 @@ async function scheduleDemo() {
   let { l } = await read();
   // Installments of principal; the interest accrued is taken first from every payment (decision 48).
   const installment = l.drawn / BigInt(installments);
-  console.log(`  installment MXN ${fmtMxn(installment)} of principal, plus the interest accrued; first due at ${l.firstDueAt} (from the contract, one interval after the opening)`);
+  console.log(`  installment MXN ${fmtMxn(installment)} of principal, plus the interest accrued; first due at ${l.firstDueAt} (from the contract, one interval after the opening and not before tomorrow in Mexico City)`);
 
   // Let the first installment go unpaid past its due date: late interest runs from then on.
   const target = l.firstDueAt + 10n;
   if (target - (await chainNow(c)) > 600n) {
-    console.log(`  the first installment falls due in ${intervalSeconds} s: run with --interval-seconds 20 on a local validator to see arrears`);
+    console.log(`  the first installment falls due in ${l.firstDueAt - (await chainNow(c))} s: run with --interval-seconds 20 on a local validator within ten minutes of midnight in Mexico City to see arrears`);
     return;
   }
   console.log(`  waiting until ${target} (due + 10 s) without paying`);
