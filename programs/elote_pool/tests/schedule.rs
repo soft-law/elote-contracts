@@ -199,11 +199,12 @@ fn the_draw_cutoff_matches_the_backend_draw_deadline() {
     assert_eq!(env.line(&k, line_id).availability_end, DEADLINE);
 }
 
-/// A first due date on the day of the request, in Mexico City, leaves no draw window: the request
-/// and the approval check the instant (`first_due_at > now`), so the line is requested and
-/// approved, and every draw is refused. A first due date not after now is refused at the request.
+/// A first due date on the day of the approval, in Mexico City, would leave no draw window: the
+/// request is accepted (`first_due_at > now`), but the approval is refused (`TermEnded`), since the
+/// window would end at that day's midnight, already past. A first due date not after now is refused
+/// at the request.
 #[test]
-fn a_first_due_date_on_the_day_of_the_request_leaves_no_draw_window() {
+fn a_first_due_date_on_the_day_of_the_approval_is_refused() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
@@ -215,17 +216,48 @@ fn a_first_due_date_on_the_day_of_the_request_leaves_no_draw_window() {
     let mut p = env.scheduled_params(3 * UNIT, 1_200, 3, 5_000);
     p.schedule = Some(ScheduleParams { first_due_at: end_of_today, interval_seconds: interval, installments: 3, max_missed: 3 });
     p.term_end = end_of_today + 2 * interval;
-    let line_id = open(&mut env, &k, &borrower, &p);
-    let line = env.line(&k, line_id);
-    assert_eq!((line.status, line.availability_end), (LineStatus::Approved, today));
-    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
-    env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
+    let (line_id, _) = env.request_line_with(&k, &borrower, &p, None);
+    let hash = env.terms_hash(&k, line_id, &borrower.pubkey(), &p);
+    let ix = env.approve_line_ix(&k, &council.pubkey(), line_id, p.expediente_root, hash);
+    env.expect_err(ix, &council, &[], E_TERM_ENDED);
+    assert_eq!(env.line(&k, line_id).status, LineStatus::Requested);
 
     let mut q = p;
     q.schedule = Some(ScheduleParams { first_due_at: env.now(), ..p.schedule.unwrap() });
     let next = env.pool(&k).line_count;
     let ix = env.request_line_ix(&k, &council.pubkey(), next, &borrower.pubkey(), &q, None);
     env.expect_err(ix, &council, &[&borrower], E_INVALID_SCHEDULE);
+}
+
+/// The approval of a scheduled line is accepted up to 23:59:59 Mexico City of the day before the
+/// first due date, and refused (`TermEnded`) from its midnight on, when the window would be empty.
+#[test]
+fn a_scheduled_line_is_approved_until_the_midnight_before_its_first_due_date() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let council = env.council.insecure_clone();
+    let midnight = mexico_city_midnight(env.now()) + 2 * 86_400;
+    let first_due_at = midnight + 12 * 3_600;
+    let interval = 30 * 86_400;
+    let mut p = env.scheduled_params(3 * UNIT, 1_200, 3, 5_000);
+    p.schedule = Some(ScheduleParams { first_due_at, interval_seconds: interval, installments: 3, max_missed: 3 });
+    p.term_end = first_due_at + 2 * interval;
+    let (a, _) = env.request_line_with(&k, &borrower, &p, None);
+    let (b, _) = env.request_line_with(&k, &borrower, &p, None);
+
+    env.warp(midnight - 1);
+    env.ensure_fix(&k);
+    env.approve_line(&k, a, &borrower.pubkey(), &p);
+    let line = env.line(&k, a);
+    assert_eq!((line.status, line.availability_end), (LineStatus::Approved, midnight));
+
+    env.warp(midnight);
+    env.ensure_fix(&k);
+    let hash = env.terms_hash(&k, b, &borrower.pubkey(), &p);
+    let ix = env.approve_line_ix(&k, &council.pubkey(), b, p.expediente_root, hash);
+    env.expect_err(ix, &council, &[], E_TERM_ENDED);
+    assert_eq!(env.line(&k, b).status, LineStatus::Requested);
 }
 
 // -----------------------------------------------------------------------------------------------
