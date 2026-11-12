@@ -327,22 +327,27 @@ mainnet deployment the authority moves to a [Squads](https://squads.so) multisig
 published on chain (`anchor idl init`), and the build is verified. The program embeds a
 `security.txt` (see `SECURITY.md`).
 
-Reproduce and compare the on-chain build. A deployed build is verified against a build of this
+Reproduce and compare the on-chain build. A deployed build is compared with a build of this
 source **with its cluster's feature** (no feature for mainnet, `devnet` for devnet — the asset
-allow-lists differ, so the bytes do; SECURITY.md), the same SBPF arch (`v0`) and the same
-platform-tools (`v1.54`). For the devnet program:
+allow-lists differ, so the bytes do; SECURITY.md), the SBPF arch `v0` and platform-tools `v1.54`,
+built in [solana-verify](https://github.com/Ellipsis-Labs/solana-verifiable-build)'s Docker image
+(solana-verify 0.5.2 or later, Docker running). `[workspace.metadata.cli]` in `Cargo.toml` pins
+Solana 4.1.2, which picks the image. For the devnet program:
 
 ```sh
-NO_DNA=1 anchor build --ignore-keys --arch v0 --tools-version v1.54 -- --features devnet
+solana-verify build --library-name elote_pool --arch v0 --cargo-build-sbf-args="--tools-version v1.54" -- --features devnet
 solana-verify get-executable-hash target/deploy/elote_pool.so
 solana-verify get-program-hash -u devnet BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM
 ```
 
-The two hashes match when the deployed program was built from this commit with that toolchain.
-[solana-verify](https://github.com/Ellipsis-Labs/solana-verifiable-build)'s own `build` runs in a
-Docker container whose platform-tools must match (`solana-verify build --library-name elote_pool
--- --features devnet`); until the container pins v1.54 and the v0 arch, the local build above is
-the reference. The devnet deployment in the table above is verified this way; mainnet will be too.
+The deployed program must be the output of that Docker build: a native `anchor build` of the same
+commit gives a different hash. Anyone can check a deployment against the public repository:
+
+```sh
+solana-verify verify-from-repo -u devnet --program-id BGdJQxxJoHiLH2VS6HAGHe5kQuKKq9dwrPeX7DEEwYyM \
+  https://github.com/soft-law/elote-contracts --commit-hash <COMMIT> --library-name elote_pool \
+  --arch v0 --cargo-build-sbf-args="--tools-version v1.54" -- --features devnet
+```
 
 ### Releasing the client
 
