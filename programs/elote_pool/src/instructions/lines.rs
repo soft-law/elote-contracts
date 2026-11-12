@@ -191,8 +191,10 @@ pub struct ApproveLine<'info> {
 /// `REQUEST_TTL_SECONDS` of the request (`RequestExpired`), with the borrower not a member of the
 /// council's multisig (`BorrowerIsCurator`) and the principal at most `max_line_bps` of the NAV now
 /// (`LineTooLarge`), converted to MXN at the FIX in force, which must be at most
-/// `fx::MAX_FIX_AGE_DAYS` old (`FixStale`); refused while paused. Opens the draw window: to the first
-/// due date, or to the term on a bullet line. Every draw measures the cap again, in USDC.
+/// `fx::MAX_FIX_AGE_DAYS` old (`FixStale`), the first due date (the term on a bullet line) after now
+/// (`TermEnded`); refused while paused. Opens the draw window: to 00:00:00 Mexico City of the day of
+/// the first due date (decision 59), or to the term on a bullet line; a first due date later today in
+/// Mexico City approves a line with no window. Every draw measures the cap again, in USDC.
 pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_hash: [u8; 32], valid_until: i64) -> Result<()> {
     council::fresh(valid_until)?;
     let now = Clock::get()?.unix_timestamp;
@@ -217,8 +219,10 @@ pub fn approve_line(ctx: Context<ApproveLine>, expediente_root: [u8; 32], terms_
     let cap = pool.max_line_principal(nav).ok_or(PoolError::Overflow)?;
     let cap_mxn = fx::mxn_for_usdc(cap, pool.fix_rate).ok_or(PoolError::Overflow)?;
     require!(line.principal <= cap_mxn, PoolError::LineTooLarge);
-    let availability_end = if line.installments > 0 { line.first_due_at } else { line.term_end };
-    require!(availability_end > now, PoolError::TermEnded);
+    let scheduled = line.installments > 0;
+    let first_due = if scheduled { line.first_due_at } else { line.term_end };
+    require!(first_due > now, PoolError::TermEnded);
+    let availability_end = if scheduled { fx::mexico_city_midnight(first_due).ok_or(PoolError::Overflow)? } else { first_due };
     line.status = LineStatus::Approved;
     line.approved_at = now;
     line.availability_end = availability_end;

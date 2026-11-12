@@ -1,4 +1,4 @@
-//! Tranched draws on a line: partial draws until the first due date, interest on each tranche
+//! Tranched draws on a line: partial draws until the first due day, interest on each tranche
 //! from its draw (decision 48: on the principal outstanding), the schedule re-amortising what is
 //! drawn, and the line's states around the tranches.
 
@@ -117,12 +117,12 @@ fn a_second_tranche_raises_every_installment() {
     let a = env.arrears(&k, line_id);
     assert_eq!((a.due, a.overdue), (1, 500_000), "a sixth of 3.0");
 
-    // A second tranche is refused now (the window closed at the first due date), so open another
-    // line to see the installments stretch before its first due date.
+    // A second tranche is refused now (the window closed at midnight in Mexico City of the first
+    // due day), so open another line to see the installments stretch before its first due date.
     let p2 = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let second = open(&mut env, &k, &borrower, &p2);
     env.draw_amount(&k, second, &borrower, 3 * UNIT);
-    env.warp(p2.first_due_at() - 1);
+    env.warp(env.line(&k, second).availability_end - 1);
     env.draw_amount(&k, second, &borrower, 3 * UNIT);
     env.warp(p2.first_due_at());
     let a = env.arrears(&k, second);

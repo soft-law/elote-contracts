@@ -93,8 +93,9 @@ export type CreditLine = {
   /** The maturity of a bullet line. */
   termEnd: bigint;
   /**
-   * Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
-   * `term_end` on a bullet line; `suspend_draws` brings it to now.
+   * Draws are accepted while `now < availability_end`: 00:00:00 Mexico City of the day of
+   * `first_due_at` on a scheduled line (decision 59), `term_end` on a bullet line;
+   * `suspend_draws` brings it to now.
    */
   availabilityEnd: bigint;
   /** Principal transferred to the borrower so far; `drawn <= principal`, never decreases. */
@@ -209,8 +210,9 @@ export type CreditLineArgs = {
   /** The maturity of a bullet line. */
   termEnd: number | bigint;
   /**
-   * Last instant a draw is accepted (strict `<`): `first_due_at` on a scheduled line,
-   * `term_end` on a bullet line; `suspend_draws` brings it to now.
+   * Draws are accepted while `now < availability_end`: 00:00:00 Mexico City of the day of
+   * `first_due_at` on a scheduled line (decision 59), `term_end` on a bullet line;
+   * `suspend_draws` brings it to now.
    */
   availabilityEnd: number | bigint;
   /** Principal transferred to the borrower so far; `drawn <= principal`, never decreases. */

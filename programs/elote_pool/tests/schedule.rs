@@ -44,7 +44,7 @@ fn open_scheduled_line_records_the_schedule() {
     );
 
     let line = env.line(&k, line_id);
-    assert_eq!((line.first_due_at, line.availability_end), (p.first_due_at(), p.first_due_at()));
+    assert_eq!((line.first_due_at, line.availability_end), (p.first_due_at(), mexico_city_midnight(p.first_due_at())));
     assert_eq!((line.drawn, line.draws, line.principal_seconds, line.accrued_at), (0, 0, 0, 0));
     assert_eq!(line.anchor(), Some(p.first_due_at() - p.interval()));
     assert_eq!(line.last_due(), Some(p.first_due_at() + 5 * p.interval()));
@@ -133,34 +133,99 @@ fn open_rejects_invalid_schedules() {
     assert_eq!(env.pool(&k).line_count, 2);
 }
 
-/// The draw window closes at the first due date, strictly, because an
-/// installment counts as due at the second it falls due. The dates are fixed by the contract, so
-/// nothing about them is re-checked at the draw.
+/// Start of the Mexico City day (UTC-6) of `t`, written out so the tests do not lean on the
+/// program's own helper.
+fn mexico_city_midnight(t: i64) -> i64 {
+    (t - 6 * 3_600).div_euclid(86_400) * 86_400 + 6 * 3_600
+}
+
+/// Decision 59: the draw window closes at 00:00:00 Mexico City of the day of the first due date,
+/// strictly. The dates are fixed by the contract, so nothing about them is re-checked at the draw.
 #[test]
-fn the_draw_window_closes_at_the_first_due_date_exactly() {
+fn the_draw_window_closes_at_midnight_in_mexico_city_of_the_first_due_day() {
     let mut env = Env::new();
     let k = pool_with(&mut env, 10 * UNIT);
     let borrower = env.borrower(&k);
     let p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
     let line_id = open(&mut env, &k, &borrower, &p);
+    let cutoff = mexico_city_midnight(p.first_due_at());
+    assert!(cutoff < p.first_due_at());
+    assert_eq!(env.line(&k, line_id).availability_end, cutoff);
 
-    // One second before the first due date a tranche is accepted.
-    env.warp(p.first_due_at() - 1);
+    // One second before midnight of the first due day a tranche is accepted.
+    env.warp(cutoff - 1);
     let ev = env.draw_amount(&k, line_id, &borrower, 3 * UNIT);
-    assert_eq!((ev.drawn, ev.available, ev.availability_end), (3 * UNIT, 3 * UNIT, p.first_due_at()));
-    // Interest runs from the draw to the last due date: 3.0 at 12% for 5 intervals plus one second.
+    assert_eq!((ev.drawn, ev.available, ev.availability_end), (3 * UNIT, 3 * UNIT, cutoff));
+    // Interest runs from the draw to the last due date.
     let last_due = p.first_due_at() + 5 * p.interval();
-    let seconds = (last_due - (p.first_due_at() - 1)) as u128;
+    let seconds = (last_due - (cutoff - 1)) as u128;
     let expected = (3_000_000u128 * 1_200 * seconds / (10_000 * YEAR as u128)) as u64;
     assert_eq!(env.line(&k, line_id).interest_accrued(last_due + YEAR), Some(expected));
 
-    // At the first due date the window is closed, whatever is still available.
-    env.warp(p.first_due_at());
+    // From midnight on, the whole first due day included, the window is closed.
+    env.warp(cutoff);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
+    env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
+    env.warp(p.first_due_at() - 1);
     let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
     env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
     let line = env.line(&k, line_id);
     assert_eq!((line.drawn, line.status), (3 * UNIT, LineStatus::Active));
-    assert_eq!(env.arrears(&k, line_id).due, 1, "and the first installment is due");
+    assert_eq!(env.arrears(&k, line_id).due, 0, "the first installment is not due yet");
+}
+
+/// The vector of softlaw-backend's `drawDeadlineMexicoCity` (src/elote/quote.test.ts): a first
+/// payment on 2026-12-10 is due at 23:59:59 Mexico City, 2026-12-11T05:59:59Z, and draws end at
+/// 00:00:00 Mexico City of that day, 2026-12-10T06:00:00Z.
+#[test]
+fn the_draw_cutoff_matches_the_backend_draw_deadline() {
+    const FIRST_DUE_AT: i64 = 1_796_968_799; // 2026-12-11T05:59:59Z
+    const DEADLINE: i64 = 1_796_882_400; // 2026-12-10T06:00:00Z
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let interval = 30 * 86_400;
+    let mut p = env.scheduled_params(6 * UNIT, 1_200, 6, 5_000);
+    p.schedule = Some(ScheduleParams { first_due_at: FIRST_DUE_AT, interval_seconds: interval, installments: 6, max_missed: 3 });
+    p.term_end = FIRST_DUE_AT + 5 * interval;
+    let line_id = open(&mut env, &k, &borrower, &p);
+
+    env.warp(DEADLINE - 1);
+    let ev = env.draw_amount(&k, line_id, &borrower, UNIT);
+    assert_eq!(ev.drawn, UNIT, "23:59:59 of the day before is accepted");
+    env.warp(DEADLINE);
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
+    env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
+    assert_eq!(env.line(&k, line_id).availability_end, DEADLINE);
+}
+
+/// A first due date on the day of the request, in Mexico City, leaves no draw window: the request
+/// and the approval check the instant (`first_due_at > now`), so the line is requested and
+/// approved, and every draw is refused. A first due date not after now is refused at the request.
+#[test]
+fn a_first_due_date_on_the_day_of_the_request_leaves_no_draw_window() {
+    let mut env = Env::new();
+    let k = pool_with(&mut env, 10 * UNIT);
+    let borrower = env.borrower(&k);
+    let council = env.council.insecure_clone();
+    let today = mexico_city_midnight(env.now());
+    let end_of_today = today + 86_400 - 1;
+    assert!(env.now() < end_of_today);
+    let interval = 30 * 86_400;
+    let mut p = env.scheduled_params(3 * UNIT, 1_200, 3, 5_000);
+    p.schedule = Some(ScheduleParams { first_due_at: end_of_today, interval_seconds: interval, installments: 3, max_missed: 3 });
+    p.term_end = end_of_today + 2 * interval;
+    let line_id = open(&mut env, &k, &borrower, &p);
+    let line = env.line(&k, line_id);
+    assert_eq!((line.status, line.availability_end), (LineStatus::Approved, today));
+    let ix = env.draw_ix_amount(&k, line_id, &borrower.pubkey(), UNIT);
+    env.expect_err(ix, &borrower, &[], E_AVAILABILITY_ENDED);
+
+    let mut q = p;
+    q.schedule = Some(ScheduleParams { first_due_at: env.now(), ..p.schedule.unwrap() });
+    let next = env.pool(&k).line_count;
+    let ix = env.request_line_ix(&k, &council.pubkey(), next, &borrower.pubkey(), &q, None);
+    env.expect_err(ix, &council, &[&borrower], E_INVALID_SCHEDULE);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -209,7 +274,7 @@ fn installments_paid_on_their_due_dates_add_up_and_close_the_line() {
 }
 
 /// 3.0 of a 6.0 scheduled line drawn at the opening, at 12% a year: 30_000 a month while all of
-/// it is outstanding. The window stays open until the first due date, two months in, with 3.0
+/// it is outstanding. The window stays open until the day of the first due date, two months in, with 3.0
 /// still available; the borrower holds one unit more.
 fn half_drawn(env: &mut Env, k: &PoolKeys, p: &LineParams) -> (Keypair, u64, i64) {
     let borrower = env.borrower(k);

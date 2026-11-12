@@ -75,6 +75,11 @@ pub fn mexico_city_day(now: i64) -> i64 {
     (now + MEXICO_CITY_OFFSET_SECONDS).div_euclid(86_400)
 }
 
+/// 00:00:00 in Mexico City of the day of `t`.
+pub fn mexico_city_midnight(t: i64) -> Option<i64> {
+    mexico_city_day(t).checked_mul(86_400)?.checked_sub(MEXICO_CITY_OFFSET_SECONDS)
+}
+
 /// USDC base units delivered for `mxn` centavos at `fix_rate`, rounded down.
 pub fn usdc_for_mxn(mxn: u64, fix_rate: u64) -> Option<u64> {
     (u128::from(mxn).checked_mul(MXN_USDC)? / u128::from(fix_rate).max(1)).try_into().ok()
@@ -178,6 +183,16 @@ mod tests {
         let noon_utc_nov_3 = 1_793_707_200; // 2026-11-03T12:00:00Z
         assert_eq!(mexico_city_day(noon_utc_nov_3), fix_day(20261103).unwrap());
         assert_eq!(mexico_city_day(noon_utc_nov_3 - 12 * 3_600 + 5 * 3_600), fix_day(20261102).unwrap(), "05:00Z is still Nov 2 in CDMX");
+    }
+
+    #[test]
+    fn mexico_city_midnight_is_six_in_the_morning_utc() {
+        // softlaw-backend's drawDeadlineMexicoCity('2026-12-10'): 2026-12-10T06:00:00Z, for the
+        // first due date 23:59:59 Mexico City of that day, 2026-12-11T05:59:59Z.
+        let deadline = 1_796_882_400;
+        assert_eq!(mexico_city_midnight(1_796_968_799), Some(deadline));
+        assert_eq!(mexico_city_midnight(deadline), Some(deadline));
+        assert_eq!(mexico_city_midnight(deadline - 1), Some(deadline - 86_400));
     }
 
     #[test]
