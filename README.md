@@ -167,9 +167,10 @@ The 84 error codes (6000 to 6083) are numbered from 6000 in the order of `PoolEr
 - **Draw window** (decision 59). Draws end at 00:00:00 Mexico City (UTC-6 all year) of the day of
   `first_due_at`: `approve_line` stores that instant as `availability_end` and `draw` is refused from
   it on (`AvailabilityEnded`); one second before, 23:59:59 of the day before, is accepted. The
-  client's `mexicoCityMidnight(firstDueAt)` gives it. Nothing checks the window at the request or
-  the approval beyond `first_due_at > now`, so a first due date later the same Mexico City day is
-  approved with no window: the agreements engine must not offer one.
+  client's `mexicoCityMidnight(firstDueAt)` gives it. The request checks only `first_due_at > now`;
+  the approval is refused (`TermEnded`) once that midnight has come, so a line whose first due date
+  falls on the day of the approval in Mexico City is never approved (the borrower withdraws the
+  request).
 - **Missed installments** are computed, never stored: installments fallen due minus installments fully
   covered by the principal repaid; one centavo short is a miss. At its due second an installment
   already counts as due. Paying exactly an installment's principal on its due date leaves it short
@@ -287,12 +288,12 @@ the Solana 3.x runtime inside LiteSVM 0.11 cannot load. Moving to v3 goes togeth
 The integration tests run the compiled program in LiteSVM 0.11.0, which loads SPL Token, Token-2022
 and the Associated Token Account program by default; the harness adds Metaplex Core from
 `programs/elote_pool/tests/fixtures/` (pinned by sha256, see the README there).
-There are 355 Rust tests (unit tests in `src/` and integration tests in 22 binaries; the shared
+There are 356 Rust tests (unit tests in `src/` and integration tests in 22 binaries; the shared
 reference's own tests run in each binary that includes it) and 43 JS tests. `programs/elote_pool/tests/` holds:
 
 | File | Tests | What it checks |
 |---|---|---|
-| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 52 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection; the draw window closing at 00:00:00 Mexico City of the first due day (decision 59); ordinary interest on the outstanding principal (decision 48) against an independent reference (`tests/reference/`), dust and split invariance, and a proptest state machine over random draws, payments and marks |
+| `pool.rs`, `lines.rs`, `requests.rs`, `schedule.rs` | 22, 11, 7, 53 | Behaviour of every instruction, happy paths and each error code; the request/approve/reject/withdraw flow; installments, arrears and collection; the draw window closing at 00:00:00 Mexico City of the first due day (decision 59); ordinary interest on the outstanding principal (decision 48) against an independent reference (`tests/reference/`), dust and split invariance, and a proptest state machine over random draws, payments and marks |
 | `council.rs`, `valid_until.rs`, `squads.rs` | 17, 4, 9 | The Squads multisig check on every council instruction, council rotation; `valid_until` refused past or too far ahead; the hand-built Squads v4 instructions, the council setting the cotejo keys, and a second vault of the council co-signing a draw as cotejo |
 | `cotejo.rs` | 13 | Decisions 56 and 57: the cotejo rule against an independent reference (`tests/reference/`), a property test over random key sets, refusals that write nothing, the zero key never matching, rotation, only the council setting keys, also while paused, the sealed hash stored as given, and a byte-level run through every instruction but `init_pool` and `accept_council` showing only `set_cotejo_keys` moves the keys and nothing rewrites an issued record |
 | `fx.rs` | 27 | The FIX: the MXN↔USDC conversion, the daily band, the RedStone MXNe reference, the bounds, feeder versus council, one publication a day |

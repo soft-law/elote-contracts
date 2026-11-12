@@ -769,11 +769,12 @@ expediente_root)`, integers little endian, the schedule fields zero on a bullet 
   (`fix_pinned`: `min_fix_rate == max_fix_rate != 0`, decision 42), is at most `MAX_FIX_AGE_DAYS`
   (5) old in Mexico City days (`FixStale`); `principal <= mxn_for_usdc(max_line_principal(nav), fix_rate)`,
   the cap measured on the provisioned NAV now and converted at the FIX in force (`LineTooLarge`);
-  `first_due_at` (`term_end` on a bullet line) is after now (`TermEnded`).
+  the draw window still open, `availability_end > now`: 00:00:00 Mexico City of the first due day
+  (`term_end` on a bullet line) after now (`TermEnded`).
 - **Writes:** `status = Approved`, `approved_at = now`, `availability_end` =
   `fx::mexico_city_midnight(first_due_at)`, 00:00:00 Mexico City of the first due day (decision 59;
   the offset `post_fix` uses), or `term_end` on a bullet line. A first due date later today in
-  Mexico City is approved with a window already closed: every draw is `AvailabilityEnded`.
+  Mexico City is refused at the approval, so no line is approved with a window already closed.
 - **Events:** `LineApproved { expediente_root, terms_hash, availability_end }`.
 
 #### `reject_line(valid_until)` — **V C**
