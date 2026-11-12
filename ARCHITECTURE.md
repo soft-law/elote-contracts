@@ -1957,8 +1957,8 @@ and `npm run check:client` fails if the committed client differs. The hand-writt
 client mirror the program: `schedule.ts` (the arrears, the accrual `interestAccrued` /
 `interestUnpaid` / `lineOwed`, `lineSchedule`, `maxLinePrincipal`),
 `pagare.ts` (the PDAs, `repaySidecars`, `MAX_SIDECARS_PER_REPAY = 3`,
-`PAGARE_PROCURADOR_OFFSET = 212`), `terms.ts` (the terms hash) and `fx.ts` (the conversions and the
-reference); anything a UI shows about arrears or late interest comes from `schedule.ts`, which must
+`PAGARE_PROCURADOR_OFFSET = 212`), `terms.ts` (the terms hash) and `fx.ts` (the conversions, the
+reference and `mexicoCityMidnight`, the end of a scheduled line's draw window); anything a UI shows about arrears or late interest comes from `schedule.ts`, which must
 change in step with `math.rs`.
 
 ### 12.3 Tests
